@@ -21,6 +21,7 @@ The console roughly covers the areas below (see the UI and OpenAPI for the exact
 | **Automation** | Cron jobs |
 | **Ops & observability** | Status, health, health audit, usage, alerts, activity; control endpoints where applicable |
 | **Workspace** | Workspace browsing and management |
+| **Session transcripts** (nanobot) | Optional append-only JSONL logs under workspace `transcripts/` when `agents.defaults.persistSessionTranscript` is true; `transcriptIncludeFullToolResults` controls full tool payloads in the log |
 
 **Typical use:** run next to `nanobot gateway` to inspect status, debug sessions, and manage these resources from the console.
 
@@ -106,6 +107,7 @@ honcho start
 The default `Procfile` runs: `nanobot gateway`, `console server`, and `console web dev`.
 
 ## Version history (timeline)
+
 
 Major releases for the `open-pawlet` PyPI package (matches `[project] version` in the root `pyproject.toml`). The console is built for the **nanobot** stack; embedded **nanobot** lives under `src/nanobot` and ships with each install. **Newest at the top; older entries below.** Add new rows at the **top** when you cut a release.
 
