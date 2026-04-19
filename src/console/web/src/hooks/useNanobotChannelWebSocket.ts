@@ -45,6 +45,8 @@ export interface NanobotNativeWsFrame {
   client_id?: string;
   /** True when the client resumed via `?chat_id=` (see nanobot WS docs). */
   resumed?: boolean;
+  /** From gateway `ready`: agent turn in flight for this `chat_id` (reconnect UX). */
+  session_busy?: boolean;
   media?: string[];
   reply_to?: string;
   stream_id?: unknown;
@@ -329,12 +331,20 @@ export function useNanobotChannelWebSocket(options: {
    * `?chat_id=` on the WebSocket URL so the server resumes the persisted chat.
    */
   resumeChatId?: string | null;
+  /**
+   * Called once per successful `ready` with `session_busy` from nanobot gateway
+   * (agent turn still running for this chat).
+   */
+  onReadySessionBusy?: (busy: boolean) => void;
 }) {
   const {
     enabled,
     canonicalSessionKeyFromRoute = null,
     resumeChatId = null,
+    onReadySessionBusy,
   } = options;
+  const onReadySessionBusyRef = useRef(onReadySessionBusy);
+  onReadySessionBusyRef.current = onReadySessionBusy;
   const [ready, setReady] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
@@ -489,9 +499,11 @@ export function useNanobotChannelWebSocket(options: {
                   ? wireClientId.trim()
                   : "";
               const resumedWire = data.resumed === true;
+              const sessionBusyWire = data.session_busy === true;
               if (cancelled || myGen !== connectGeneration) {
                 return;
               }
+              onReadySessionBusyRef.current?.(sessionBusyWire);
               setNanobotChatId(cid);
               setNanobotClientId(
                 canonicalSessionKey !== null && canonicalSessionKey.length > 0
@@ -507,6 +519,8 @@ export function useNanobotChannelWebSocket(options: {
                 wireClientIdStr,
                 "resumed=",
                 resumedWire,
+                "session_busy=",
+                sessionBusyWire,
               );
               return;
             }

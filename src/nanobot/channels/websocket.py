@@ -12,6 +12,7 @@ import secrets
 import ssl
 import time
 import uuid
+from collections.abc import Callable
 from typing import Any, Self
 from urllib.parse import parse_qs, urlparse
 
@@ -66,6 +67,9 @@ class WebSocketConfig(Base):
       (default off).
     - Each agent turn emits ``event: "chat_start"`` before processing and ``event: "chat_end"`` after
       the turn completes (including after errors), so clients can show typing or progress UI.
+    - The initial ``event: "ready"`` frame may include ``session_busy`` (bool) when the gateway wires
+      :meth:`WebSocketChannel.set_session_busy_resolver` to the agent loop, so clients can restore
+      \"in progress\" UI after reconnecting while a turn is still running.
     - Assistant ``reasoning_content`` from the persisted turn is sent as ``event: "reasoning"`` after
       streaming completes when applicable, or on ``event: "message"`` as field ``reasoning_content``,
       when global ``channels.sendReasoningContent`` / ``send_reasoning_content`` is true (default).
@@ -264,6 +268,14 @@ class WebSocketChannel(BaseChannel):
         self._issued_tokens: dict[str, float] = {}
         self._stop_event: asyncio.Event | None = None
         self._server_task: asyncio.Task[None] | None = None
+        # Optional ``(session_key) -> bool`` from gateway; enriches ``ready`` with ``session_busy``.
+        self._session_busy_resolver: Callable[[str], bool] | None = None
+
+    def set_session_busy_resolver(
+        self, fn: Callable[[str], bool] | None
+    ) -> None:
+        """Register whether a nanobot session key is mid-turn (gateway + AgentLoop only)."""
+        self._session_busy_resolver = fn
 
     # -- Subscription bookkeeping -------------------------------------------
 
@@ -512,6 +524,17 @@ class WebSocketChannel(BaseChannel):
         }
         if resumed:
             ready_body["resumed"] = True
+        session_key = f"{self.name}:{default_chat_id}"
+        if self._session_busy_resolver is not None:
+            try:
+                ready_body["session_busy"] = bool(
+                    self._session_busy_resolver(session_key)
+                )
+            except Exception as e:
+                logger.warning("websocket: session_busy resolver failed: {}", e)
+                ready_body["session_busy"] = False
+        else:
+            ready_body["session_busy"] = False
 
         try:
             await connection.send(json.dumps(ready_body, ensure_ascii=False))

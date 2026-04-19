@@ -381,6 +381,22 @@ class AgentLoop:
             return UNIFIED_SESSION_KEY
         return msg.session_key
 
+    def is_session_busy(self, session_key: str) -> bool:
+        """True while the loop is actively running :meth:`_dispatch` for *session_key*.
+
+        The session is registered in :attr:`_pending_queues` for the full duration of
+        an inbound turn (LLM + tools), so this reflects server-side \"assistant is
+        working\" even when no WebSocket client is connected (e.g. user left the page).
+
+        If ``agents.defaults.unified_session`` is enabled, routing uses
+        :data:`UNIFIED_SESSION_KEY` instead of per-chat keys; callers must query that
+        key (or disable unified session for per-chat console UX).
+        """
+        sk = (session_key or "").strip()
+        if not sk:
+            return False
+        return sk in self._pending_queues
+
     async def _run_agent_loop(
         self,
         initial_messages: list[dict],

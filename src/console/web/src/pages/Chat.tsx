@@ -899,6 +899,8 @@ export default function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const isStreamingRef = useRef(false);
+  /** True when `isStreaming` was set from nanobot WS `ready.session_busy` (turn in flight on server). */
+  const streamingPrimedByServerRef = useRef(false);
   useEffect(() => {
     isStreamingRef.current = isStreaming;
   }, [isStreaming]);
@@ -982,6 +984,10 @@ export default function Chat() {
     setStatusJsonLoading(false);
     expectStatusJsonTrailingChatDoneRef.current = false;
     messagesStickToBottomRef.current = true;
+  }, [activeSessionKey]);
+
+  useEffect(() => {
+    streamingPrimedByServerRef.current = false;
   }, [activeSessionKey]);
 
   const nanobotWsBase = resolveNanobotWsBase();
@@ -1113,11 +1119,22 @@ export default function Chat() {
   /** Dedupe `createSession` + list invalidation when route/store deps churn with the same logical session. */
   const ensuredNanobotConsoleSessionRef = useRef<string | null>(null);
 
+  const onNanobotReadySessionBusy = useCallback((busy: boolean) => {
+    if (busy) {
+      streamingPrimedByServerRef.current = true;
+      setIsStreaming(true);
+    } else if (streamingPrimedByServerRef.current) {
+      streamingPrimedByServerRef.current = false;
+      setIsStreaming(false);
+    }
+  }, []);
+
   const { sendMessage: sendNanobotMessage, ready: nanobotWsReady } =
     useNanobotChannelWebSocket({
       enabled: nanobotChannelWsEnabled,
       canonicalSessionKeyFromRoute: paramSessionKey ?? null,
       resumeChatId: resumeNanobotChatUuid,
+      onReadySessionBusy: useNanobotChannel ? onNanobotReadySessionBusy : undefined,
     });
 
   /**
@@ -1730,8 +1747,10 @@ export default function Chat() {
         });
         queryClient.invalidateQueries({ queryKey: ["sessions"] });
       } else if (chunk.type === "chat_start") {
+        streamingPrimedByServerRef.current = false;
         setIsStreaming(true);
       } else if (chunk.type === "channel_notice" && chunk.content) {
+        streamingPrimedByServerRef.current = false;
         setIsStreaming(true);
         const noticeText = chunk.content as string;
         const usageFromStatus = parseNanobotStatusJson(noticeText);

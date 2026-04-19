@@ -145,6 +145,17 @@ def test_ssl_context_requires_both_cert_and_key_files() -> None:
         channel._build_ssl_context()
 
 
+def test_websocket_channel_session_busy_resolver() -> None:
+    bus = MagicMock()
+    ch = WebSocketChannel({"enabled": True, "allowFrom": ["*"]}, bus)
+    assert ch._session_busy_resolver is None
+    ch.set_session_busy_resolver(lambda sk: sk == "websocket:abc")
+    assert ch._session_busy_resolver is not None
+    assert ch._session_busy_resolver("websocket:abc") is True
+    ch.set_session_busy_resolver(None)
+    assert ch._session_busy_resolver is None
+
+
 def test_default_config_includes_safe_bind_and_streaming() -> None:
     defaults = WebSocketChannel.default_config()
     assert defaults["enabled"] is False

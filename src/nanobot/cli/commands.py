@@ -751,6 +751,11 @@ def gateway(
 
     # Create channel manager
     channels = ChannelManager(config, bus)
+    from nanobot.channels.websocket import WebSocketChannel
+
+    _ws_ch = channels.channels.get("websocket")
+    if isinstance(_ws_ch, WebSocketChannel):
+        _ws_ch.set_session_busy_resolver(agent.is_session_busy)
 
     def _pick_heartbeat_target() -> tuple[str, str]:
         """Pick a routable channel/chat target for heartbeat-triggered messages."""
