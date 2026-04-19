@@ -16,6 +16,8 @@ permissions:
 
 jobs:
   publish:
+    # Skip runs triggered only by creating a new branch (first push to that ref).
+    if: github.event_name != 'push' || github.event.created == false
     runs-on: ubuntu-latest
     environment:
       name: pypi

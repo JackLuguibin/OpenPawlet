@@ -8,6 +8,8 @@ on:
 
 jobs:
   test:
+    # Skip runs triggered only by creating a new branch (first push to that ref).
+    if: github.event_name != 'push' || github.event.created == false
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
