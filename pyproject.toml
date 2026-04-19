@@ -45,9 +45,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage = ""
-Documentation = ""
-Repository = ""
+Homepage = "https://github.com/JackLuguibin/OpenPawlet"
+Documentation = "https://github.com/JackLuguibin/OpenPawlet/blob/main/README.md"
+Repository = "https://github.com/JackLuguibin/OpenPawlet"
 
 [build-system]
 requires = ["hatchling"]
