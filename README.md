@@ -35,7 +35,7 @@ The console roughly covers the areas below (see the UI and OpenAPI for the exact
 |-------|------------|
 | Runtime | Python ≥ 3.11 |
 | Backend | FastAPI, Uvicorn, Pydantic v2, Loguru |
-| nanobot integration | `nanobot-ai` (Git dependency; see `pyproject.toml`), `websockets` |
+| nanobot integration | `nanobot-ai` from PyPI (see `pyproject.toml`; optional Git override for fork builds), `websockets` |
 | Frontend | Node.js + npm (see `src/console/web`) |
 | Multi-process (optional) | Honcho + `Procfile` |
 
@@ -52,7 +52,8 @@ pip install --upgrade pip
 pip install -e ".[dev]"
 ```
 
-`nanobot-ai` is installed from Git; pin or bump the upstream revision by editing the URL in `pyproject.toml`, then reinstall.
+`nanobot-ai` is installed from PyPI. To use the [JackLuguibin/nanobot](https://github.com/JackLuguibin/nanobot) fork (e.g. `feat/enhance_ws_event_main`) instead, run:  
+`pip install --upgrade "nanobot-ai @ git+https://github.com/JackLuguibin/nanobot@feat/enhance_ws_event_main"`
 
 ### 2. Frontend dependencies
 

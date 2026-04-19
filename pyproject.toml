@@ -17,8 +17,9 @@ classifiers = [
 ]
 
 dependencies = [
-    # Pinned to branch tip for reproducible installs; bump when you need newer nanobot.
-    "nanobot-ai @ git+https://github.com/JackLuguibin/nanobot@feat/enhance_ws_event_main",
+    # PyPI packages cannot declare Git URL deps; pin a floor from PyPI. For JackLuguibin/nanobot
+    # fork features, override after install: pip install "nanobot-ai @ git+https://github.com/JackLuguibin/nanobot@feat/enhance_ws_event_main"
+    "nanobot-ai>=0.1.5.post1",
     "websockets>=12",
     "loguru>=0.7.0",
     "fastapi>=0.110.0",
@@ -28,14 +29,8 @@ dependencies = [
     "honcho>=1.1.0"
 ]
 
-# Dev install: use scripts/install-dev.sh (or `pip install --upgrade -e ".[dev]"`) so
-# nanobot-ai is re-fetched from Git. Plain `pip install -e ".[dev]"` may keep a
-# cached revision.
-#
-# Editable install only links open-pawlet sources. To hack nanobot in a separate
-# clone instead of Git, override the dependency, e.g.:
-#   .venv/bin/pip uninstall -y nanobot-ai
-#   .venv/bin/pip install -e ../nanobot
+# Editable install only links open-pawlet sources. To use a local nanobot clone:
+#   pip uninstall -y nanobot-ai && pip install -e ../nanobot
 
 [project.optional-dependencies]
 dev = [
@@ -52,9 +47,6 @@ Repository = "https://github.com/JackLuguibin/OpenPawlet"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
-
-[tool.hatch.metadata]
-allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/console"]
