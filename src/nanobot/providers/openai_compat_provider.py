@@ -145,16 +145,16 @@ def _uses_openrouter_attribution(spec: "ProviderSpec | None", api_base: str | No
     return bool(api_base and "openrouter" in api_base.lower())
 
 
+_RESPONSES_FAILURE_THRESHOLD = 3
+_RESPONSES_PROBE_INTERVAL_S = 300  # 5 minutes
+
+
 def _is_direct_openai_base(api_base: str | None) -> bool:
     """Return True for direct OpenAI endpoints, not generic OpenAI-compatible gateways."""
     if not api_base:
         return True
     normalized = api_base.strip().lower().rstrip("/")
     return "api.openai.com" in normalized and "openrouter" not in normalized
-
-
-_RESPONSES_FAILURE_THRESHOLD = 3
-_RESPONSES_PROBE_INTERVAL_S = 300  # 5 minutes
 
 
 def _responses_circuit_key(
