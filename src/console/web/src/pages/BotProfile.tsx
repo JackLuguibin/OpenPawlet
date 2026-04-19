@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Spin, Empty, Card, Select, Button, Input } from 'antd';
-import { EditOutlined, SaveOutlined, CloseOutlined } from '@ant-design/icons';
+import { EditOutlined, SaveOutlined, CloseOutlined, ReloadOutlined } from '@ant-design/icons';
 import { Markdown } from '../components/Markdown';
 import * as api from '../api/client';
 import { useAppStore } from '../store';
@@ -45,7 +45,7 @@ export default function BotProfile() {
     queryFn: api.listBots,
   });
 
-  const { data: botFiles, isLoading, error } = useQuery({
+  const { data: botFiles, isLoading, isFetching, error } = useQuery({
     queryKey: ['bot-files', currentBotId],
     queryFn: () => api.getBotFiles(currentBotId),
   });
@@ -100,9 +100,22 @@ export default function BotProfile() {
             />
           )}
           {!editMode ? (
-            <Button icon={<EditOutlined />} onClick={startEdit}>
-              Edit
-            </Button>
+            <>
+              <Button
+                type="default"
+                shape="circle"
+                icon={<ReloadOutlined />}
+                title={t('botProfile.refreshBootstrap')}
+                aria-label={t('botProfile.refreshBootstrap')}
+                loading={isFetching && !isLoading}
+                onClick={() => {
+                  void queryClient.invalidateQueries({ queryKey: ['bot-files', currentBotId] });
+                }}
+              />
+              <Button icon={<EditOutlined />} onClick={startEdit}>
+                Edit
+              </Button>
+            </>
           ) : (
             <>
               <Button

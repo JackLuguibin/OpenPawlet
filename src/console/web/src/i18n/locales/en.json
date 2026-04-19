@@ -346,7 +346,8 @@
     "deleteConfirmDesc": "This cannot be undone."
   },
   "botProfile": {
-    "saved": "File saved"
+    "saved": "File saved",
+    "refreshBootstrap": "Refresh bootstrap files"
   },
   "mcp": {
     "copied": "Configuration copied to clipboard",

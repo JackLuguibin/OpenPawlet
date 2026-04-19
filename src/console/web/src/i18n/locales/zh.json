@@ -346,7 +346,8 @@
     "deleteConfirmDesc": "此操作无法撤销。"
   },
   "botProfile": {
-    "saved": "文件已保存"
+    "saved": "文件已保存",
+    "refreshBootstrap": "刷新引导文件"
   },
   "mcp": {
     "copied": "配置已复制到剪贴板",
