@@ -124,13 +124,9 @@ exclude = [
     "/src/console/web/node_modules",
 ]
 
-[tool.hatch.build.targets.wheel.force-include]
-"bridge" = "nanobot/bridge"
-
 [tool.hatch.build.targets.sdist]
 include = [
     "/src",
-    "/bridge",
     "/README.md",
     "/README.zh.md",
     "/README.en.md",
