@@ -9,7 +9,7 @@ import tomllib
 
 
 def test_source_checkout_import_uses_pyproject_version_without_metadata() -> None:
-    repo_root = Path(__file__).resolve().parents[1]
+    repo_root = Path(__file__).resolve().parents[3]
     expected = tomllib.loads((repo_root / "pyproject.toml").read_text(encoding="utf-8"))["project"][
         "version"
     ]

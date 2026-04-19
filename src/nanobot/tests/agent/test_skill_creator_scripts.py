@@ -5,7 +5,7 @@ import zipfile
 from pathlib import Path
 
 
-_REPO_ROOT = Path(__file__).resolve().parents[2]
+_REPO_ROOT = Path(__file__).resolve().parents[4]
 SCRIPT_DIR = _REPO_ROOT / "src/nanobot/skills/skill-creator/scripts"
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
