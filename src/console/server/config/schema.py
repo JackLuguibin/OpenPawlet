@@ -41,7 +41,7 @@ class ServerSettings(BaseSettings):
         default="HTTP API for nanobot console management",
         description="API description",
     )
-    version: str = Field(default="1.0.0", description="API version")
+    version: str = Field(default="0.2.1", description="API version")
     api_prefix: str = Field(default="/api/v1", description="Root path for all routes")
     docs_url: str = Field(default="/docs", description="OpenAPI docs path")
     redoc_url: str = Field(default="/redoc", description="ReDoc UI path")
