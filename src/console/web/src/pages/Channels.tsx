@@ -35,6 +35,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import * as api from '../api/client';
 import { useAppStore } from '../store';
+import { PageLayout } from '../components/PageLayout';
 
 // Common config fields for token-based channels
 const CHANNEL_TOKEN_FIELDS: Record<string, string[]> = {
@@ -249,22 +250,22 @@ export default function Channels() {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+      <PageLayout variant="center">
         <Spin size="large" />
-      </div>
+      </PageLayout>
     );
   }
 
   if (error) {
     return (
-      <div className="p-6">
+      <PageLayout variant="bleed">
         <Alert
           type="error"
           message={t('channels.errorLoad')}
           description={String(error)}
           showIcon
         />
-      </div>
+      </PageLayout>
     );
   }
 
@@ -275,7 +276,7 @@ export default function Channels() {
   const enabledTotal = channels?.filter((c) => c.enabled).length ?? 0;
 
   return (
-    <div className="mx-auto flex min-h-0 w-full max-w-[1600px] flex-1 flex-col gap-8 p-6">
+    <PageLayout variant="bleed" className="gap-8 mx-auto max-w-[1600px]">
       <header className="flex shrink-0 flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="space-y-1">
           <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
@@ -471,6 +472,6 @@ export default function Channels() {
             })}
         </Form>
       </Modal>
-    </div>
+    </PageLayout>
   );
 }

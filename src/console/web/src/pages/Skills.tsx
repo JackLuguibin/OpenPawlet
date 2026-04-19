@@ -33,6 +33,7 @@ import { Markdown } from '../components/Markdown';
 import { useTranslation } from 'react-i18next';
 import * as api from '../api/client';
 import { useAppStore } from '../store';
+import { PageLayout } from '../components/PageLayout';
 
 const { Text } = Typography;
 
@@ -1263,7 +1264,7 @@ export default function Skills() {
   );
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 p-4 sm:p-6">
+    <PageLayout variant="bleed" className="gap-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between shrink-0">
         <div>
           <h1 className="text-xl sm:text-2xl font-semibold text-gray-900 dark:text-gray-100">
@@ -1806,6 +1807,6 @@ export default function Skills() {
           </Form.Item>
         </Form>
       </Modal>
-    </div>
+    </PageLayout>
   );
 }

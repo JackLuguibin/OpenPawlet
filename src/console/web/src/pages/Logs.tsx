@@ -23,6 +23,7 @@ import {
 } from '@ant-design/icons';
 import { useAppStore } from '../store';
 import * as api from '../api/client';
+import { PageLayout } from '../components/PageLayout';
 import type { ToolCallLog } from '../api/types';
 
 const { Text } = Typography;
@@ -224,7 +225,7 @@ export default function Logs() {
   );
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-6 p-6">
+    <PageLayout>
       {/* Header */}
       <div className="flex shrink-0 items-center justify-between">
         <div>
@@ -262,65 +263,71 @@ export default function Logs() {
         </div>
       )}
 
-      {/* Filters */}
-      <Space wrap className="shrink-0">
-        <Input.Search
-          placeholder={t('logs.searchPlaceholder')}
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          onSearch={setSearchQuery}
-          allowClear
-          style={{ width: 240 }}
-        />
+      {/* Filters — same shell as Activity toolbar (see `.activity-filter-bar` in index.css) */}
+      <div className="activity-filter-bar shrink-0">
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4 sm:gap-y-2">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3 sm:flex-[1_1_280px]">
+            <Input.Search
+              placeholder={t('logs.searchPlaceholder')}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onSearch={setSearchQuery}
+              allowClear
+              className="w-full min-w-[200px] max-w-[min(100%,280px)] sm:w-[240px]"
+            />
 
-        <Select
-          value={toolFilter || undefined}
-          placeholder={t('logs.allTools')}
-          allowClear
-          onChange={(val) => setToolFilter(val || '')}
-          style={{ width: 180 }}
-          options={[
-            ...uniqueTools.map((tool) => ({ value: tool, label: tool })),
-          ]}
-        />
+            <Select
+              value={toolFilter || undefined}
+              placeholder={t('logs.allTools')}
+              allowClear
+              onChange={(val) => setToolFilter(val || '')}
+              className="w-full min-w-[160px] sm:w-[180px]"
+              options={[
+                ...uniqueTools.map((tool) => ({ value: tool, label: tool })),
+              ]}
+            />
+          </div>
 
-        <Segmented
-          className="activity-seg-align"
-          value={statusFilter || 'all'}
-          onChange={(val) => setStatusFilter(val === 'all' ? '' : String(val))}
-          options={[
-            { value: 'all', label: t('logs.segAll') },
-            {
-              value: 'success',
-              label: (
-                <span className="text-green-600">
-                  {t('logs.segSuccess', { count: successCount })}
-                </span>
-              ),
-            },
-            {
-              value: 'error',
-              label: (
-                <span className="text-red-600">
-                  {t('logs.segError', { count: errorCount })}
-                </span>
-              ),
-            },
-          ]}
-        />
+          <div className="flex min-w-0 flex-wrap items-center gap-3 border-t border-slate-200/90 pt-3 dark:border-slate-600/70 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0">
+            <Segmented
+              className="activity-type-segmented min-w-max"
+              value={statusFilter || 'all'}
+              onChange={(val) => setStatusFilter(val === 'all' ? '' : String(val))}
+              options={[
+                { value: 'all', label: t('logs.segAll') },
+                {
+                  value: 'success',
+                  label: (
+                    <span className="text-green-600 dark:text-green-400">
+                      {t('logs.segSuccess', { count: successCount })}
+                    </span>
+                  ),
+                },
+                {
+                  value: 'error',
+                  label: (
+                    <span className="text-red-600 dark:text-red-400">
+                      {t('logs.segError', { count: errorCount })}
+                    </span>
+                  ),
+                },
+              ]}
+            />
 
-        <Select
-          value={limit}
-          onChange={setLimit}
-          style={{ width: 120 }}
-          options={[
-            { value: 50, label: t('logs.lastN', { count: 50 }) },
-            { value: 100, label: t('logs.lastN', { count: 100 }) },
-            { value: 200, label: t('logs.lastN', { count: 200 }) },
-            { value: 500, label: t('logs.lastN', { count: 500 }) },
-          ]}
-        />
-      </Space>
+            <Select
+              value={limit}
+              onChange={setLimit}
+              className="w-full min-w-[112px] sm:w-[120px]"
+              options={[
+                { value: 50, label: t('logs.lastN', { count: 50 }) },
+                { value: 100, label: t('logs.lastN', { count: 100 }) },
+                { value: 200, label: t('logs.lastN', { count: 200 }) },
+                { value: 500, label: t('logs.lastN', { count: 500 }) },
+              ]}
+            />
+          </div>
+        </div>
+      </div>
 
       {/* Table — 见 index.css `.logs-page-table-host`（scroll.y 只设 max-height，空表需 min-height 撑满） */}
       <div
@@ -370,6 +377,6 @@ export default function Logs() {
           size="middle"
         />
       </div>
-    </div>
+    </PageLayout>
   );
 }

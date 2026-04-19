@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import type { CSSProperties } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import i18n from '../i18n';
@@ -28,16 +29,30 @@ import {
   CodeOutlined,
   MobileOutlined,
   ToolOutlined,
-  SunOutlined,
   EnvironmentOutlined,
   PlusOutlined,
   DeleteOutlined,
 } from '@ant-design/icons';
-import { Sun, Moon, Monitor } from 'lucide-react';
 import * as api from '../api/client';
 import { useAppStore } from '../store';
+import { PageLayout } from '../components/PageLayout';
 
 const { Text } = Typography;
+
+/** Shared card chrome (border, radius). */
+const SETTINGS_CARD_SURFACE =
+  'w-full rounded-xl shadow-sm border border-gray-200/80 dark:border-gray-700/80';
+
+/** Card grows to fill tab pane; header stays visible, body scrolls. */
+const SETTINGS_SCROLL_CARD_CLASS = `${SETTINGS_CARD_SURFACE} min-h-0 flex flex-1 flex-col`;
+
+const SETTINGS_SCROLL_CARD_STYLES: {
+  header: CSSProperties;
+  body: CSSProperties;
+} = {
+  header: { flexShrink: 0 },
+  body: { flex: 1, minHeight: 0, overflowY: 'auto' },
+};
 
 /** Provider names that can be configured in Settings (schema keys, lowercase). */
 const PROVIDER_NAMES = [
@@ -150,7 +165,7 @@ function buildProvidersPayload(
   return out;
 }
 
-type SettingsTab = 'general' | 'appearance' | 'providers' | 'tools' | 'channels' | 'environment';
+type SettingsTab = 'general' | 'providers' | 'tools' | 'channels' | 'environment';
 
 interface FormData {
   workspace: string;
@@ -167,7 +182,7 @@ interface FormData {
 export default function Settings() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const { theme, setTheme, addToast, currentBotId } = useAppStore();
+  const { addToast, currentBotId } = useAppStore();
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
   const [form] = Form.useForm<FormData>();
 
@@ -352,16 +367,17 @@ export default function Settings() {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+      <PageLayout variant="center">
         <Spin size="large" />
-      </div>
+      </PageLayout>
     );
   }
 
   const envTabContent = (
     <Card
       title={t('settings.envTitle')}
-      className="w-full rounded-xl shadow-sm border border-gray-200/80 dark:border-gray-700/80"
+      className={SETTINGS_SCROLL_CARD_CLASS}
+      styles={SETTINGS_SCROLL_CARD_STYLES}
     >
       <Alert
         title={t('settings.envAlertTitle')}
@@ -438,8 +454,11 @@ export default function Settings() {
       children: (
         <Card
           title={t('settings.agentDefaults')}
-          className="w-full rounded-xl shadow-sm border border-gray-200/80 dark:border-gray-700/80"
-          styles={{ body: { paddingTop: 4 } }}
+          className={SETTINGS_SCROLL_CARD_CLASS}
+          styles={{
+            header: SETTINGS_SCROLL_CARD_STYLES.header,
+            body: { ...SETTINGS_SCROLL_CARD_STYLES.body, paddingTop: 4 },
+          }}
         >
           <Form form={form} layout="vertical" className="w-full">
             <Form.Item
@@ -570,61 +589,6 @@ export default function Settings() {
       ),
     },
     {
-      key: 'appearance',
-      label: (
-        <span className="flex items-center gap-1.5">
-          <SunOutlined /> {t('settings.tabAppearance')}
-        </span>
-      ),
-      children: (
-        <Card
-          title={t('settings.themeTitle')}
-          className="w-full rounded-xl shadow-sm border border-gray-200/80 dark:border-gray-700/80"
-        >
-          <div className="grid grid-cols-3 gap-4">
-            {[
-              { value: 'light', Icon: Sun, label: t('settings.themeLight'), desc: t('settings.themeLightDesc') },
-              { value: 'dark', Icon: Moon, label: t('settings.themeDark'), desc: t('settings.themeDarkDesc') },
-              { value: 'system', Icon: Monitor, label: t('settings.themeSystem'), desc: t('settings.themeSystemDesc') },
-            ].map((option) => (
-              <Card
-                key={option.value}
-                hoverable
-                onClick={() => setTheme(option.value as 'light' | 'dark' | 'system')}
-                className={`cursor-pointer rounded-xl text-center transition-all ${
-                  theme === option.value ? 'border-blue-500 border-2 shadow-md' : ''
-                }`}
-              >
-                <div
-                  className={`inline-flex items-center justify-center w-12 h-12 rounded-xl mb-3 ${
-                    theme === option.value
-                      ? 'bg-blue-100 dark:bg-blue-900/30'
-                      : 'bg-gray-100 dark:bg-gray-700'
-                  }`}
-                >
-                  <option.Icon
-                    className={`w-6 h-6 ${
-                      theme === option.value ? 'text-blue-600' : 'text-gray-500'
-                    }`}
-                  />
-                </div>
-                <div
-                  className={`font-medium text-sm ${
-                    theme === option.value ? 'text-blue-600 dark:text-blue-400' : ''
-                  }`}
-                >
-                  {option.label}
-                </div>
-                <Text type="secondary" className="text-xs">
-                  {option.desc}
-                </Text>
-              </Card>
-            ))}
-          </div>
-        </Card>
-      ),
-    },
-    {
       key: 'providers',
       label: (
         <span className="flex items-center gap-1.5">
@@ -632,11 +596,14 @@ export default function Settings() {
         </span>
       ),
       children: (
-        <div className="w-full min-w-0 space-y-4">
+        <div className="flex min-h-0 min-w-0 w-full flex-1 flex-col gap-4">
           <Card
             title={t('settings.providersCardTitle')}
-            className="w-full rounded-xl shadow-sm border border-gray-200/80 dark:border-gray-700/80"
-            styles={{ body: { paddingTop: 12 } }}
+            className={SETTINGS_SCROLL_CARD_CLASS}
+            styles={{
+              header: SETTINGS_SCROLL_CARD_STYLES.header,
+              body: { ...SETTINGS_SCROLL_CARD_STYLES.body, paddingTop: 12 },
+            }}
             extra={
               <Input.Search
                 allowClear
@@ -658,7 +625,7 @@ export default function Settings() {
             {filteredProviderNames.length === 0 ? (
               <Empty className="py-6" description={t('settings.noMatchingProviders')} />
             ) : (
-              <div className="max-h-[min(65vh,540px)] overflow-y-auto pr-0.5">
+              <div className="pr-0.5">
                 <Collapse
                   defaultActiveKey={[]}
                   expandIconPosition="end"
@@ -743,32 +710,37 @@ export default function Settings() {
         </span>
       ),
       children: (
-        <div className="w-full min-w-0 space-y-6">
+        <div className="flex min-h-0 min-w-0 w-full flex-1 flex-col gap-6">
           <Card
             title={t('settings.toolsCardTitle')}
-            className="w-full rounded-xl shadow-sm border border-gray-200/80 dark:border-gray-700/80"
+            size="small"
+            className={`${SETTINGS_CARD_SURFACE} shrink-0`}
+            styles={{ body: { paddingTop: 10, paddingBottom: 10 } }}
           >
-          <Form form={form} layout="vertical">
-            <div className="rounded-lg bg-gray-50 dark:bg-gray-800/50 p-4 border border-gray-100 dark:border-gray-700/50">
-              <div className="flex items-center justify-between">
-                <div className="flex-1 pr-4">
-                  <p className="font-medium">{t('settings.restrictWorkspace')}</p>
-                  <Text type="secondary" className="text-sm">
-                    {t('settings.restrictWorkspaceDesc')}
-                  </Text>
+            <Form form={form} layout="vertical" className="[&_.ant-form-item]:mb-0">
+              <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2.5 dark:border-gray-700/50 dark:bg-gray-800/50">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="mb-0.5 text-sm font-medium leading-snug">
+                      {t('settings.restrictWorkspace')}
+                    </p>
+                    <Text type="secondary" className="text-xs leading-snug">
+                      {t('settings.restrictWorkspaceDesc')}
+                    </Text>
+                  </div>
+                  <Form.Item name="restrict_to_workspace" valuePropName="checked" className="!mb-0">
+                    <Switch />
+                  </Form.Item>
                 </div>
-                <Form.Item name="restrict_to_workspace" valuePropName="checked" className="!mb-0">
-                  <Switch />
-                </Form.Item>
               </div>
-            </div>
-          </Form>
+            </Form>
           </Card>
 
           <Card
             title={t('settings.mcpConfiguredTitle')}
             size="small"
-            className="w-full rounded-xl shadow-sm border border-gray-200/80 dark:border-gray-700/80"
+            className={SETTINGS_SCROLL_CARD_CLASS}
+            styles={SETTINGS_SCROLL_CARD_STYLES}
           >
           <div className="pt-1">
             {mcpServers && Object.keys(mcpServers).length > 0 ? (
@@ -823,11 +795,11 @@ export default function Settings() {
         </span>
       ),
       children: (
-        <div className="w-full min-w-0 space-y-6">
-          <Card
-            title={t('settings.channelsConfiguredTitle')}
-            className="w-full rounded-xl shadow-sm border border-gray-200/80 dark:border-gray-700/80"
-          >
+        <Card
+          title={t('settings.channelsConfiguredTitle')}
+          className={SETTINGS_SCROLL_CARD_CLASS}
+          styles={SETTINGS_SCROLL_CARD_STYLES}
+        >
           {channels && Object.keys(channels).length > 0 ? (
             <div className="space-y-3">
               {Object.entries(channels).map(([name, channelConfig]) => {
@@ -857,43 +829,16 @@ export default function Settings() {
                 );
               })}
             </div>
-            ) : (
-              <Alert
-                title={t('settings.channelsNoneTitle')}
-                description={t('settings.channelsNoneDesc')}
-                type="info"
-                showIcon
-                icon={<MobileOutlined />}
-              />
-          )}
-          </Card>
-
-          <Card
-            title={t('settings.channelsFormatTitle')}
-            size="small"
-            className="w-full rounded-xl shadow-sm border border-gray-200/80 dark:border-gray-700/80"
-          >
-          <div className="pt-1">
+          ) : (
             <Alert
-              title={
-                <span>
-                  {t('settings.channelsFormatAlert')}
-                </span>
-              }
+              title={t('settings.channelsNoneTitle')}
+              description={t('settings.channelsNoneDesc')}
               type="info"
-              className="mb-3"
+              showIcon
+              icon={<MobileOutlined />}
             />
-            <pre className="p-5 bg-gray-900 dark:bg-gray-950 rounded-xl overflow-x-auto text-sm text-gray-100 font-mono">
-              {`{
-  "channels": {
-    "telegram": { "enabled": true, "token": "YOUR_BOT_TOKEN" },
-    "discord": { "enabled": true, "token": "YOUR_DISCORD_TOKEN" }
-  }
-}`}
-            </pre>
-          </div>
-          </Card>
-        </div>
+          )}
+        </Card>
       ),
     },
     {
@@ -908,7 +853,7 @@ export default function Settings() {
   ];
 
   return (
-    <div className="mx-auto flex min-h-0 w-full min-w-0 max-w-5xl flex-1 flex-col gap-6 p-6 md:p-8">
+    <PageLayout variant="bleed" className="gap-6 md:p-8">
       {/* Header */}
       <div className="flex shrink-0 flex-wrap items-start justify-between gap-4 border-b border-slate-200/90 pb-6 dark:border-slate-700/70">
         <div className="min-w-0 space-y-0.5">
@@ -938,8 +883,8 @@ export default function Settings() {
         activeKey={activeTab}
         onChange={(key) => setActiveTab(key as SettingsTab)}
         items={tabItems}
-        className="settings-page-tabs settings-tabs flex min-h-0 min-w-0 w-full flex-1 flex-col [&_.ant-slider-track]:h-2 [&_.ant-slider-rail]:h-2 [&_.ant-tabs-nav]:shrink-0 [&_.ant-tabs-content-holder]:min-h-0 [&_.ant-tabs-content-holder]:min-w-0 [&_.ant-tabs-content-holder]:w-full [&_.ant-tabs-content-holder]:flex-1 [&_.ant-tabs-content-holder]:overflow-y-auto [&_.ant-tabs-content]:w-full [&_.ant-tabs-tabpane]:min-w-0 [&_.ant-tabs-tabpane]:w-full"
+        className="settings-page-tabs settings-tabs flex min-h-0 min-w-0 w-full flex-1 flex-col [&_.ant-slider-track]:h-2 [&_.ant-slider-rail]:h-2 [&_.ant-tabs-nav]:shrink-0 [&_.ant-tabs-content-holder]:flex [&_.ant-tabs-content-holder]:min-h-0 [&_.ant-tabs-content-holder]:min-w-0 [&_.ant-tabs-content-holder]:w-full [&_.ant-tabs-content-holder]:flex-1 [&_.ant-tabs-content-holder]:flex-col [&_.ant-tabs-content-holder]:overflow-hidden [&_.ant-tabs-content]:flex [&_.ant-tabs-content]:min-h-0 [&_.ant-tabs-content]:w-full [&_.ant-tabs-content]:flex-1 [&_.ant-tabs-content]:flex-col [&_.ant-tabs-tabpane:not(.ant-tabs-tabpane-hidden)]:flex [&_.ant-tabs-tabpane:not(.ant-tabs-tabpane-hidden)]:min-h-0 [&_.ant-tabs-tabpane:not(.ant-tabs-tabpane-hidden)]:w-full [&_.ant-tabs-tabpane:not(.ant-tabs-tabpane-hidden)]:flex-1 [&_.ant-tabs-tabpane:not(.ant-tabs-tabpane-hidden)]:flex-col [&_.ant-tabs-tabpane:not(.ant-tabs-tabpane-hidden)]:overflow-hidden"
       />
-    </div>
+    </PageLayout>
   );
 }

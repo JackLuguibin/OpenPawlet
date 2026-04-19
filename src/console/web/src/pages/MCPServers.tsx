@@ -8,11 +8,9 @@ import {
   Alert,
   Tag,
   Descriptions,
-  Empty,
   Space,
   Typography,
   Select,
-  Steps,
 } from 'antd';
 import {
   ReloadOutlined,
@@ -31,6 +29,7 @@ import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import * as api from '../api/client';
 import { useAppStore } from '../store';
+import { PageLayout } from '../components/PageLayout';
 
 const { Text } = Typography;
 
@@ -113,27 +112,27 @@ export default function MCPServers() {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+      <PageLayout variant="center">
         <Spin size="large" />
-      </div>
+      </PageLayout>
     );
   }
 
   if (error) {
     return (
-      <div className="p-6 flex flex-col flex-1 min-h-0">
+      <PageLayout variant="bleed">
         <Alert
           type="error"
           title="加载 MCP 服务器失败"
           description={String(error)}
           showIcon
         />
-      </div>
+      </PageLayout>
     );
   }
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col p-6">
+    <PageLayout variant="bleed">
       {/* Header */}
       <div className="flex items-center justify-between shrink-0">
         <div>
@@ -394,119 +393,110 @@ export default function MCPServers() {
           )}
         </div>
       ) : (
-        /* Empty state - 完整引导 */
-        <div className="flex-1 min-h-0 overflow-y-auto mt-4">
-          <div className="max-w-2xl mx-auto space-y-6">
-            {/* 空状态卡片 */}
-            <Card
-              className="rounded-2xl border border-gray-200/80 dark:border-gray-700/60 bg-white dark:bg-gray-800/40 overflow-hidden"
-              styles={{ body: { padding: '2.5rem 2rem' } }}
-            >
-              <Empty
-                image={
-                  <div className="flex justify-center mb-4">
-                    <div className="p-6 rounded-2xl bg-purple-50 dark:bg-purple-900/20">
-                      <Plug className="w-16 h-16 text-purple-500" />
-                    </div>
+        <div className="mt-2 flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-y-auto">
+          <Card
+            className="w-full min-w-0 flex-1 rounded-xl border border-gray-200/90 bg-white shadow-sm dark:border-gray-700/80 dark:bg-gray-800/50 dark:shadow-none"
+            styles={{ body: { padding: 0 } }}
+          >
+            <div className="border-b border-gray-100 bg-gray-50/80 px-4 py-3 dark:border-gray-700/60 dark:bg-gray-900/30 sm:px-5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+                <div className="flex shrink-0 justify-center sm:justify-start">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-600 dark:bg-gray-800">
+                    <Plug
+                      className="h-6 w-6 text-indigo-600 dark:text-indigo-400"
+                      strokeWidth={1.35}
+                    />
                   </div>
-                }
-                description={
-                  <div className="space-y-2">
-                    <p className="text-base font-medium text-gray-700 dark:text-gray-300">
-                      尚未配置 MCP 服务器
-                    </p>
-                    <p className="text-sm text-gray-500 max-w-md mx-auto">
-                      MCP (Model Context Protocol) 允许 AI 接入外部工具与数据源，如文件系统、浏览器、数据库等。
-                    </p>
-                  </div>
-                }
-              />
+                </div>
+                <div className="min-w-0 flex-1 text-center sm:text-left">
+                  <h2 className="text-base font-semibold tracking-tight text-gray-900 dark:text-gray-100 sm:text-lg">
+                    尚未配置 MCP 服务器
+                  </h2>
+                  <p className="mx-auto mt-1 max-w-3xl text-xs leading-snug text-gray-600 dark:text-gray-400 sm:mx-0 sm:text-[13px]">
+                    MCP 用于接入外部工具与数据源。在配置里加入{' '}
+                    <code className="rounded px-1 py-0.5 font-mono text-[11px] text-gray-800 dark:bg-gray-700 dark:text-gray-200">
+                      mcpServers
+                    </code>{' '}
+                    后在此查看连接状态。
+                  </p>
+                </div>
+              </div>
+            </div>
 
-              {/* 什么是 MCP */}
-              <div className="mt-8 p-4 rounded-xl bg-gray-50 dark:bg-gray-800/50 border border-gray-200/60 dark:border-gray-700/50">
-                <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-2">
-                  <InfoCircleOutlined />
+            <div className="grid gap-3 p-3 sm:p-4 lg:grid-cols-2 lg:gap-5 lg:items-start">
+              <section className="min-w-0 space-y-1.5">
+                <h3 className="text-xs font-semibold text-gray-900 dark:text-gray-100">
                   什么是 MCP？
                 </h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
-                  Model Context Protocol 是一种开放协议，让 AI 助手能够安全地调用外部工具。
-                  常见 MCP 服务器包括：文件系统访问、网页浏览、代码仓库操作、数据库查询等。
-                </p>
-              </div>
-
-              {/* 配置步骤 */}
-              <div className="mt-6">
-                <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-4">
-                  配置步骤
-                </h3>
-                <Steps
-                  orientation="vertical"
-                  size="small"
-                  items={[
-                    {
-                      title: '编辑配置文件',
-                      content: (
-                        <span>
-                          打开 Bot 的 config.json，或前往{' '}
-                          <Link to="/settings" className="text-blue-600 hover:underline">
-                            <SettingOutlined /> 设置
-                          </Link>{' '}
-                          页面查看配置
-                        </span>
-                      ),
-                    },
-                    {
-                      title: '添加 mcpServers',
-                      content: (
-                        <span>
-                          在 <code className="px-1 py-0.5 bg-gray-200 dark:bg-gray-700 rounded text-xs">tools</code> 下添加{' '}
-                          <code className="px-1 py-0.5 bg-gray-200 dark:bg-gray-700 rounded text-xs">mcpServers</code> 对象
-                        </span>
-                      ),
-                    },
-                    {
-                      title: '重启 Bot',
-                      content: '保存配置后重启 Bot 使 MCP 服务器生效',
-                    },
-                  ]}
-                />
-              </div>
-
-              {/* 示例配置 */}
-              <div className="mt-8">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-                    示例配置
-                  </h3>
-                  <Button
-                    type="link"
-                    size="small"
-                    icon={<CopyOutlined />}
-                    onClick={copyConfig}
-                  >
-                    复制
-                  </Button>
+                <div className="rounded-lg border border-gray-200 bg-gray-50/90 p-2.5 text-xs leading-snug text-gray-700 dark:border-gray-600/80 dark:bg-gray-900/40 dark:text-gray-300 sm:text-[13px] sm:leading-relaxed">
+                  <p className="flex gap-2">
+                    <InfoCircleOutlined className="mt-0.5 shrink-0 text-indigo-500 dark:text-indigo-400" />
+                    <span>
+                      开放协议，供 AI 安全调用外部工具；常见场景：文件、浏览器、仓库、数据库等。
+                    </span>
+                  </p>
                 </div>
-                <pre className="p-5 bg-gray-900 dark:bg-gray-950 rounded-xl overflow-x-auto text-sm text-gray-100 font-mono">
+              </section>
+
+              <section className="min-w-0 space-y-1.5">
+                <h3 className="text-xs font-semibold text-gray-900 dark:text-gray-100">配置步骤</h3>
+                <ol className="list-decimal space-y-1 rounded-lg border border-gray-200 bg-white py-2 pl-8 pr-2.5 text-xs text-gray-700 dark:border-gray-600/80 dark:bg-gray-900/25 dark:text-gray-300 sm:text-[13px] sm:leading-snug">
+                  <li>
+                    编辑 config.json，或打开{' '}
+                    <Link
+                      to="/settings"
+                      className="font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
+                    >
+                      <SettingOutlined /> 设置
+                    </Link>
+                  </li>
+                  <li>
+                    在{' '}
+                    <code className="rounded bg-gray-100 px-1 py-0.5 font-mono text-[11px] dark:bg-gray-700">
+                      tools
+                    </code>{' '}
+                    下添加{' '}
+                    <code className="rounded bg-gray-100 px-1 py-0.5 font-mono text-[11px] dark:bg-gray-700">
+                      mcpServers
+                    </code>
+                  </li>
+                  <li>保存并重启 Bot</li>
+                </ol>
+              </section>
+            </div>
+
+            <div className="border-t border-gray-100 px-3 pb-3 pt-1.5 dark:border-gray-700/60 sm:px-4">
+              <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-xs font-semibold text-gray-900 dark:text-gray-100">示例配置</h3>
+                <Button
+                  type="link"
+                  size="small"
+                  icon={<CopyOutlined />}
+                  onClick={copyConfig}
+                  className="h-7 px-1 text-indigo-600 dark:text-indigo-400"
+                >
+                  复制
+                </Button>
+              </div>
+              <div className="overflow-hidden rounded-md border border-gray-800/90">
+                <pre className="m-0 bg-[#0d1117] p-2.5 text-[11px] leading-tight text-gray-100 font-mono dark:bg-[#0a0a0f] sm:p-3 sm:text-xs sm:leading-snug">
                   {EXAMPLE_CONFIG}
                 </pre>
               </div>
-
-              {/* 快捷操作 */}
-              <div className="mt-6 flex flex-wrap gap-3">
+              <div className="mt-3 flex flex-wrap gap-2">
                 <Link to="/settings">
-                  <Button type="primary" icon={<SettingOutlined />}>
+                  <Button type="primary" size="small" icon={<SettingOutlined />}>
                     前往设置
                   </Button>
                 </Link>
-                <Button icon={<ReloadOutlined />} onClick={() => refetch()}>
+                <Button size="small" icon={<ReloadOutlined />} onClick={() => refetch()}>
                   刷新状态
                 </Button>
               </div>
-            </Card>
-          </div>
+            </div>
+          </Card>
         </div>
       )}
-    </div>
+    </PageLayout>
   );
 }

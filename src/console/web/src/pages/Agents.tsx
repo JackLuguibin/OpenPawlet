@@ -31,6 +31,7 @@ import {
 import { Bot } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store';
+import { PageLayout } from '../components/PageLayout';
 import * as api from '../api/client';
 import type { Agent, AgentCreateRequest } from '../api/types_agents';
 
@@ -379,14 +380,14 @@ export default function Agents() {
 
   if (!currentBotId) {
     return (
-      <div className="p-6 flex flex-col flex-1 min-h-0">
+      <PageLayout variant="bleed">
         <Empty description={t('agents.selectBotFirst')} className="py-20" />
-      </div>
+      </PageLayout>
     );
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-6 p-6">
+    <PageLayout>
       {/* Header */}
       <div className="flex shrink-0 items-center justify-between">
         <div>
@@ -999,6 +1000,6 @@ export default function Agents() {
           </Upload.Dragger>
         </div>
       </Modal>
-    </div>
+    </PageLayout>
   );
 }

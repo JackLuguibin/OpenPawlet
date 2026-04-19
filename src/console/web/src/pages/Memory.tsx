@@ -5,6 +5,8 @@ import { Spin, Empty, Card, Select } from 'antd';
 import { Markdown } from '../components/Markdown';
 import * as api from '../api/client';
 import { useAppStore } from '../store';
+import { PageLayout } from '../components/PageLayout';
+import { SegmentedTabs } from '../components/SegmentedTabs';
 
 type TabKey = 'long_term' | 'history';
 
@@ -46,7 +48,7 @@ export default function Memory() {
   const longTermContent = memory?.long_term?.trim() ?? '';
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col p-6">
+    <PageLayout variant="bleed">
       <div className="flex items-center justify-between shrink-0">
         <div>
           <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
@@ -64,21 +66,12 @@ export default function Memory() {
         )}
       </div>
 
-      <div className="flex gap-1 p-1 rounded-xl bg-gray-100/80 dark:bg-gray-800/50 border border-gray-200/60 dark:border-gray-700/50 w-fit shrink-0 mt-4 mb-3">
-        {tabs.map(({ key, label }) => (
-          <button
-            key={key}
-            onClick={() => setActiveTab(key)}
-            className={`px-5 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
-              activeTab === key
-                ? 'bg-white dark:bg-gray-700/80 text-gray-900 dark:text-gray-100 shadow-sm'
-                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      <SegmentedTabs
+        ariaLabel={t('memory.title')}
+        tabs={tabs}
+        value={activeTab}
+        onChange={setActiveTab}
+      />
 
       {isLoading ? (
         <div className="flex min-h-0 flex-1 items-center justify-center py-12">
@@ -149,6 +142,6 @@ export default function Memory() {
           )}
         </div>
       )}
-    </div>
+    </PageLayout>
   );
 }

@@ -32,6 +32,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import * as api from '../api/client';
 import { useAppStore } from '../store';
+import { PageLayout } from '../components/PageLayout';
 import type { CronJob, CronScheduleKind } from '../api/types';
 
 function formatSchedule(job: CronJob): string {
@@ -220,84 +221,120 @@ export default function Cron() {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+      <PageLayout variant="center">
         <Spin size="large" />
-      </div>
+      </PageLayout>
     );
   }
 
   if (error) {
     return (
-      <div className="p-6">
+      <PageLayout variant="bleed">
         <Alert type="error" message="加载失败" description={String(error)} showIcon />
-      </div>
+      </PageLayout>
     );
   }
 
   const { Text } = Typography;
 
+  const enabledCount = jobs.filter((j) => j.enabled).length;
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-6 p-6">
-      {/* Header - 与 Dashboard/MCP 一致 */}
-      <div className="flex shrink-0 items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
-            定时任务
-          </h1>
-          <p className="text-sm text-gray-500 mt-1">管理 Cron 定时任务，Agent 会按计划执行提醒</p>
+    <PageLayout>
+      {/* Page header */}
+      <div className="flex shrink-0 flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-start gap-4 min-w-0">
+          <div
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500/15 to-indigo-600/10 ring-1 ring-violet-500/20 dark:from-violet-400/20 dark:to-indigo-500/15 dark:ring-violet-400/25"
+            aria-hidden
+          >
+            <ClockCircleOutlined className="text-xl text-violet-600 dark:text-violet-300" />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
+              定时任务
+            </h1>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 max-w-xl leading-relaxed">
+              管理 Cron 定时任务，Agent 会按计划执行提醒
+            </p>
+          </div>
         </div>
-        <Space>
-          <Button icon={<ReloadOutlined />} onClick={() => refetch()} />
+        <Space className="w-full sm:w-auto justify-end flex-wrap">
+          <Button icon={<ReloadOutlined />} onClick={() => refetch()}>
+            <span className="hidden sm:inline">刷新</span>
+          </Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setAddModalOpen(true)}>
             添加任务
           </Button>
         </Space>
       </div>
 
-      {/* Status Card - 与 Dashboard Current Model 卡片风格一致，使用灰色/蓝色系 */}
-      <Card size="small" className="shrink-0">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-blue-100 dark:bg-blue-900/30">
-              <ClockCircleOutlined className="text-blue-600 dark:text-blue-400 text-lg" />
+      {/* Status summary */}
+      <Card
+        size="small"
+        className="shrink-0 overflow-hidden rounded-2xl border border-gray-200/90 bg-white/90 shadow-sm dark:border-gray-700/80 dark:bg-gray-900/50"
+        styles={{ body: { padding: 0 } }}
+      >
+        <div className="grid divide-y divide-gray-100 dark:divide-gray-800 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+          <div className="flex items-center gap-3 p-4 sm:p-5">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-100 dark:bg-blue-950/50">
+              <SyncOutlined className="text-lg text-blue-600 dark:text-blue-400" />
             </div>
-            <div>
-              <Text type="secondary" className="text-xs block">Cron 服务</Text>
-              <span className="font-semibold flex items-center gap-2">
+            <div className="min-w-0">
+              <Text type="secondary" className="text-xs block mb-0.5">
+                Cron 服务
+              </Text>
+              <div className="font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2 flex-wrap">
                 {cronStatus?.enabled ? (
                   <>
                     <Badge status="processing" color="#22c55e" />
-                    运行中
+                    <span>运行中</span>
                   </>
                 ) : (
                   <>
                     <Badge status="default" />
-                    未启动
+                    <span>未启动</span>
                   </>
                 )}
-                <Text type="secondary" className="font-normal text-sm">
-                  · {jobs.length} 个任务
-                </Text>
-              </span>
+              </div>
             </div>
           </div>
-          {cronStatus?.next_wake_at_ms && (
-            <Text type="secondary" className="text-sm">
-              下次执行：{formatNextRun(cronStatus.next_wake_at_ms)}
+          <div className="flex flex-col justify-center gap-0.5 p-4 sm:p-5">
+            <Text type="secondary" className="text-xs">
+              任务
             </Text>
-          )}
+            <div className="text-lg font-semibold tabular-nums text-gray-900 dark:text-gray-100">
+              {jobs.length}
+              <Text type="secondary" className="text-sm font-normal ml-1.5">
+                个 · {enabledCount} 个启用
+              </Text>
+            </div>
+          </div>
+          <div className="flex flex-col justify-center gap-0.5 p-4 sm:p-5">
+            <Text type="secondary" className="text-xs">
+              调度器下次唤醒
+            </Text>
+            <div className="text-sm font-medium text-gray-800 dark:text-gray-200">
+              {cronStatus?.next_wake_at_ms
+                ? formatNextRun(cronStatus.next_wake_at_ms)
+                : '—'}
+            </div>
+          </div>
         </div>
       </Card>
 
-      {/* Task List - 与 Dashboard Recent Sessions 一致，使用 Card + List */}
+      {/* Task list */}
       <Card
         title={
-          <span className="flex items-center gap-2">
-            <SyncOutlined className="text-blue-500" /> 任务列表
+          <span className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-gray-100">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-800">
+              <SyncOutlined className="text-blue-500 dark:text-blue-400 text-sm" />
+            </span>
+            任务列表
           </span>
         }
         size="small"
-        className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+        className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-gray-200/90 bg-white/90 shadow-sm dark:border-gray-700/80 dark:bg-gray-900/50 [&_.ant-card-head]:border-b-gray-200/80 dark:[&_.ant-card-head]:border-b-gray-700/80"
         styles={{
           body: {
             display: 'flex',
@@ -309,14 +346,26 @@ export default function Cron() {
         }}
       >
         {jobs.length === 0 ? (
-          <Empty
-            description="暂无定时任务"
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
-            className="py-12"
-          />
+          <div className="flex flex-col items-center py-10">
+            <Empty
+              description={
+                <span className="text-gray-500 dark:text-gray-400">暂无定时任务，添加后 Agent 将按计划执行</span>
+              }
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+            />
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => setAddModalOpen(true)}
+              className="mt-4"
+            >
+              添加任务
+            </Button>
+          </div>
         ) : (
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="min-h-0 flex-1 overflow-y-auto pr-0.5">
           <List
+            split={false}
             dataSource={jobs}
             renderItem={(job) => {
               const isExpanded = expandedKeys.has(job.id);
@@ -326,7 +375,7 @@ export default function Cron() {
                 job.state.last_run_at_ms;
               return (
                 <List.Item
-                  className={!job.enabled ? 'opacity-75' : ''}
+                  className={`mb-2 rounded-xl border border-gray-100 bg-gray-50/80 px-3 py-2 transition-colors last:mb-0 dark:border-gray-800 dark:bg-gray-800/25 ${!job.enabled ? 'opacity-70' : 'hover:border-gray-200 dark:hover:border-gray-700'}`}
                   actions={[
                     hasDetails && (
                       <Button
@@ -456,6 +505,6 @@ export default function Cron() {
           </Form.Item>
         </Form>
       </Modal>
-    </div>
+    </PageLayout>
   );
 }

@@ -25,6 +25,7 @@ import {
 import * as api from '../api/client';
 import { useAppStore } from '../store';
 import type { SessionInfo } from '../api/types';
+import { PageLayout } from '../components/PageLayout';
 
 const { Text } = Typography;
 
@@ -264,7 +265,7 @@ export default function Sessions() {
   );
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-6 p-6">
+    <PageLayout>
       {/* Header */}
       <div className="flex shrink-0 items-center justify-between">
         <div>
@@ -367,6 +368,6 @@ export default function Sessions() {
           />
         </div>
       </Card>
-    </div>
+    </PageLayout>
   );
 }

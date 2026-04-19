@@ -27,6 +27,7 @@ import { Send, MessageCircle, AlertTriangle } from 'lucide-react';
 import * as api from '../api/client';
 import { useAppStore } from '../store';
 import { getWSRef } from '../hooks/useWebSocket';
+import { PageLayout } from '../components/PageLayout';
 
 const { Text } = Typography;
 
@@ -176,14 +177,14 @@ export default function Activity() {
 
   if (isLoading && !activities) {
     return (
-      <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+      <PageLayout variant="center">
         <Spin size="large" />
-      </div>
+      </PageLayout>
     );
   }
 
   return (
-    <div className="p-6 flex flex-col flex-1 min-h-0">
+    <PageLayout variant="bleed">
       {/* Header */}
       <div className="flex items-center justify-between shrink-0">
         <div>
@@ -344,6 +345,6 @@ export default function Activity() {
           </Card>
         )}
       </div>
-    </div>
+    </PageLayout>
   );
 }

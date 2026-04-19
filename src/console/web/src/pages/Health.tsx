@@ -12,6 +12,7 @@ import {
 import { ReloadOutlined, CheckCircleOutlined, ExclamationCircleOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import * as api from '../api/client';
 import { useAppStore } from '../store';
+import { PageLayout } from '../components/PageLayout';
 import type { HealthIssue } from '../api/types';
 
 const { Text } = Typography;
@@ -35,17 +36,17 @@ export default function Health() {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+      <PageLayout variant="center">
         <Spin size="large" />
-      </div>
+      </PageLayout>
     );
   }
 
   if (error) {
     return (
-      <div className="flex min-h-0 flex-1 flex-col p-6">
+      <PageLayout variant="bleed">
         <Alert type="error" message={t('health.loadFailed')} description={String(error)} showIcon />
-      </div>
+      </PageLayout>
     );
   }
 
@@ -53,7 +54,7 @@ export default function Health() {
   const warningCount = issues.filter((i) => i.severity === 'warning').length;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-6 p-6">
+    <PageLayout>
       <div className="flex shrink-0 items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
@@ -132,6 +133,6 @@ export default function Health() {
         </>
       )}
       </div>
-    </div>
+    </PageLayout>
   );
 }

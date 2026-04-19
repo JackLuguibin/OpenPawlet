@@ -30,6 +30,7 @@ import {
 import { Column, Tiny, Pie } from '@ant-design/plots';
 import type { UsageHistoryItem } from '../api/types';
 import { formatTokenCount, formatCost } from '../utils/format';
+import { PageLayout } from '../components/PageLayout';
 
 const { Text } = Typography;
 
@@ -199,27 +200,27 @@ export default function Dashboard() {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+      <PageLayout variant="center">
         <Spin size="large" />
-      </div>
+      </PageLayout>
     );
   }
 
   if (error) {
     return (
-      <div className="flex min-h-0 flex-1 flex-col p-6">
+      <PageLayout variant="bleed">
         <Alert
           type="error"
           message={t('dashboard.loadError')}
           description={String(error)}
           showIcon
         />
-      </div>
+      </PageLayout>
     );
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-6 p-6">
+    <PageLayout>
       {/* Header */}
       <div className="flex shrink-0 items-center justify-between">
         <div>
@@ -547,6 +548,6 @@ export default function Dashboard() {
         </Card>
       </div>
 
-    </div>
+    </PageLayout>
   );
 }

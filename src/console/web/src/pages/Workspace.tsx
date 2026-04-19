@@ -21,6 +21,7 @@ import type { DataNode } from 'antd/es/tree';
 import { Markdown } from '../components/Markdown';
 import * as api from '../api/client';
 import { useAppStore } from '../store';
+import { PageLayout } from '../components/PageLayout';
 
 const { TextArea } = Input;
 
@@ -126,14 +127,14 @@ export default function Workspace() {
 
   if (filesLoading && !filesData) {
     return (
-      <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+      <PageLayout variant="center">
         <Spin size="large" />
-      </div>
+      </PageLayout>
     );
   }
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col p-6">
+    <PageLayout variant="bleed">
       <div className="flex items-center justify-between shrink-0">
         <div>
           <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
@@ -255,6 +256,6 @@ export default function Workspace() {
           )}
         </Card>
       </div>
-    </div>
+    </PageLayout>
   );
 }
