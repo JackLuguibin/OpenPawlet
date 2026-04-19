@@ -35,7 +35,7 @@ The console roughly covers the areas below (see the UI and OpenAPI for the exact
 |-------|------------|
 | Runtime | Python ≥ 3.11 |
 | Backend | FastAPI, Uvicorn, Pydantic v2, Loguru |
-| nanobot integration | `nanobot-ai` from PyPI (see `pyproject.toml`; optional Git override for fork builds), `websockets` |
+| nanobot integration | Bundled in this repo (`src/nanobot`); installed as part of `open-pawlet` |
 | Frontend | Node.js + npm (see `src/console/web`) |
 | Multi-process (optional) | Honcho + `Procfile` |
 
@@ -49,11 +49,11 @@ A project-local `.venv` is recommended:
 python3.11 -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install --upgrade pip
+pip uninstall -y nanobot-ai  # if you still had the old PyPI package; otherwise skip
 pip install -e ".[dev]"
 ```
 
-`nanobot-ai` is installed from PyPI. To use the [JackLuguibin/nanobot](https://github.com/JackLuguibin/nanobot) fork (e.g. `feat/enhance_ws_event_main`) instead, run:  
-`pip install --upgrade "nanobot-ai @ git+https://github.com/JackLuguibin/nanobot@feat/enhance_ws_event_main"`
+The `nanobot` Python package ships inside this repository; `pip install -e ".[dev]"` installs the console and nanobot together.
 
 ### 2. Frontend dependencies
 

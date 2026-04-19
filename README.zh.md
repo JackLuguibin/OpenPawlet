@@ -16,7 +16,7 @@ OpenPawlet（PyPI 包名 `open-pawlet`）是围绕 **[nanobot](https://github.co
 |------|------|
 | 运行时 | Python ≥ 3.11 |
 | 后端 | FastAPI、Uvicorn、Pydantic v2、Loguru |
-| 与 nanobot 集成 | `nanobot-ai`（PyPI，见 `pyproject.toml`；可选 Git 覆盖安装 fork）、`websockets` |
+| 与 nanobot 集成 | 随本仓库提供（`src/nanobot`），与 `open-pawlet` 一并安装 |
 | 前端 | Node.js + npm（见 `src/console/web`） |
 | 多进程编排（可选） | Honcho + `Procfile` |
 
@@ -30,11 +30,11 @@ OpenPawlet（PyPI 包名 `open-pawlet`）是围绕 **[nanobot](https://github.co
 python3.11 -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install --upgrade pip
+pip uninstall -y nanobot-ai  # 若仍安装过旧版 PyPI 包则执行，否则可省略
 pip install -e ".[dev]"
 ```
 
-`nanobot-ai` 默认从 PyPI 安装。若需使用 [JackLuguibin/nanobot](https://github.com/JackLuguibin/nanobot) fork（例如分支 `feat/enhance_ws_event_main`），可执行：  
-`pip install --upgrade "nanobot-ai @ git+https://github.com/JackLuguibin/nanobot@feat/enhance_ws_event_main"`
+`nanobot` 源码包含在本仓库中；执行 `pip install -e ".[dev]"` 会同时安装控制台与 nanobot。
 
 ### 2. 安装前端依赖
 
