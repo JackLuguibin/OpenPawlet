@@ -58,6 +58,9 @@ allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/console"]
+exclude = [
+    "/src/console/web/node_modules",
+]
 
 [project.scripts]
 console = "console.cli:main"
@@ -70,6 +73,9 @@ include = [
     "/README.en.md",
     "/LICENSE",
     "/Procfile",
+]
+exclude = [
+    "/src/console/web/node_modules",
 ]
 
 [tool.pytest.ini_options]
