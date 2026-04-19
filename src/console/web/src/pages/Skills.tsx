@@ -34,6 +34,7 @@ import * as api from '../api/client';
 import { useAppStore } from '../store';
 import { PageLayout } from '../components/PageLayout';
 import { MARKDOWN_PROSE_CLASS_COMPACT } from '../utils/markdownProse';
+import { formatQueryError } from '../utils/errors';
 
 const { Text } = Typography;
 
@@ -786,7 +787,7 @@ export default function Skills() {
       addToast({ type: 'success', message: t('skills.installed') });
       invalidateSkillsAndWorkspaceFiles();
     },
-    onError: (e) => addToast({ type: 'error', message: String(e) }),
+    onError: (e) => addToast({ type: 'error', message: formatQueryError(e) }),
   });
 
   const updateConfigMutation = useMutation({
@@ -798,7 +799,7 @@ export default function Skills() {
       queryClient.invalidateQueries({ queryKey: ['skills'] });
     },
     onError: (error) => {
-      addToast({ type: 'error', message: String(error) });
+      addToast({ type: 'error', message: formatQueryError(error) });
     },
   });
 
@@ -832,7 +833,7 @@ export default function Skills() {
       invalidateSkillsAndWorkspaceFiles();
     },
     onError: (error) => {
-      addToast({ type: 'error', message: String(error) });
+      addToast({ type: 'error', message: formatQueryError(error) });
     },
   });
 
@@ -855,7 +856,7 @@ export default function Skills() {
       invalidateSkillsAndWorkspaceFiles();
     },
     onError: (error) => {
-      addToast({ type: 'error', message: String(error) });
+      addToast({ type: 'error', message: formatQueryError(error) });
     },
   });
 
@@ -866,7 +867,7 @@ export default function Skills() {
       invalidateSkillsAndWorkspaceFiles();
     },
     onError: (error) => {
-      addToast({ type: 'error', message: String(error) });
+      addToast({ type: 'error', message: formatQueryError(error) });
     },
   });
 
@@ -877,7 +878,7 @@ export default function Skills() {
       invalidateSkillsAndWorkspaceFiles();
     },
     onError: (error) => {
-      addToast({ type: 'error', message: String(error) });
+      addToast({ type: 'error', message: formatQueryError(error) });
     },
   });
 
@@ -1199,7 +1200,7 @@ export default function Skills() {
       setEditBundleRootCollapsed(false);
       setEditCollapsedBundleDirIds(new Set());
     } catch (error) {
-      addToast({ type: 'error', message: String(error) });
+      addToast({ type: 'error', message: formatQueryError(error) });
       setSkillEditModal(null);
     } finally {
       setEditBundleLoading(false);

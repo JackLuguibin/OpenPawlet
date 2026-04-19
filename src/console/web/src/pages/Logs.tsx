@@ -24,6 +24,7 @@ import {
 import { useAppStore } from '../store';
 import * as api from '../api/client';
 import { PageLayout } from '../components/PageLayout';
+import { formatQueryError } from '../utils/errors';
 import type { ToolCallLog } from '../api/types';
 
 const { Text } = Typography;
@@ -347,7 +348,7 @@ export default function Logs() {
           }}
           locale={{
             emptyText: error ? (
-              <div className="text-red-500">{t('logs.loadError', { error: String(error) })}</div>
+              <div className="text-red-500">{t('logs.loadError', { error: formatQueryError(error) })}</div>
             ) : (
               <Space direction="vertical" className="py-6">
                 <CodeOutlined className="text-4xl text-gray-300" />

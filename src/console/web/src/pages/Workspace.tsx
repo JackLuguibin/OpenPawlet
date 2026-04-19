@@ -1,4 +1,4 @@
-import { useState, useEffect, type Key } from 'react';
+import { useState, useEffect, useMemo, type Key } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import {
@@ -22,9 +22,11 @@ import type { DataNode } from 'antd/es/tree';
 import { Markdown } from '../components/Markdown';
 import * as api from '../api/client';
 import { useAppStore } from '../store';
+import { useBots } from '../hooks/useBots';
 import { PageLayout } from '../components/PageLayout';
 import { WorkspaceCodeEditor } from '../components/WorkspaceCodeEditor';
 import { MARKDOWN_PROSE_CLASS } from '../utils/markdownProse';
+import { formatQueryError } from '../utils/errors';
 
 function buildTreeData(
   items: Array<{ name: string; path: string; is_dir: boolean; children?: unknown[] }>,
@@ -52,6 +54,8 @@ export default function Workspace() {
   const queryClient = useQueryClient();
   const { t } = useTranslation();
   const { currentBotId, addToast } = useAppStore();
+  const { data: bots = [], isLoading: botsLoading, isFetched: botsFetched } = useBots();
+  const waitingBot = botsFetched && bots.length > 0 && !currentBotId;
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [expandedKeys, setExpandedKeys] = useState<Key[]>([]);
   const [viewMode, setViewMode] = useState<'preview' | 'code' | 'edit'>('preview');
@@ -65,12 +69,13 @@ export default function Workspace() {
   const { data: filesData, isLoading: filesLoading } = useQuery({
     queryKey: ['workspace-files', currentBotId],
     queryFn: () => api.listWorkspaceFiles(undefined, 4, currentBotId),
+    enabled: Boolean(currentBotId),
   });
 
   const { data: fileData, isLoading: fileLoading } = useQuery({
     queryKey: ['workspace-file', currentBotId, selectedFile],
     queryFn: () => api.getWorkspaceFile(selectedFile!, currentBotId),
-    enabled: !!selectedFile,
+    enabled: Boolean(currentBotId) && !!selectedFile,
   });
 
   const updateMutation = useMutation({
@@ -82,7 +87,7 @@ export default function Workspace() {
       setEditMode(false);
       queryClient.invalidateQueries({ queryKey: ['workspace-file', currentBotId, selectedFile!] });
     },
-    onError: (e) => addToast({ type: 'error', message: String(e) }),
+    onError: (e) => addToast({ type: 'error', message: formatQueryError(e) }),
   });
 
   const deleteMutation = useMutation({
@@ -95,7 +100,7 @@ export default function Workspace() {
       queryClient.invalidateQueries({ queryKey: ['workspace-files', currentBotId] });
       queryClient.removeQueries({ queryKey: ['workspace-file', currentBotId, path] });
     },
-    onError: (e) => addToast({ type: 'error', message: String(e) }),
+    onError: (e) => addToast({ type: 'error', message: formatQueryError(e) }),
   });
 
   const confirmDeleteFile = () => {
@@ -111,9 +116,10 @@ export default function Workspace() {
     });
   };
 
-  const treeData = filesData?.items
-    ? buildTreeData(filesData.items, '')
-    : [];
+  const treeData = useMemo(
+    () => (filesData?.items ? buildTreeData(filesData.items, '') : []),
+    [filesData?.items],
+  );
 
   const handleSelect = (_selectedKeys: Key[], { node }: { node: DataNode }) => {
     const key = node.key as string;
@@ -154,7 +160,23 @@ export default function Workspace() {
 
   const isMarkdown = selectedFile?.toLowerCase().endsWith('.md') ?? false;
 
-  if (filesLoading && !filesData) {
+  if (botsLoading || waitingBot) {
+    return (
+      <PageLayout variant="center">
+        <Spin size="large" />
+      </PageLayout>
+    );
+  }
+
+  if (botsFetched && bots.length === 0) {
+    return (
+      <PageLayout variant="bleed">
+        <Empty description={t('dashboard.botRequired')} />
+      </PageLayout>
+    );
+  }
+
+  if (Boolean(currentBotId) && filesLoading && !filesData) {
     return (
       <PageLayout variant="center">
         <Spin size="large" />
@@ -190,6 +212,7 @@ export default function Workspace() {
               title={t('workspace.refreshList')}
               aria-label={t('workspace.refreshList')}
               onClick={() => {
+                if (!currentBotId) return;
                 queryClient.invalidateQueries({ queryKey: ['workspace-files', currentBotId] });
                 queryClient.invalidateQueries({ queryKey: ['workspace-file', currentBotId] });
               }}
@@ -240,7 +263,7 @@ export default function Workspace() {
 
       <div className="mt-5 flex min-h-0 min-w-0 flex-1 gap-6">
         <Card
-          title="文件列表"
+          title={t('workspace.fileListTitle')}
           size="small"
           className="w-72 shrink-0 flex flex-col rounded-2xl border border-gray-200/80 dark:border-gray-700/60 bg-white dark:bg-gray-800/40 shadow-sm hover:shadow-md transition-shadow overflow-hidden"
           styles={{ body: { flex: 1, minHeight: 0, overflowY: 'auto', padding: '1rem' } }}
@@ -256,7 +279,7 @@ export default function Workspace() {
               onSelect={handleSelect}
             />
           ) : (
-            <Empty description="暂无文件" className="py-8" />
+            <Empty description={t('workspace.emptyFiles')} className="py-8" />
           )}
         </Card>
 
@@ -275,7 +298,7 @@ export default function Workspace() {
         >
           {!selectedFile ? (
             <div className="flex min-h-0 min-w-0 flex-1 flex-col items-center justify-center">
-              <Empty description="从左侧选择文件" className="text-gray-500" />
+              <Empty description={t('workspace.selectFileHint')} className="text-gray-500" />
             </div>
           ) : fileLoading ? (
             <div className="flex justify-center py-12">

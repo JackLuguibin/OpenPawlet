@@ -36,6 +36,7 @@ import { useTranslation } from 'react-i18next';
 import * as api from '../api/client';
 import { useAppStore } from '../store';
 import { PageLayout } from '../components/PageLayout';
+import { formatQueryError } from '../utils/errors';
 
 // Common config fields for token-based channels
 const CHANNEL_TOKEN_FIELDS: Record<string, string[]> = {
@@ -262,7 +263,7 @@ export default function Channels() {
         <Alert
           type="error"
           message={t('channels.errorLoad')}
-          description={String(error)}
+          description={formatQueryError(error)}
           showIcon
         />
       </PageLayout>
@@ -454,7 +455,7 @@ export default function Channels() {
                     label={t('channels.formAllowFrom')}
                     help={t('channels.formAllowFromHelp')}
                   >
-                    <Input.TextArea rows={2} placeholder="user1, user2, @username" />
+                    <Input.TextArea rows={2} placeholder={t('channels.formAllowFromPlaceholder')} />
                   </Form.Item>
                 );
               }
@@ -463,7 +464,7 @@ export default function Channels() {
               return (
                 <Form.Item key={field} name={field} label={label}>
                   {isSecret ? (
-                    <Input.Password autoComplete="off" placeholder="••••••••" />
+                    <Input.Password autoComplete="off" placeholder={t('channels.secretPlaceholder')} />
                   ) : (
                     <Input placeholder={label} />
                   )}

@@ -121,54 +121,93 @@ export default function Layout({ children }: LayoutProps) {
     [t],
   );
 
-  const wsStatusLabel = consolePushConfigured
-    ? wsConnected
-      ? t('layout.wsConnected')
-      : wsConnecting
-        ? t('layout.wsConnecting')
-        : t('layout.wsDisconnected')
-    : agentWsLinked
-      ? agentWsReady
-        ? t('layout.wsAgentReady')
-        : t('layout.wsAgentConnecting')
-      : t('layout.wsLivePushOff');
-
-  const wsBadgeStatus = consolePushConfigured
-    ? wsConnected
-      ? 'success'
-      : wsConnecting
-        ? 'processing'
-        : 'error'
-    : agentWsLinked
-      ? agentWsReady
-        ? 'success'
-        : 'processing'
-      : 'default';
-
-  const wsStatusTitle = consolePushConfigured
-    ? wsConnected
-      ? t('layout.wsTitleConnected')
-      : wsConnecting
-        ? t('layout.wsTitleConnecting')
-        : t('layout.wsTitleDisconnected')
-    : agentWsLinked
-      ? agentWsReady
-        ? t('layout.wsTitleAgentReady')
-        : t('layout.wsTitleAgentConnecting')
-      : t('layout.wsTitleLivePushOff');
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
   useWebSocket();
 
   const { data: bots = [] } = useBots();
 
-  const activeBotId = currentBotId || bots.find(b => b.is_default)?.id || bots[0]?.id || null;
+  const activeBotId = currentBotId || bots.find((b) => b.is_default)?.id || bots[0]?.id || null;
 
   useEffect(() => {
     if (bots.length > 0 && !currentBotId && activeBotId) {
       setCurrentBotId(activeBotId);
     }
   }, [bots, currentBotId, activeBotId, setCurrentBotId]);
+
+  const wsUi = useMemo(() => {
+    if (consolePushConfigured) {
+      if (wsConnected) {
+        return {
+          label: t('layout.wsConnected'),
+          badge: 'success' as const,
+          title: t('layout.wsTitleConnected'),
+          badgeClass: '',
+        };
+      }
+      if (wsConnecting) {
+        return {
+          label: t('layout.wsConnecting'),
+          badge: 'processing' as const,
+          title: t('layout.wsTitleConnecting'),
+          badgeClass: '',
+        };
+      }
+      return {
+        label: t('layout.wsDisconnected'),
+        badge: 'error' as const,
+        title: t('layout.wsTitleDisconnected'),
+        badgeClass: 'opacity-90',
+      };
+    }
+    if (agentWsLinked) {
+      if (agentWsReady) {
+        return {
+          label: t('layout.wsAgentReady'),
+          badge: 'success' as const,
+          title: t('layout.wsTitleAgentReady'),
+          badgeClass: '',
+        };
+      }
+      return {
+        label: t('layout.wsAgentConnecting'),
+        badge: 'processing' as const,
+        title: t('layout.wsTitleAgentConnecting'),
+        badgeClass: 'opacity-90',
+      };
+    }
+    return {
+      label: t('layout.wsLivePushOff'),
+      badge: 'default' as const,
+      title: t('layout.wsTitleLivePushOff'),
+      badgeClass: '',
+    };
+  }, [
+    agentWsLinked,
+    agentWsReady,
+    consolePushConfigured,
+    t,
+    wsConnected,
+    wsConnecting,
+  ]);
+
+  const botSelectOptions = useMemo(
+    () =>
+      bots.map((b) => ({
+        value: b.id,
+        label: (
+          <span className="flex items-center gap-1.5">
+            <Bot className="w-3.5 h-3.5 flex-shrink-0" />
+            <span>{b.name}</span>
+            {b.is_default && (
+              <span className="text-[10px] text-blue-500">{t('common.defaultBot')}</span>
+            )}
+          </span>
+        ),
+      })),
+    [bots, t],
+  );
+
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const mobileNavId = 'nb-mobile-sidebar';
 
   const selectedKey = '/' + (location.pathname.split('/')[1] || 'dashboard');
 
@@ -193,8 +232,12 @@ export default function Layout({ children }: LayoutProps) {
     <div className="flex min-h-0 flex-1 overflow-hidden">
       {/* Mobile Menu Button */}
       <button
+        type="button"
         onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
         className="lg:hidden fixed top-3 left-3 z-50 p-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-md"
+        aria-expanded={mobileMenuOpen}
+        aria-controls={mobileNavId}
+        aria-label={mobileMenuOpen ? t('layout.closeMenu') : t('layout.openMenu')}
       >
         {mobileMenuOpen ? <X className="w-5 h-5" /> : <MenuIcon className="w-5 h-5" />}
       </button>
@@ -209,6 +252,7 @@ export default function Layout({ children }: LayoutProps) {
 
       {/* Sidebar */}
       <aside
+        id={mobileNavId}
         className={`
           ${sidebarCollapsed ? 'w-20' : 'w-64'}
           ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
@@ -273,24 +317,13 @@ export default function Layout({ children }: LayoutProps) {
           <div className="flex items-center gap-3 min-w-0">
             <button
               type="button"
-              title={wsStatusTitle}
+              title={wsUi.title}
               onClick={() => window.location.reload()}
               className="inline-flex h-6 items-center gap-2 rounded-md px-2 text-xs leading-none text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
             >
-              <Badge
-                status={wsBadgeStatus}
-                className={
-                  consolePushConfigured && !wsConnected && !wsConnecting
-                    ? 'opacity-90'
-                    : !consolePushConfigured &&
-                        agentWsLinked &&
-                        !agentWsReady
-                      ? 'opacity-90'
-                      : ''
-                }
-              />
+              <Badge status={wsUi.badge} className={wsUi.badgeClass} />
               <span className="text-xs text-gray-600 dark:text-gray-400">
-                {wsStatusLabel}
+                {wsUi.label}
               </span>
             </button>
             {bots.length > 0 && (
@@ -299,18 +332,7 @@ export default function Layout({ children }: LayoutProps) {
                 value={activeBotId}
                 onChange={(val) => setCurrentBotId(val)}
                 className="min-w-[140px]"
-                options={bots.map(b => ({
-                  value: b.id,
-                  label: (
-                    <span className="flex items-center gap-1.5">
-                      <Bot className="w-3.5 h-3.5 flex-shrink-0" />
-                      <span>{b.name}</span>
-                      {b.is_default && (
-                        <span className="text-[10px] text-blue-500">{t('common.defaultBot')}</span>
-                      )}
-                    </span>
-                  ),
-                }))}
+                options={botSelectOptions}
                 popupMatchSelectWidth={false}
               />
             )}

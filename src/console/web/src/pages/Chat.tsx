@@ -491,7 +491,11 @@ function toolCallSummaryPreview(
 
 function ArgumentValueNode({ value }: { value: unknown }): ReactNode {
   if (value === null) {
-    return <span className="text-slate-400 dark:text-slate-500">null</span>;
+    return (
+      <span className="text-slate-400 dark:text-slate-500">
+        {i18n.t("chat.jsonNull")}
+      </span>
+    );
   }
   if (typeof value === "boolean") {
     return (

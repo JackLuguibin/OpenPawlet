@@ -11,6 +11,7 @@ import {
 } from 'antd';
 import { ReloadOutlined, CheckCircleOutlined, ExclamationCircleOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import * as api from '../api/client';
+import { formatQueryError } from '../utils/errors';
 import { useAppStore } from '../store';
 import { PageLayout } from '../components/PageLayout';
 import type { HealthIssue } from '../api/types';
@@ -45,7 +46,7 @@ export default function Health() {
   if (error) {
     return (
       <PageLayout variant="bleed">
-        <Alert type="error" message={t('health.loadFailed')} description={String(error)} showIcon />
+        <Alert type="error" message={t('health.loadFailed')} description={formatQueryError(error)} showIcon />
       </PageLayout>
     );
   }

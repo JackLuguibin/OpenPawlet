@@ -32,6 +32,7 @@ import type { UsageHistoryItem } from '../api/types';
 import { formatTokenCount, formatCost } from '../utils/format';
 import { PageLayout } from '../components/PageLayout';
 import { useBots } from '../hooks/useBots';
+import { formatQueryError } from '../utils/errors';
 
 const { Text } = Typography;
 
@@ -162,7 +163,7 @@ export default function Dashboard() {
       queryClient.invalidateQueries({ queryKey: ['usage-history', currentBotId] });
     },
     onError: (error) => {
-      addToast({ type: 'error', message: String(error) });
+      addToast({ type: 'error', message: formatQueryError(error) });
     },
   });
 
@@ -183,7 +184,7 @@ export default function Dashboard() {
       queryClient.invalidateQueries({ queryKey: ['usage-history', currentBotId] });
     },
     onError: (error) => {
-      addToast({ type: 'error', message: String(error) });
+      addToast({ type: 'error', message: formatQueryError(error) });
     },
   });
 
@@ -210,7 +211,7 @@ export default function Dashboard() {
         <Alert
           type="error"
           message={t('dashboard.loadError')}
-          description={String(error)}
+          description={formatQueryError(error)}
           showIcon
         />
       </PageLayout>

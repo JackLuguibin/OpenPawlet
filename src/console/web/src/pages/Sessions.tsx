@@ -26,6 +26,7 @@ import * as api from '../api/client';
 import { useAppStore } from '../store';
 import type { SessionInfo } from '../api/types';
 import { PageLayout } from '../components/PageLayout';
+import { formatQueryError } from '../utils/errors';
 
 const { Text } = Typography;
 
@@ -92,7 +93,7 @@ export default function Sessions() {
       setSelectedRowKeys([]);
     },
     onError: (error) => {
-      addToast({ type: 'error', message: String(error) });
+      addToast({ type: 'error', message: formatQueryError(error) });
     },
   });
 
@@ -103,7 +104,7 @@ export default function Sessions() {
       queryClient.invalidateQueries({ queryKey: ['sessions'] });
     },
     onError: (error) => {
-      addToast({ type: 'error', message: String(error) });
+      addToast({ type: 'error', message: formatQueryError(error) });
     },
   });
 
@@ -342,7 +343,7 @@ export default function Sessions() {
             scroll={{ x: 820, y: tableBodyScrollY }}
           locale={{
             emptyText: error ? (
-              <div className="text-red-500">{t('sessions.loadError', { error: String(error) })}</div>
+              <div className="text-red-500">{t('sessions.loadError', { error: formatQueryError(error) })}</div>
             ) : (
               <Space direction="vertical" className="py-8">
                 <MessageOutlined className="text-4xl text-gray-300 dark:text-gray-600" />

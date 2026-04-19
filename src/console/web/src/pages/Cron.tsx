@@ -29,19 +29,22 @@ import {
   DownOutlined,
   UpOutlined,
 } from '@ant-design/icons';
+import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import * as api from '../api/client';
 import { useAppStore } from '../store';
+import { useBots } from '../hooks/useBots';
 import { PageLayout } from '../components/PageLayout';
 import type { CronJob, CronScheduleKind } from '../api/types';
+import { formatQueryError } from '../utils/errors';
 
-function formatSchedule(job: CronJob): string {
+function formatSchedule(job: CronJob, t: TFunction): string {
   const s = job.schedule;
   if (s.kind === 'every' && s.every_ms) {
     const sec = s.every_ms / 1000;
-    if (sec < 60) return `每 ${sec} 秒`;
-    if (sec < 3600) return `每 ${Math.floor(sec / 60)} 分钟`;
-    return `每 ${Math.floor(sec / 3600)} 小时`;
+    if (sec < 60) return t('cron.everySeconds', { count: sec });
+    if (sec < 3600) return t('cron.everyMinutes', { count: Math.floor(sec / 60) });
+    return t('cron.everyHours', { count: Math.floor(sec / 3600) });
   }
   if (s.kind === 'cron' && s.expr) {
     return s.expr + (s.tz ? ` (${s.tz})` : '');
@@ -49,16 +52,16 @@ function formatSchedule(job: CronJob): string {
   if (s.kind === 'at' && s.at_ms) {
     return new Date(s.at_ms).toLocaleString();
   }
-  return '-';
+  return t('cron.scheduleDash');
 }
 
-function formatNextRun(timestamp?: number | null): string {
-  if (!timestamp) return '-';
+function formatNextRun(timestamp: number | null | undefined, t: TFunction): string {
+  if (!timestamp) return t('cron.scheduleDash');
   const diff = timestamp - Date.now();
-  if (diff < 0) return '已逾期';
-  if (diff < 60000) return '即将执行';
-  if (diff < 3600000) return `${Math.floor(diff / 60000)} 分钟后`;
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)} 小时后`;
+  if (diff < 0) return t('cron.nextOverdue');
+  if (diff < 60000) return t('cron.nextSoon');
+  if (diff < 3600000) return t('cron.nextInMinutes', { count: Math.floor(diff / 60000) });
+  if (diff < 86400000) return t('cron.nextInHours', { count: Math.floor(diff / 3600000) });
   return new Date(timestamp).toLocaleString();
 }
 
@@ -68,11 +71,12 @@ function isOverdue(job: CronJob): boolean {
 }
 
 function CronJobDetails({ job }: { job: CronJob }) {
+  const { t } = useTranslation();
   const { currentBotId } = useAppStore();
   const { data: historyData } = useQuery({
     queryKey: ['cron-history', currentBotId, job.id],
     queryFn: () => api.getCronHistory(currentBotId, job.id),
-    enabled: !!job.id,
+    enabled: Boolean(currentBotId) && !!job.id,
   });
   const history = historyData?.[job.id] || [];
 
@@ -80,33 +84,36 @@ function CronJobDetails({ job }: { job: CronJob }) {
     <div className="space-y-2 mt-2 pl-0 pt-2 border-t border-gray-100 dark:border-gray-700">
       {job.payload.message && (
         <div className="text-sm text-gray-500 break-words">
-          指令：{job.payload.message}
+          {t('cron.detailInstruction')} {job.payload.message}
         </div>
       )}
       <div className="text-xs text-gray-400">
-        下次执行：{formatNextRun(job.state.next_run_at_ms)}
+        {t('cron.detailNextRun')} {formatNextRun(job.state.next_run_at_ms, t)}
         {job.state.last_run_at_ms && (
-          <> · 上次：{new Date(job.state.last_run_at_ms).toLocaleString()}</>
+          <>
+            {' '}
+            · {t('cron.detailLastRun')} {new Date(job.state.last_run_at_ms).toLocaleString()}
+          </>
         )}
       </div>
       {history.length > 0 && (
         <div className="mt-2">
-          <div className="text-xs font-medium text-gray-500 mb-1">执行历史</div>
+          <div className="text-xs font-medium text-gray-500 mb-1">{t('cron.historyTitle')}</div>
           <div className="space-y-1 max-h-32 overflow-y-auto">
             {[...history].reverse().slice(0, 10).map((h, i) => (
               <div
-                key={i}
+                key={`${h.run_at_ms}-${i}`}
                 className="flex items-center justify-between text-xs py-0.5 border-b border-gray-50 dark:border-gray-800 last:border-0"
               >
-                <span className="text-gray-500">
-                  {new Date(h.run_at_ms).toLocaleString()}
-                </span>
+                <span className="text-gray-500">{new Date(h.run_at_ms).toLocaleString()}</span>
                 <Space size={4}>
                   <Tag color={h.status === 'ok' ? 'green' : 'red'} className="m-0 text-xs">
-                    {h.status === 'ok' ? '成功' : '失败'}
+                    {h.status === 'ok' ? t('cron.runOk') : t('cron.runFail')}
                   </Tag>
                   <span className="text-gray-400">
-                    {h.duration_ms < 1000 ? `${h.duration_ms}ms` : `${(h.duration_ms / 1000).toFixed(1)}s`}
+                    {h.duration_ms < 1000
+                      ? `${h.duration_ms}ms`
+                      : `${(h.duration_ms / 1000).toFixed(1)}s`}
                   </span>
                 </Space>
               </div>
@@ -122,9 +129,12 @@ export default function Cron() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { addToast, currentBotId } = useAppStore();
+  const { data: bots = [], isLoading: botsLoading, isFetched: botsFetched } = useBots();
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
   const [form] = Form.useForm();
+
+  const waitingBot = botsFetched && bots.length > 0 && !currentBotId;
 
   const toggleExpand = (jobId: string) => {
     setExpandedKeys((prev) => {
@@ -138,11 +148,13 @@ export default function Cron() {
   const { data: jobs = [], isLoading, error, refetch } = useQuery({
     queryKey: ['cron', currentBotId],
     queryFn: () => api.listCronJobs(currentBotId, true),
+    enabled: Boolean(currentBotId),
   });
 
   const { data: cronStatus } = useQuery({
     queryKey: ['cron-status', currentBotId],
     queryFn: () => api.getCronStatus(currentBotId),
+    enabled: Boolean(currentBotId),
   });
 
   const addMutation = useMutation({
@@ -164,7 +176,7 @@ export default function Cron() {
           tz: values.cron_tz || undefined,
         };
       } else {
-        throw new Error('请填写有效的调度配置');
+        throw new Error(t('cron.errInvalidSchedule'));
       }
       return api.addCronJob(
         {
@@ -182,7 +194,7 @@ export default function Cron() {
       queryClient.invalidateQueries({ queryKey: ['cron', currentBotId] });
       queryClient.invalidateQueries({ queryKey: ['cron-status', currentBotId] });
     },
-    onError: (e) => addToast({ type: 'error', message: String(e) }),
+    onError: (e) => addToast({ type: 'error', message: formatQueryError(e) }),
   });
 
   const removeMutation = useMutation({
@@ -192,7 +204,7 @@ export default function Cron() {
       queryClient.invalidateQueries({ queryKey: ['cron', currentBotId] });
       queryClient.invalidateQueries({ queryKey: ['cron-status', currentBotId] });
     },
-    onError: (e) => addToast({ type: 'error', message: String(e) }),
+    onError: (e) => addToast({ type: 'error', message: formatQueryError(e) }),
   });
 
   const enableMutation = useMutation({
@@ -202,7 +214,7 @@ export default function Cron() {
       queryClient.invalidateQueries({ queryKey: ['cron', currentBotId] });
       queryClient.invalidateQueries({ queryKey: ['cron-status', currentBotId] });
     },
-    onError: (e) => addToast({ type: 'error', message: String(e) }),
+    onError: (e) => addToast({ type: 'error', message: formatQueryError(e) }),
   });
 
   const runMutation = useMutation({
@@ -212,12 +224,28 @@ export default function Cron() {
       queryClient.invalidateQueries({ queryKey: ['cron', currentBotId] });
       queryClient.invalidateQueries({ queryKey: ['cron-history', currentBotId] });
     },
-    onError: (e) => addToast({ type: 'error', message: String(e) }),
+    onError: (e) => addToast({ type: 'error', message: formatQueryError(e) }),
   });
 
   const handleAdd = () => {
     form.validateFields().then((values) => addMutation.mutate(values));
   };
+
+  if (botsLoading || waitingBot) {
+    return (
+      <PageLayout variant="center">
+        <Spin size="large" />
+      </PageLayout>
+    );
+  }
+
+  if (botsFetched && bots.length === 0) {
+    return (
+      <PageLayout variant="bleed">
+        <Empty description={t('dashboard.botRequired')} />
+      </PageLayout>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -230,7 +258,12 @@ export default function Cron() {
   if (error) {
     return (
       <PageLayout variant="bleed">
-        <Alert type="error" message="加载失败" description={String(error)} showIcon />
+        <Alert
+          type="error"
+          message={t('cron.loadFailed')}
+          description={formatQueryError(error)}
+          showIcon
+        />
       </PageLayout>
     );
   }
@@ -241,7 +274,6 @@ export default function Cron() {
 
   return (
     <PageLayout>
-      {/* Page header */}
       <div className="flex shrink-0 flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-start gap-4 min-w-0">
           <div
@@ -252,24 +284,23 @@ export default function Cron() {
           </div>
           <div className="min-w-0">
             <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
-              定时任务
+              {t('cron.pageTitle')}
             </h1>
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 max-w-xl leading-relaxed">
-              管理 Cron 定时任务，Agent 会按计划执行提醒
+              {t('cron.pageSubtitle')}
             </p>
           </div>
         </div>
         <Space className="w-full sm:w-auto justify-end flex-wrap">
           <Button icon={<ReloadOutlined />} onClick={() => refetch()}>
-            <span className="hidden sm:inline">刷新</span>
+            <span className="hidden sm:inline">{t('common.refresh')}</span>
           </Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setAddModalOpen(true)}>
-            添加任务
+            {t('cron.addTask')}
           </Button>
         </Space>
       </div>
 
-      {/* Status summary */}
       <Card
         size="small"
         className="shrink-0 overflow-hidden rounded-2xl border border-gray-200/90 bg-white/90 shadow-sm dark:border-gray-700/80 dark:bg-gray-900/50"
@@ -282,18 +313,18 @@ export default function Cron() {
             </div>
             <div className="min-w-0">
               <Text type="secondary" className="text-xs block mb-0.5">
-                Cron 服务
+                {t('cron.serviceLabel')}
               </Text>
               <div className="font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2 flex-wrap">
                 {cronStatus?.enabled ? (
                   <>
                     <Badge status="processing" color="#22c55e" />
-                    <span>运行中</span>
+                    <span>{t('cron.serviceRunning')}</span>
                   </>
                 ) : (
                   <>
                     <Badge status="default" />
-                    <span>未启动</span>
+                    <span>{t('cron.serviceStopped')}</span>
                   </>
                 )}
               </div>
@@ -301,36 +332,35 @@ export default function Cron() {
           </div>
           <div className="flex flex-col justify-center gap-0.5 p-4 sm:p-5">
             <Text type="secondary" className="text-xs">
-              任务
+              {t('cron.tasksLabel')}
             </Text>
             <div className="text-lg font-semibold tabular-nums text-gray-900 dark:text-gray-100">
               {jobs.length}
               <Text type="secondary" className="text-sm font-normal ml-1.5">
-                个 · {enabledCount} 个启用
+                {t('cron.taskEnabledHint', { enabled: enabledCount })}
               </Text>
             </div>
           </div>
           <div className="flex flex-col justify-center gap-0.5 p-4 sm:p-5">
             <Text type="secondary" className="text-xs">
-              调度器下次唤醒
+              {t('cron.nextWakeLabel')}
             </Text>
             <div className="text-sm font-medium text-gray-800 dark:text-gray-200">
               {cronStatus?.next_wake_at_ms
-                ? formatNextRun(cronStatus.next_wake_at_ms)
-                : '—'}
+                ? formatNextRun(cronStatus.next_wake_at_ms, t)
+                : t('cron.scheduleDash')}
             </div>
           </div>
         </div>
       </Card>
 
-      {/* Task list */}
       <Card
         title={
           <span className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-gray-100">
             <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-800">
               <SyncOutlined className="text-blue-500 dark:text-blue-400 text-sm" />
             </span>
-            任务列表
+            {t('cron.taskListTitle')}
           </span>
         }
         size="small"
@@ -349,7 +379,7 @@ export default function Cron() {
           <div className="flex flex-col items-center py-10">
             <Empty
               description={
-                <span className="text-gray-500 dark:text-gray-400">暂无定时任务，添加后 Agent 将按计划执行</span>
+                <span className="text-gray-500 dark:text-gray-400">{t('cron.emptyDesc')}</span>
               }
               image={Empty.PRESENTED_IMAGE_SIMPLE}
             />
@@ -359,101 +389,96 @@ export default function Cron() {
               onClick={() => setAddModalOpen(true)}
               className="mt-4"
             >
-              添加任务
+              {t('cron.addTask')}
             </Button>
           </div>
         ) : (
           <div className="min-h-0 flex-1 overflow-y-auto pr-0.5">
-          <List
-            split={false}
-            dataSource={jobs}
-            renderItem={(job) => {
-              const isExpanded = expandedKeys.has(job.id);
-              const hasDetails =
-                job.payload.message ||
-                job.state.next_run_at_ms ||
-                job.state.last_run_at_ms;
-              return (
-                <List.Item
-                  className={`mb-2 rounded-xl border border-gray-100 bg-gray-50/80 px-3 py-2 transition-colors last:mb-0 dark:border-gray-800 dark:bg-gray-800/25 ${!job.enabled ? 'opacity-70' : 'hover:border-gray-200 dark:hover:border-gray-700'}`}
-                  actions={[
-                    hasDetails && (
+            <List
+              split={false}
+              dataSource={jobs}
+              renderItem={(job) => {
+                const isExpanded = expandedKeys.has(job.id);
+                const hasDetails =
+                  job.payload.message ||
+                  job.state.next_run_at_ms ||
+                  job.state.last_run_at_ms;
+                return (
+                  <List.Item
+                    className={`mb-2 rounded-xl border border-gray-100 bg-gray-50/80 px-3 py-2 transition-colors last:mb-0 dark:border-gray-800 dark:bg-gray-800/25 ${!job.enabled ? 'opacity-70' : 'hover:border-gray-200 dark:hover:border-gray-700'}`}
+                    actions={[
+                      hasDetails && (
+                        <Button
+                          key="expand"
+                          type="text"
+                          size="small"
+                          icon={isExpanded ? <UpOutlined /> : <DownOutlined />}
+                          onClick={() => toggleExpand(job.id)}
+                          className="!text-gray-500"
+                        />
+                      ),
                       <Button
-                        key="expand"
-                        type="text"
+                        key="run"
+                        type="link"
                         size="small"
-                        icon={isExpanded ? <UpOutlined /> : <DownOutlined />}
-                        onClick={() => toggleExpand(job.id)}
-                        className="!text-gray-500"
-                      />
-                    ),
-                    <Button
-                      key="run"
-                      type="link"
-                      size="small"
-                      icon={<PlayCircleOutlined />}
-                      loading={runMutation.isPending}
-                      onClick={() => runMutation.mutate(job.id)}
-                    >
-                      立即执行
-                    </Button>,
-                    <Switch
-                      key="enable"
-                      size="small"
-                      checked={job.enabled}
-                      loading={enableMutation.isPending}
-                      onChange={(checked) =>
-                        enableMutation.mutate({ jobId: job.id, enabled: checked })
+                        icon={<PlayCircleOutlined />}
+                        loading={runMutation.isPending}
+                        onClick={() => runMutation.mutate(job.id)}
+                      >
+                        {t('cron.runNow')}
+                      </Button>,
+                      <Switch
+                        key="enable"
+                        size="small"
+                        checked={job.enabled}
+                        loading={enableMutation.isPending}
+                        onChange={(checked) =>
+                          enableMutation.mutate({ jobId: job.id, enabled: checked })
+                        }
+                      />,
+                      <Popconfirm
+                        key="delete"
+                        title={t('cron.deleteConfirmTitle')}
+                        onConfirm={() => removeMutation.mutate(job.id)}
+                      >
+                        <Button type="link" danger size="small" icon={<DeleteOutlined />}>
+                          {t('common.delete')}
+                        </Button>
+                      </Popconfirm>,
+                    ].filter(Boolean)}
+                  >
+                    <List.Item.Meta
+                      avatar={
+                        <Tag color={job.enabled ? 'green' : 'default'}>
+                          {job.enabled ? t('cron.tagEnabled') : t('cron.tagDisabled')}
+                        </Tag>
                       }
-                    />,
-                    <Popconfirm
-                      key="delete"
-                      title="确定删除此任务？"
-                      onConfirm={() => removeMutation.mutate(job.id)}
-                    >
-                      <Button type="link" danger size="small" icon={<DeleteOutlined />}>
-                        删除
-                      </Button>
-                    </Popconfirm>,
-                  ].filter(Boolean)}
-                >
-                  <List.Item.Meta
-                    avatar={
-                      <Tag color={job.enabled ? 'green' : 'default'}>
-                        {job.enabled ? '启用' : '禁用'}
-                      </Tag>
-                    }
-                    title={
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-medium">{job.name}</span>
-                        {isOverdue(job) && (
-                          <Tag color="orange">逾期</Tag>
-                        )}
-                        {job.state.last_status === 'error' && (
-                          <Tag color="red">上次失败</Tag>
-                        )}
-                        <Text type="secondary" className="text-sm font-normal">
-                          {formatSchedule(job)}
-                        </Text>
-                      </div>
-                    }
-                    description={
-                      isExpanded && hasDetails ? (
-                        <CronJobDetails job={job} />
-                      ) : null
-                    }
-                  />
-                </List.Item>
-              );
-            }}
-          />
+                      title={
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-medium">{job.name}</span>
+                          {isOverdue(job) && <Tag color="orange">{t('cron.tagOverdue')}</Tag>}
+                          {job.state.last_status === 'error' && (
+                            <Tag color="red">{t('cron.tagLastFailed')}</Tag>
+                          )}
+                          <Text type="secondary" className="text-sm font-normal">
+                            {formatSchedule(job, t)}
+                          </Text>
+                        </div>
+                      }
+                      description={
+                        isExpanded && hasDetails ? <CronJobDetails job={job} /> : null
+                      }
+                    />
+                  </List.Item>
+                );
+              }}
+            />
           </div>
         )}
       </Card>
 
-      {/* Add Modal */}
       <Modal
-        title="添加定时任务"
+        title={t('cron.modalAddTitle')}
         open={addModalOpen}
         onOk={handleAdd}
         onCancel={() => {
@@ -461,21 +486,22 @@ export default function Cron() {
           form.resetFields();
         }}
         confirmLoading={addMutation.isPending}
-        okText="添加"
+        okText={t('cron.modalAddOk')}
+        cancelText={t('common.cancel')}
       >
         <Form
           form={form}
           layout="vertical"
           initialValues={{ scheduleKind: 'every', every_seconds: 3600 }}
         >
-          <Form.Item name="name" label="任务名称" rules={[{ required: true }]}>
-            <Input placeholder="例如：每日提醒" />
+          <Form.Item name="name" label={t('cron.fieldName')} rules={[{ required: true }]}>
+            <Input placeholder={t('cron.fieldNamePh')} />
           </Form.Item>
-          <Form.Item name="scheduleKind" label="调度类型">
+          <Form.Item name="scheduleKind" label={t('cron.fieldScheduleKind')}>
             <Select
               options={[
-                { value: 'every', label: '固定间隔' },
-                { value: 'cron', label: 'Cron 表达式' },
+                { value: 'every', label: t('cron.scheduleEvery') },
+                { value: 'cron', label: t('cron.scheduleCron') },
               ]}
             />
           </Form.Item>
@@ -485,23 +511,35 @@ export default function Cron() {
           >
             {({ getFieldValue }) =>
               getFieldValue('scheduleKind') === 'every' ? (
-                <Form.Item name="every_seconds" label="间隔（秒）" rules={[{ required: true }]}>
-                  <InputNumber min={60} placeholder="秒，如 3600 = 每小时" className="w-full" />
+                <Form.Item
+                  name="every_seconds"
+                  label={t('cron.fieldEverySeconds')}
+                  rules={[{ required: true }]}
+                >
+                  <InputNumber
+                    min={60}
+                    placeholder={t('cron.fieldEverySecondsPh')}
+                    className="w-full"
+                  />
                 </Form.Item>
               ) : (
                 <>
-                  <Form.Item name="cron_expr" label="Cron 表达式" rules={[{ required: true }]}>
-                    <Input placeholder="如 0 9 * * * (每天 9:00)" />
+                  <Form.Item
+                    name="cron_expr"
+                    label={t('cron.fieldCronExpr')}
+                    rules={[{ required: true }]}
+                  >
+                    <Input placeholder={t('cron.fieldCronExprPh')} />
                   </Form.Item>
-                  <Form.Item name="cron_tz" label="时区（可选）">
-                    <Input placeholder="如 Asia/Shanghai" />
+                  <Form.Item name="cron_tz" label={t('cron.fieldCronTz')}>
+                    <Input placeholder={t('cron.fieldCronTzPh')} />
                   </Form.Item>
                 </>
               )
             }
           </Form.Item>
-          <Form.Item name="message" label="执行指令（发送给 Agent）">
-            <Input.TextArea rows={3} placeholder="任务触发时 Agent 会收到的指令内容" />
+          <Form.Item name="message" label={t('cron.fieldMessage')}>
+            <Input.TextArea rows={3} placeholder={t('cron.fieldMessagePh')} />
           </Form.Item>
         </Form>
       </Modal>

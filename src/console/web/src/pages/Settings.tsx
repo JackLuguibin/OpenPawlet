@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import type { CSSProperties } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import i18n from '../i18n';
 import {
@@ -35,6 +36,7 @@ import {
 } from '@ant-design/icons';
 import * as api from '../api/client';
 import { useAppStore } from '../store';
+import { formatQueryError } from '../utils/errors';
 import { PageLayout } from '../components/PageLayout';
 
 const { Text } = Typography;
@@ -78,32 +80,10 @@ const PROVIDER_NAMES = [
   'byteplus_coding_plan',
 ] as const;
 
-/** Human-readable labels for provider keys (brands stay recognizable in any locale). */
-const PROVIDER_DISPLAY_NAMES: Partial<Record<(typeof PROVIDER_NAMES)[number], string>> = {
-  openai: 'OpenAI',
-  anthropic: 'Anthropic',
-  openrouter: 'OpenRouter',
-  deepseek: 'DeepSeek',
-  ollama: 'Ollama',
-  custom: 'Custom',
-  groq: 'Groq',
-  gemini: 'Gemini',
-  azure_openai: 'Azure OpenAI',
-  vllm: 'vLLM',
-  dashscope: 'DashScope',
-  zhipu: 'Zhipu AI',
-  moonshot: 'Moonshot',
-  minimax: 'MiniMax',
-  aihubmix: 'AIHubMix',
-  siliconflow: 'SiliconFlow',
-  volcengine: 'Volcengine',
-  volcengine_coding_plan: 'Volcengine Coding Plan',
-  byteplus: 'BytePlus',
-  byteplus_coding_plan: 'BytePlus Coding Plan',
-};
-
-function providerDisplayName(name: (typeof PROVIDER_NAMES)[number]): string {
-  if (PROVIDER_DISPLAY_NAMES[name]) return PROVIDER_DISPLAY_NAMES[name]!;
+function providerDisplayName(name: (typeof PROVIDER_NAMES)[number], t: TFunction): string {
+  const key = `settings.providerBrand.${name}`;
+  const translated = t(key);
+  if (translated !== key) return translated;
   return name
     .split('_')
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
@@ -219,9 +199,10 @@ export default function Settings() {
     if (!q) return [...PROVIDER_NAMES];
     return PROVIDER_NAMES.filter(
       (name) =>
-        name.toLowerCase().includes(q) || providerDisplayName(name).toLowerCase().includes(q)
+        name.toLowerCase().includes(q) ||
+        providerDisplayName(name, t).toLowerCase().includes(q)
     );
-  }, [providerFilter]);
+  }, [providerFilter, t]);
 
   useEffect(() => {
     const raw = (config as Record<string, unknown>)?.providers as Record<string, Record<string, unknown>> | undefined;
@@ -304,8 +285,7 @@ export default function Settings() {
       queryClient.invalidateQueries({ queryKey: ['config'] });
     },
     onError: (error: unknown) => {
-      const message = error instanceof Error ? error.message : String(error);
-      addToast({ type: 'error', message });
+      addToast({ type: 'error', message: formatQueryError(error) });
     },
   });
 
@@ -319,7 +299,7 @@ export default function Settings() {
       queryClient.invalidateQueries({ queryKey: ['env'] });
     },
     onError: (error) => {
-      addToast({ type: 'error', message: String(error) });
+      addToast({ type: 'error', message: formatQueryError(error) });
     },
   });
 
@@ -642,7 +622,7 @@ export default function Settings() {
                       label: (
                         <span className="flex min-w-0 flex-1 items-center gap-2">
                           <span className="truncate font-medium text-gray-900 dark:text-gray-100">
-                            {providerDisplayName(name)}
+                            {providerDisplayName(name, t)}
                           </span>
                           {hasKey && (
                             <Tag color="success" className="m-0 shrink-0">

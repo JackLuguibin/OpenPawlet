@@ -1,13 +1,15 @@
-import { useState, useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Spin, Empty, Card } from 'antd';
 import { Markdown } from '../components/Markdown';
 import * as api from '../api/client';
 import { useAppStore } from '../store';
+import { useBots } from '../hooks/useBots';
 import { PageLayout } from '../components/PageLayout';
 import { SegmentedTabs } from '../components/SegmentedTabs';
 import { MARKDOWN_PROSE_CLASS } from '../utils/markdownProse';
+import { formatQueryError, isNotFoundError } from '../utils/errors';
 
 type TabKey = 'long_term' | 'history';
 
@@ -23,9 +25,22 @@ function parseHistoryEntries(historyText: string): { timestamp?: string; content
   });
 }
 
+function historyEntryKey(entry: { timestamp?: string; content: string }, index: number): string {
+  const head = entry.content.slice(0, 48);
+  const h = (s: string) => {
+    let h0 = 0;
+    for (let i = 0; i < s.length; i++) {
+      h0 = (h0 * 31 + s.charCodeAt(i)) | 0;
+    }
+    return h0;
+  };
+  return `${entry.timestamp ?? 'na'}-${h(head)}-${index}`;
+}
+
 export default function Memory() {
   const { t } = useTranslation();
   const { currentBotId } = useAppStore();
+  const { data: bots = [], isLoading: botsLoading, isFetched: botsFetched } = useBots();
   const tabs: { key: TabKey; label: string }[] = useMemo(
     () => [
       { key: 'long_term', label: t('memory.tabLong') },
@@ -35,13 +50,42 @@ export default function Memory() {
   );
   const [activeTab, setActiveTab] = useState<TabKey>('long_term');
 
+  const waitingBot = botsFetched && bots.length > 0 && !currentBotId;
+
   const { data: memory, isLoading, error } = useQuery({
     queryKey: ['memory', currentBotId],
     queryFn: () => api.getMemory(currentBotId),
+    enabled: Boolean(currentBotId),
   });
 
-  const historyEntries = memory?.history ? parseHistoryEntries(memory.history) : [];
+  const historyEntries = useMemo(
+    () => (memory?.history ? parseHistoryEntries(memory.history) : []),
+    [memory?.history],
+  );
+
   const longTermContent = memory?.long_term?.trim() ?? '';
+
+  const errorDescription = error
+    ? isNotFoundError(error)
+      ? t('memory.workspaceNotFound')
+      : formatQueryError(error)
+    : null;
+
+  if (botsLoading || waitingBot) {
+    return (
+      <PageLayout variant="center">
+        <Spin size="large" />
+      </PageLayout>
+    );
+  }
+
+  if (botsFetched && bots.length === 0) {
+    return (
+      <PageLayout variant="bleed">
+        <Empty description={t('dashboard.botRequired')} />
+      </PageLayout>
+    );
+  }
 
   return (
     <PageLayout variant="bleed">
@@ -67,11 +111,7 @@ export default function Memory() {
         </div>
       ) : error ? (
         <Empty
-          description={
-            <span className="text-red-500">
-              {String(error).includes('404') ? t('memory.workspaceNotFound') : String(error)}
-            </span>
-          }
+          description={<span className="text-red-500">{errorDescription}</span>}
         />
       ) : activeTab === 'long_term' ? (
         <Card
@@ -95,7 +135,7 @@ export default function Memory() {
           {historyEntries.length > 0 ? (
             historyEntries.map((entry, idx) => (
               <Card
-                key={idx}
+                key={historyEntryKey(entry, idx)}
                 size="small"
                 className="rounded-xl border-l-4 border-l-primary-500 shadow-sm hover:shadow-md transition-all bg-white dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700/50"
               >

@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { useAppStore } from './store';
 import Layout from './components/Layout';
 import ToastBridge from './components/ToastBridge';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Chat = lazy(() => import('./pages/Chat'));
@@ -120,7 +121,9 @@ function App() {
       }}
     >
       <AntdApp className="flex min-h-0 flex-1 flex-col">
-        <AppRoutes />
+        <ErrorBoundary>
+          <AppRoutes />
+        </ErrorBoundary>
       </AntdApp>
     </ConfigProvider>
   );

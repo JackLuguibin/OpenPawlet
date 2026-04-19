@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 
 export interface SegmentedTabItem<T extends string> {
   key: T;
@@ -42,13 +43,15 @@ export function SegmentedTabs<T extends string>({
   tabs,
   value,
   onChange,
-  ariaLabel = 'Tabs',
+  ariaLabel,
   className = '',
 }: SegmentedTabsProps<T>) {
+  const { t } = useTranslation();
+  const tablistLabel = ariaLabel ?? t('common.tabList');
   return (
     <div
       role="tablist"
-      aria-label={ariaLabel}
+      aria-label={tablistLabel}
       className={[SHELL, className].filter(Boolean).join(' ')}
     >
       {tabs.map(({ key, label }) => (

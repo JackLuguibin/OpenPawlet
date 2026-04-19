@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Spin, Empty, Card, Button, Input } from 'antd';
@@ -6,32 +6,45 @@ import { EditOutlined, SaveOutlined, CloseOutlined, ReloadOutlined } from '@ant-
 import { Markdown } from '../components/Markdown';
 import * as api from '../api/client';
 import { useAppStore } from '../store';
+import { useBots } from '../hooks/useBots';
 import { PageLayout } from '../components/PageLayout';
 import { SegmentedTabs } from '../components/SegmentedTabs';
 import type { BotFilesResponse } from '../api/types';
 import { MARKDOWN_PROSE_CLASS } from '../utils/markdownProse';
+import { formatQueryError, isNotFoundError } from '../utils/errors';
 
 type TabKey = keyof BotFilesResponse;
-
-const TABS: { key: TabKey; label: string }[] = [
-  { key: 'soul', label: 'SOUL' },
-  { key: 'user', label: 'USER' },
-  { key: 'heartbeat', label: 'HEARTBEAT' },
-  { key: 'tools', label: 'TOOLS' },
-  { key: 'agents', label: 'AGENTS' },
-];
 
 export default function BotProfile() {
   const queryClient = useQueryClient();
   const { t } = useTranslation();
   const { currentBotId, addToast } = useAppStore();
+  const { data: bots = [], isLoading: botsLoading, isFetched: botsFetched } = useBots();
   const [activeTab, setActiveTab] = useState<TabKey>('soul');
   const [editMode, setEditMode] = useState(false);
   const [editContent, setEditContent] = useState('');
 
+  const tabs = useMemo(
+    () =>
+      [
+        { key: 'soul' as const, label: t('botProfile.tabSoul') },
+        { key: 'user' as const, label: t('botProfile.tabUser') },
+        { key: 'heartbeat' as const, label: t('botProfile.tabHeartbeat') },
+        { key: 'tools' as const, label: t('botProfile.tabTools') },
+        { key: 'agents' as const, label: t('botProfile.tabAgents') },
+      ] satisfies { key: TabKey; label: string }[],
+    [t],
+  );
+
+  const activeTabLabel = tabs.find((x) => x.key === activeTab)?.label ?? activeTab;
+  const activeFileLabel = `${activeTabLabel}.md`;
+
+  const waitingBot = botsFetched && bots.length > 0 && !currentBotId;
+
   const { data: botFiles, isLoading, isFetching, error } = useQuery({
     queryKey: ['bot-files', currentBotId],
     queryFn: () => api.getBotFiles(currentBotId),
+    enabled: Boolean(currentBotId),
   });
 
   const updateFileMutation = useMutation({
@@ -40,10 +53,12 @@ export default function BotProfile() {
     onSuccess: () => {
       addToast({ type: 'success', message: t('botProfile.saved') });
       setEditMode(false);
-      queryClient.invalidateQueries({ queryKey: ['bot-files'] });
+      if (currentBotId) {
+        void queryClient.invalidateQueries({ queryKey: ['bot-files', currentBotId] });
+      }
     },
     onError: (err) => {
-      addToast({ type: 'error', message: String(err) });
+      addToast({ type: 'error', message: formatQueryError(err) });
     },
   });
 
@@ -63,16 +78,30 @@ export default function BotProfile() {
     updateFileMutation.mutate({ key: activeTab, content: editContent });
   };
 
+  if (botsLoading || waitingBot) {
+    return (
+      <PageLayout variant="center">
+        <Spin size="large" />
+      </PageLayout>
+    );
+  }
+
+  if (botsFetched && bots.length === 0) {
+    return (
+      <PageLayout variant="bleed">
+        <Empty description={t('dashboard.botRequired')} />
+      </PageLayout>
+    );
+  }
+
   return (
     <PageLayout variant="bleed">
       <div className="flex items-center justify-between shrink-0">
         <div>
           <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
-            Profile
+            {t('botProfile.title')}
           </h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            SOUL, USER, HEARTBEAT, TOOLS, AGENTS and other bootstrap files
-          </p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{t('botProfile.subtitle')}</p>
         </div>
         <div className="flex items-center gap-2">
           {!editMode ? (
@@ -85,11 +114,13 @@ export default function BotProfile() {
                 aria-label={t('botProfile.refreshBootstrap')}
                 loading={isFetching && !isLoading}
                 onClick={() => {
-                  void queryClient.invalidateQueries({ queryKey: ['bot-files', currentBotId] });
+                  if (currentBotId) {
+                    void queryClient.invalidateQueries({ queryKey: ['bot-files', currentBotId] });
+                  }
                 }}
               />
               <Button icon={<EditOutlined />} onClick={startEdit}>
-                Edit
+                {t('common.edit')}
               </Button>
             </>
           ) : (
@@ -100,10 +131,10 @@ export default function BotProfile() {
                 onClick={saveEdit}
                 loading={updateFileMutation.isPending}
               >
-                Save
+                {t('common.save')}
               </Button>
               <Button icon={<CloseOutlined />} onClick={cancelEdit}>
-                Cancel
+                {t('common.cancel')}
               </Button>
             </>
           )}
@@ -111,8 +142,8 @@ export default function BotProfile() {
       </div>
 
       <SegmentedTabs
-        ariaLabel="Bootstrap files"
-        tabs={TABS}
+        ariaLabel={t('botProfile.ariaTabs')}
+        tabs={tabs}
         value={activeTab}
         onChange={(key) => {
           setActiveTab(key);
@@ -128,7 +159,7 @@ export default function BotProfile() {
         <Empty
           description={
             <span className="text-red-500">
-              {String(error).includes('404') ? 'Workspace not found' : String(error)}
+              {isNotFoundError(error) ? t('memory.workspaceNotFound') : formatQueryError(error)}
             </span>
           }
         />
@@ -144,7 +175,7 @@ export default function BotProfile() {
                 onChange={(e) => setEditContent(e.target.value)}
                 rows={24}
                 className="font-mono text-sm"
-                placeholder={`Write ${TABS.find((t) => t.key === activeTab)?.label ?? activeTab}.md content...`}
+                placeholder={t('botProfile.placeholderEdit', { file: activeFileLabel })}
               />
             </div>
           ) : activeContent ? (
@@ -154,13 +185,13 @@ export default function BotProfile() {
               </div>
             </div>
           ) : (
-            <div className="flex-1 flex items-center justify-center min-h-[200px]">
+            <div className="flex flex-col flex-1 items-center justify-center min-h-[200px]">
               <Empty
-                description={`No content in ${TABS.find((t) => t.key === activeTab)?.label ?? activeTab}.md yet`}
+                description={t('botProfile.emptyFile', { file: activeFileLabel })}
                 className="text-gray-500"
               />
               <Button type="primary" icon={<EditOutlined />} onClick={startEdit} className="mt-4">
-                Create content
+                {t('botProfile.createContent')}
               </Button>
             </div>
           )}

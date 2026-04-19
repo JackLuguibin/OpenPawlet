@@ -27,6 +27,7 @@ import * as api from '../api/client';
 import { useAppStore } from '../store';
 import { getWSRef } from '../hooks/useWebSocket';
 import { PageLayout } from '../components/PageLayout';
+import { formatQueryError } from '../utils/errors';
 
 const { Text } = Typography;
 
@@ -261,7 +262,7 @@ export default function Activity() {
             <Empty
               description={
                 <span className="text-red-500">
-                  {t('activity.loadFailed', { error: String(error) })}
+                  {t('activity.loadFailed', { error: formatQueryError(error) })}
                 </span>
               }
             />

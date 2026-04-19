@@ -23,12 +23,15 @@ import {
   SettingOutlined,
   CopyOutlined,
 } from '@ant-design/icons';
+import type { TFunction } from 'i18next';
 import { Plug } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import * as api from '../api/client';
+import type { MCPStatus } from '../api/types';
 import { useAppStore } from '../store';
 import { PageLayout } from '../components/PageLayout';
+import { formatQueryError } from '../utils/errors';
 
 const { Text } = Typography;
 
@@ -46,6 +49,10 @@ const EXAMPLE_CONFIG = `{
     }
   }
 }`;
+
+function mcpStatusLabel(status: MCPStatus['status'], t: TFunction): string {
+  return t(`mcp.status.${status}`);
+}
 
 export default function MCPServers() {
   const { t } = useTranslation();
@@ -66,12 +73,12 @@ export default function MCPServers() {
         type: result.success ? 'success' : 'error',
         message: result.success
           ? `${result.name}: ${result.message}${result.latency_ms ? ` (${result.latency_ms}ms)` : ''}`
-          : `${result.name}: ${result.message || 'Test failed'}`,
+          : `${result.name}: ${result.message || t('mcp.testFailed')}`,
       });
       queryClient.invalidateQueries({ queryKey: ['mcp'] });
     },
     onError: (err) => {
-      addToast({ type: 'error', message: String(err) });
+      addToast({ type: 'error', message: formatQueryError(err) });
     },
     onSettled: () => setTesting(null),
   });
@@ -117,8 +124,8 @@ export default function MCPServers() {
       <PageLayout variant="bleed">
         <Alert
           type="error"
-          title="加载 MCP 服务器失败"
-          description={String(error)}
+          title={t('mcp.loadFailed')}
+          description={formatQueryError(error)}
           showIcon
         />
       </PageLayout>
@@ -127,27 +134,22 @@ export default function MCPServers() {
 
   return (
     <PageLayout variant="bleed">
-      {/* Header */}
       <div className="flex items-center justify-between shrink-0">
         <div>
           <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
-            MCP Servers
+            {t('mcp.pageTitle')}
           </h1>
-          <p className="text-sm text-gray-500 mt-1 hidden sm:block">
-            管理 Model Context Protocol 服务器，扩展 AI 能力
-          </p>
+          <p className="text-sm text-gray-500 mt-1 hidden sm:block">{t('mcp.subtitle')}</p>
         </div>
         <Space>
           <Button icon={<ReloadOutlined />} onClick={() => refetch()}>
-            <span className="hidden sm:inline">刷新</span>
+            <span className="hidden sm:inline">{t('common.refresh')}</span>
           </Button>
         </Space>
       </div>
 
-      {/* Content: Empty state or Server list */}
       {mcpServers && mcpServers.length > 0 ? (
         <div className="flex-1 min-h-0 overflow-y-auto space-y-6 mt-4">
-          {/* Server Cards */}
           <div className="space-y-3">
             {mcpServers.map((server) => (
               <Card
@@ -170,8 +172,8 @@ export default function MCPServers() {
                         server.status === 'connected'
                           ? 'bg-green-100 dark:bg-green-900/30'
                           : server.status === 'error'
-                          ? 'bg-red-100 dark:bg-red-900/30'
-                          : 'bg-gray-100 dark:bg-gray-700'
+                            ? 'bg-red-100 dark:bg-red-900/30'
+                            : 'bg-gray-100 dark:bg-gray-700'
                       }`}
                     >
                       <ApiOutlined
@@ -179,21 +181,24 @@ export default function MCPServers() {
                           server.status === 'connected'
                             ? 'text-green-600'
                             : server.status === 'error'
-                            ? 'text-red-600'
-                            : 'text-gray-400'
+                              ? 'text-red-600'
+                              : 'text-gray-400'
                         }`}
                       />
                     </div>
                     <div>
                       <p className="font-semibold text-base">{server.name}</p>
                       <Text type="secondary" className="text-sm">
-                        类型: <span className="font-medium">{server.server_type}</span>
+                        {t('mcp.typePrefix')}{' '}
+                        <span className="font-medium">{server.server_type}</span>
                       </Text>
                     </div>
                   </div>
 
                   <Space>
-                    <Tag color={statusColor(server.status)}>{server.status}</Tag>
+                    <Tag color={statusColor(server.status)}>
+                      {mcpStatusLabel(server.status, t)}
+                    </Tag>
                     <Button
                       icon={<ThunderboltOutlined />}
                       loading={testing === server.name}
@@ -203,7 +208,7 @@ export default function MCPServers() {
                       }}
                       size="small"
                     >
-                      测试
+                      {t('mcp.test')}
                     </Button>
                   </Space>
                 </div>
@@ -221,14 +226,14 @@ export default function MCPServers() {
                 {server.last_connected && (
                   <p className="mt-2 text-xs text-gray-500 flex items-center gap-1">
                     <ClockCircleOutlined />
-                    最后连接: {new Date(server.last_connected).toLocaleString()}
+                    {t('mcp.lastConnectedPrefix')}{' '}
+                    {new Date(server.last_connected).toLocaleString()}
                   </p>
                 )}
               </Card>
             ))}
           </div>
 
-          {/* Server Detail Panel */}
           {selectedServerData && (
             <Card
               className="rounded-2xl border border-gray-200/80 dark:border-gray-700/60"
@@ -239,7 +244,7 @@ export default function MCPServers() {
                   </div>
                   <div>
                     <span className="font-semibold text-lg">{selectedServerData.name}</span>
-                    <p className="text-xs text-gray-500 font-normal">服务器详情</p>
+                    <p className="text-xs text-gray-500 font-normal">{t('mcp.serverDetailSubtitle')}</p>
                   </div>
                 </div>
               }
@@ -249,14 +254,14 @@ export default function MCPServers() {
                   loading={testing === selectedServerData.name}
                   onClick={() => handleTest(selectedServerData.name)}
                 >
-                  测试连接
+                  {t('mcp.testConnection')}
                 </Button>
               }
             >
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                 <Card size="small" className="bg-gray-50 dark:bg-gray-700/30 border-0">
                   <div>
-                    <p className="text-xs text-gray-500 mb-2">连接状态</p>
+                    <p className="text-xs text-gray-500 mb-2">{t('mcp.connectionStatus')}</p>
                     <div className="flex items-center gap-2">
                       {selectedServerData.status === 'connected' ? (
                         <CheckCircleOutlined className="text-green-500 text-xl" />
@@ -270,11 +275,11 @@ export default function MCPServers() {
                           selectedServerData.status === 'connected'
                             ? 'text-green-600'
                             : selectedServerData.status === 'error'
-                            ? 'text-red-600'
-                            : 'text-gray-500'
+                              ? 'text-red-600'
+                              : 'text-gray-500'
                         }`}
                       >
-                        {selectedServerData.status}
+                        {mcpStatusLabel(selectedServerData.status, t)}
                       </span>
                     </div>
                   </div>
@@ -282,25 +287,23 @@ export default function MCPServers() {
 
                 <Card size="small" className="bg-gray-50 dark:bg-gray-700/30 border-0">
                   <div>
-                    <p className="text-xs text-gray-500 mb-2">服务器类型</p>
+                    <p className="text-xs text-gray-500 mb-2">{t('mcp.serverType')}</p>
                     <div className="flex items-center gap-2">
                       <ApiOutlined className="text-purple-500 text-xl" />
-                      <span className="text-lg font-semibold">
-                        {selectedServerData.server_type}
-                      </span>
+                      <span className="text-lg font-semibold">{selectedServerData.server_type}</span>
                     </div>
                   </div>
                 </Card>
 
                 <Card size="small" className="bg-gray-50 dark:bg-gray-700/30 border-0">
                   <div>
-                    <p className="text-xs text-gray-500 mb-2">最后连接</p>
+                    <p className="text-xs text-gray-500 mb-2">{t('mcp.lastConnected')}</p>
                     <div className="flex items-center gap-2">
                       <ClockCircleOutlined className="text-gray-400 text-xl" />
                       <span className="text-base font-semibold">
                         {selectedServerData.last_connected
                           ? new Date(selectedServerData.last_connected).toLocaleString()
-                          : '从未'}
+                          : t('mcp.never')}
                       </span>
                     </div>
                   </div>
@@ -308,34 +311,34 @@ export default function MCPServers() {
               </div>
 
               <Descriptions
-                title="服务器信息"
+                title={t('mcp.serverInfo')}
                 size="small"
                 bordered
                 items={[
-                  { key: 'name', label: '名称', children: selectedServerData.name },
+                  { key: 'name', label: t('mcp.fieldName'), children: selectedServerData.name },
                   {
                     key: 'type',
-                    label: '类型',
+                    label: t('mcp.fieldType'),
                     children: selectedServerData.server_type,
                   },
                   {
                     key: 'status',
-                    label: '状态',
+                    label: t('mcp.fieldStatus'),
                     children: (
                       <Space>
                         <Badge status={statusBadge(selectedServerData.status)} />
                         <Tag color={statusColor(selectedServerData.status)}>
-                          {selectedServerData.status}
+                          {mcpStatusLabel(selectedServerData.status, t)}
                         </Tag>
                       </Space>
                     ),
                   },
                   {
                     key: 'last_connected',
-                    label: '最后连接',
+                    label: t('mcp.lastConnected'),
                     children: selectedServerData.last_connected
                       ? new Date(selectedServerData.last_connected).toLocaleString()
-                      : '从未',
+                      : t('mcp.never'),
                   },
                 ]}
               />
@@ -344,7 +347,7 @@ export default function MCPServers() {
                 <Alert
                   className="mt-4"
                   type="error"
-                  title="错误详情"
+                  title={t('mcp.errorDetail')}
                   description={selectedServerData.error}
                   showIcon
                 />
@@ -352,20 +355,19 @@ export default function MCPServers() {
             </Card>
           )}
 
-          {/* Config reference when servers exist */}
           {!selectedServerData && (
             <Card
-              title="配置参考"
+              title={t('mcp.configReference')}
               className="rounded-2xl border border-gray-200/80 dark:border-gray-700/60"
             >
               <Alert
                 title={
                   <span>
-                    在 config.json 的{' '}
+                    {t('mcp.configHintBefore')}
                     <code className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs font-mono">
-                      tools.mcpServers
-                    </code>{' '}
-                    下添加 MCP 服务器配置
+                      {t('mcp.configPathKey')}
+                    </code>
+                    {t('mcp.configHintAfter')}
                   </span>
                 }
                 type="info"
@@ -396,14 +398,13 @@ export default function MCPServers() {
                 </div>
                 <div className="min-w-0 flex-1 text-center sm:text-left">
                   <h2 className="text-base font-semibold tracking-tight text-gray-900 dark:text-gray-100 sm:text-lg">
-                    尚未配置 MCP 服务器
+                    {t('mcp.emptyTitle')}
                   </h2>
                   <p className="mx-auto mt-1 max-w-3xl text-xs leading-snug text-gray-600 dark:text-gray-400 sm:mx-0 sm:text-[13px]">
-                    MCP 用于接入外部工具与数据源。在配置里加入{' '}
-                    <code className="rounded px-1 py-0.5 font-mono text-[11px] text-gray-800 dark:bg-gray-700 dark:text-gray-200">
-                      mcpServers
-                    </code>{' '}
-                    后在此查看连接状态。
+                    {t('mcp.emptyLead', {
+                      mcpServers: t('mcp.emptyMcpKey'),
+                      tools: t('mcp.emptyToolsKey'),
+                    })}
                   </p>
                 </div>
               </div>
@@ -412,48 +413,43 @@ export default function MCPServers() {
             <div className="grid gap-3 p-3 sm:p-4 lg:grid-cols-2 lg:gap-5 lg:items-start">
               <section className="min-w-0 space-y-1.5">
                 <h3 className="text-xs font-semibold text-gray-900 dark:text-gray-100">
-                  什么是 MCP？
+                  {t('mcp.whatIsTitle')}
                 </h3>
                 <div className="rounded-lg border border-gray-200 bg-gray-50/90 p-2.5 text-xs leading-snug text-gray-700 dark:border-gray-600/80 dark:bg-gray-900/40 dark:text-gray-300 sm:text-[13px] sm:leading-relaxed">
                   <p className="flex gap-2">
                     <InfoCircleOutlined className="mt-0.5 shrink-0 text-indigo-500 dark:text-indigo-400" />
-                    <span>
-                      开放协议，供 AI 安全调用外部工具；常见场景：文件、浏览器、仓库、数据库等。
-                    </span>
+                    <span>{t('mcp.whatIsBody')}</span>
                   </p>
                 </div>
               </section>
 
               <section className="min-w-0 space-y-1.5">
-                <h3 className="text-xs font-semibold text-gray-900 dark:text-gray-100">配置步骤</h3>
+                <h3 className="text-xs font-semibold text-gray-900 dark:text-gray-100">
+                  {t('mcp.setupTitle')}
+                </h3>
                 <ol className="list-decimal space-y-1 rounded-lg border border-gray-200 bg-white py-2 pl-8 pr-2.5 text-xs text-gray-700 dark:border-gray-600/80 dark:bg-gray-900/25 dark:text-gray-300 sm:text-[13px] sm:leading-snug">
                   <li>
-                    编辑 config.json，或打开{' '}
+                    {t('mcp.step1Prefix')}
                     <Link
                       to="/settings"
                       className="font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
                     >
-                      <SettingOutlined /> 设置
+                      <SettingOutlined /> {t('layout.navSettings')}
                     </Link>
                   </li>
                   <li>
-                    在{' '}
-                    <code className="rounded bg-gray-100 px-1 py-0.5 font-mono text-[11px] dark:bg-gray-700">
-                      tools
-                    </code>{' '}
-                    下添加{' '}
-                    <code className="rounded bg-gray-100 px-1 py-0.5 font-mono text-[11px] dark:bg-gray-700">
-                      mcpServers
-                    </code>
+                    {t('mcp.step2')}
                   </li>
-                  <li>保存并重启 Bot</li>
+                  <li>{t('mcp.step3')}</li>
                 </ol>
               </section>
             </div>
 
             <div className="border-t border-gray-100 px-3 pb-3 pt-1.5 dark:border-gray-700/60 sm:px-4">
               <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-xs font-semibold text-gray-900 dark:text-gray-100">示例配置</h3>
+                <h3 className="text-xs font-semibold text-gray-900 dark:text-gray-100">
+                  {t('mcp.exampleTitle')}
+                </h3>
                 <Button
                   type="link"
                   size="small"
@@ -461,7 +457,7 @@ export default function MCPServers() {
                   onClick={copyConfig}
                   className="h-7 px-1 text-indigo-600 dark:text-indigo-400"
                 >
-                  复制
+                  {t('mcp.copyExample')}
                 </Button>
               </div>
               <div className="overflow-hidden rounded-md border border-gray-800/90">
@@ -472,11 +468,11 @@ export default function MCPServers() {
               <div className="mt-3 flex flex-wrap gap-2">
                 <Link to="/settings">
                   <Button type="primary" size="small" icon={<SettingOutlined />}>
-                    前往设置
+                    {t('mcp.goSettings')}
                   </Button>
                 </Link>
                 <Button size="small" icon={<ReloadOutlined />} onClick={() => refetch()}>
-                  刷新状态
+                  {t('mcp.refreshStatus')}
                 </Button>
               </div>
             </div>
