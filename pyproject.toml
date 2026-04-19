@@ -92,6 +92,7 @@ pdf = [
     "pymupdf>=1.25.0",
 ]
 dev = [
+    "packaging>=24",
     "mypy>=1.0.0",
     "pytest>=9.0.0,<10.0.0",
     "pytest-asyncio>=1.3.0,<2.0.0",
