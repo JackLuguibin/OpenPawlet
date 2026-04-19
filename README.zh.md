@@ -1,0 +1,68 @@
+# OpenPawlet
+
+OpenPawlet（PyPI 包名 `open-pawlet`）是围绕 **[nanobot](https://github.com/JackLuguibin/nanobot)** 生态构建的 **Web 控制台**：提供 HTTP API 与前端界面，用于在本地或部署环境中管理机器人、会话、通道、工具、MCP、技能、定时任务、工作区与配置等能力，并与 nanobot 网关的 WebSocket 协同工作。
+
+[English version](README.en.md) · [仓库入口](README.md)
+
+## 功能概览
+
+- **后端**：基于 FastAPI 的 OpenPawlet 控制台服务，统一错误响应与 OpenAPI 文档（生产环境可按配置隐藏）。
+- **前端**：`web` 目录下的 Vite 应用，支持开发态热更新与生产构建。
+- **典型场景**：与 `nanobot gateway` 一起运行，通过控制台观察状态、调试会话、管理 Bot 相关资源。
+
+## 技术栈
+
+| 层级 | 技术 |
+|------|------|
+| 运行时 | Python ≥ 3.11 |
+| 后端 | FastAPI、Uvicorn、Pydantic v2、Loguru |
+| 与 nanobot 集成 | `nanobot-ai`（Git 依赖，见 `pyproject.toml`）、`websockets` |
+| 前端 | Node.js + npm（见 `src/console/web`） |
+| 多进程编排（可选） | Honcho + `Procfile` |
+
+## 快速开始
+
+### 1. 创建虚拟环境并安装
+
+建议使用仓库内的 `.venv`：
+
+```bash
+python3.11 -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install --upgrade pip
+pip install -e ".[dev]"
+```
+
+`nanobot-ai` 通过 Git 引用安装；若需固定或更新上游提交，请编辑 `pyproject.toml` 中的依赖 URL 后重新安装。
+
+### 2. 安装前端依赖
+
+```bash
+cd src/console/web && npm install && cd ../../..
+```
+
+### 3. 运行方式
+
+**仅启动 API 服务**（默认监听 `0.0.0.0:8000`，可用环境变量 `NANOBOT_SERVER_*` 调整，见 `ServerSettings`）：
+
+```bash
+console server
+```
+
+**前端开发**（会先等待控制台 API 与 nanobot WebSocket 就绪，除非设置 `SKIP_GATEWAY_WAIT=1` 或使用 `web dev --no-wait`）：
+
+```bash
+console web dev
+```
+
+**一键多进程**（需已安装 `honcho`，且本机可用 `nanobot` 命令启动网关）：
+
+```bash
+honcho start
+```
+
+`Procfile` 中默认包含：`nanobot gateway`、`console server`、`console web dev`。
+
+## 许可证
+
+MIT License — 见仓库根目录 [LICENSE](LICENSE)。

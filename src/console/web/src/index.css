@@ -1,0 +1,361 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: "Plus Jakarta Sans", Inter, system-ui, -apple-system, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color-scheme: light dark;
+}
+
+html,
+body,
+#root {
+  height: 100vh;
+  min-height: 0;
+}
+
+#root {
+  display: flex;
+  flex-direction: column;
+}
+
+html,
+body {
+  margin: 0;
+  overflow: hidden;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+/* Dark mode scrollbar */
+.dark ::-webkit-scrollbar-thumb {
+  background: #475569;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+/*
+ * Avoid universal element transitions — they run on every paint during scroll
+ * and streaming DOM updates. Prefer Tailwind transition-* on interactive nodes.
+ */
+
+/* Focus ring styles */
+*:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+/* Gradient text utility */
+.gradient-text {
+  @apply bg-clip-text text-transparent bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300;
+}
+
+/* Card hover effect */
+.card-hover {
+  @apply transition-all duration-300 hover:shadow-lg hover:-translate-y-0.5;
+}
+
+/* Glass effect */
+.glass {
+  @apply bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl;
+}
+
+/* Animated gradient background */
+.animated-gradient {
+  background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
+  background-size: 400% 400%;
+  animation: gradient 15s ease infinite;
+}
+
+@keyframes gradient {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* Utility: hide scrollbars while keeping scroll behavior */
+.no-scrollbar {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and old Edge */
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none; /* Chrome, Safari */
+}
+
+/* Sidebar menu - selected item styling */
+.ant-menu-item-selected {
+  border-radius: 10px !important;
+  font-weight: 500 !important;
+}
+
+.ant-menu-item:not(.ant-menu-item-selected):hover {
+  border-radius: 10px !important;
+}
+
+/* 紧凑弹窗样式 */
+.compact-modal .ant-modal-body {
+  padding: 16px;
+}
+
+.compact-form .ant-form-item {
+  margin-bottom: 0;
+}
+
+.compact-form .ant-form-item-label > label {
+  font-size: 12px;
+  padding: 0 0 4px 0;
+}
+
+.compact-form .ant-form-item-label {
+  padding: 0;
+}
+
+.compact-form .ant-select,
+.compact-form .ant-input,
+.compact-form .ant-input-number,
+.compact-form .ant-picker {
+  font-size: 13px;
+}
+
+.compact-form .ant-slider {
+  margin: 4px 0;
+}
+
+/*
+ * Logs 页 Table 填满容器：
+ * antd scroll.y 设置的是 max-height，内容少时表体会收缩。
+ * 用 CSS 自定义属性 min-height 强制表体填满分配高度。
+ */
+.logs-page-table-host .ant-table-wrapper,
+.logs-page-table-host .ant-table-wrapper .ant-spin-nested-loading,
+.logs-page-table-host .ant-table-wrapper .ant-spin-nested-loading .ant-spin-container,
+.logs-page-table-host .ant-table-wrapper .ant-spin-nested-loading .ant-spin-container .ant-table,
+.logs-page-table-host .ant-table-wrapper .ant-spin-nested-loading .ant-spin-container .ant-table.ant-table-fixed-header,
+.logs-page-table-host .ant-table-wrapper .ant-spin-nested-loading .ant-spin-container .ant-table.ant-table-fixed-header .ant-table-container {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 表体 + 内部 table 高度 */
+.logs-page-table-host .ant-table-body {
+  flex: 1;
+  min-height: var(--logs-table-body-y, 320px) !important;
+  overflow-y: auto !important;
+}
+
+.logs-page-table-host .ant-table-body > table {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: var(--logs-table-body-y, 320px);
+}
+
+.logs-page-table-host .ant-table-tbody {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 空状态行 */
+.logs-page-table-host .ant-table-tbody > tr.ant-table-placeholder {
+  flex: 1;
+  display: flex;
+  min-height: 100%;
+}
+
+.logs-page-table-host .ant-table-tbody > tr.ant-table-placeholder td.ant-table-cell {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+}
+
+.logs-page-table-host .ant-table-tbody > tr.ant-table-placeholder td.ant-table-cell .ant-table-expanded-row-fixed {
+  display: none;
+}
+
+/* Segmented 高度对齐 Input.Search（Input 高 36px，Segmented 默认略低） */
+.ant-segmented {
+  height: 36px;
+  display: flex;
+  align-items: center;
+}
+
+.ant-segmented-item {
+  height: 36px;
+  display: flex;
+  align-items: center;
+}
+
+.ant-segmented-item-label {
+  height: 36px;
+  display: flex;
+  align-items: center;
+}
+
+/*
+ * App shell header: global Segmented is 36px for form pages; keep toolbar controls
+ * one line with antd small (24px) Select / Button.
+ */
+.nb-app-header .ant-segmented {
+  height: 24px;
+}
+
+.nb-app-header .ant-segmented-item,
+.nb-app-header .ant-segmented-item-label {
+  height: 24px;
+}
+
+/* Activity 页面 Segmented 与 Input.Search 顶部对齐（两者 top 一致） */
+.activity-seg-align {
+  margin-top: -4px;
+}
+
+/* Input.Search 搜索框高度统一（与 Segmented 36px 对齐） */
+.ant-input-search .ant-input-affix-wrapper,
+.ant-input-search .ant-input-wrapper .ant-input-affix-wrapper {
+  height: 36px;
+  display: flex;
+  align-items: center;
+}
+
+.ant-input-search .ant-input-wrapper .ant-input-affix-wrapper .ant-input {
+  height: 34px;
+}
+
+.ant-input-search .ant-input-search-button {
+  height: 36px;
+  display: flex;
+  align-items: center;
+}
+
+/* Settings: pill-style tab bar + provider accordion */
+.settings-page-tabs .ant-tabs-nav {
+  margin-bottom: 1rem !important;
+  padding: 0.25rem;
+  background: rgb(248 250 252 / 0.92);
+  border-radius: 0.75rem;
+  border: 1px solid rgb(226 232 240 / 0.85);
+}
+
+.dark .settings-page-tabs .ant-tabs-nav {
+  background: rgb(15 23 42 / 0.55);
+  border-color: rgb(51 65 85 / 0.65);
+}
+
+.settings-page-tabs .ant-tabs-nav::before {
+  border-bottom: none !important;
+}
+
+.settings-page-tabs .ant-tabs-tab {
+  margin: 0 0.125rem !important;
+  padding: 0.5rem 0.875rem !important;
+  border-radius: 0.5rem !important;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.settings-page-tabs .ant-tabs-tab-btn {
+  outline: none !important;
+}
+
+.settings-page-tabs .ant-tabs-tab:hover {
+  background: rgb(255 255 255 / 0.72);
+}
+
+.dark .settings-page-tabs .ant-tabs-tab:hover {
+  background: rgb(30 41 59 / 0.55);
+}
+
+.settings-page-tabs .ant-tabs-tab-active {
+  background: #fff !important;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.06);
+}
+
+.dark .settings-page-tabs .ant-tabs-tab-active {
+  background: rgb(30 41 59) !important;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.22);
+}
+
+.settings-page-tabs .ant-tabs-ink-bar {
+  display: none !important;
+}
+
+.settings-page-tabs .ant-tabs-tab-active .ant-tabs-tab-btn,
+.settings-page-tabs .ant-tabs-tab-active .ant-tabs-tab-btn:hover {
+  color: var(--ant-color-primary) !important;
+  font-weight: 600;
+}
+
+.settings-provider-collapse.ant-collapse {
+  background: transparent;
+}
+
+.settings-provider-collapse.ant-collapse > .ant-collapse-item {
+  border-radius: 0.75rem;
+  margin-bottom: 0.5rem;
+  border: 1px solid rgb(226 232 240 / 0.95) !important;
+  background: rgb(255 255 255 / 0.72);
+  overflow: hidden;
+}
+
+.dark .settings-provider-collapse.ant-collapse > .ant-collapse-item {
+  border-color: rgb(51 65 85 / 0.85) !important;
+  background: rgb(15 23 42 / 0.4);
+}
+
+.settings-provider-collapse .ant-collapse-header {
+  padding: 0.875rem 1rem !important;
+  align-items: center !important;
+}
+
+.settings-provider-collapse .ant-collapse-content {
+  border-top: 1px solid rgb(241 245 249 / 0.95) !important;
+}
+
+.dark .settings-provider-collapse .ant-collapse-content {
+  border-top-color: rgb(51 65 85 / 0.75) !important;
+}
+
+.settings-provider-collapse .ant-collapse-content-box {
+  padding: 1rem !important;
+}
+
+.settings-providers-alert.ant-alert {
+  padding: 10px 12px;
+}
+
+.settings-providers-alert .ant-alert-icon {
+  font-size: 16px;
+}
