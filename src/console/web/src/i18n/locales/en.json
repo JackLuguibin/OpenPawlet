@@ -146,7 +146,6 @@
     "dailyTokenUsage": "Daily token usage",
     "modelShareTitle": "Usage by model",
     "noUsageData": "No usage data yet. It will appear after you chat with a model.",
-    "noData": "No data",
     "toastStopped": "Bot stopped",
     "toastRestartOk": "Bot restarted",
     "chartPrompt": "Prompt",

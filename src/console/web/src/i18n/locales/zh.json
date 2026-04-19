@@ -146,7 +146,6 @@
     "dailyTokenUsage": "每日 Token 用量",
     "modelShareTitle": "按模型消耗占比",
     "noUsageData": "暂无使用数据，与模型对话后会自动记录",
-    "noData": "暂无数据",
     "toastStopped": "Bot 已停止",
     "toastRestartOk": "Bot 重启成功",
     "chartPrompt": "输入",

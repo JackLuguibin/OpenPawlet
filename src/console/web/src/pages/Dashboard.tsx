@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
@@ -33,6 +33,9 @@ import { formatTokenCount, formatCost } from '../utils/format';
 
 const { Text } = Typography;
 
+/** Placeholder slice so the donut still renders when there is no usage by model */
+const MODEL_PIE_EMPTY_TYPE = '__model_pie_empty__';
+
 /** 将 usageHistory 转为柱状图分组数据 */
 function toColumnData(history: UsageHistoryItem[], t: TFunction) {
   const prompt = t('dashboard.chartPrompt');
@@ -53,7 +56,8 @@ function formatUptime(seconds: number): string {
 export default function Dashboard() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const { setStatus, setChannels, setMCPServers, status, addToast, currentBotId } = useAppStore();
+  const { setStatus, setChannels, setMCPServers, status, addToast, currentBotId, theme } =
+    useAppStore();
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['status', currentBotId],
@@ -74,6 +78,28 @@ export default function Dashboard() {
 
   // 用当前 bot 的 API 数据作为展示源，避免与 store 中其他 bot 或旧数据混用
   const displayStatus = data ?? status;
+
+  const modelPieEmptyFill = useMemo(() => {
+    const dark =
+      theme === 'dark' ||
+      (theme === 'system' &&
+        typeof window !== 'undefined' &&
+        window.matchMedia('(prefers-color-scheme: dark)').matches);
+    return dark ? '#4b5563' : '#e2e8f0';
+  }, [theme]);
+
+  const modelPieRows = useMemo(
+    () =>
+      Object.entries(displayStatus?.token_usage?.by_model ?? {})
+        .filter(([, v]) => (v.total_tokens ?? 0) > 0)
+        .map(([model, u]) => ({ type: model, value: u.total_tokens ?? 0 })),
+    [displayStatus],
+  );
+
+  const modelPieData =
+    modelPieRows.length > 0
+      ? modelPieRows
+      : [{ type: MODEL_PIE_EMPTY_TYPE, value: 1 }];
 
   const columnChartWrapRef = useRef<HTMLDivElement>(null);
   /** Plot 实例（类型声明成 Chart）：autoFit 只监听 window.resize，容器尺寸变化需 triggerResize */
@@ -475,9 +501,7 @@ export default function Dashboard() {
               <Pie
                 className="flex min-h-0 flex-1 flex-col [&>div]:min-h-0 [&>div]:flex-1"
                 containerStyle={{ width: '100%', height: '100%', flex: 1, minHeight: 0 }}
-                data={Object.entries(displayStatus?.token_usage?.by_model ?? {})
-                  .filter(([, v]) => (v.total_tokens ?? 0) > 0)
-                  .map(([model, u]) => ({ type: model, value: u.total_tokens ?? 0 }))}
+                data={modelPieData}
                 angleField="value"
                 colorField="type"
                 radius={0.8}
@@ -485,36 +509,39 @@ export default function Dashboard() {
                 label={false}
                 legend={false}
                 autoFit
+                style={
+                  modelPieRows.length === 0
+                    ? { fill: modelPieEmptyFill }
+                    : undefined
+                }
                 onReady={(chart) => {
                   const plot = chart as unknown as { triggerResize: () => void };
                   piePlotRef.current = plot;
                   plot.triggerResize();
                 }}
-                tooltip={{
-                  items: [
-                    {
-                      channel: 'y',
-                      valueFormatter: (v: number) => formatTokenCount(v),
-                    },
-                  ],
-                }}
+                tooltip={
+                  modelPieRows.length === 0
+                    ? false
+                    : {
+                        items: [
+                          {
+                            channel: 'y',
+                            valueFormatter: (v: number) => formatTokenCount(v),
+                          },
+                        ],
+                      }
+                }
               />
             </div>
             <div className="flex shrink-0 flex-col gap-2">
-              {Object.entries(displayStatus?.token_usage?.by_model ?? {})
-                .filter(([, v]) => (v.total_tokens ?? 0) > 0)
-                .map(([model, u]) => (
-                  <div key={model} className="flex items-center justify-between gap-4">
-                    <span className="font-medium truncate max-w-[100px]">{model}</span>
-                    <span className="text-amber-600 dark:text-amber-400 font-mono">
-                      {formatTokenCount(u.total_tokens ?? 0)}
-                    </span>
-                  </div>
-                ))}
-              {(!(displayStatus?.token_usage?.by_model) ||
-                Object.entries(displayStatus?.token_usage?.by_model ?? {}).filter(([, u]) => (u.total_tokens ?? 0) > 0).length === 0) && (
-                <Text type="secondary" className="text-xs">{t('dashboard.noData')}</Text>
-              )}
+              {modelPieRows.map(({ type: model, value: tokens }) => (
+                <div key={model} className="flex items-center justify-between gap-4">
+                  <span className="font-medium truncate max-w-[100px]">{model}</span>
+                  <span className="text-amber-600 dark:text-amber-400 font-mono">
+                    {formatTokenCount(tokens)}
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
         </Card>
