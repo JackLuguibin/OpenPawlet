@@ -3,10 +3,9 @@ import { Link, useLocation } from 'react-router-dom';
 import { Menu, Button, Badge, Segmented, Select } from 'antd';
 import { useTranslation } from 'react-i18next';
 import type { MenuProps } from 'antd';
-import { useQuery } from '@tanstack/react-query';
 import { useAppStore } from '../store';
 import { isConsoleWebSocketConfigured, useWebSocket } from '../hooks/useWebSocket';
-import * as api from '../api/client';
+import { useBots } from '../hooks/useBots';
 import {
   LayoutDashboard,
   MessageSquare,
@@ -161,10 +160,7 @@ export default function Layout({ children }: LayoutProps) {
 
   useWebSocket();
 
-  const { data: bots = [] } = useQuery({
-    queryKey: ['bots'],
-    queryFn: api.listBots,
-  });
+  const { data: bots = [] } = useBots();
 
   const activeBotId = currentBotId || bots.find(b => b.is_default)?.id || bots[0]?.id || null;
 

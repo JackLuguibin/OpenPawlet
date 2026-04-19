@@ -10,7 +10,6 @@ import {
   Descriptions,
   Space,
   Typography,
-  Select,
 } from 'antd';
 import {
   ReloadOutlined,
@@ -51,14 +50,9 @@ const EXAMPLE_CONFIG = `{
 export default function MCPServers() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const { addToast, currentBotId, setCurrentBotId } = useAppStore();
+  const { addToast, currentBotId } = useAppStore();
   const [selectedServer, setSelectedServer] = useState<string | null>(null);
   const [testing, setTesting] = useState<string | null>(null);
-
-  const { data: bots } = useQuery({
-    queryKey: ['bots'],
-    queryFn: api.listBots,
-  });
 
   const { data: mcpServers, isLoading, error, refetch } = useQuery({
     queryKey: ['mcp', currentBotId],
@@ -144,14 +138,6 @@ export default function MCPServers() {
           </p>
         </div>
         <Space>
-          {bots && bots.length > 1 && (
-            <Select
-              value={currentBotId || bots.find((b) => b.is_default)?.id || bots[0]?.id}
-              onChange={setCurrentBotId}
-              options={bots.map((b) => ({ label: b.name, value: b.id }))}
-              className="w-40"
-            />
-          )}
           <Button icon={<ReloadOutlined />} onClick={() => refetch()}>
             <span className="hidden sm:inline">刷新</span>
           </Button>

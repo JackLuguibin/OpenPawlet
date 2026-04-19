@@ -9,7 +9,6 @@ import {
   Space,
   Tag,
   Modal,
-  Select,
   Empty,
   Switch,
   Row,
@@ -34,6 +33,7 @@ import { useTranslation } from 'react-i18next';
 import * as api from '../api/client';
 import { useAppStore } from '../store';
 import { PageLayout } from '../components/PageLayout';
+import { MARKDOWN_PROSE_CLASS_COMPACT } from '../utils/markdownProse';
 
 const { Text } = Typography;
 
@@ -681,7 +681,7 @@ function BundleEditorSection({
 export default function Skills() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const { addToast, currentBotId, setCurrentBotId } = useAppStore();
+  const { addToast, currentBotId } = useAppStore();
   const [activeTab, setActiveTab] = useState<SkillTabKey>('builtin');
   const [skillViewModal, setSkillViewModal] = useState<{ name: string; content: string } | null>(null);
   const [skillViewMode, setSkillViewMode] = useState<'raw' | 'preview'>('preview');
@@ -760,11 +760,6 @@ export default function Skills() {
       ] satisfies { key: SkillTabKey; label: string }[],
     [t],
   );
-
-  const { data: bots } = useQuery({
-    queryKey: ['bots'],
-    queryFn: api.listBots,
-  });
 
   const { data: skills, isLoading: skillsLoading } = useQuery({
     queryKey: ['skills', currentBotId],
@@ -1275,14 +1270,6 @@ export default function Skills() {
           </p>
         </div>
         <Space className="w-full sm:w-auto justify-end sm:justify-start" wrap>
-          {bots && bots.length > 1 && (
-            <Select
-              value={currentBotId || bots.find((b) => b.is_default)?.id || bots[0]?.id}
-              onChange={setCurrentBotId}
-              options={bots.map((b) => ({ label: b.name, value: b.id }))}
-              className="w-full min-w-[10rem] sm:w-40"
-            />
-          )}
           <Button
             type="primary"
             icon={<PlusOutlined />}
@@ -1537,7 +1524,7 @@ export default function Skills() {
                 {skillViewModal.content}
               </pre>
             ) : (
-              <div className="p-4 prose prose-slate dark:prose-invert prose-sm max-w-none">
+              <div className={`p-4 ${MARKDOWN_PROSE_CLASS_COMPACT}`}>
                 <Markdown>{skillViewModal.content}</Markdown>
               </div>
             )}

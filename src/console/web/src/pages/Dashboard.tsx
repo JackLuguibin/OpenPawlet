@@ -31,6 +31,7 @@ import { Column, Tiny, Pie } from '@ant-design/plots';
 import type { UsageHistoryItem } from '../api/types';
 import { formatTokenCount, formatCost } from '../utils/format';
 import { PageLayout } from '../components/PageLayout';
+import { useBots } from '../hooks/useBots';
 
 const { Text } = Typography;
 
@@ -66,10 +67,7 @@ export default function Dashboard() {
     refetchInterval: false,
   });
 
-  const { data: bots = [] } = useQuery({
-    queryKey: ['bots'],
-    queryFn: api.listBots,
-  });
+  const { data: bots = [] } = useBots();
 
   const { data: usageHistory, isLoading: usageLoading } = useQuery({
     queryKey: ['usage-history', currentBotId],

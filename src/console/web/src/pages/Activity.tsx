@@ -7,7 +7,6 @@ import {
   Empty,
   Tag,
   Button,
-  Select,
   Space,
   Timeline,
   Typography,
@@ -58,14 +57,9 @@ const ACTIVITY_COLORS: Record<string, string> = {
 
 export default function Activity() {
   const { t } = useTranslation();
-  const { currentBotId, setCurrentBotId } = useAppStore();
+  const { currentBotId } = useAppStore();
   const [typeFilter, setTypeFilter] = useState<string>('');
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
-
-  const { data: bots } = useQuery({
-    queryKey: ['bots'],
-    queryFn: api.listBots,
-  });
 
   const formatTimeAgo = (dateStr?: string): string => {
     if (!dateStr) return '-';
@@ -196,14 +190,6 @@ export default function Activity() {
           </p>
         </div>
         <Space>
-          {bots && bots.length > 1 && (
-            <Select
-              value={currentBotId || bots.find((b) => b.is_default)?.id || bots[0]?.id}
-              onChange={setCurrentBotId}
-              options={bots.map((b) => ({ label: b.name, value: b.id }))}
-              className="w-40"
-            />
-          )}
           <Badge status="processing" text={<span className="text-xs text-gray-400">{t('common.live')}</span>} />
           <Button icon={<ReloadOutlined />} onClick={() => refetch()}>
             {t('common.refresh')}

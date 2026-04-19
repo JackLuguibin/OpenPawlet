@@ -1,12 +1,13 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Spin, Empty, Card, Select } from 'antd';
+import { Spin, Empty, Card } from 'antd';
 import { Markdown } from '../components/Markdown';
 import * as api from '../api/client';
 import { useAppStore } from '../store';
 import { PageLayout } from '../components/PageLayout';
 import { SegmentedTabs } from '../components/SegmentedTabs';
+import { MARKDOWN_PROSE_CLASS } from '../utils/markdownProse';
 
 type TabKey = 'long_term' | 'history';
 
@@ -24,7 +25,7 @@ function parseHistoryEntries(historyText: string): { timestamp?: string; content
 
 export default function Memory() {
   const { t } = useTranslation();
-  const { currentBotId, setCurrentBotId } = useAppStore();
+  const { currentBotId } = useAppStore();
   const tabs: { key: TabKey; label: string }[] = useMemo(
     () => [
       { key: 'long_term', label: t('memory.tabLong') },
@@ -33,11 +34,6 @@ export default function Memory() {
     [t],
   );
   const [activeTab, setActiveTab] = useState<TabKey>('long_term');
-
-  const { data: bots } = useQuery({
-    queryKey: ['bots'],
-    queryFn: api.listBots,
-  });
 
   const { data: memory, isLoading, error } = useQuery({
     queryKey: ['memory', currentBotId],
@@ -56,14 +52,6 @@ export default function Memory() {
           </h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{t('memory.subtitle')}</p>
         </div>
-        {bots && bots.length > 1 && (
-          <Select
-            value={currentBotId || bots.find((b) => b.is_default)?.id || bots[0]?.id}
-            onChange={setCurrentBotId}
-            options={bots.map((b) => ({ label: b.name, value: b.id }))}
-            className="w-40"
-          />
-        )}
       </div>
 
       <SegmentedTabs
@@ -92,19 +80,7 @@ export default function Memory() {
         >
           {longTermContent ? (
             <div className="max-w-3xl">
-              <div
-                className="
-                  prose prose-slate dark:prose-invert max-w-none
-                  prose-headings:font-semibold prose-headings:tracking-tight prose-headings:text-gray-900 dark:prose-headings:text-gray-100
-                  prose-h2:text-lg prose-h2:mt-8 prose-h2:mb-4 prose-h2:pb-2 prose-h2:border-b prose-h2:border-gray-200 dark:prose-h2:border-gray-600
-                  prose-h3:text-base prose-h3:mt-6 prose-h3:mb-3
-                  prose-p:leading-relaxed prose-p:text-gray-700 dark:prose-p:text-gray-300 prose-p:my-2
-                  prose-li:marker:text-primary-500 prose-ul:my-3 prose-ol:my-3
-                  prose-strong:text-gray-900 dark:prose-strong:text-gray-100
-                  prose-hr:my-8 prose-hr:border-gray-200 dark:prose-hr:border-gray-600
-                  prose-a:text-primary-600 dark:prose-a:text-primary-400 prose-a:no-underline hover:prose-a:underline
-                "
-              >
+              <div className={MARKDOWN_PROSE_CLASS}>
                 <Markdown>{longTermContent}</Markdown>
               </div>
             </div>
