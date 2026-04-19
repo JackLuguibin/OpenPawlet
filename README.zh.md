@@ -50,7 +50,7 @@ cd src/console/web && npm install && cd ../../..
 console server
 ```
 
-**前端开发**（会先等待控制台 API 与 nanobot WebSocket 就绪，除非设置 `SKIP_GATEWAY_WAIT=1` 或使用 `web dev --no-wait`）：
+**前端开发**：
 
 ```bash
 console web dev

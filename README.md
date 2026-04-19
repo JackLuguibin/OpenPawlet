@@ -69,7 +69,7 @@ cd src/console/web && npm install && cd ../../..
 console server
 ```
 
-**Frontend dev** (waits for the console API and nanobot WebSocket unless `SKIP_GATEWAY_WAIT=1` or `web dev --no-wait`):
+**Frontend dev**:
 
 ```bash
 console web dev
