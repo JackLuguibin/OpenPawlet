@@ -12,6 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       web: ${{ steps.filter.outputs.web }}
+      non_web: ${{ steps.filter.outputs.non_web }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -20,6 +21,9 @@ jobs:
           filters: |
             web:
               - 'src/console/web/**'
+            non_web:
+              - '**'
+              - '!src/console/web/**'
 
   console-web:
     needs: changes
@@ -39,8 +43,10 @@ jobs:
           npm run test
 
   test:
+    needs: changes
+    # Run when non-web paths change; if changes job is skipped (same cases as before), run full test.
     # Skip runs on push that only creates a new branch or tag (first push to that ref), or any tag ref.
-    if: github.event_name != 'push' || (github.event.created == false && !startsWith(github.ref, 'refs/tags/'))
+    if: (github.event_name != 'push' || (github.event.created == false && !startsWith(github.ref, 'refs/tags/'))) && (needs.changes.result == 'skipped' || needs.changes.outputs.non_web == 'true')
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
