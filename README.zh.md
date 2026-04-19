@@ -2,7 +2,7 @@
 
 OpenPawlet（PyPI 包名 `open-pawlet`）是围绕 **[nanobot](https://github.com/JackLuguibin/nanobot)** 生态构建的 **Web 控制台**：提供 HTTP API 与前端界面，用于在本地或部署环境中管理机器人、会话、通道、工具、MCP、技能、定时任务、工作区与配置等能力，并与 nanobot 网关的 WebSocket 协同工作。
 
-[English version](README.en.md) · [仓库入口](README.md)
+[English README](README.md)
 
 ## 功能概览
 
