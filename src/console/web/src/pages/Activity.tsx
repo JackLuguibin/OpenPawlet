@@ -21,6 +21,7 @@ import {
   ClockCircleOutlined,
   ArrowUpOutlined,
   ArrowDownOutlined,
+  AppstoreOutlined,
 } from '@ant-design/icons';
 import { Send, MessageCircle, AlertTriangle } from 'lucide-react';
 import * as api from '../api/client';
@@ -83,12 +84,60 @@ export default function Activity() {
 
   const activityTypeOptions = useMemo(
     () => [
-      { value: '', label: t('activity.typeAll') },
-      { value: 'message', label: t('activity.typeMessage') },
-      { value: 'tool_call', label: t('activity.typeToolCall') },
-      { value: 'channel', label: t('activity.typeChannel') },
-      { value: 'session', label: t('activity.typeSession') },
-      { value: 'error', label: t('activity.typeError') },
+      {
+        value: '',
+        label: (
+          <span className="flex items-center gap-1.5 sm:gap-2">
+            <AppstoreOutlined className="text-[15px] text-slate-500 dark:text-slate-400" />
+            <span className="whitespace-nowrap">{t('activity.typeAll')}</span>
+          </span>
+        ),
+      },
+      {
+        value: 'message',
+        label: (
+          <span className="flex items-center gap-1.5 sm:gap-2">
+            <Send className="h-[15px] w-[15px] shrink-0 text-blue-500 opacity-90" />
+            <span className="whitespace-nowrap">{t('activity.typeMessage')}</span>
+          </span>
+        ),
+      },
+      {
+        value: 'tool_call',
+        label: (
+          <span className="flex items-center gap-1.5 sm:gap-2">
+            <CodeOutlined className="text-[15px] text-violet-500 opacity-90" />
+            <span className="whitespace-nowrap">{t('activity.typeToolCall')}</span>
+          </span>
+        ),
+      },
+      {
+        value: 'channel',
+        label: (
+          <span className="flex items-center gap-1.5 sm:gap-2">
+            <ApiOutlined className="text-[15px] text-cyan-600 dark:text-cyan-400 opacity-90" />
+            <span className="whitespace-nowrap">{t('activity.typeChannel')}</span>
+          </span>
+        ),
+      },
+      {
+        value: 'session',
+        label: (
+          <span className="flex items-center gap-1.5 sm:gap-2">
+            <MessageCircle className="h-[15px] w-[15px] shrink-0 text-emerald-600 dark:text-emerald-400 opacity-90" />
+            <span className="whitespace-nowrap">{t('activity.typeSession')}</span>
+          </span>
+        ),
+      },
+      {
+        value: 'error',
+        label: (
+          <span className="flex items-center gap-1.5 sm:gap-2">
+            <AlertTriangle className="h-[15px] w-[15px] shrink-0 text-red-500 opacity-90" />
+            <span className="whitespace-nowrap">{t('activity.typeError')}</span>
+          </span>
+        ),
+      },
     ],
     [t],
   );
@@ -162,21 +211,44 @@ export default function Activity() {
       </div>
 
       {/* Filters */}
-      <div className="flex items-center gap-4 mt-4 shrink-0">
-        <Segmented
-          className="activity-seg-align"
-          value={typeFilter}
-          onChange={(val) => setTypeFilter(String(val))}
-          options={activityTypeOptions}
-        />
-        <Segmented
-          value={sortOrder}
-          onChange={(val) => setSortOrder(val as 'desc' | 'asc')}
-          options={[
-            { value: 'desc', label: <ArrowDownOutlined /> },
-            { value: 'asc', label: <ArrowUpOutlined /> },
-          ]}
-        />
+      <div className="activity-filter-bar mt-5 shrink-0">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <div className="min-w-0 flex-1 overflow-x-auto [-webkit-overflow-scrolling:touch] [scrollbar-width:thin]">
+            <Segmented
+              className="activity-type-segmented min-w-max"
+              value={typeFilter}
+              onChange={(val) => setTypeFilter(String(val))}
+              options={activityTypeOptions}
+            />
+          </div>
+          <div className="flex shrink-0 items-center gap-2 border-t border-slate-200/90 pt-3 dark:border-slate-600/80 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0">
+            <Segmented
+              className="activity-sort-segmented w-full sm:w-auto"
+              value={sortOrder}
+              onChange={(val) => setSortOrder(val as 'desc' | 'asc')}
+              options={[
+                {
+                  value: 'desc',
+                  label: (
+                    <span className="flex items-center justify-center gap-1.5 px-0.5">
+                      <ArrowDownOutlined className="text-sm" />
+                      <span className="hidden md:inline">{t('activity.sortNewest')}</span>
+                    </span>
+                  ),
+                },
+                {
+                  value: 'asc',
+                  label: (
+                    <span className="flex items-center justify-center gap-1.5 px-0.5">
+                      <ArrowUpOutlined className="text-sm" />
+                      <span className="hidden md:inline">{t('activity.sortOldest')}</span>
+                    </span>
+                  ),
+                },
+              ]}
+            />
+          </div>
+        </div>
       </div>
 
       {/* Activity Counts */}

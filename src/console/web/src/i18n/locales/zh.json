@@ -289,6 +289,8 @@
     "typeChannel": "通道",
     "typeSession": "会话",
     "typeError": "错误",
+    "sortNewest": "最新",
+    "sortOldest": "最早",
     "loadFailed": "加载活动失败：{{error}}",
     "empty": "暂无活动"
   },

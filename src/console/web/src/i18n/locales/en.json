@@ -289,6 +289,8 @@
     "typeChannel": "Channels",
     "typeSession": "Sessions",
     "typeError": "Errors",
+    "sortNewest": "Newest",
+    "sortOldest": "Oldest",
     "loadFailed": "Failed to load activity: {{error}}",
     "empty": "No activity yet"
   },

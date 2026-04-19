@@ -243,6 +243,41 @@ body {
   margin-top: -4px;
 }
 
+/* Activity: filter toolbar (type + sort) */
+.activity-filter-bar {
+  padding: 0.5rem 0.625rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgb(226 232 240 / 0.9);
+  background: rgb(248 250 252 / 0.95);
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
+}
+
+.dark .activity-filter-bar {
+  border-color: rgb(51 65 85 / 0.65);
+  background: rgb(15 23 42 / 0.5);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.2);
+}
+
+.activity-type-segmented.ant-segmented {
+  background: rgb(255 255 255 / 0.65);
+}
+
+.dark .activity-type-segmented.ant-segmented {
+  background: rgb(30 41 59 / 0.45);
+}
+
+.activity-type-segmented .ant-segmented-item-selected {
+  font-weight: 500;
+}
+
+.activity-sort-segmented.ant-segmented {
+  background: rgb(255 255 255 / 0.65);
+}
+
+.dark .activity-sort-segmented.ant-segmented {
+  background: rgb(30 41 59 / 0.45);
+}
+
 /* Input.Search 搜索框高度统一（与 Segmented 36px 对齐） */
 .ant-input-search .ant-input-affix-wrapper,
 .ant-input-search .ant-input-wrapper .ant-input-affix-wrapper {
