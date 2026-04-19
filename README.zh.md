@@ -64,6 +64,24 @@ honcho start
 
 `Procfile` 中默认包含：`nanobot gateway`、`console server`、`console web dev`。
 
+## 版本历史（时间线）
+
+以下列出 PyPI 包 `open-pawlet` 的主要版本节点（与仓库根目录 `pyproject.toml` 中 `[project] version` 一致）。**自上而下由新到旧**（越靠下越早）。发布新版本时请将对应条目补充到时间线**顶部**。
+
+```text
+2026-04-19 ──●── 0.2.1  统一版本号（pyproject、控制台 API schema、前端 package 等）
+              │
+2026-04-19 ──●── 0.2.0  依赖与打包调整；README 修订；仓库内嵌 nanobot；新增 WhatsApp bridge 等
+              │
+2026-04-19 ──●── 0.1.0  首个版本：FastAPI 控制台、CLI、工作区与基础 README / Procfile
+```
+
+| 日期 | 版本 | 摘要 |
+|------|------|------|
+| 2026-04-19 | **0.2.1** | 跨组件版本号对齐（Python 包、服务端 API 版本字段、前端 `package.json` 等），便于排查与发布。 |
+| 2026-04-19 | **0.2.0** | 依赖与可选集成整理、安装说明更新；`nanobot` 随本仓库打包；引入 `bridge/`（含 WhatsApp 相关）等扩展。 |
+| 2026-04-19 | **0.1.0** | 初始实现：OpenPawlet Web 控制台、FastAPI 后端、`console` CLI、工作区能力、基础文档与多进程编排入口。 |
+
 ## 许可证
 
 MIT License — 见仓库根目录 [LICENSE](LICENSE)。

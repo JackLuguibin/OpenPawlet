@@ -83,6 +83,24 @@ honcho start
 
 The default `Procfile` runs: `nanobot gateway`, `console server`, and `console web dev`.
 
+## Version history (timeline)
+
+Major releases for the `open-pawlet` PyPI package (matches `[project] version` in the root `pyproject.toml`). **Newest at the top; older entries below.** Add new rows at the **top** when you cut a release.
+
+```text
+2026-04-19 ──●── 0.2.1  Aligned versions (pyproject, API schema, web package.json)
+              │
+2026-04-19 ──●── 0.2.0  Deps & packaging; README; bundled nanobot; WhatsApp bridge under bridge/
+              │
+2026-04-19 ──●── 0.1.0  First release: FastAPI console, CLI, workspace, README / Procfile
+```
+
+| Date | Version | Summary |
+|------|---------|---------|
+| 2026-04-19 | **0.2.1** | Single source of truth for version strings across the Python package, server API version field, and frontend `package.json`. |
+| 2026-04-19 | **0.2.0** | Dependency and optional extras cleanup, install docs; nanobot bundled in-repo; `bridge/` (including WhatsApp-related pieces). |
+| 2026-04-19 | **0.1.0** | Initial OpenPawlet: FastAPI backend, `console` CLI, workspace features, docs, and Honcho/Procfile entry points. |
+
 ## License
 
 MIT — see [LICENSE](LICENSE) in the repository root.
