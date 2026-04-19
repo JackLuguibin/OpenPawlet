@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
@@ -74,6 +74,44 @@ export default function Dashboard() {
 
   // 用当前 bot 的 API 数据作为展示源，避免与 store 中其他 bot 或旧数据混用
   const displayStatus = data ?? status;
+
+  const columnChartWrapRef = useRef<HTMLDivElement>(null);
+  /** Plot 实例（类型声明成 Chart）：autoFit 只监听 window.resize，容器尺寸变化需 triggerResize */
+  const columnPlotRef = useRef<{ triggerResize: () => void } | null>(null);
+  const pieChartWrapRef = useRef<HTMLDivElement>(null);
+  const piePlotRef = useRef<{ triggerResize: () => void } | null>(null);
+
+  useEffect(() => {
+    const el = columnChartWrapRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => {
+      requestAnimationFrame(() => {
+        try {
+          columnPlotRef.current?.triggerResize();
+        } catch {
+          columnPlotRef.current = null;
+        }
+      });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [usageLoading, usageHistory]);
+
+  useEffect(() => {
+    const el = pieChartWrapRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => {
+      requestAnimationFrame(() => {
+        try {
+          piePlotRef.current?.triggerResize();
+        } catch {
+          piePlotRef.current = null;
+        }
+      });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [displayStatus?.token_usage]);
 
   useEffect(() => {
     if (data) {
@@ -345,18 +383,32 @@ export default function Dashboard() {
           className="flex min-h-0 min-w-0 flex-col [&_.ant-card-head]:shrink-0 [&_.ant-card-body]:flex [&_.ant-card-body]:min-h-0 [&_.ant-card-body]:flex-1 [&_.ant-card-body]:flex-col"
         >
           {usageLoading ? (
-            <div className="flex min-h-[240px] flex-1 items-center justify-center">
+            <div className="flex flex-1 items-center justify-center py-12">
               <Spin />
             </div>
           ) : usageHistory && usageHistory.length > 0 ? (
-            <div className="flex min-h-0 w-full flex-1 flex-col" style={{ minHeight: 240 }}>
-              <Column
-                data={toColumnData(usageHistory, t)}
-                xField="date"
-                yField="value"
-                seriesField="type"
-                group
-                paddingBottom={56}
+            <div className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col">
+              <div
+                ref={columnChartWrapRef}
+                className="flex min-h-0 w-full flex-1 flex-col [&_.antv-chart]:min-h-0"
+              >
+                <Column
+                  className="flex min-h-0 flex-1 flex-col [&>div]:min-h-0 [&>div]:flex-1"
+                  containerStyle={{ width: '100%', height: '100%', flex: 1, minHeight: 0 }}
+                  data={toColumnData(usageHistory, t)}
+                  xField="date"
+                  yField="value"
+                  seriesField="type"
+                  group
+                  autoFit
+                  onReady={(chart) => {
+                    const plot = chart as unknown as { triggerResize: () => void };
+                    columnPlotRef.current = plot;
+                    plot.triggerResize();
+                  }}
+                  marginLeft={52}
+                marginRight={8}
+                marginBottom={28}
                 scale={{
                   x: { padding: 0.5 },
                 }}
@@ -394,10 +446,11 @@ export default function Dashboard() {
                   },
                 }}
                 legend={{ position: 'top' }}
-              />
+                />
+              </div>
             </div>
           ) : (
-            <div className="flex min-h-[200px] flex-1 flex-col items-center justify-center py-8">
+            <div className="flex flex-1 flex-col items-center justify-center py-8">
               <Text type="secondary" className="text-center">
                 {t('dashboard.noUsageData')}
               </Text>
@@ -414,9 +467,14 @@ export default function Dashboard() {
           size="small"
           className="flex min-h-0 min-w-0 flex-col [&_.ant-card-head]:shrink-0 [&_.ant-card-body]:flex [&_.ant-card-body]:min-h-0 [&_.ant-card-body]:flex-1 [&_.ant-card-body]:flex-col"
         >
-          <div className="flex min-h-0 w-full flex-1 flex-col items-center justify-center gap-4">
-            <div className="flex shrink-0 items-center justify-center" style={{ width: 180, height: 180 }}>
+          <div className="flex min-h-0 w-full flex-1 flex-col gap-4">
+            <div
+              ref={pieChartWrapRef}
+              className="flex min-h-[200px] w-full min-w-0 flex-1 flex-col [&_.antv-chart]:min-h-0"
+            >
               <Pie
+                className="flex min-h-0 flex-1 flex-col [&>div]:min-h-0 [&>div]:flex-1"
+                containerStyle={{ width: '100%', height: '100%', flex: 1, minHeight: 0 }}
                 data={Object.entries(displayStatus?.token_usage?.by_model ?? {})
                   .filter(([, v]) => (v.total_tokens ?? 0) > 0)
                   .map(([model, u]) => ({ type: model, value: u.total_tokens ?? 0 }))}
@@ -426,6 +484,12 @@ export default function Dashboard() {
                 innerRadius={0.4}
                 label={false}
                 legend={false}
+                autoFit
+                onReady={(chart) => {
+                  const plot = chart as unknown as { triggerResize: () => void };
+                  piePlotRef.current = plot;
+                  plot.triggerResize();
+                }}
                 tooltip={{
                   items: [
                     {
@@ -436,7 +500,7 @@ export default function Dashboard() {
                 }}
               />
             </div>
-            <div className="flex flex-col gap-2">
+            <div className="flex shrink-0 flex-col gap-2">
               {Object.entries(displayStatus?.token_usage?.by_model ?? {})
                 .filter(([, v]) => (v.total_tokens ?? 0) > 0)
                 .map(([model, u]) => (
