@@ -332,7 +332,18 @@
     "lastN": "Last {{count}}"
   },
   "workspace": {
-    "saved": "File saved"
+    "pageTitle": "Workspace",
+    "pageSubtitle": "Browse and edit files in the bot workspace",
+    "refreshList": "Refresh file list",
+    "viewPreview": "Preview",
+    "viewCode": "Code",
+    "viewEdit": "Edit",
+    "editPlaceholder": "Edit file content…",
+    "saved": "File saved",
+    "deleted": "File deleted",
+    "deleteFile": "Delete file",
+    "deleteConfirmTitle": "Delete \"{{name}}\"?",
+    "deleteConfirmDesc": "This cannot be undone."
   },
   "botProfile": {
     "saved": "File saved"

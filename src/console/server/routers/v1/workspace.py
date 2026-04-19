@@ -106,3 +106,20 @@ async def update_workspace_file(
         raise HTTPException(status_code=400, detail="Path is a directory")
     write_text(target, body.content)
     return DataResponse(data=OkWithPath(path=normalized))
+
+
+@router.delete("/workspace/file", response_model=DataResponse[OkWithPath])
+async def delete_workspace_file(
+    path: str = Query(...),
+    bot_id: str | None = Query(default=None, alias="bot_id"),
+) -> DataResponse[OkWithPath]:
+    """Remove a file under the workspace root (not directories)."""
+    normalized = path.replace("\\", "/").lstrip("/")
+    target = resolve_workspace_path(bot_id, normalized, must_exist=True)
+    if target.is_dir():
+        raise HTTPException(status_code=400, detail="Path is a directory")
+    try:
+        target.unlink()
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail="Failed to delete file") from exc
+    return DataResponse(data=OkWithPath(path=normalized))

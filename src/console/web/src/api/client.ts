@@ -629,6 +629,16 @@ export async function updateWorkspaceFile(
     body: JSON.stringify({ path, content }),
   });
 }
+
+export async function deleteWorkspaceFile(
+  path: string,
+  botId?: string | null
+): Promise<{ status: string; path: string }> {
+  const params = new URLSearchParams({ path });
+  return fetchJson(appendBotQuery(`${API_BASE}/workspace/file?${params}`, botId), {
+    method: 'DELETE',
+  });
+}
 // ====================
 // Batch Operations
 // ====================

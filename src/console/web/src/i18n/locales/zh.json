@@ -332,7 +332,18 @@
     "lastN": "最近 {{count}} 条"
   },
   "workspace": {
-    "saved": "文件已保存"
+    "pageTitle": "工作区",
+    "pageSubtitle": "列出和编辑 Bot 工作区文件",
+    "refreshList": "刷新文件列表",
+    "viewPreview": "预览",
+    "viewCode": "代码",
+    "viewEdit": "编辑",
+    "editPlaceholder": "在此编辑文件内容…",
+    "saved": "文件已保存",
+    "deleted": "文件已删除",
+    "deleteFile": "删除文件",
+    "deleteConfirmTitle": "删除「{{name}}」？",
+    "deleteConfirmDesc": "此操作无法撤销。"
   },
   "botProfile": {
     "saved": "文件已保存"

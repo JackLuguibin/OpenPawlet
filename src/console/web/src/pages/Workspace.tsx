@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, type Key } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import {
@@ -6,9 +6,9 @@ import {
   Tree,
   Spin,
   Button,
-  Input,
   Segmented,
   Empty,
+  Modal,
 } from 'antd';
 import {
   ReloadOutlined,
@@ -16,14 +16,14 @@ import {
   FileOutlined,
   SaveOutlined,
   CloseOutlined,
+  DeleteOutlined,
 } from '@ant-design/icons';
 import type { DataNode } from 'antd/es/tree';
 import { Markdown } from '../components/Markdown';
 import * as api from '../api/client';
 import { useAppStore } from '../store';
 import { PageLayout } from '../components/PageLayout';
-
-const { TextArea } = Input;
+import { WorkspaceCodeEditor } from '../components/WorkspaceCodeEditor';
 
 const PROSE_CLASS = `
   prose prose-slate dark:prose-invert max-w-none
@@ -64,9 +64,14 @@ export default function Workspace() {
   const { t } = useTranslation();
   const { currentBotId, addToast } = useAppStore();
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [expandedKeys, setExpandedKeys] = useState<Key[]>([]);
   const [viewMode, setViewMode] = useState<'preview' | 'code' | 'edit'>('preview');
   const [editContent, setEditContent] = useState('');
   const [editMode, setEditMode] = useState(false);
+
+  useEffect(() => {
+    setExpandedKeys([]);
+  }, [currentBotId]);
 
   const { data: filesData, isLoading: filesLoading } = useQuery({
     queryKey: ['workspace-files', currentBotId],
@@ -91,11 +96,37 @@ export default function Workspace() {
     onError: (e) => addToast({ type: 'error', message: String(e) }),
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (path: string) => api.deleteWorkspaceFile(path, currentBotId),
+    onSuccess: (_data, path) => {
+      addToast({ type: 'success', message: t('workspace.deleted') });
+      setSelectedFile(null);
+      setEditMode(false);
+      setViewMode('preview');
+      queryClient.invalidateQueries({ queryKey: ['workspace-files', currentBotId] });
+      queryClient.removeQueries({ queryKey: ['workspace-file', currentBotId, path] });
+    },
+    onError: (e) => addToast({ type: 'error', message: String(e) }),
+  });
+
+  const confirmDeleteFile = () => {
+    if (!selectedFile) return;
+    const baseName = selectedFile.split('/').pop() ?? selectedFile;
+    Modal.confirm({
+      title: t('workspace.deleteConfirmTitle', { name: baseName }),
+      content: t('workspace.deleteConfirmDesc'),
+      okText: t('common.delete'),
+      cancelText: t('common.cancel'),
+      okType: 'danger',
+      onOk: () => deleteMutation.mutateAsync(selectedFile),
+    });
+  };
+
   const treeData = filesData?.items
     ? buildTreeData(filesData.items, '')
     : [];
 
-  const handleSelect = (_: unknown, { node }: { node: DataNode }) => {
+  const handleSelect = (_selectedKeys: Key[], { node }: { node: DataNode }) => {
     const key = node.key as string;
     if (node.isLeaf) {
       setSelectedFile(key);
@@ -103,6 +134,15 @@ export default function Workspace() {
       setEditMode(false);
     } else {
       setSelectedFile(null);
+      setExpandedKeys((prev) => {
+        const next = new Set(prev);
+        if (next.has(key)) {
+          next.delete(key);
+        } else {
+          next.add(key);
+        }
+        return Array.from(next);
+      });
     }
   };
 
@@ -135,57 +175,81 @@ export default function Workspace() {
 
   return (
     <PageLayout variant="bleed">
-      <div className="flex items-center justify-between shrink-0">
-        <div>
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
-            工作区
-          </h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            列出和编辑 Bot 工作区文件
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            icon={<ReloadOutlined />}
-            onClick={() => {
-              queryClient.invalidateQueries({ queryKey: ['workspace-files', currentBotId] });
-              queryClient.invalidateQueries({ queryKey: ['workspace-file', currentBotId] });
-            }}
-          />
-          {selectedFile && !editMode && (
-            <Segmented
-              value={viewMode}
-              options={[
-                { label: '预览', value: 'preview' },
-                { label: '代码', value: 'code' },
-                { label: '编辑', value: 'edit' },
-              ]}
-              onChange={(v) => {
-                const mode = v as 'preview' | 'code' | 'edit';
-                setViewMode(mode);
-                if (mode === 'edit') startEdit();
+      <header className="shrink-0 rounded-2xl border border-gray-200/80 bg-gradient-to-b from-white to-gray-50/95 px-4 py-4 shadow-sm ring-1 ring-black/[0.03] dark:border-gray-700/60 dark:from-gray-800/90 dark:to-gray-900/50 dark:ring-white/[0.06] sm:px-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-start gap-3 sm:gap-4">
+            <div
+              className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-500/10 text-primary-600 dark:bg-primary-400/15 dark:text-primary-300"
+              aria-hidden
+            >
+              <FolderOutlined className="text-lg" />
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-xl font-semibold tracking-tight text-gray-900 dark:text-gray-50 sm:text-2xl">
+                {t('workspace.pageTitle')}
+              </h1>
+              <p className="mt-1 max-w-2xl text-sm leading-relaxed text-gray-600 dark:text-gray-400">
+                {t('workspace.pageSubtitle')}
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 sm:justify-end md:border-l md:border-gray-200/80 md:pl-5 dark:md:border-gray-700/60">
+            <Button
+              type="default"
+              shape="circle"
+              icon={<ReloadOutlined />}
+              title={t('workspace.refreshList')}
+              aria-label={t('workspace.refreshList')}
+              onClick={() => {
+                queryClient.invalidateQueries({ queryKey: ['workspace-files', currentBotId] });
+                queryClient.invalidateQueries({ queryKey: ['workspace-file', currentBotId] });
               }}
             />
-          )}
-          {selectedFile && editMode && (
-            <>
+            {selectedFile && !editMode && (
+              <Segmented
+                value={viewMode}
+                options={[
+                  { label: t('workspace.viewPreview'), value: 'preview' },
+                  { label: t('workspace.viewCode'), value: 'code' },
+                  { label: t('workspace.viewEdit'), value: 'edit' },
+                ]}
+                onChange={(v) => {
+                  const mode = v as 'preview' | 'code' | 'edit';
+                  setViewMode(mode);
+                  if (mode === 'edit') startEdit();
+                }}
+              />
+            )}
+            {selectedFile && editMode && (
+              <>
+                <Button
+                  type="primary"
+                  icon={<SaveOutlined />}
+                  onClick={saveEdit}
+                  loading={updateMutation.isPending}
+                >
+                  {t('common.save')}
+                </Button>
+                <Button icon={<CloseOutlined />} onClick={cancelEdit}>
+                  {t('common.cancel')}
+                </Button>
+              </>
+            )}
+            {selectedFile && (
               <Button
-                type="primary"
-                icon={<SaveOutlined />}
-                onClick={saveEdit}
-                loading={updateMutation.isPending}
-              >
-                保存
-              </Button>
-              <Button icon={<CloseOutlined />} onClick={cancelEdit}>
-                取消
-              </Button>
-            </>
-          )}
+                danger
+                icon={<DeleteOutlined />}
+                loading={deleteMutation.isPending}
+                onClick={confirmDeleteFile}
+                title={t('workspace.deleteFile')}
+                aria-label={t('workspace.deleteFile')}
+              />
+            )}
+          </div>
         </div>
-      </div>
+      </header>
 
-      <div className="mt-4 flex min-h-0 min-w-0 flex-1 gap-6">
+      <div className="mt-5 flex min-h-0 min-w-0 flex-1 gap-6">
         <Card
           title="文件列表"
           size="small"
@@ -196,8 +260,11 @@ export default function Workspace() {
             <Tree
               showIcon
               treeData={treeData}
-              onSelect={handleSelect}
               blockNode
+              expandedKeys={expandedKeys}
+              onExpand={setExpandedKeys}
+              selectedKeys={selectedFile ? [selectedFile] : []}
+              onSelect={handleSelect}
             />
           ) : (
             <Empty description="暂无文件" className="py-8" />
@@ -206,10 +273,19 @@ export default function Workspace() {
 
         <Card
           className="flex-1 min-h-0 overflow-hidden flex flex-col rounded-2xl border border-gray-200/80 dark:border-gray-700/60 bg-white dark:bg-gray-800/40 shadow-sm hover:shadow-md transition-shadow"
-          styles={{ body: { padding: '2rem 2.5rem', flex: 1, minHeight: 0, overflowY: 'auto' } }}
+          styles={{
+            body: {
+              padding: '2rem 2.5rem',
+              flex: 1,
+              minHeight: 0,
+              overflowY: 'auto',
+              display: 'flex',
+              flexDirection: 'column',
+            },
+          }}
         >
           {!selectedFile ? (
-            <div className="flex-1 flex flex-col items-center justify-center min-h-[200px]">
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col items-center justify-center">
               <Empty description="从左侧选择文件" className="text-gray-500" />
             </div>
           ) : fileLoading ? (
@@ -217,27 +293,13 @@ export default function Workspace() {
               <Spin />
             </div>
           ) : editMode ? (
-            <div className="flex flex-col gap-4">
-              <TextArea
+            <div className="grid min-h-0 min-w-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)]">
+              <WorkspaceCodeEditor
                 value={editContent}
-                onChange={(e) => setEditContent(e.target.value)}
-                rows={24}
-                className="font-mono text-sm"
-                placeholder="编辑文件内容..."
+                onChange={setEditContent}
+                filePath={selectedFile}
+                placeholder={t('workspace.editPlaceholder')}
               />
-              <div className="flex gap-2 shrink-0">
-                <Button
-                  type="primary"
-                  icon={<SaveOutlined />}
-                  onClick={saveEdit}
-                  loading={updateMutation.isPending}
-                >
-                  保存
-                </Button>
-                <Button icon={<CloseOutlined />} onClick={cancelEdit}>
-                  取消
-                </Button>
-              </div>
             </div>
           ) : viewMode === 'preview' && isMarkdown ? (
             <div className="w-full">
