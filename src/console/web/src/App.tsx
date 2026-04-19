@@ -111,11 +111,11 @@ function App() {
           },
           Input: {
             borderRadius: 10,
-            controlHeight: 40,
+            controlHeight: 36,
           },
           Select: {
             borderRadius: 10,
-            controlHeight: 40,
+            controlHeight: 36,
           },
         },
       }}
