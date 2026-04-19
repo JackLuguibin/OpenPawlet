@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
@@ -44,6 +45,12 @@ function muteBenignViteWsProxyErrors(): Plugin {
 }
 
 export default defineConfig({
+  test: {
+    environment: 'jsdom',
+    setupFiles: ['./src/test/setup.ts'],
+    include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    passWithNoTests: false,
+  },
   plugins: [react(), muteBenignViteWsProxyErrors()],
   resolve: {
     alias: {
