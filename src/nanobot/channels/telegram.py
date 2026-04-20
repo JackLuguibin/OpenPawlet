@@ -569,6 +569,7 @@ class TelegramChannel(BaseChannel):
             thread_kwargs = {}
             if message_thread_id := meta.get("message_thread_id"):
                 thread_kwargs["message_thread_id"] = message_thread_id
+<<<<<<< HEAD:src/nanobot/channels/telegram.py
             raw_text = buf.text
             html = _markdown_to_telegram_html(raw_text)
             if len(html) <= TELEGRAM_HTML_MAX_LEN:
@@ -576,6 +577,14 @@ class TelegramChannel(BaseChannel):
                 extra_html_chunks = []
             else:
                 html_chunks = split_message(html, TELEGRAM_HTML_MAX_LEN)
+=======
+            html = _markdown_to_telegram_html(buf.text)
+            if len(html) <= 4096:
+                primary_html = html
+                extra_html_chunks = []
+            else:
+                html_chunks = split_message(html, 4096)
+>>>>>>> fd8f08c (fix(telegram): convert markdown to HTML before splitting to avoid message length overflow):nanobot/channels/telegram.py
                 primary_html = html_chunks[0]
                 extra_html_chunks = html_chunks[1:]
             try:
@@ -599,7 +608,11 @@ class TelegramChannel(BaseChannel):
                     await self._call_with_retry(
                         self._app.bot.edit_message_text,
                         chat_id=int_chat_id, message_id=buf.message_id,
+<<<<<<< HEAD:src/nanobot/channels/telegram.py
                         text=primary_plain,
+=======
+                        text=primary_html,
+>>>>>>> fd8f08c (fix(telegram): convert markdown to HTML before splitting to avoid message length overflow):nanobot/channels/telegram.py
                     )
                 except Exception as e2:
                     if self._is_not_modified_error(e2):
@@ -608,6 +621,7 @@ class TelegramChannel(BaseChannel):
                         logger.warning("Final stream edit failed: {}", e2)
                         raise  # Let ChannelManager handle retry
             for extra_html_chunk in extra_html_chunks:
+<<<<<<< HEAD:src/nanobot/channels/telegram.py
                 try:
                     await self._call_with_retry(
                         self._app.bot.send_message,
@@ -618,6 +632,14 @@ class TelegramChannel(BaseChannel):
                 except Exception:
                     # Fall back to _send_text which handles HTML→plain gracefully.
                     await self._send_text(int_chat_id, extra_html_chunk)
+=======
+                await self._call_with_retry(
+                    self._app.bot.send_message,
+                    chat_id=int_chat_id, text=extra_html_chunk,
+                    parse_mode="HTML",
+                    **thread_kwargs,
+                )
+>>>>>>> fd8f08c (fix(telegram): convert markdown to HTML before splitting to avoid message length overflow):nanobot/channels/telegram.py
             self._stream_bufs.pop(chat_id, None)
             return
 

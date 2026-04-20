@@ -497,7 +497,10 @@ async def test_send_delta_stream_end_splits_oversized_reply() -> None:
     assert "123" not in channel._stream_bufs
 
 
+<<<<<<< HEAD:src/nanobot/tests/channels/test_telegram_channel.py
 @pytest.mark.asyncio
+=======
+>>>>>>> fd8f08c (fix(telegram): convert markdown to HTML before splitting to avoid message length overflow):tests/channels/test_telegram_channel.py
 async def test_send_delta_stream_end_html_expansion_does_not_overflow() -> None:
     """Markdown that expands when converted to HTML is still split correctly.
 
