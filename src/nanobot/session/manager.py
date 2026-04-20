@@ -107,15 +107,18 @@ class SessionManager:
         self.legacy_sessions_dir = get_legacy_sessions_dir()
         self._cache: dict[str, Session] = {}
 
+    @staticmethod
+    def safe_key(key: str) -> str:
+        """Map a session key to a stable filename stem (shared with HTTP helpers)."""
+        return safe_filename(key.replace(":", "_"))
+
     def _get_session_path(self, key: str) -> Path:
         """Get the file path for a session."""
-        safe_key = safe_filename(key.replace(":", "_"))
-        return self.sessions_dir / f"{safe_key}.jsonl"
+        return self.sessions_dir / f"{self.safe_key(key)}.jsonl"
 
     def _get_legacy_session_path(self, key: str) -> Path:
         """Legacy global session path (~/.nanobot/sessions/)."""
-        safe_key = safe_filename(key.replace(":", "_"))
-        return self.legacy_sessions_dir / f"{safe_key}.jsonl"
+        return self.legacy_sessions_dir / f"{self.safe_key(key)}.jsonl"
 
     def get_or_create(self, key: str) -> Session:
         """

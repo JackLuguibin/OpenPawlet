@@ -13,8 +13,8 @@ import ssl
 import time
 import uuid
 from collections.abc import Callable
-from typing import Any, Self
-from urllib.parse import parse_qs, urlparse
+from typing import TYPE_CHECKING, Any, Self
+from urllib.parse import parse_qs, unquote, urlparse
 
 from loguru import logger
 from pydantic import Field, field_validator, model_validator
@@ -28,6 +28,9 @@ from nanobot.bus.events import OutboundMessage
 from nanobot.bus.queue import MessageBus
 from nanobot.channels.base import BaseChannel
 from nanobot.config.schema import Base
+
+if TYPE_CHECKING:
+    from nanobot.session.manager import SessionManager
 
 
 def _strip_trailing_slash(path: str) -> str:
@@ -76,6 +79,9 @@ class WebSocketConfig(Base):
       The same global flag controls whether other channels receive reasoning on outbound messages.
     - ``max_delta_buffer_chars``: When ``delta_chunk_chars`` > 0, caps buffered stream text per stream;
       overflow is flushed as extra delta frames before ``stream_end``. ``0`` means no cap.
+    - When the gateway passes a :class:`~nanobot.session.manager.SessionManager` into
+      :class:`WebSocketChannel`, optional HTTP routes on the same port expose session listing and
+      read/delete for ``websocket:…`` keys (see module helpers and ``/api/bootstrap`` on localhost).
     """
 
     enabled: bool = False
@@ -140,6 +146,18 @@ def _http_json_response(data: dict[str, Any], *, status: int = 200) -> Response:
     )
     reason = http.HTTPStatus(status).phrase
     return Response(status, reason, headers, body)
+
+
+def _read_default_model_name() -> str | None:
+    """Return the configured default agent model (for /api/bootstrap JSON)."""
+    try:
+        from nanobot.config.loader import load_config
+
+        model = load_config().agents.defaults.model.strip()
+        return model or None
+    except Exception as e:
+        logger.debug("websocket bootstrap could not load model name: {}", e)
+        return None
 
 
 def _parse_request_path(path_with_query: str) -> tuple[str, dict[str, list[str]]]:
@@ -233,6 +251,78 @@ def _parse_envelope(raw: str) -> dict[str, Any] | None:
     return data
 
 
+_LOCALHOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
+
+# Matches the legacy chat-id pattern but allows file-system-safe stems too,
+# so the API can address sessions whose keys came from non-WebSocket channels.
+_API_KEY_RE = re.compile(r"^[A-Za-z0-9_:.-]{1,128}$")
+
+
+def _decode_api_key(raw_key: str) -> str | None:
+    """Decode a percent-encoded API path segment, then validate the result."""
+    key = unquote(raw_key)
+    if _API_KEY_RE.match(key) is None:
+        return None
+    return key
+
+
+def _is_localhost(connection: Any) -> bool:
+    """Return True if *connection* originated from the loopback interface."""
+    addr = getattr(connection, "remote_address", None)
+    if not addr:
+        return False
+    host = addr[0] if isinstance(addr, tuple) else addr
+    if not isinstance(host, str):
+        return False
+    # ``::ffff:127.0.0.1`` is loopback in IPv6-mapped form.
+    if host.startswith("::ffff:"):
+        host = host[7:]
+    return host in _LOCALHOSTS
+
+
+def _http_response(
+    body: bytes,
+    *,
+    status: int = 200,
+    content_type: str = "text/plain; charset=utf-8",
+    extra_headers: list[tuple[str, str]] | None = None,
+) -> Response:
+    headers = [
+        ("Date", email.utils.formatdate(usegmt=True)),
+        ("Connection", "close"),
+        ("Content-Length", str(len(body))),
+        ("Content-Type", content_type),
+    ]
+    if extra_headers:
+        headers.extend(extra_headers)
+    reason = http.HTTPStatus(status).phrase
+    return Response(status, reason, Headers(headers), body)
+
+
+def _http_error(status: int, message: str | None = None) -> Response:
+    body = (message or http.HTTPStatus(status).phrase).encode("utf-8")
+    return _http_response(body, status=status)
+
+
+def _bearer_token(headers: Any) -> str | None:
+    """Pull a Bearer token out of standard headers."""
+    auth = headers.get("Authorization") or headers.get("authorization")
+    if auth and auth.lower().startswith("bearer "):
+        return auth[7:].strip() or None
+    return None
+
+
+def _is_websocket_upgrade(request: WsRequest) -> bool:
+    """Detect an actual WS upgrade; plain HTTP GETs to the same path should fall through."""
+    upgrade = request.headers.get("Upgrade") or request.headers.get("upgrade")
+    connection = request.headers.get("Connection") or request.headers.get("connection")
+    if not upgrade or "websocket" not in upgrade.lower():
+        return False
+    if not connection or "upgrade" not in connection.lower():
+        return False
+    return True
+
+
 def _issue_route_secret_matches(headers: Any, configured_secret: str) -> bool:
     """Return True if the token-issue HTTP request carries credentials matching ``token_issue_secret``."""
     if not configured_secret:
@@ -253,7 +343,13 @@ class WebSocketChannel(BaseChannel):
     name = "websocket"
     display_name = "WebSocket"
 
-    def __init__(self, config: Any, bus: MessageBus):
+    def __init__(
+        self,
+        config: Any,
+        bus: MessageBus,
+        *,
+        session_manager: "SessionManager | None" = None,
+    ):
         if isinstance(config, dict):
             config = WebSocketConfig.model_validate(config)
         super().__init__(config, bus)
@@ -265,9 +361,13 @@ class WebSocketChannel(BaseChannel):
         # connection -> default chat_id for legacy frames that omit routing.
         self._conn_default: dict[Any, str] = {}
         self._delta_buffers: dict[tuple[str, Any], str] = {}
+        # Single-use tokens consumed at WebSocket handshake.
         self._issued_tokens: dict[str, float] = {}
+        # Multi-use tokens for HTTP session API; checked but not consumed per request.
+        self._api_tokens: dict[str, float] = {}
         self._stop_event: asyncio.Event | None = None
         self._server_task: asyncio.Task[None] | None = None
+        self._session_manager = session_manager
         # Optional ``(session_key) -> bool`` from gateway; enriches ``ready`` with ``session_busy``.
         self._session_busy_resolver: Callable[[str], bool] | None = None
 
@@ -387,6 +487,144 @@ class WebSocketChannel(BaseChannel):
             {"token": token_value, "expires_in": self.config.token_ttl_s}
         )
 
+    # -- HTTP dispatch ------------------------------------------------------
+
+    async def _dispatch_http(self, connection: Any, request: WsRequest) -> Any:
+        """Route an inbound HTTP request to a handler or to the WS upgrade path."""
+        got, query = _parse_request_path(request.path)
+
+        if self.config.token_issue_path:
+            issue_expected = _normalize_config_path(self.config.token_issue_path)
+            if got == issue_expected:
+                return self._handle_token_issue_http(connection, request)
+
+        # Localhost-only: mint paired WS + HTTP API tokens.
+        if got == "/api/bootstrap":
+            return self._handle_api_bootstrap(connection)
+
+        if got == "/api/sessions":
+            return self._handle_sessions_list(request)
+
+        m = re.match(r"^/api/sessions/([^/]+)/messages$", got)
+        if m:
+            return self._handle_session_messages(request, m.group(1))
+
+        # websockets' HTTP parser only accepts GET; deletion uses a dedicated path.
+        m = re.match(r"^/api/sessions/([^/]+)/delete$", got)
+        if m:
+            return self._handle_session_delete(request, m.group(1))
+
+        expected_ws = self._expected_path()
+        if got == expected_ws and _is_websocket_upgrade(request):
+            client_id = _query_first(query, "client_id") or ""
+            if len(client_id) > 128:
+                client_id = client_id[:128]
+            if not self.is_allowed(client_id):
+                return connection.respond(403, "Forbidden")
+            if self.config.resume_chat_id:
+                raw_chat = _query_first(query, "chat_id")
+                if raw_chat is not None and raw_chat.strip():
+                    try:
+                        _parse_resume_chat_id(raw_chat)
+                    except ValueError:
+                        return connection.respond(400, "Bad Request")
+            return self._authorize_websocket_handshake(connection, query)
+
+        return connection.respond(404, "Not Found")
+
+    def _check_api_token(self, request: WsRequest) -> bool:
+        """Validate a request against the API token pool (multi-use, TTL-bound)."""
+        self._purge_expired_api_tokens()
+        token = _bearer_token(request.headers) or _query_first(
+            _parse_query(request.path), "token"
+        )
+        if not token:
+            return False
+        expiry = self._api_tokens.get(token)
+        if expiry is None or time.monotonic() > expiry:
+            self._api_tokens.pop(token, None)
+            return False
+        return True
+
+    def _purge_expired_api_tokens(self) -> None:
+        now = time.monotonic()
+        for token_key, expiry in list(self._api_tokens.items()):
+            if now > expiry:
+                self._api_tokens.pop(token_key, None)
+
+    def _handle_api_bootstrap(self, connection: Any) -> Response:
+        if not _is_localhost(connection):
+            return _http_error(403, "bootstrap is localhost-only")
+        self._purge_expired_issued_tokens()
+        self._purge_expired_api_tokens()
+        if (
+            len(self._issued_tokens) >= self._MAX_ISSUED_TOKENS
+            or len(self._api_tokens) >= self._MAX_ISSUED_TOKENS
+        ):
+            return _http_response(
+                json.dumps({"error": "too many outstanding tokens"}).encode("utf-8"),
+                status=429,
+                content_type="application/json; charset=utf-8",
+            )
+        token = f"nbwt_{secrets.token_urlsafe(32)}"
+        expiry = time.monotonic() + float(self.config.token_ttl_s)
+        self._issued_tokens[token] = expiry
+        self._api_tokens[token] = expiry
+        model = _read_default_model_name()
+        return _http_json_response(
+            {
+                "token": token,
+                "ws_path": self._expected_path(),
+                "expires_in": self.config.token_ttl_s,
+                "model_name": model if model is not None else "",
+            }
+        )
+
+    def _handle_sessions_list(self, request: WsRequest) -> Response:
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        if self._session_manager is None:
+            return _http_error(503, "session manager unavailable")
+        sessions = self._session_manager.list_sessions()
+        cleaned = [
+            {k: v for k, v in s.items() if k != "path"}
+            for s in sessions
+            if isinstance(s.get("key"), str) and s["key"].startswith("websocket:")
+        ]
+        return _http_json_response({"sessions": cleaned})
+
+    @staticmethod
+    def _is_websocket_channel_session_key(key: str) -> bool:
+        return key.startswith("websocket:")
+
+    def _handle_session_messages(self, request: WsRequest, key: str) -> Response:
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        if self._session_manager is None:
+            return _http_error(503, "session manager unavailable")
+        decoded_key = _decode_api_key(key)
+        if decoded_key is None:
+            return _http_error(400, "invalid session key")
+        if not self._is_websocket_channel_session_key(decoded_key):
+            return _http_error(404, "session not found")
+        data = self._session_manager.read_session_file(decoded_key)
+        if data is None:
+            return _http_error(404, "session not found")
+        return _http_json_response(data)
+
+    def _handle_session_delete(self, request: WsRequest, key: str) -> Response:
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        if self._session_manager is None:
+            return _http_error(503, "session manager unavailable")
+        decoded_key = _decode_api_key(key)
+        if decoded_key is None:
+            return _http_error(400, "invalid session key")
+        if not self._is_websocket_channel_session_key(decoded_key):
+            return _http_error(404, "session not found")
+        deleted = self._session_manager.delete_session(decoded_key)
+        return _http_json_response({"deleted": bool(deleted)})
+
     def _authorize_websocket_handshake(self, connection: Any, query: dict[str, list[str]]) -> Any:
         supplied = _query_first(query, "token")
         static_token = self.config.token.strip()
@@ -424,31 +662,7 @@ class WebSocketChannel(BaseChannel):
             connection: ServerConnection,
             request: WsRequest,
         ) -> Any:
-            got, _ = _parse_request_path(request.path)
-            if self.config.token_issue_path:
-                issue_expected = _normalize_config_path(self.config.token_issue_path)
-                if got == issue_expected:
-                    return self._handle_token_issue_http(connection, request)
-
-            expected_ws = self._expected_path()
-            if got != expected_ws:
-                return connection.respond(404, "Not Found")
-            # Early reject before WebSocket upgrade to avoid unnecessary overhead;
-            # _handle_message() performs a second check as defense-in-depth.
-            query = _parse_query(request.path)
-            client_id = _query_first(query, "client_id") or ""
-            if len(client_id) > 128:
-                client_id = client_id[:128]
-            if not self.is_allowed(client_id):
-                return connection.respond(403, "Forbidden")
-            if self.config.resume_chat_id:
-                raw_chat = _query_first(query, "chat_id")
-                if raw_chat is not None and raw_chat.strip():
-                    try:
-                        _parse_resume_chat_id(raw_chat)
-                    except ValueError:
-                        return connection.respond(400, "Bad Request")
-            return self._authorize_websocket_handshake(connection, query)
+            return await self._dispatch_http(connection, request)
 
         async def handler(connection: ServerConnection) -> None:
             await self._connection_loop(connection)
@@ -626,6 +840,7 @@ class WebSocketChannel(BaseChannel):
         self._conn_default.clear()
         self._delta_buffers.clear()
         self._issued_tokens.clear()
+        self._api_tokens.clear()
 
     async def _safe_send_to(self, connection: Any, raw: str, *, label: str = "") -> None:
         """Send a raw frame to one connection, cleaning up on ConnectionClosed."""
@@ -678,6 +893,10 @@ class WebSocketChannel(BaseChannel):
                 payload["media"] = msg.media
             if msg.reply_to:
                 payload["reply_to"] = msg.reply_to
+            if metadata.get("_tool_hint"):
+                payload["kind"] = "tool_hint"
+            elif metadata.get("_progress"):
+                payload["kind"] = "progress"
             rc = metadata.get("reasoning_content")
             if isinstance(rc, str) and rc:
                 payload["reasoning_content"] = rc

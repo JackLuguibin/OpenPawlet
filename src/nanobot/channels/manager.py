@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
@@ -12,6 +12,9 @@ from nanobot.bus.queue import MessageBus
 from nanobot.channels.base import BaseChannel
 from nanobot.config.schema import Config
 from nanobot.utils.restart import consume_restart_notice_from_env, format_restart_completed_message
+
+if TYPE_CHECKING:
+    from nanobot.session.manager import SessionManager
 
 # Retry delays for message sending (exponential backoff: 1s, 2s, 4s)
 _SEND_RETRY_DELAYS = (1, 2, 4)
@@ -27,9 +30,16 @@ class ChannelManager:
     - Route outbound messages
     """
 
-    def __init__(self, config: Config, bus: MessageBus):
+    def __init__(
+        self,
+        config: Config,
+        bus: MessageBus,
+        *,
+        session_manager: "SessionManager | None" = None,
+    ):
         self.config = config
         self.bus = bus
+        self._session_manager = session_manager
         self.channels: dict[str, BaseChannel] = {}
         self._dispatch_task: asyncio.Task | None = None
 
@@ -55,7 +65,10 @@ class ChannelManager:
             if not enabled:
                 continue
             try:
-                channel = cls(section, self.bus)
+                kwargs: dict[str, Any] = {}
+                if cls.name == "websocket" and self._session_manager is not None:
+                    kwargs["session_manager"] = self._session_manager
+                channel = cls(section, self.bus, **kwargs)
                 channel.transcription_provider = transcription_provider
                 channel.transcription_api_key = transcription_key
                 channel.transcription_api_base = transcription_base

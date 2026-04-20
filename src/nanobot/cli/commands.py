@@ -754,8 +754,8 @@ def gateway(
 
     cron.on_job = on_cron_job
 
-    # Create channel manager
-    channels = ChannelManager(config, bus)
+    # Create channel manager (SessionManager enables WebSocket HTTP session API).
+    channels = ChannelManager(config, bus, session_manager=session_manager)
     from nanobot.channels.websocket import WebSocketChannel
 
     _ws_ch = channels.channels.get("websocket")

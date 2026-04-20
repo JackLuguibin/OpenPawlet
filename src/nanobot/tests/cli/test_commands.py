@@ -1303,7 +1303,7 @@ def test_gateway_health_endpoint_binds_and_serves_expected_responses(
             return None
 
     class _FakeChannelManager:
-        def __init__(self, _config, _bus) -> None:
+        def __init__(self, _config, _bus, **_kwargs) -> None:
             self.enabled_channels = ["telegram", "discord"]
             self.channels: dict[str, object] = {}
 
