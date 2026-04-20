@@ -1,11 +1,27 @@
 import asyncio
 import json
 import time
+from collections.abc import Callable
 
 import pytest
 
 from nanobot.cron.service import CronService
 from nanobot.cron.types import CronJob, CronPayload, CronSchedule
+
+
+async def _poll_until(
+    predicate: Callable[[], bool],
+    *,
+    timeout_s: float = 5.0,
+    interval_s: float = 0.05,
+) -> None:
+    """Wait until predicate() is true or timeout (asserts with a clear error)."""
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if predicate():
+            return
+        await asyncio.sleep(interval_s)
+    assert predicate(), "condition not met within timeout"
 
 
 def test_add_job_rejects_unknown_timezone(tmp_path) -> None:
@@ -201,7 +217,8 @@ async def test_start_server_not_jobs(tmp_path):
     async def on_job(job):
         called.append(job.name)
 
-    service = CronService(store_path, on_job=on_job, max_sleep_ms=1000)
+    # Lower idle tick when there are zero jobs so file reload happens quickly after add_job.
+    service = CronService(store_path, on_job=on_job, max_sleep_ms=200)
     await service.start()
     assert len(service.list_jobs()) == 0
 
@@ -212,8 +229,7 @@ async def test_start_server_not_jobs(tmp_path):
         message="hello",
     )
     assert len(service.list_jobs()) == 1
-    await asyncio.sleep(2)
-    assert len(called) != 0
+    await _poll_until(lambda: len(called) != 0, timeout_s=3.0)
     service.stop()
 
 
@@ -265,8 +281,7 @@ async def test_running_service_picks_up_external_add(tmp_path):
             message="ping",
         )
 
-        await asyncio.sleep(2)
-        assert "external" in called
+        await _poll_until(lambda: "external" in called, timeout_s=3.0)
     finally:
         service.stop()
 
@@ -296,10 +311,11 @@ async def test_add_job_during_jobs_exec(tmp_path):
     assert len(service.list_jobs()) == 1
     await service.start()
     try:
-        await asyncio.sleep(3)
-        jobs = service.list_jobs()
-        assert len(jobs) == 2
-        assert "test" in [j.name for j in jobs]
+        await _poll_until(
+            lambda: len(service.list_jobs()) == 2
+            and "test" in [j.name for j in service.list_jobs()],
+            timeout_s=5.0,
+        )
     finally:
         service.stop()
 

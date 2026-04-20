@@ -112,6 +112,8 @@ class TestConsolidatorTokenBudget:
         session.last_consolidated = 0
         session.messages = [{"role": "user", "content": "hi"}]
         session.key = "test:key"
+        # Keep budget positive: default _SAFETY_BUFFER exceeds context_window_tokens in the fixture.
+        consolidator._SAFETY_BUFFER = 100
         consolidator.estimate_session_prompt_tokens = MagicMock(return_value=(100, "tiktoken"))
         consolidator.archive = AsyncMock(return_value=True)
         await consolidator.maybe_consolidate_by_tokens(session)
