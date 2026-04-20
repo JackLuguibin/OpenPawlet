@@ -17,6 +17,10 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
 ]
+license-files = [
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md",
+]
 
 dependencies = [
     "anthropic>=0.45.0,<1.0.0",
@@ -123,6 +127,12 @@ packages = ["src/console", "src/nanobot"]
 exclude = [
     "/src/console/web/node_modules",
 ]
+# Build-time generated assets under .gitignore'd paths must ship in wheel/sdist.
+# `artifacts` bypasses the VCS filter (unlike `include`).
+# Build the web UI with `bun run build` into src/nanobot/web/dist/ before `python -m build`.
+artifacts = [
+    "src/nanobot/web/dist/**/*",
+]
 
 [tool.hatch.build.targets.sdist]
 include = [
@@ -131,6 +141,8 @@ include = [
     "/README.zh.md",
     "/README.en.md",
     "/LICENSE",
+    "/THIRD_PARTY_NOTICES.md",
+    "/pyproject.toml",
     "/Procfile",
 ]
 exclude = [
