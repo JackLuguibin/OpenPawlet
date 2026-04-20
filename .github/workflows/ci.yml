@@ -37,8 +37,15 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
 
+    # enable-cache: restore/save uv's wheel/source cache between runs (big win on matrix jobs).
+    # Include pyproject.toml in the key — this repo has no uv.lock yet.
     - name: Install uv
-      uses: astral-sh/setup-uv@v4
+      uses: astral-sh/setup-uv@v5
+      with:
+        enable-cache: true
+        cache-dependency-glob: |
+          **/pyproject.toml
+          **/uv.lock
 
     - name: Install system dependencies (Linux)
       if: runner.os == 'Linux'
