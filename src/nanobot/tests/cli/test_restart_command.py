@@ -12,8 +12,6 @@ import pytest
 from nanobot.bus.events import InboundMessage, OutboundMessage
 from nanobot.providers.base import LLMResponse
 
-_real_asyncio_sleep = asyncio.sleep
-
 
 def _make_loop():
     """Create a minimal AgentLoop with mocked dependencies."""
@@ -49,12 +47,7 @@ class TestRestartCommand:
         msg = InboundMessage(channel="cli", sender_id="user", chat_id="direct", content="/restart")
         ctx = CommandContext(msg=msg, session=None, key=msg.session_key, raw="/restart", loop=loop)
 
-        async def _collapse_long_restart_delay(delay: float, /) -> None:
-            # cmd_restart uses sleep(1) before execv; collapse for fast tests only.
-            await _real_asyncio_sleep(0.0 if delay >= 1.0 else delay)
-
         with patch.dict(os.environ, {}, clear=False), \
-             patch("nanobot.command.builtin.asyncio.sleep", _collapse_long_restart_delay), \
              patch("nanobot.command.builtin.os.execv") as mock_execv:
             out = await cmd_restart(ctx)
             assert "Restarting" in out.content
@@ -62,10 +55,7 @@ class TestRestartCommand:
             assert os.environ.get(RESTART_NOTIFY_CHAT_ID_ENV) == "direct"
             assert os.environ.get(RESTART_STARTED_AT_ENV)
 
-            for _ in range(20):
-                if mock_execv.called:
-                    break
-                await asyncio.sleep(0)
+            await asyncio.sleep(1.5)
             mock_execv.assert_called_once()
 
     @pytest.mark.asyncio
