@@ -250,40 +250,59 @@ class MCPResourceWrapper(Tool):
     async def execute(self, **kwargs: Any) -> str:
         from mcp import types
 
-        try:
-            result = await asyncio.wait_for(
-                self._session.read_resource(self._uri),
-                timeout=self._resource_timeout,
-            )
-        except asyncio.TimeoutError:
-            logger.warning(
-                "MCP resource '{}' timed out after {}s", self._name, self._resource_timeout
-            )
-            return f"(MCP resource read timed out after {self._resource_timeout}s)"
-        except asyncio.CancelledError:
-            task = asyncio.current_task()
-            if task is not None and task.cancelling() > 0:
-                raise
-            logger.warning("MCP resource '{}' was cancelled by server/SDK", self._name)
-            return "(MCP resource read was cancelled)"
-        except Exception as exc:
-            logger.exception(
-                "MCP resource '{}' failed: {}: {}",
-                self._name,
-                type(exc).__name__,
-                exc,
-            )
-            return f"(MCP resource read failed: {type(exc).__name__})"
-
-        parts: list[str] = []
-        for block in result.contents:
-            if isinstance(block, types.TextResourceContents):
-                parts.append(block.text)
-            elif isinstance(block, types.BlobResourceContents):
-                parts.append(f"[Binary resource: {len(block.blob)} bytes]")
+        for attempt in range(2):
+            try:
+                result = await asyncio.wait_for(
+                    self._session.read_resource(self._uri),
+                    timeout=self._resource_timeout,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "MCP resource '{}' timed out after {}s", self._name, self._resource_timeout
+                )
+                return f"(MCP resource read timed out after {self._resource_timeout}s)"
+            except asyncio.CancelledError:
+                task = asyncio.current_task()
+                if task is not None and task.cancelling() > 0:
+                    raise
+                logger.warning("MCP resource '{}' was cancelled by server/SDK", self._name)
+                return "(MCP resource read was cancelled)"
+            except Exception as exc:
+                if _is_transient(exc):
+                    if attempt == 0:
+                        logger.warning(
+                            "MCP resource '{}' hit transient error ({}), retrying once...",
+                            self._name,
+                            type(exc).__name__,
+                        )
+                        await asyncio.sleep(1)
+                        continue
+                    logger.error(
+                        "MCP resource '{}' failed after retry: {}: {}",
+                        self._name,
+                        type(exc).__name__,
+                        exc,
+                    )
+                    return f"(MCP resource read failed after retry: {type(exc).__name__})"
+                logger.exception(
+                    "MCP resource '{}' failed: {}: {}",
+                    self._name,
+                    type(exc).__name__,
+                    exc,
+                )
+                return f"(MCP resource read failed: {type(exc).__name__})"
             else:
-                parts.append(str(block))
-        return "\n".join(parts) or "(no output)"
+                parts: list[str] = []
+                for block in result.contents:
+                    if isinstance(block, types.TextResourceContents):
+                        parts.append(block.text)
+                    elif isinstance(block, types.BlobResourceContents):
+                        parts.append(f"[Binary resource: {len(block.blob)} bytes]")
+                    else:
+                        parts.append(str(block))
+                return "\n".join(parts) or "(no output)"
+
+        return "(MCP resource read failed)"  # Unreachable
 
 
 class MCPPromptWrapper(Tool):
@@ -336,52 +355,72 @@ class MCPPromptWrapper(Tool):
         from mcp import types
         from mcp.shared.exceptions import McpError
 
-        try:
-            result = await asyncio.wait_for(
-                self._session.get_prompt(self._prompt_name, arguments=kwargs),
-                timeout=self._prompt_timeout,
-            )
-        except asyncio.TimeoutError:
-            logger.warning("MCP prompt '{}' timed out after {}s", self._name, self._prompt_timeout)
-            return f"(MCP prompt call timed out after {self._prompt_timeout}s)"
-        except asyncio.CancelledError:
-            task = asyncio.current_task()
-            if task is not None and task.cancelling() > 0:
-                raise
-            logger.warning("MCP prompt '{}' was cancelled by server/SDK", self._name)
-            return "(MCP prompt call was cancelled)"
-        except McpError as exc:
-            logger.error(
-                "MCP prompt '{}' failed: code={} message={}",
-                self._name,
-                exc.error.code,
-                exc.error.message,
-            )
-            return f"(MCP prompt call failed: {exc.error.message} [code {exc.error.code}])"
-        except Exception as exc:
-            logger.exception(
-                "MCP prompt '{}' failed: {}: {}",
-                self._name,
-                type(exc).__name__,
-                exc,
-            )
-            return f"(MCP prompt call failed: {type(exc).__name__})"
-
-        parts: list[str] = []
-        for message in result.messages:
-            content = message.content
-            # content is a single ContentBlock (not a list) in MCP SDK >= 1.x
-            if isinstance(content, types.TextContent):
-                parts.append(content.text)
-            elif isinstance(content, list):
-                for block in content:
-                    if isinstance(block, types.TextContent):
-                        parts.append(block.text)
-                    else:
-                        parts.append(str(block))
+        for attempt in range(2):
+            try:
+                result = await asyncio.wait_for(
+                    self._session.get_prompt(self._prompt_name, arguments=kwargs),
+                    timeout=self._prompt_timeout,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "MCP prompt '{}' timed out after {}s", self._name, self._prompt_timeout
+                )
+                return f"(MCP prompt call timed out after {self._prompt_timeout}s)"
+            except asyncio.CancelledError:
+                task = asyncio.current_task()
+                if task is not None and task.cancelling() > 0:
+                    raise
+                logger.warning("MCP prompt '{}' was cancelled by server/SDK", self._name)
+                return "(MCP prompt call was cancelled)"
+            except McpError as exc:
+                logger.error(
+                    "MCP prompt '{}' failed: code={} message={}",
+                    self._name,
+                    exc.error.code,
+                    exc.error.message,
+                )
+                return f"(MCP prompt call failed: {exc.error.message} [code {exc.error.code}])"
+            except Exception as exc:
+                if _is_transient(exc):
+                    if attempt == 0:
+                        logger.warning(
+                            "MCP prompt '{}' hit transient error ({}), retrying once...",
+                            self._name,
+                            type(exc).__name__,
+                        )
+                        await asyncio.sleep(1)
+                        continue
+                    logger.error(
+                        "MCP prompt '{}' failed after retry: {}: {}",
+                        self._name,
+                        type(exc).__name__,
+                        exc,
+                    )
+                    return f"(MCP prompt call failed after retry: {type(exc).__name__})"
+                logger.exception(
+                    "MCP prompt '{}' failed: {}: {}",
+                    self._name,
+                    type(exc).__name__,
+                    exc,
+                )
+                return f"(MCP prompt call failed: {type(exc).__name__})"
             else:
-                parts.append(str(content))
-        return "\n".join(parts) or "(no output)"
+                parts: list[str] = []
+                for message in result.messages:
+                    content = message.content
+                    if isinstance(content, types.TextContent):
+                        parts.append(content.text)
+                    elif isinstance(content, list):
+                        for block in content:
+                            if isinstance(block, types.TextContent):
+                                parts.append(block.text)
+                            else:
+                                parts.append(str(block))
+                    else:
+                        parts.append(str(content))
+                return "\n".join(parts) or "(no output)"
+
+        return "(MCP prompt call failed)"  # Unreachable
 
 
 async def connect_mcp_servers(
