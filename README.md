@@ -24,6 +24,28 @@ The console roughly covers the areas below (see the UI and OpenAPI for the exact
 
 **Typical use:** run next to `nanobot gateway` to inspect status, debug sessions, and manage these resources from the console.
 
+## Screenshots
+
+The **Nanobot** web UI (branded “Nanobot · AI Assistant” in the console) provides a sidebar for Chat, Control, Agent, and Management areas, plus a top bar for workspace selection, language, theme, and gateway status.
+
+### Dashboard overview
+
+The overview page surfaces key metrics (status, uptime, active sessions, messages, tokens, cost), the **current model**, and charts such as daily token usage and usage by model—useful for at-a-glance monitoring in local or deployed setups.
+
+![Nanobot dashboard overview](docs/screenshots/dashboard-overview.png)
+
+### Chat
+
+The chat view supports **multiple sessions** (list with message counts and last activity), streaming-style replies with optional **thinking** / progress indicators, and an input area with token budget hints. Navigation to channels, MCP, memory, workspace, agents, skills, and related tools stays one click away in the sidebar.
+
+![Nanobot chat](docs/screenshots/chat.png)
+
+### Channels
+
+**Channels** lists integrations for your bot (for example WebSocket, Weixin, DingTalk, Discord, Email, Feishu, Matrix, MoChat, Microsoft Teams, QQ, Slack, Telegram, WeCom, and WhatsApp). You can enable or edit each channel from the grid; the UI notes that changes are saved to `config.json` and that you should **restart the bot** for them to take effect.
+
+![Nanobot channels management](docs/screenshots/channels.png)
+
 ## Architecture notes
 
 - **Backend:** FastAPI-based OpenPawlet service with a consistent error envelope and OpenAPI documentation.

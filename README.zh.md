@@ -10,6 +10,28 @@ OpenPawlet（PyPI 包名 `open-pawlet`）是围绕 **[nanobot](https://github.co
 - **前端**：`web` 目录下的 Vite 应用，支持开发态热更新与生产构建。
 - **典型场景**：与 `nanobot gateway` 一起运行，通过控制台观察状态、调试会话、管理 Bot 相关资源。
 
+## 界面预览
+
+控制台前端以 **Nanobot · AI Assistant** 为品牌展示：左侧为 **Chat / Control / Agent / Management** 分组导航，顶部可切换工作区、语言、明暗主题，并显示与网关的连接状态。
+
+### 仪表盘总览
+
+**Overview** 页面集中展示运行状态、在线会话数、当日消息与 Token、成本等卡片指标，以及**当前模型**与「按日 Token」「按模型占比」等图表，便于快速掌握助手与用量情况。
+
+![Nanobot 仪表盘总览](docs/screenshots/dashboard-overview.png)
+
+### 对话
+
+**Chat** 支持多会话列表（消息数、最近活动时间），消息区可展示流式回复与 **Thinking** 等过程提示，底部输入框旁可显示 Token 占用比例。侧栏可直达通道、MCP、记忆、工作区、Agent、技能等能力。
+
+![Nanobot 对话界面](docs/screenshots/chat.png)
+
+### 通道管理
+
+**Channels** 以卡片网格管理各类接入（如 WebSocket、微信、钉钉、Discord、邮件、飞书、Matrix、MoChat、Microsoft Teams、QQ、Slack、Telegram、企业微信、WhatsApp 等）。界面会提示：配置会写入 `config.json`，修改后需**重启 Bot** 才会生效。
+
+![Nanobot 通道管理](docs/screenshots/channels.png)
+
 ## 技术栈
 
 | 层级 | 技术 |
