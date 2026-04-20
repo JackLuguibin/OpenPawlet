@@ -85,21 +85,24 @@ The default `Procfile` runs: `nanobot gateway`, `console server`, and `console w
 
 ## Version history (timeline)
 
-Major releases for the `open-pawlet` PyPI package (matches `[project] version` in the root `pyproject.toml`). **Newest at the top; older entries below.** Add new rows at the **top** when you cut a release.
+Major releases for the `open-pawlet` PyPI package (matches `[project] version` in the root `pyproject.toml`). The console is built for the **nanobot** stack; embedded **nanobot** lives under `src/nanobot` and ships with each install. **Newest at the top; older entries below.** Add new rows at the **top** when you cut a release.
 
 ```text
-2026-04-19 ──●── 0.2.1  Aligned versions (pyproject, API schema, web package.json)
+2026-04-20 ──●── 0.2.2  nanobot WebSocket (session lifecycle, delta stream, busy state); tests/docs; UI & dashboard
+              │
+2026-04-19 ──●── 0.2.1  Aligned versions (pyproject, API schema, web); nanobot + console version metadata
               │
 2026-04-19 ──●── 0.2.0  Deps & packaging; README; bundled nanobot; WhatsApp bridge under bridge/
               │
-2026-04-19 ──●── 0.1.0  First release: FastAPI console, CLI, workspace, README / Procfile
+2026-04-19 ──●── 0.1.0  First release: FastAPI console for nanobot, CLI, workspace, README / Procfile
 ```
 
 | Date | Version | Summary |
 |------|---------|---------|
-| 2026-04-19 | **0.2.1** | Single source of truth for version strings across the Python package, server API version field, and frontend `package.json`. |
-| 2026-04-19 | **0.2.0** | Dependency and optional extras cleanup, install docs; nanobot bundled in-repo; `bridge/` (including WhatsApp-related pieces). |
-| 2026-04-19 | **0.1.0** | Initial OpenPawlet: FastAPI backend, `console` CLI, workspace features, docs, and Honcho/Procfile entry points. |
+| 2026-04-20 | **0.2.2** | **nanobot:** WebSocket session lifecycle, delta streaming, and busy-state handling in gateway and UI; broader nanobot test coverage and channel docs. Console: dashboard/charts, activity filters, workspace and bot-profile flows, ErrorBoundary, layout and control tweaks; CI and Vitest hardening. |
+| 2026-04-19 | **0.2.1** | Single source of truth for version strings (Python package, server API version, frontend `package.json`) so **nanobot**-embedded installs report consistent versions end-to-end. |
+| 2026-04-19 | **0.2.0** | Dependency and optional extras cleanup, install docs; **nanobot** bundled in-repo; `bridge/` (including WhatsApp-related pieces). |
+| 2026-04-19 | **0.1.0** | Initial OpenPawlet web console for **nanobot**: FastAPI backend, `console` CLI, workspace features, docs, and Honcho/Procfile entry points. |
 
 ## License
 

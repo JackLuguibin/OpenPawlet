@@ -66,21 +66,24 @@ honcho start
 
 ## 版本历史（时间线）
 
-以下列出 PyPI 包 `open-pawlet` 的主要版本节点（与仓库根目录 `pyproject.toml` 中 `[project] version` 一致）。**自上而下由新到旧**（越靠下越早）。发布新版本时请将对应条目补充到时间线**顶部**。
+以下列出 PyPI 包 `open-pawlet` 的主要版本节点（与仓库根目录 `pyproject.toml` 中 `[project] version` 一致）。本控制台面向 **nanobot** 技术栈；内嵌 **nanobot** 源码位于 `src/nanobot`，随安装一并提供。**自上而下由新到旧**（越靠下越早）。发布新版本时请将对应条目补充到时间线**顶部**。
 
 ```text
-2026-04-19 ──●── 0.2.1  统一版本号（pyproject、控制台 API schema、前端 package 等）
+2026-04-20 ──●── 0.2.2  nanobot WebSocket（会话生命周期、增量流、忙状态）；测试与文档；控制台 UI 与仪表盘
+              │
+2026-04-19 ──●── 0.2.1  统一版本号（pyproject、API schema、前端 package）；nanobot 与控制台版本元数据
               │
 2026-04-19 ──●── 0.2.0  依赖与打包调整；README 修订；仓库内嵌 nanobot；新增 WhatsApp bridge 等
               │
-2026-04-19 ──●── 0.1.0  首个版本：FastAPI 控制台、CLI、工作区与基础 README / Procfile
+2026-04-19 ──●── 0.1.0  首个版本：面向 nanobot 的 FastAPI 控制台、CLI、工作区与基础 README / Procfile
 ```
 
 | 日期 | 版本 | 摘要 |
 |------|------|------|
-| 2026-04-19 | **0.2.1** | 跨组件版本号对齐（Python 包、服务端 API 版本字段、前端 `package.json` 等），便于排查与发布。 |
-| 2026-04-19 | **0.2.0** | 依赖与可选集成整理、安装说明更新；`nanobot` 随本仓库打包；引入 `bridge/`（含 WhatsApp 相关）等扩展。 |
-| 2026-04-19 | **0.1.0** | 初始实现：OpenPawlet Web 控制台、FastAPI 后端、`console` CLI、工作区能力、基础文档与多进程编排入口。 |
+| 2026-04-20 | **0.2.2** | **nanobot：** WebSocket 会话生命周期、增量流式传输、网关在忙状态与 UI 联动；扩充 nanobot 相关测试与通道类文档。控制台：仪表盘/图表、活动筛选、工作区与 Bot 资料流程、ErrorBoundary、布局与控件优化；CI 与 Vitest 加固。 |
+| 2026-04-19 | **0.2.1** | Python 包、服务端 API 版本、前端 `package.json` 等版本号对齐，便于带内嵌 **nanobot** 的安装在各处报告一致版本。 |
+| 2026-04-19 | **0.2.0** | 依赖与可选集成整理、安装说明更新；**nanobot** 随本仓库打包；引入 `bridge/`（含 WhatsApp 相关）等扩展。 |
+| 2026-04-19 | **0.1.0** | 面向 **nanobot** 的 OpenPawlet Web 控制台首发：FastAPI 后端、`console` CLI、工作区能力、基础文档与多进程编排入口。 |
 
 ## 许可证
 
