@@ -53,6 +53,34 @@ def _strip_md(s: str) -> str:
     return s.strip()
 
 
+def _strip_md_block(text: str) -> str:
+    """Strip block-level and inline markdown for readable plain-text preview.
+
+    Used during streaming mid-edits so users see clean text instead of raw
+    markdown syntax while the response is still being generated.
+    """
+    # Code blocks -> just the code
+    text = re.sub(r'```[\w]*\n?([\s\S]*?)```', r'\1', text)
+    # Headers -> plain text
+    text = re.sub(r'^#{1,6}\s+(.+)$', r'\1', text, flags=re.MULTILINE)
+    # Blockquotes
+    text = re.sub(r'^>\s*(.*)$', r'\1', text, flags=re.MULTILINE)
+    # Bold / italic / strikethrough
+    text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
+    text = re.sub(r'__(.+?)__', r'\1', text)
+    text = re.sub(r'(?<![a-zA-Z0-9])_([^_]+)_(?![a-zA-Z0-9])', r'\1', text)
+    text = re.sub(r'~~(.+?)~~', r'\1', text)
+    # Inline code
+    text = re.sub(r'`([^`]+)`', r'\1', text)
+    # Links [text](url) -> text
+    text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
+    # Bullet lists
+    text = re.sub(r'^[-*]\s+', '• ', text, flags=re.MULTILINE)
+    # Numbered lists (normalize spacing)
+    text = re.sub(r'^(\d+)\.\s+', r'\1. ', text, flags=re.MULTILINE)
+    return text
+
+
 def _render_table_box(table_lines: list[str]) -> str:
     """Convert markdown pipe-table to compact aligned text for <pre> display."""
 
@@ -129,8 +157,8 @@ def _markdown_to_telegram_html(text: str) -> str:
 
     text = re.sub(r'`([^`]+)`', save_inline_code, text)
 
-    # 3. Headers # Title -> just the title text
-    text = re.sub(r'^#{1,6}\s+(.+)$', r'\1', text, flags=re.MULTILINE)
+    # 3. Headers # Title -> <b>Title</b> (preserve visual hierarchy)
+    text = re.sub(r'^#{1,6}\s+(.+)$', r'⟪B⟫\1⟪/B⟫', text, flags=re.MULTILINE)
 
     # 4. Blockquotes > text -> just the text (before HTML escaping)
     text = re.sub(r'^>\s*(.*)$', r'\1', text, flags=re.MULTILINE)
@@ -154,6 +182,9 @@ def _markdown_to_telegram_html(text: str) -> str:
     # 10. Bullet lists - item -> • item
     text = re.sub(r'^[-*]\s+', '• ', text, flags=re.MULTILINE)
 
+    # 10.5. Numbered lists  1. item -> 1. item (keep number, normalize indent)
+    text = re.sub(r'^(\d+)\.\s+', r'\1. ', text, flags=re.MULTILINE)
+
     # 11. Restore inline code with HTML tags
     for i, code in enumerate(inline_codes):
         # Escape HTML in code content
@@ -165,6 +196,9 @@ def _markdown_to_telegram_html(text: str) -> str:
         # Escape HTML in code content
         escaped = _escape_telegram_html(code)
         text = text.replace(f"\x00CB{i}\x00", f"<pre><code>{escaped}</code></pre>")
+
+    # 13. Restore header bold markers (inserted in step 3, after HTML escaping)
+    text = text.replace('⟪B⟫', '<b>').replace('⟪/B⟫', '</b>')
 
     return text
 
@@ -637,10 +671,11 @@ class TelegramChannel(BaseChannel):
         if message_thread_id := meta.get("message_thread_id"):
             thread_kwargs["message_thread_id"] = message_thread_id
         if buf.message_id is None:
+            preview = _strip_md_block(buf.text)
             try:
                 sent = await self._call_with_retry(
                     self._app.bot.send_message,
-                    chat_id=int_chat_id, text=buf.text,
+                    chat_id=int_chat_id, text=preview,
                     **thread_kwargs,
                 )
                 buf.message_id = sent.message_id
@@ -650,58 +685,61 @@ class TelegramChannel(BaseChannel):
                 raise  # Let ChannelManager handle retry
         elif (now - buf.last_edit) >= self.config.stream_edit_interval:
             if len(buf.text) > TELEGRAM_MAX_MESSAGE_LEN:
-                # Finish current message
-                current_text = buf.text[:TELEGRAM_MAX_MESSAGE_LEN]
-                try:
-                    await self._call_with_retry(
-                        self._app.bot.edit_message_text,
-                        chat_id=int_chat_id,
-                        message_id=buf.message_id,
-                        text=current_text,
-                    )
-                except Exception as e:
-                    logger.warning("Failed to edit current message before splitting: {}", e)
-                    raise  # Let ChannelManager handle retry
-
-                # Prepare remaining content for a new message
-                remaining = buf.text[TELEGRAM_MAX_MESSAGE_LEN:]
-                logger.debug(f"[!] Splitting long message: {len(buf.text)} chars → new message with {len(remaining)} chars")
-
-                # Create new buffer for the next chunk
-                self._stream_bufs[chat_id] = _StreamBuf(stream_id=stream_id)
-                new_buf = self._stream_bufs[chat_id]
-                new_buf.text = remaining
-                new_buf.last_edit = now
-
-                # Immediately start the new message
-                if remaining.strip():
-                    try:
-                        sent = await self._call_with_retry(
-                            self._app.bot.send_message,
-                            chat_id=int_chat_id,
-                            text=remaining[:TELEGRAM_MAX_MESSAGE_LEN],
-                            **thread_kwargs
-                        )
-                        new_buf.message_id = sent.message_id
-                    except Exception as e:
-                        logger.error("Failed to send new message chunk after split: {}", e)
-                        raise  # Let ChannelManager handle retry
-            else:
-                # Normal edit (message is still under the limit)
-                try:
-                    await self._call_with_retry(
-                        self._app.bot.edit_message_text,
-                        chat_id=int_chat_id,
-                        message_id=buf.message_id,
-                        text=buf.text,
-                    )
+                await self._flush_stream_overflow(int_chat_id, buf, thread_kwargs)
+                buf.last_edit = now
+                return
+            preview = _strip_md_block(buf.text)
+            try:
+                await self._call_with_retry(
+                    self._app.bot.edit_message_text,
+                    chat_id=int_chat_id, message_id=buf.message_id,
+                    text=preview,
+                )
+                buf.last_edit = now
+            except Exception as e:
+                if self._is_not_modified_error(e):
                     buf.last_edit = now
-                except Exception as e:
-                    if self._is_not_modified_error(e):
-                        buf.last_edit = now
-                        return
-                    logger.warning("Stream edit failed: {}", e)
-                    raise  # Let ChannelManager handle retry
+                    return
+                logger.warning("Stream edit failed: {}", e)
+                raise  # Let ChannelManager handle retry
+
+    async def _flush_stream_overflow(
+        self,
+        chat_id: int,
+        buf: "_StreamBuf",
+        thread_kwargs: dict,
+    ) -> None:
+        """Split an oversized stream buffer mid-flight.
+
+        Edits the current stream message with the first chunk, sends any
+        intermediate chunks as standalone messages, then opens a new message
+        for the tail so subsequent deltas continue streaming into it.
+        """
+        chunks = split_message(buf.text, TELEGRAM_MAX_MESSAGE_LEN)
+        if len(chunks) <= 1:
+            return
+        try:
+            await self._call_with_retry(
+                self._app.bot.edit_message_text,
+                chat_id=chat_id, message_id=buf.message_id,
+                text=chunks[0],
+            )
+        except Exception as e:
+            if not self._is_not_modified_error(e):
+                logger.warning("Stream overflow edit failed: {}", e)
+                raise
+        for chunk in chunks[1:-1]:
+            await self._call_with_retry(
+                self._app.bot.send_message,
+                chat_id=chat_id, text=chunk, **thread_kwargs,
+            )
+        tail = chunks[-1]
+        sent = await self._call_with_retry(
+            self._app.bot.send_message,
+            chat_id=chat_id, text=tail, **thread_kwargs,
+        )
+        buf.message_id = sent.message_id
+        buf.text = tail
 
     async def _on_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /start command."""
