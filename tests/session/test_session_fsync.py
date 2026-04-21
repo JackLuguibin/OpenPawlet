@@ -12,7 +12,6 @@ from nanobot.session.manager import SessionManager
 
 _IS_WINDOWS = sys.platform == "win32"
 
-
 @pytest.fixture
 def sessions_dir(tmp_path: Path) -> Path:
     d = tmp_path / "sessions"
