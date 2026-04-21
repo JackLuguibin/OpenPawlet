@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store';
@@ -7,7 +7,6 @@ import {
   Card,
   Statistic,
   Button,
-  Tag,
   Badge,
   Spin,
   Alert,
@@ -26,8 +25,7 @@ import {
   ThunderboltOutlined,
   BarChartOutlined,
 } from '@ant-design/icons';
-import ReactECharts from 'echarts-for-react';
-import { ModelPieChart, type EChartsOption } from '../components/ModelPieChart';
+import { EChartsWithResize, ModelPieChart, type EChartsOption } from '../components/ModelPieChart';
 import { formatTokenCount, formatCost } from '../utils/format';
 import { PageLayout } from '../components/PageLayout';
 import { useBots } from '../hooks/useBots';
@@ -70,6 +68,9 @@ function formatUptime(seconds: number): string {
 export default function Dashboard() {
   const { t } = useTranslation();
   const agentTz = useAgentTimeZone();
+  const [chartLayoutNarrow, setChartLayoutNarrow] = useState(() =>
+    typeof window !== 'undefined' ? window.matchMedia('(max-width: 1023px)').matches : false,
+  );
   const queryClient = useQueryClient();
   const { setStatus, setChannels, setMCPServers, status, addToast, currentBotId, theme } =
     useAppStore();
@@ -188,19 +189,27 @@ export default function Dashboard() {
           return `${p.name}<br/><span style="font-variant-numeric: tabular-nums">${formatTokenCount(p.value)} (${p.percent.toFixed(1)}%)</span>`;
         },
       },
-      legend: {
-        orient: 'vertical',
-        left: 'left',
-        textStyle: { color: legendTextColor },
-        type: 'scroll',
-      },
+      legend: chartLayoutNarrow
+        ? {
+            orient: 'horizontal',
+            bottom: 0,
+            left: 'center',
+            textStyle: { color: legendTextColor },
+            type: 'scroll',
+          }
+        : {
+            orient: 'vertical',
+            left: 'left',
+            textStyle: { color: legendTextColor },
+            type: 'scroll',
+          },
       color: modelPieColorRange,
       series: [
         {
           name: t('dashboard.modelUsageAllTime'),
           type: 'pie',
-          radius: '50%',
-          center: ['50%', '55%'],
+          radius: chartLayoutNarrow ? '48%' : '50%',
+          center: chartLayoutNarrow ? ['50%', '44%'] : ['50%', '55%'],
           data: modelPieRows.map((r) => ({ name: r.type, value: r.value })),
           emphasis: {
             itemStyle: {
@@ -218,6 +227,7 @@ export default function Dashboard() {
     modelPieEmptyFill,
     modelPieTotal,
     isDarkUi,
+    chartLayoutNarrow,
     t,
   ]);
 
@@ -408,6 +418,14 @@ export default function Dashboard() {
     }
   }, [data, setStatus, setChannels, setMCPServers]);
 
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 1023px)');
+    const apply = () => setChartLayoutNarrow(mq.matches);
+    apply();
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, []);
+
   const stopMutation = useMutation({
     mutationFn: () => {
       const botId =
@@ -582,92 +600,65 @@ export default function Dashboard() {
 
       {/* Model Info & Token Usage */}
       {displayStatus?.model && (
-        <Card size="small" className="shrink-0">
-          <div className="flex items-center justify-between gap-4 flex-wrap">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-blue-100 dark:bg-blue-900/30">
-                <ThunderboltOutlined className="text-blue-600 text-lg" />
+        <Card size="small" className="shrink-0 min-w-0 overflow-hidden">
+          {/* One wrapping row: model | stats | sparkline; sparkline drops to its own full-width row only on very narrow screens */}
+          <div className="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-4">
+            <div className="flex min-w-0 shrink-0 items-center gap-3">
+              <div className="shrink-0 rounded-xl bg-blue-100 p-2.5 dark:bg-blue-900/30">
+                <ThunderboltOutlined className="text-lg text-blue-600" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <Text type="secondary" className="text-xs">
                   {t('dashboard.currentModel')}
                 </Text>
-                <p className="font-semibold text-base">{displayStatus.model}</p>
+                <p className="break-words text-base font-semibold">{displayStatus.model}</p>
               </div>
             </div>
-            {((displayStatus?.token_usage &&
+            {displayStatus?.token_usage &&
               ((displayStatus.token_usage.total_tokens ?? 0) > 0 ||
                 (displayStatus.token_usage.prompt_tokens ?? 0) > 0 ||
-                (displayStatus.token_usage.completion_tokens ?? 0) > 0)) ||
-              (modelPieByModel && Object.keys(modelPieByModel).length > 0)) && (
-              <div className="flex flex-col gap-2 text-sm">
-                {displayStatus?.token_usage &&
-                  ((displayStatus.token_usage.total_tokens ?? 0) > 0 ||
-                    (displayStatus.token_usage.prompt_tokens ?? 0) > 0 ||
-                    (displayStatus.token_usage.completion_tokens ?? 0) > 0) && (
-                  <div className="flex items-center gap-4">
-                    <div>
-                      <Text type="secondary" className="text-xs block">
-                        {t('dashboard.tokenUsageToday')}
-                      </Text>
-                      <span className="font-medium">
-                        {formatTokenCount(displayStatus.token_usage.total_tokens ?? 0)}
-                      </span>
-                      <Text type="secondary" className="text-xs ml-1">
-                        {t('common.total')}
-                      </Text>
-                    </div>
-                    <div>
-                      <Text type="secondary" className="text-xs block">
-                        {t('dashboard.chartPrompt')}
-                      </Text>
-                      <span className="font-medium">
-                        {formatTokenCount(displayStatus.token_usage.prompt_tokens ?? 0)}
-                      </span>
-                    </div>
-                    <div>
-                      <Text type="secondary" className="text-xs block">
-                        {t('dashboard.chartCompletion')}
-                      </Text>
-                      <span className="font-medium">
-                        {formatTokenCount(displayStatus.token_usage.completion_tokens ?? 0)}
-                      </span>
-                    </div>
-                  </div>
-                )}
-                {modelPieByModel && Object.keys(modelPieByModel).length > 0 && (
-                  <div>
-                    <Text type="secondary" className="text-xs block mb-1">
-                      {t('dashboard.modelTotalsByModel')}
+                (displayStatus.token_usage.completion_tokens ?? 0) > 0) && (
+              <div className="flex min-w-0 flex-1 basis-[min(100%,14rem)] flex-col gap-2 text-sm min-[600px]:max-w-xl min-[600px]:items-end min-[600px]:text-right">
+                <div className="grid w-full grid-cols-1 gap-3 min-[380px]:grid-cols-3 sm:gap-4 min-[600px]:w-auto min-[600px]:justify-items-end">
+                  <div className="min-w-0">
+                    <Text type="secondary" className="block text-xs">
+                      {t('dashboard.tokenUsageToday')}
                     </Text>
-                    <div className="flex flex-wrap gap-2">
-                      {Object.entries(modelPieByModel).map(([model, u]) => (
-                        <Tag key={model} className="m-0">
-                          {model}: {formatTokenCount(u.total_tokens ?? 0)}
-                          {displayStatus?.token_usage?.cost_by_model?.[model] != null &&
-                            displayStatus.token_usage.cost_by_model[model] > 0 && (
-                              <span className="ml-1 text-green-600 dark:text-green-400">
-                                ({formatCost(displayStatus.token_usage.cost_by_model[model])})
-                              </span>
-                            )}
-                        </Tag>
-                      ))}
-                    </div>
+                    <span className="font-medium">
+                      {formatTokenCount(displayStatus.token_usage.total_tokens ?? 0)}
+                    </span>
+                    <Text type="secondary" className="ml-1 text-xs">
+                      {t('common.total')}
+                    </Text>
                   </div>
-                )}
+                  <div className="min-w-0">
+                    <Text type="secondary" className="block text-xs">
+                      {t('dashboard.chartPrompt')}
+                    </Text>
+                    <span className="font-medium">
+                      {formatTokenCount(displayStatus.token_usage.prompt_tokens ?? 0)}
+                    </span>
+                  </div>
+                  <div className="min-w-0">
+                    <Text type="secondary" className="block text-xs">
+                      {t('dashboard.chartCompletion')}
+                    </Text>
+                    <span className="font-medium">
+                      {formatTokenCount(displayStatus.token_usage.completion_tokens ?? 0)}
+                    </span>
+                  </div>
+                </div>
               </div>
             )}
-            {/* 每日 Token 用量趋势图 */}
             {usageHistory && usageHistory.length > 0 && (
-              <div className="w-full min-w-[320px]" style={{ maxWidth: 480 }}>
-                <Text type="secondary" className="text-xs block mb-1">{t('dashboard.dailyTokenUsage')}</Text>
-                <div style={{ height: 44 }}>
-                  <ReactECharts
+              <div className="flex min-w-full max-w-full basis-full flex-col max-sm:items-end sm:min-w-0 sm:max-w-none sm:basis-auto sm:ml-auto sm:w-[min(100%,280px)] sm:shrink-0 sm:items-end sm:text-right">
+                <Text type="secondary" className="mb-1 block text-xs">
+                  {t('dashboard.dailyTokenUsage')}
+                </Text>
+                <div className="h-11 w-full min-w-0 max-w-full overflow-hidden sm:max-w-[280px]">
+                  <EChartsWithResize
                     style={{ width: '100%', height: '100%' }}
                     option={dailyTokenSparklineOption}
-                    opts={{ renderer: 'canvas' }}
-                    notMerge
-                    lazyUpdate
                   />
                 </div>
               </div>
@@ -677,7 +668,7 @@ export default function Dashboard() {
       )}
 
       {/* 每日 Token 使用量 + 按模型成本分布：占满主内容区剩余高度 */}
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 auto-rows-fr lg:grid-cols-2 lg:grid-rows-1">
+      <div className="grid w-full min-w-0 grid-cols-1 gap-4 auto-rows-auto lg:flex-1 lg:min-h-0 lg:auto-rows-fr lg:grid-cols-2 lg:grid-rows-1">
         <Card
           title={
             <span className="flex items-center gap-2">
@@ -685,7 +676,7 @@ export default function Dashboard() {
             </span>
           }
           size="small"
-          className="flex min-h-0 min-w-0 flex-col [&_.ant-card-head]:shrink-0 [&_.ant-card-body]:flex [&_.ant-card-body]:min-h-0 [&_.ant-card-body]:flex-1 [&_.ant-card-body]:flex-col"
+          className="flex min-h-0 min-w-0 flex-col overflow-hidden [&_.ant-card-head]:shrink-0 [&_.ant-card-body]:flex [&_.ant-card-body]:min-h-0 [&_.ant-card-body]:flex-1 [&_.ant-card-body]:flex-col [&_.ant-card-body]:overflow-hidden"
         >
           {usageLoading ? (
             <div className="flex flex-1 items-center justify-center py-12">
@@ -696,13 +687,10 @@ export default function Dashboard() {
               <Text type="secondary" className="text-xs shrink-0 mb-1">
                 {t('dashboard.usageDailyByCalendar', { tz: agentTz })}
               </Text>
-              <div className="min-h-0 w-full min-w-0 flex-1">
-                <ReactECharts
+              <div className="min-h-[280px] w-full min-w-0 flex-1 overflow-hidden lg:min-h-0">
+                <EChartsWithResize
                   style={{ width: '100%', height: '100%', minHeight: 280 }}
                   option={dailyTokenStackBarOption}
-                  opts={{ renderer: 'canvas' }}
-                  notMerge
-                  lazyUpdate
                 />
               </div>
             </div>
@@ -717,10 +705,13 @@ export default function Dashboard() {
 
         <Card
           size="small"
-          className="flex min-h-0 min-w-0 flex-col [&_.ant-card-head]:shrink-0 [&_.ant-card-body]:flex [&_.ant-card-body]:min-h-0 [&_.ant-card-body]:flex-1 [&_.ant-card-body]:flex-col"
+          className="flex min-h-0 min-w-0 flex-col overflow-hidden [&_.ant-card-head]:shrink-0 [&_.ant-card-body]:flex [&_.ant-card-body]:min-h-0 [&_.ant-card-body]:flex-1 [&_.ant-card-body]:flex-col [&_.ant-card-body]:overflow-hidden"
         >
-          <div className="flex min-h-[360px] w-full flex-1 flex-col">
-            <ModelPieChart option={modelPieChartOption} style={{ height: '100%', width: '100%', minHeight: 360 }} />
+          <div className="flex min-h-[260px] w-full flex-col overflow-hidden sm:min-h-[300px] lg:min-h-[320px] lg:flex-1">
+            <ModelPieChart
+              option={modelPieChartOption}
+              style={{ height: '100%', width: '100%', minHeight: 260 }}
+            />
           </div>
         </Card>
       </div>
