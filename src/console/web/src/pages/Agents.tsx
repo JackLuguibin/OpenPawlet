@@ -33,6 +33,8 @@ import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store';
 import { PageLayout } from '../components/PageLayout';
 import * as api from '../api/client';
+import { useAgentTimeZone } from '../hooks/useAgentTimeZone';
+import { formatAgentDateISO } from '../utils/agentDatetime';
 import type { Agent, AgentCreateRequest } from '../api/types_agents';
 
 const { TextArea } = Input;
@@ -80,6 +82,7 @@ export default function Agents() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { currentBotId, addToast } = useAppStore();
+  const agentTz = useAgentTimeZone();
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
@@ -301,7 +304,7 @@ export default function Agents() {
     const url = URL.createObjectURL(dataBlob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `agents-${new Date().toISOString().split('T')[0]}.json`;
+    link.download = `agents-${formatAgentDateISO(new Date(), agentTz)}.json`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

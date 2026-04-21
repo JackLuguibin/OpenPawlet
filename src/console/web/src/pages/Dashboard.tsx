@@ -31,6 +31,7 @@ import { ModelPieChart, type EChartsOption } from '../components/ModelPieChart';
 import { formatTokenCount, formatCost } from '../utils/format';
 import { PageLayout } from '../components/PageLayout';
 import { useBots } from '../hooks/useBots';
+import { useAgentTimeZone } from '../hooks/useAgentTimeZone';
 import { formatQueryError } from '../utils/errors';
 
 const { Text } = Typography;
@@ -68,6 +69,7 @@ function formatUptime(seconds: number): string {
 
 export default function Dashboard() {
   const { t } = useTranslation();
+  const agentTz = useAgentTimeZone();
   const queryClient = useQueryClient();
   const { setStatus, setChannels, setMCPServers, status, addToast, currentBotId, theme } =
     useAppStore();
@@ -691,6 +693,9 @@ export default function Dashboard() {
             </div>
           ) : usageHistory && usageHistory.length > 0 ? (
             <div className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col">
+              <Text type="secondary" className="text-xs shrink-0 mb-1">
+                {t('dashboard.usageDailyByCalendar', { tz: agentTz })}
+              </Text>
               <div className="min-h-0 w-full min-w-0 flex-1">
                 <ReactECharts
                   style={{ width: '100%', height: '100%', minHeight: 280 }}

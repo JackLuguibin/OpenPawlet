@@ -5,26 +5,21 @@ from __future__ import annotations
 import json
 import threading
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from nanobot.utils.helpers import ensure_dir
+from nanobot.utils.helpers import ensure_dir, local_now
 
 
 @dataclass
 class TokenUsageJsonlRecorder:
-    """Write one JSON object per line to ``usage/token_usage_YYYY-MM-DD.jsonl`` (UTC day)."""
+    """Write one JSON object per line to ``usage/token_usage_YYYY-MM-DD.jsonl`` (local calendar day)."""
 
     workspace: Path
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
     def __post_init__(self) -> None:
         self.workspace = Path(self.workspace).expanduser().resolve()
-
-    def _path_for_today(self) -> Path:
-        day = datetime.now(timezone.utc).date().isoformat()
-        return self.workspace / "usage" / f"token_usage_{day}.jsonl"
 
     def record(
         self,
@@ -44,15 +39,16 @@ class TokenUsageJsonlRecorder:
                 continue
         if not normalized:
             return
+        now = local_now()
         row: dict[str, Any] = {
             "_type": "llm_token_usage",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": now.isoformat(),
             "model": (model or "unknown").strip() or "unknown",
             "finish_reason": finish_reason,
             "streaming": streaming,
             "usage": normalized,
         }
-        path = self._path_for_today()
+        path = self.workspace / "usage" / f"token_usage_{now.date().isoformat()}.jsonl"
         line = json.dumps(row, ensure_ascii=False) + "\n"
         with self._lock:
             ensure_dir(path.parent)

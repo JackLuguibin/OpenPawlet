@@ -7,6 +7,7 @@ import dataclasses
 import json
 import os
 import time
+from datetime import datetime
 from contextlib import AsyncExitStack, nullcontext
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
@@ -38,7 +39,13 @@ from nanobot.providers.base import LLMProvider
 from nanobot.session.manager import Session, SessionManager
 from nanobot.session.transcript import SessionTranscriptWriter
 from nanobot.utils.document import extract_documents
-from nanobot.utils.helpers import image_placeholder_text, truncate_text as truncate_text_fn
+from nanobot.utils.helpers import (
+    configure_process_timezone,
+    image_placeholder_text,
+    local_now,
+    timestamp,
+    truncate_text as truncate_text_fn,
+)
 from nanobot.utils.runtime import EMPTY_FINAL_RESPONSE_MESSAGE
 
 if TYPE_CHECKING:
@@ -222,6 +229,7 @@ class AgentLoop:
         self._extra_hooks: list[AgentHook] = hooks or []
 
         self.context = ContextBuilder(workspace, timezone=timezone, disabled_skills=disabled_skills)
+        configure_process_timezone(self.context.timezone)
         self.sessions = session_manager or SessionManager(workspace)
         self.tools = ToolRegistry()
         self.runner = AgentRunner(provider)
@@ -1009,8 +1017,6 @@ class AgentLoop:
 
     def _save_turn(self, session: Session, messages: list[dict], skip: int) -> None:
         """Save new-turn messages into session, truncating large tool results."""
-        from datetime import datetime
-
         for m in messages[skip:]:
             entry = dict(m)
             role, content = entry.get("role"), entry.get("content")
@@ -1051,9 +1057,9 @@ class AgentLoop:
                     if not filtered:
                         continue
                     entry["content"] = filtered
-            entry.setdefault("timestamp", datetime.now().isoformat())
+            entry.setdefault("timestamp", timestamp())
             session.messages.append(entry)
-        session.updated_at = datetime.now()
+            session.updated_at = local_now()
 
     def _persist_subagent_followup(self, session: Session, msg: InboundMessage) -> bool:
         """Persist subagent follow-ups before prompt assembly so history stays durable.
@@ -1108,8 +1114,6 @@ class AgentLoop:
 
     def _restore_runtime_checkpoint(self, session: Session) -> bool:
         """Materialize an unfinished turn into session history before a new request."""
-        from datetime import datetime
-
         checkpoint = session.metadata.get(self._RUNTIME_CHECKPOINT_KEY)
         if not isinstance(checkpoint, dict):
             return False
@@ -1121,12 +1125,12 @@ class AgentLoop:
         restored_messages: list[dict[str, Any]] = []
         if isinstance(assistant_message, dict):
             restored = dict(assistant_message)
-            restored.setdefault("timestamp", datetime.now().isoformat())
+            restored.setdefault("timestamp", timestamp())
             restored_messages.append(restored)
         for message in completed_tool_results:
             if isinstance(message, dict):
                 restored = dict(message)
-                restored.setdefault("timestamp", datetime.now().isoformat())
+                restored.setdefault("timestamp", timestamp())
                 restored_messages.append(restored)
         for tool_call in pending_tool_calls:
             if not isinstance(tool_call, dict):
@@ -1139,7 +1143,7 @@ class AgentLoop:
                     "tool_call_id": tool_id,
                     "name": name,
                     "content": "Error: Task interrupted before this tool finished.",
-                    "timestamp": datetime.now().isoformat(),
+                    "timestamp": timestamp(),
                 }
             )
 
@@ -1162,8 +1166,6 @@ class AgentLoop:
 
     def _restore_pending_user_turn(self, session: Session) -> bool:
         """Close a turn that only persisted the user message before crashing."""
-        from datetime import datetime
-
         if not session.metadata.get(self._PENDING_USER_TURN_KEY):
             return False
 
@@ -1172,10 +1174,10 @@ class AgentLoop:
                 {
                     "role": "assistant",
                     "content": "Error: Task interrupted before a response was generated.",
-                    "timestamp": datetime.now().isoformat(),
+                    "timestamp": timestamp(),
                 }
             )
-            session.updated_at = datetime.now()
+            session.updated_at = local_now()
 
         self._clear_pending_user_turn(session)
         return True

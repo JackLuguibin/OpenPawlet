@@ -7,7 +7,8 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, Callable, Coroutine
 
 from loguru import logger
-from nanobot.session.manager import Session, SessionManager
+from nanobot.session.manager import Session, SessionManager, _as_agent_aware
+from nanobot.utils.helpers import local_now
 
 if TYPE_CHECKING:
     from nanobot.agent.memory import Consolidator
@@ -36,12 +37,14 @@ class AutoCompact:
         if self._ttl <= 0 or not ts:
             return False
         if isinstance(ts, str):
-            ts = datetime.fromisoformat(ts)
-        return ((now or datetime.now()) - ts).total_seconds() >= self._ttl * 60
+            ts = _as_agent_aware(datetime.fromisoformat(ts.replace("Z", "+00:00")))
+        elif isinstance(ts, datetime):
+            ts = _as_agent_aware(ts)
+        return ((now or local_now()) - ts).total_seconds() >= self._ttl * 60
 
     @staticmethod
     def _format_summary(text: str, last_active: datetime) -> str:
-        idle_min = int((datetime.now() - last_active).total_seconds() / 60)
+        idle_min = int((local_now() - last_active).total_seconds() / 60)
         return f"Inactive for {idle_min} minutes.\nPrevious conversation summary: {text}"
 
     def _split_unconsolidated(
@@ -68,7 +71,7 @@ class AutoCompact:
     def check_expired(self, schedule_background: Callable[[Coroutine], None],
                       active_session_keys: Collection[str] = ()) -> None:
         """Schedule archival for idle sessions, skipping those with in-flight agent tasks."""
-        now = datetime.now()
+        now = local_now()
         for info in self.sessions.list_sessions():
             key = info.get("key", "")
             if not key or key in self._archiving:
@@ -85,7 +88,7 @@ class AutoCompact:
             session = self.sessions.get_or_create(key)
             archive_msgs, kept_msgs = self._split_unconsolidated(session)
             if not archive_msgs and not kept_msgs:
-                session.updated_at = datetime.now()
+                session.updated_at = local_now()
                 self.sessions.save(session)
                 return
 
@@ -109,7 +112,7 @@ class AutoCompact:
                 session.metadata["_last_summary"] = {"text": summary, "last_active": last_active.isoformat()}
             session.messages = kept_msgs
             session.last_consolidated = 0
-            session.updated_at = datetime.now()
+            session.updated_at = local_now()
             self.sessions.save(session)
             if archive_msgs:
                 logger.info(
@@ -137,5 +140,8 @@ class AutoCompact:
         if "_last_summary" in session.metadata:
             meta = session.metadata.pop("_last_summary")
             self.sessions.save(session)
-            return session, self._format_summary(meta["text"], datetime.fromisoformat(meta["last_active"]))
+            return session, self._format_summary(
+                meta["text"],
+                _as_agent_aware(datetime.fromisoformat(meta["last_active"].replace("Z", "+00:00"))),
+            )
         return session, None

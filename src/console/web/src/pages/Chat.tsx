@@ -20,6 +20,8 @@ import {
   useNanobotChannelWebSocket,
 } from "../hooks/useNanobotChannelWebSocket";
 import { registerChatHandler, getWSRef } from "../hooks/useWebSocket";
+import { useAgentTimeZone } from "../hooks/useAgentTimeZone";
+import { formatChatMessageTime } from "../utils/agentDatetime";
 import * as api from "../api/client";
 import { Button, Tag, Popconfirm, Checkbox, Spin } from "antd";
 import {
@@ -894,6 +896,7 @@ export default function Chat() {
   const { currentSessionKey, setCurrentSessionKey, currentBotId, addToast } =
     useAppStore();
   const nanobotClientId = useAppStore((s) => s.nanobotClientId);
+  const agentTz = useAgentTimeZone();
 
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
@@ -2269,28 +2272,10 @@ export default function Chat() {
     return t("subagent.failed");
   };
 
-  /** 格式化消息时间：年月日 + 时:分:秒.毫秒（三位） */
+  /** Message time in agent-configured IANA timezone (matches nanobot logs). */
   const formatMessageTime = (isoStr: string | undefined): string => {
-    if (!isoStr) return "";
-    try {
-      const d = new Date(isoStr);
-      const locale = i18n.language.startsWith("zh") ? "zh-CN" : "en-US";
-      const dateStr = d.toLocaleDateString(locale, {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-      });
-      const timeStr = d.toLocaleTimeString(locale, {
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: false,
-      });
-      const ms = String(d.getMilliseconds()).padStart(3, "0");
-      return `${dateStr} ${timeStr}.${ms}`;
-    } catch {
-      return "";
-    }
+    const locale = i18n.language.startsWith("zh") ? "zh-CN" : "en-US";
+    return formatChatMessageTime(isoStr, agentTz, locale);
   };
 
   /** nanobot may emit `stream_end` before the last `tool_event`; keep bubble while tools still stream in. */

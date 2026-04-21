@@ -191,3 +191,21 @@ def read_default_model(path: Path) -> str | None:
         return None
     model = defaults.get("model")
     return model if isinstance(model, str) else None
+
+
+def read_default_timezone(path: Path) -> str | None:
+    """Return ``agents.defaults.timezone`` (IANA) from config at ``path``, if present."""
+    try:
+        data = build_config_response(path)
+    except ValidationError:
+        return None
+    except OSError:
+        return None
+    agents = data.get("agents")
+    if not isinstance(agents, dict):
+        return None
+    defaults = agents.get("defaults")
+    if not isinstance(defaults, dict):
+        return None
+    tz = defaults.get("timezone")
+    return tz.strip() if isinstance(tz, str) and tz.strip() else None

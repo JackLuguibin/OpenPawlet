@@ -27,6 +27,8 @@ import { useAppStore } from '../store';
 import type { SessionInfo } from '../api/types';
 import { PageLayout } from '../components/PageLayout';
 import { formatQueryError } from '../utils/errors';
+import { useAgentTimeZone } from '../hooks/useAgentTimeZone';
+import { formatAgentLocaleDate, formatAgentLocaleString } from '../utils/agentDatetime';
 
 const { Text } = Typography;
 
@@ -55,9 +57,11 @@ const CHANNEL_TAG_COLOR: Record<string, string> = {
 };
 
 export default function Sessions() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const queryClient = useQueryClient();
   const { addToast, currentBotId } = useAppStore();
+  const agentTz = useAgentTimeZone();
+  const locale = i18n.language.startsWith('zh') ? 'zh-CN' : 'en-US';
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'updated' | 'created' | 'messages'>('updated');
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
@@ -121,7 +125,7 @@ export default function Sessions() {
     if (minutes < 60) return t('common.minutesAgo', { count: minutes });
     if (hours < 24) return t('common.hoursAgo', { count: hours });
     if (days < 7) return t('common.daysAgo', { count: days });
-    return date.toLocaleDateString();
+    return formatAgentLocaleDate(date, agentTz, locale);
   };
 
   const processedSessions = sessions
@@ -255,10 +259,10 @@ export default function Sessions() {
           </Text>
         </Descriptions.Item>
         <Descriptions.Item label={t('sessions.expandCreated')}>
-          {session.created_at ? new Date(session.created_at).toLocaleString() : '-'}
+          {session.created_at ? formatAgentLocaleString(session.created_at, agentTz, locale) : '-'}
         </Descriptions.Item>
         <Descriptions.Item label={t('sessions.expandUpdated')}>
-          {session.updated_at ? new Date(session.updated_at).toLocaleString() : '-'}
+          {session.updated_at ? formatAgentLocaleString(session.updated_at, agentTz, locale) : '-'}
         </Descriptions.Item>
         <Descriptions.Item label={t('sessions.expandMessages')}>{session.message_count}</Descriptions.Item>
       </Descriptions>

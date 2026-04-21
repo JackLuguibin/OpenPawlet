@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from nanobot.utils.helpers import ensure_dir, safe_filename, truncate_text as truncate_text_fn
+from nanobot.utils.helpers import ensure_dir, safe_filename, timestamp, truncate_text as truncate_text_fn
 
 
 class SessionTranscriptWriter:
@@ -49,7 +48,7 @@ class SessionTranscriptWriter:
         if m.get("timestamp"):
             entry["timestamp"] = m["timestamp"]
         else:
-            entry["timestamp"] = datetime.now().isoformat()
+            entry["timestamp"] = timestamp()
 
         if role == "tool" and not self.include_full_tool_results:
             content = entry.get("content")
@@ -99,7 +98,7 @@ class SessionTranscriptWriter:
             return
         record: dict[str, Any] = {
             "_event": event,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": timestamp(),
             "messages": messages,
         }
         if metadata:

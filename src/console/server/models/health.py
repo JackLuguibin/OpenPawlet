@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 
 from pydantic import Field
 
 from console.server.models.base import BaseResponse
+from nanobot.utils.helpers import local_now
 
 
-def _utc_now() -> datetime:
-    """Return current time in UTC (timezone-aware)."""
-    return datetime.now(UTC)
+def _server_now() -> datetime:
+    """Return current time (same zone as ``agents.defaults.timezone`` when configured)."""
+    return local_now()
 
 
 class HealthResponse(BaseResponse):
@@ -19,4 +20,4 @@ class HealthResponse(BaseResponse):
 
     status: str = Field(default="ok", description="'ok' when healthy")
     version: str = Field(description="API version")
-    timestamp: datetime = Field(default_factory=_utc_now)
+    timestamp: datetime = Field(default_factory=_server_now)

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+
+from nanobot.utils.helpers import local_now
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, status
@@ -27,11 +29,10 @@ _DEFAULT_BOT_ID = "default"
 
 
 def _iso_mtime(path: Path) -> str:
-    """Return file mtime as ISO UTC string, or epoch if missing."""
-    if not path.exists():
-        return "1970-01-01T00:00:00Z"
-    ts = path.stat().st_mtime
-    return datetime.fromtimestamp(ts, tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    """Return file mtime as ISO string in the configured agent timezone."""
+    ts = 0.0 if not path.exists() else path.stat().st_mtime
+    instant = datetime.fromtimestamp(ts, tz=UTC)
+    return instant.astimezone(local_now().tzinfo).isoformat()
 
 
 def _bot_info(bot_id: str | None) -> BotInfo:

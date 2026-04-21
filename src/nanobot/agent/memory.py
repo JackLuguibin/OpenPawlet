@@ -6,14 +6,20 @@ import asyncio
 import json
 import re
 import weakref
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
 from loguru import logger
 
 from nanobot.utils.prompt_templates import render_template
-from nanobot.utils.helpers import ensure_dir, estimate_message_tokens, estimate_prompt_tokens_chain, strip_think
+from nanobot.utils.helpers import (
+    ensure_dir,
+    estimate_message_tokens,
+    estimate_prompt_tokens_chain,
+    local_now,
+    strip_think,
+)
 
 from nanobot.agent.runner import AgentRunSpec, AgentRunner
 from nanobot.agent.tools.registry import ToolRegistry
@@ -174,11 +180,14 @@ class MemoryStore:
 
     def _legacy_fallback_timestamp(self) -> str:
         try:
-            return datetime.fromtimestamp(
-                self.legacy_history_file.stat().st_mtime,
-            ).strftime("%Y-%m-%d %H:%M")
+            mt = self.legacy_history_file.stat().st_mtime
+            anchor = local_now()
+            tz = anchor.tzinfo
+            dt = datetime.fromtimestamp(mt, tz=timezone.utc)
+            dt = dt.astimezone(tz) if tz is not None else dt.astimezone()
+            return dt.strftime("%Y-%m-%d %H:%M")
         except OSError:
-            return datetime.now().strftime("%Y-%m-%d %H:%M")
+            return local_now().strftime("%Y-%m-%d %H:%M")
 
     def _next_legacy_backup_path(self) -> Path:
         candidate = self.memory_dir / "HISTORY.md.bak"
@@ -231,7 +240,7 @@ class MemoryStore:
         undone by history replay / consolidation downstream.
         """
         cursor = self._next_cursor()
-        ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+        ts = local_now().strftime("%Y-%m-%d %H:%M")
         raw = entry.rstrip()
         content = strip_think(raw)
         if raw and not content:
@@ -760,7 +769,7 @@ class Dream:
         )
 
         # Current file contents + per-line age annotations (MEMORY.md only)
-        current_date = datetime.now().strftime("%Y-%m-%d")
+        current_date = local_now().strftime("%Y-%m-%d")
         raw_memory = self.store.read_memory() or "(empty)"
         current_memory = (
             self._annotate_with_ages(raw_memory)

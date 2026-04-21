@@ -4,6 +4,8 @@ import { Trash2, Wifi } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { useAppStore } from '../store';
+import { useAgentTimeZone } from '../hooks/useAgentTimeZone';
+import { formatAgentLocaleTime } from '../utils/agentDatetime';
 
 const { Text } = Typography;
 
@@ -12,7 +14,9 @@ const { Text } = Typography;
  * this panel only renders it.
  */
 export default function WebSocketDebugPanel() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const agentTz = useAgentTimeZone();
+  const locale = i18n.language.startsWith('zh') ? 'zh-CN' : 'en-US';
   const [open, setOpen] = useState(false);
   const nanobotWsDebugLines = useAppStore((s) => s.nanobotWsDebugLines);
   const clearNanobotWsDebug = useAppStore((s) => s.clearNanobotWsDebug);
@@ -61,7 +65,7 @@ export default function WebSocketDebugPanel() {
               {nanobotReversed.map((line, index) => (
                 <div key={`${line.ts}-${index}`}>
                   <Text type="secondary" className="text-[10px]">
-                    {new Date(line.ts).toLocaleTimeString()}
+                    {formatAgentLocaleTime(line.ts, agentTz, locale)}
                   </Text>
                   <pre className="text-xs font-mono mt-0.5 p-2 rounded bg-gray-100 dark:bg-gray-800/80 whitespace-pre-wrap break-words">
                     {line.body}

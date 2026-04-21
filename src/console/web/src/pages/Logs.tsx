@@ -25,13 +25,17 @@ import { useAppStore } from '../store';
 import * as api from '../api/client';
 import { PageLayout } from '../components/PageLayout';
 import { formatQueryError } from '../utils/errors';
+import { useAgentTimeZone } from '../hooks/useAgentTimeZone';
+import { formatAgentLocaleString, formatAgentLocaleTime } from '../utils/agentDatetime';
 import type { ToolCallLog } from '../api/types';
 
 const { Text } = Typography;
 
 export default function Logs() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { addToast, currentBotId } = useAppStore();
+  const agentTz = useAgentTimeZone();
+  const locale = i18n.language.startsWith('zh') ? 'zh-CN' : 'en-US';
   const [toolFilter, setToolFilter] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -80,12 +84,12 @@ export default function Logs() {
 
   const formatDate = (dateStr?: string) => {
     if (!dateStr) return '';
-    return new Date(dateStr).toLocaleTimeString();
+    return formatAgentLocaleTime(dateStr, agentTz, locale);
   };
 
   const formatFullDate = (dateStr?: string) => {
     if (!dateStr) return '';
-    return new Date(dateStr).toLocaleString();
+    return formatAgentLocaleString(dateStr, agentTz, locale);
   };
 
   const copyToClipboard = async (text: string, id: string) => {

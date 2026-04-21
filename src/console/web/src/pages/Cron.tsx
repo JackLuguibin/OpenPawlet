@@ -37,8 +37,15 @@ import { useBots } from '../hooks/useBots';
 import { PageLayout } from '../components/PageLayout';
 import type { CronJob, CronScheduleKind } from '../api/types';
 import { formatQueryError } from '../utils/errors';
+import { useAgentTimeZone } from '../hooks/useAgentTimeZone';
+import { formatAgentLocaleString } from '../utils/agentDatetime';
 
-function formatSchedule(job: CronJob, t: TFunction): string {
+function formatSchedule(
+  job: CronJob,
+  t: TFunction,
+  timeZone: string,
+  locale: string,
+): string {
   const s = job.schedule;
   if (s.kind === 'every' && s.every_ms) {
     const sec = s.every_ms / 1000;
@@ -50,19 +57,24 @@ function formatSchedule(job: CronJob, t: TFunction): string {
     return s.expr + (s.tz ? ` (${s.tz})` : '');
   }
   if (s.kind === 'at' && s.at_ms) {
-    return new Date(s.at_ms).toLocaleString();
+    return formatAgentLocaleString(s.at_ms, timeZone, locale);
   }
   return t('cron.scheduleDash');
 }
 
-function formatNextRun(timestamp: number | null | undefined, t: TFunction): string {
+function formatNextRun(
+  timestamp: number | null | undefined,
+  t: TFunction,
+  timeZone: string,
+  locale: string,
+): string {
   if (!timestamp) return t('cron.scheduleDash');
   const diff = timestamp - Date.now();
   if (diff < 0) return t('cron.nextOverdue');
   if (diff < 60000) return t('cron.nextSoon');
   if (diff < 3600000) return t('cron.nextInMinutes', { count: Math.floor(diff / 60000) });
   if (diff < 86400000) return t('cron.nextInHours', { count: Math.floor(diff / 3600000) });
-  return new Date(timestamp).toLocaleString();
+  return formatAgentLocaleString(timestamp, timeZone, locale);
 }
 
 function isOverdue(job: CronJob): boolean {
@@ -70,7 +82,15 @@ function isOverdue(job: CronJob): boolean {
   return job.state.next_run_at_ms < Date.now();
 }
 
-function CronJobDetails({ job }: { job: CronJob }) {
+function CronJobDetails({
+  job,
+  agentTz,
+  locale,
+}: {
+  job: CronJob;
+  agentTz: string;
+  locale: string;
+}) {
   const { t } = useTranslation();
   const { currentBotId } = useAppStore();
   const { data: historyData } = useQuery({
@@ -88,11 +108,13 @@ function CronJobDetails({ job }: { job: CronJob }) {
         </div>
       )}
       <div className="text-xs text-gray-400">
-        {t('cron.detailNextRun')} {formatNextRun(job.state.next_run_at_ms, t)}
+        {t('cron.detailNextRun')}{' '}
+        {formatNextRun(job.state.next_run_at_ms, t, agentTz, locale)}
         {job.state.last_run_at_ms && (
           <>
             {' '}
-            · {t('cron.detailLastRun')} {new Date(job.state.last_run_at_ms).toLocaleString()}
+            · {t('cron.detailLastRun')}{' '}
+            {formatAgentLocaleString(job.state.last_run_at_ms, agentTz, locale)}
           </>
         )}
       </div>
@@ -105,7 +127,9 @@ function CronJobDetails({ job }: { job: CronJob }) {
                 key={`${h.run_at_ms}-${i}`}
                 className="flex items-center justify-between text-xs py-0.5 border-b border-gray-50 dark:border-gray-800 last:border-0"
               >
-                <span className="text-gray-500">{new Date(h.run_at_ms).toLocaleString()}</span>
+                <span className="text-gray-500">
+                  {formatAgentLocaleString(h.run_at_ms, agentTz, locale)}
+                </span>
                 <Space size={4}>
                   <Tag color={h.status === 'ok' ? 'green' : 'red'} className="m-0 text-xs">
                     {h.status === 'ok' ? t('cron.runOk') : t('cron.runFail')}
@@ -126,9 +150,11 @@ function CronJobDetails({ job }: { job: CronJob }) {
 }
 
 export default function Cron() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const queryClient = useQueryClient();
   const { addToast, currentBotId } = useAppStore();
+  const agentTz = useAgentTimeZone();
+  const locale = i18n.language.startsWith('zh') ? 'zh-CN' : 'en-US';
   const { data: bots = [], isLoading: botsLoading, isFetched: botsFetched } = useBots();
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
@@ -347,7 +373,7 @@ export default function Cron() {
             </Text>
             <div className="text-sm font-medium text-gray-800 dark:text-gray-200">
               {cronStatus?.next_wake_at_ms
-                ? formatNextRun(cronStatus.next_wake_at_ms, t)
+                ? formatNextRun(cronStatus.next_wake_at_ms, t, agentTz, locale)
                 : t('cron.scheduleDash')}
             </div>
           </div>
@@ -461,12 +487,14 @@ export default function Cron() {
                             <Tag color="red">{t('cron.tagLastFailed')}</Tag>
                           )}
                           <Text type="secondary" className="text-sm font-normal">
-                            {formatSchedule(job, t)}
+                            {formatSchedule(job, t, agentTz, locale)}
                           </Text>
                         </div>
                       }
                       description={
-                        isExpanded && hasDetails ? <CronJobDetails job={job} /> : null
+                        isExpanded && hasDetails ? (
+                          <CronJobDetails job={job} agentTz={agentTz} locale={locale} />
+                        ) : null
                       }
                     />
                   </List.Item>

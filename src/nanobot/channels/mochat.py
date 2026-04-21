@@ -13,6 +13,7 @@ import httpx
 from loguru import logger
 
 from nanobot.bus.events import OutboundMessage
+from nanobot.utils.helpers import local_now
 from nanobot.bus.queue import MessageBus
 from nanobot.channels.base import BaseChannel
 from nanobot.config.paths import get_runtime_subdir
@@ -100,7 +101,7 @@ def _make_synthetic_event(
         payload["authorInfo"] = _safe_dict(author_info)
     return {
         "type": "message.add",
-        "timestamp": timestamp or datetime.utcnow().isoformat(),
+        "timestamp": timestamp or local_now().isoformat(),
         "payload": payload,
     }
 
@@ -900,7 +901,7 @@ class MochatChannel(BaseChannel):
         try:
             self._state_dir.mkdir(parents=True, exist_ok=True)
             self._cursor_path.write_text(json.dumps({
-                "schemaVersion": 1, "updatedAt": datetime.utcnow().isoformat(),
+                "schemaVersion": 1, "updatedAt": local_now().isoformat(),
                 "cursors": self._session_cursor,
             }, ensure_ascii=False, indent=2) + "\n", "utf-8")
         except Exception as e:

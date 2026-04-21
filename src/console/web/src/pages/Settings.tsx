@@ -18,6 +18,7 @@ import {
   Typography,
   Space,
   Radio,
+  Select,
   Tag,
   Alert,
   Collapse,
@@ -37,6 +38,7 @@ import {
 import * as api from '../api/client';
 import { useAppStore } from '../store';
 import { formatQueryError } from '../utils/errors';
+import { getCommonTimeZoneSelectOptions } from '../utils/timezones';
 import { PageLayout } from '../components/PageLayout';
 
 const { Text } = Typography;
@@ -151,6 +153,7 @@ interface FormData {
   workspace: string;
   model: string;
   provider: string;
+  timezone: string;
   max_tokens: number;
   context_window_tokens: number;
   max_iterations: number;
@@ -165,7 +168,6 @@ export default function Settings() {
   const { addToast, currentBotId } = useAppStore();
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
   const [form] = Form.useForm<FormData>();
-
   const { data: config, isLoading } = useQuery({
     queryKey: ['config', currentBotId],
     queryFn: () => api.getConfig(currentBotId),
@@ -180,6 +182,20 @@ export default function Settings() {
     queryKey: ['env', currentBotId],
     queryFn: () => api.getEnv(currentBotId),
   });
+
+  const timeZoneOptions = useMemo(() => {
+    const base = getCommonTimeZoneSelectOptions();
+    const agents = (config as Record<string, unknown> | undefined)?.agents as
+      | Record<string, unknown>
+      | undefined;
+    const defaults = agents?.defaults as Record<string, unknown> | undefined;
+    const rawTz = defaults?.timezone;
+    const tz = typeof rawTz === 'string' ? rawTz.trim() : '';
+    if (tz && !base.some((o) => o.value === tz)) {
+      return [{ label: tz, value: tz }, ...base];
+    }
+    return base;
+  }, [config]);
 
   const [envEntries, setEnvEntries] = useState<Array<{ key: string; value: string }>>([]);
   useEffect(() => {
@@ -243,6 +259,7 @@ export default function Settings() {
         workspace: (defaults?.workspace as string) ?? '~/.nanobot/workspace',
         model: (defaults?.model as string) ?? '',
         provider: (defaults?.provider as string) ?? 'auto',
+        timezone: (raw('timezone', 'timezone', 'UTC') as string) || 'UTC',
         max_tokens: Number(raw('maxTokens', 'max_tokens', 8192)),
         context_window_tokens: Number(raw('contextWindowTokens', 'context_window_tokens', 65536)),
         max_iterations: Number(raw('maxToolIterations', 'max_tool_iterations', 40)),
@@ -264,6 +281,7 @@ export default function Settings() {
             workspace: values.workspace?.trim() || undefined,
             model: values.model?.trim() || undefined,
             provider: values.provider?.trim() || undefined,
+            timezone: (values.timezone ?? '').trim() || 'UTC',
             max_tokens: values.max_tokens,
             context_window_tokens: values.context_window_tokens,
             max_tool_iterations: values.max_iterations,
@@ -501,6 +519,24 @@ export default function Settings() {
               extra={t('settings.workspaceExtra')}
             >
               <Input className="w-full" placeholder={t('settings.workspacePh')} size="large" />
+            </Form.Item>
+
+            <Form.Item
+              label={t('settings.timezone')}
+              name="timezone"
+              extra={t('settings.timezoneExtra')}
+            >
+              <Select
+                allowClear
+                showSearch
+                className="w-full"
+                size="large"
+                placeholder={t('settings.timezonePh')}
+                options={timeZoneOptions}
+                optionFilterProp="value"
+                popupMatchSelectWidth={false}
+                listHeight={360}
+              />
             </Form.Item>
 
             <Form.Item

@@ -92,9 +92,48 @@ def ensure_dir(path: Path) -> Path:
     return path
 
 
+# IANA name from ``agents.defaults.timezone`` (nanobot) or console startup; None = system local.
+_process_iana_tz: str | None = None
+
+
+def configure_process_timezone(iana: str | None) -> None:
+    """Set the timezone used by :func:`local_now` / :func:`timestamp` for this process.
+
+    Pass a valid IANA name (e.g. ``Asia/Shanghai``) from ``config.json`` ``agents.defaults.timezone``.
+    Pass ``None`` or empty to use the OS local zone (``datetime.now().astimezone()``).
+    Invalid names log a warning and fall back to OS local.
+    """
+    global _process_iana_tz
+    if not iana or not str(iana).strip():
+        _process_iana_tz = None
+        return
+    name = str(iana).strip()
+    try:
+        from zoneinfo import ZoneInfo
+
+        ZoneInfo(name)
+    except Exception:
+        logger.warning("Invalid IANA timezone {!r}; timestamps use OS local zone", name)
+        _process_iana_tz = None
+        return
+    _process_iana_tz = name
+
+
+def local_now() -> datetime:
+    """Current moment in the configured IANA zone, or the OS local zone if unset."""
+    if _process_iana_tz:
+        try:
+            from zoneinfo import ZoneInfo
+
+            return datetime.now(ZoneInfo(_process_iana_tz))
+        except Exception:
+            pass
+    return datetime.now().astimezone()
+
+
 def timestamp() -> str:
-    """Current ISO timestamp."""
-    return datetime.now().isoformat()
+    """ISO-8601 time string for :func:`local_now`, including UTC offset (e.g. ``+08:00``)."""
+    return local_now().isoformat()
 
 
 def current_time_str(timezone: str | None = None) -> str:

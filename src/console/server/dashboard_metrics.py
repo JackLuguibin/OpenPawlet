@@ -16,18 +16,40 @@ from console.server.models.status import TokenUsage
 from console.server.models.usage import UsageHistoryItem
 from console.server.nanobot_user_config import (
     read_default_model,
+    read_default_timezone,
     resolve_config_path,
 )
 
 
-def _message_local_date(msg: dict[str, Any]) -> date | None:
+def _today_in_config_tz(iana: str | None) -> date:
+    """Calendar 'today' in the configured IANA zone, or OS local if unset/invalid."""
+    if iana:
+        try:
+            from zoneinfo import ZoneInfo
+
+            return datetime.now(ZoneInfo(iana)).date()
+        except Exception:
+            pass
+    return datetime.now().astimezone().date()
+
+
+def _message_local_date(msg: dict[str, Any], iana: str | None) -> date | None:
     ts = msg.get("timestamp")
     if not isinstance(ts, str):
         return None
     try:
-        dt = datetime.fromisoformat(ts.replace("Z", ""))
+        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
     except ValueError:
         return None
+    if iana:
+        try:
+            from zoneinfo import ZoneInfo
+
+            dt = dt.astimezone(ZoneInfo(iana))
+        except Exception:
+            dt = dt.astimezone()
+    else:
+        dt = dt.astimezone()
     return dt.date()
 
 
@@ -57,6 +79,7 @@ def _accumulate_token_usage_jsonl(
     default_model: str,
     today: date,
     start: date,
+    iana_tz: str | None,
 ) -> None:
     """Merge LLM usage rows from ``usage/token_usage_*.jsonl`` (provider-level log)."""
     usage_dir = workspace / "usage"
@@ -77,7 +100,7 @@ def _accumulate_token_usage_jsonl(
                 continue
             if not isinstance(data, dict) or data.get("_type") != "llm_token_usage":
                 continue
-            msg_date = _message_local_date(data)
+            msg_date = _message_local_date(data, iana_tz)
             if msg_date is None:
                 continue
             if msg_date > today:
@@ -143,11 +166,12 @@ def collect_dashboard_metrics(
     """Scan session files for session counts, today's stats, and daily token history."""
     cfg_path = resolve_config_path(bot_id)
     default_model = read_default_model(cfg_path) or "unknown"
+    iana_tz = read_default_timezone(cfg_path)
 
     mgr = SessionManager(workspace_root(bot_id))
     active_sessions = len(list(mgr.sessions_dir.glob("*.jsonl")))
 
-    today = date.today()
+    today = _today_in_config_tz(iana_tz)
     start = today - timedelta(days=max(1, history_days) - 1)
 
     day_prompt: dict[date, int] = defaultdict(int)
@@ -168,7 +192,7 @@ def collect_dashboard_metrics(
         role = msg.get("role")
         if role not in ("user", "assistant"):
             continue
-        msg_date = _message_local_date(msg)
+        msg_date = _message_local_date(msg, iana_tz)
         if msg_date is None:
             continue
         if msg_date == today:
@@ -200,6 +224,7 @@ def collect_dashboard_metrics(
         default_model=default_model,
         today=today,
         start=start,
+        iana_tz=iana_tz,
     )
 
     token_usage_today: TokenUsage | None = None

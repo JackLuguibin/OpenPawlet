@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import io
-import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
 from loguru import logger
+
+from nanobot.utils.helpers import local_now
 
 
 @dataclass
@@ -34,11 +35,14 @@ class LineAge:
 
 def _compute_line_ages(annotated) -> list[LineAge]:
     """Convert annotate results to per-line ages."""
-    now = datetime.now(tz=timezone.utc).date()
+    anchor = local_now()
+    tz = anchor.tzinfo
+    now = anchor.date()
     ages: list[LineAge] = []
     for (commit, _tree_entry), _line_bytes in annotated:
-        dt = datetime.fromtimestamp(commit.commit_time, tz=timezone.utc).date()
-        ages.append(LineAge(age_days=(now - dt).days))
+        dt = datetime.fromtimestamp(commit.commit_time, tz=timezone.utc)
+        dt = dt.astimezone(tz) if tz is not None else dt.astimezone()
+        ages.append(LineAge(age_days=(now - dt.date()).days))
     return ages
 
 
@@ -229,10 +233,11 @@ class GitStore:
                     commit = repo[sha]
                     if commit.type_name != b"commit":
                         break
-                    ts = time.strftime(
-                        "%Y-%m-%d %H:%M",
-                        time.localtime(commit.commit_time),
-                    )
+                    dt = datetime.fromtimestamp(commit.commit_time, tz=timezone.utc)
+                    anchor = local_now()
+                    tz = anchor.tzinfo
+                    dt = dt.astimezone(tz) if tz is not None else dt.astimezone()
+                    ts = dt.strftime("%Y-%m-%d %H:%M")
                     msg = commit.message.decode("utf-8", errors="replace").strip()
                     entries.append(CommitInfo(
                         sha=sha.hex()[:8],

@@ -28,6 +28,8 @@ import { useAppStore } from '../store';
 import { getWSRef } from '../hooks/useWebSocket';
 import { PageLayout } from '../components/PageLayout';
 import { formatQueryError } from '../utils/errors';
+import { useAgentTimeZone } from '../hooks/useAgentTimeZone';
+import { formatAgentLocaleDate } from '../utils/agentDatetime';
 
 const { Text } = Typography;
 
@@ -57,8 +59,10 @@ const ACTIVITY_COLORS: Record<string, string> = {
 };
 
 export default function Activity() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { currentBotId } = useAppStore();
+  const agentTz = useAgentTimeZone();
+  const locale = i18n.language.startsWith('zh') ? 'zh-CN' : 'en-US';
   const [typeFilter, setTypeFilter] = useState<string>('');
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
 
@@ -75,7 +79,7 @@ export default function Activity() {
     if (minutes < 60) return t('common.minutesAgo', { count: minutes });
     if (hours < 24) return t('common.hoursAgo', { count: hours });
     if (days < 7) return t('common.daysAgo', { count: days });
-    return date.toLocaleDateString();
+    return formatAgentLocaleDate(date, agentTz, locale);
   };
 
   const activityTypeOptions = useMemo(

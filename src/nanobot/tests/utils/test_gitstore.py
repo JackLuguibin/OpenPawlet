@@ -55,9 +55,7 @@ class TestLineAges:
         git.auto_commit("initial")
 
         future_now = datetime.now(tz=timezone.utc) + timedelta(days=30)
-        with patch("nanobot.utils.gitstore.datetime") as mock_dt:
-            mock_dt.now.return_value = future_now
-            mock_dt.fromtimestamp = datetime.fromtimestamp
+        with patch("nanobot.utils.gitstore.local_now", return_value=future_now):
             ages = git.line_ages("MEMORY.md")
 
         assert len(ages) == 2

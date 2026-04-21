@@ -7,6 +7,8 @@ import re
 import time
 import uuid
 from datetime import UTC, datetime
+
+from nanobot.utils.helpers import local_now
 from pathlib import Path
 from typing import Any
 
@@ -191,8 +193,8 @@ def tool_logs_path(bot_id: str | None) -> Path:
 
 
 def iso_now() -> str:
-    """UTC ISO-8601 timestamp with ``Z`` suffix."""
-    return datetime.now(tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    """ISO-8601 ``now`` in the configured agent timezone (see ``agents.defaults.timezone``)."""
+    return local_now().isoformat()
 
 
 def new_id(prefix: str = "") -> str:

@@ -14,7 +14,17 @@ if TYPE_CHECKING:
     from nanobot.session.transcript import SessionTranscriptWriter
 
 from nanobot.config.paths import get_legacy_sessions_dir
-from nanobot.utils.helpers import ensure_dir, find_legal_message_start, safe_filename
+from nanobot.utils.helpers import ensure_dir, find_legal_message_start, local_now, safe_filename, timestamp
+
+
+def _as_agent_aware(dt: datetime) -> datetime:
+    """Attach agent zone to naive datetimes from legacy session files."""
+    if dt.tzinfo is not None:
+        return dt
+    tz = local_now().tzinfo
+    if tz is not None:
+        return dt.replace(tzinfo=tz)
+    return dt.astimezone()
 
 
 @dataclass
@@ -23,8 +33,8 @@ class Session:
 
     key: str  # channel:chat_id
     messages: list[dict[str, Any]] = field(default_factory=list)
-    created_at: datetime = field(default_factory=datetime.now)
-    updated_at: datetime = field(default_factory=datetime.now)
+    created_at: datetime = field(default_factory=local_now)
+    updated_at: datetime = field(default_factory=local_now)
     metadata: dict[str, Any] = field(default_factory=dict)
     last_consolidated: int = 0  # Number of messages already consolidated to files
 
@@ -33,11 +43,11 @@ class Session:
         msg = {
             "role": role,
             "content": content,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": timestamp(),
             **kwargs
         }
         self.messages.append(msg)
-        self.updated_at = datetime.now()
+        self.updated_at = local_now()
 
     def get_history(self, max_messages: int = 500) -> list[dict[str, Any]]:
         """Return unconsolidated messages for LLM input, aligned to a legal tool-call boundary."""
@@ -68,7 +78,7 @@ class Session:
         """Clear all messages and reset session to initial state."""
         self.messages = []
         self.last_consolidated = 0
-        self.updated_at = datetime.now()
+        self.updated_at = local_now()
 
     def retain_recent_legal_suffix(
         self,
@@ -109,7 +119,7 @@ class Session:
         dropped = len(self.messages) - len(retained)
         self.messages = retained
         self.last_consolidated = max(0, self.last_consolidated - dropped)
-        self.updated_at = datetime.now()
+        self.updated_at = local_now()
 
 
 class SessionManager:
@@ -190,8 +200,20 @@ class SessionManager:
 
                     if data.get("_type") == "metadata":
                         metadata = data.get("metadata", {})
-                        created_at = datetime.fromisoformat(data["created_at"]) if data.get("created_at") else None
-                        updated_at = datetime.fromisoformat(data["updated_at"]) if data.get("updated_at") else None
+                        created_at = (
+                            _as_agent_aware(
+                                datetime.fromisoformat(data["created_at"].replace("Z", "+00:00")),
+                            )
+                            if data.get("created_at")
+                            else None
+                        )
+                        updated_at = (
+                            _as_agent_aware(
+                                datetime.fromisoformat(data["updated_at"].replace("Z", "+00:00")),
+                            )
+                            if data.get("updated_at")
+                            else None
+                        )
                         last_consolidated = data.get("last_consolidated", 0)
                     else:
                         messages.append(data)
@@ -199,8 +221,8 @@ class SessionManager:
             return Session(
                 key=key,
                 messages=messages,
-                created_at=created_at or datetime.now(),
-                updated_at=updated_at or datetime.now(),
+                created_at=created_at or local_now(),
+                updated_at=updated_at or local_now(),
                 metadata=metadata,
                 last_consolidated=last_consolidated
             )
@@ -240,12 +262,16 @@ class SessionManager:
                         metadata = data.get("metadata", {})
                         if data.get("created_at"):
                             try:
-                                created_at = datetime.fromisoformat(data["created_at"])
+                                created_at = _as_agent_aware(
+                                    datetime.fromisoformat(data["created_at"].replace("Z", "+00:00")),
+                                )
                             except (ValueError, TypeError):
                                 pass
                         if data.get("updated_at"):
                             try:
-                                updated_at = datetime.fromisoformat(data["updated_at"])
+                                updated_at = _as_agent_aware(
+                                    datetime.fromisoformat(data["updated_at"].replace("Z", "+00:00")),
+                                )
                             except (ValueError, TypeError):
                                 pass
                         last_consolidated = data.get("last_consolidated", 0)
@@ -261,8 +287,8 @@ class SessionManager:
             return Session(
                 key=key,
                 messages=messages,
-                created_at=created_at or datetime.now(),
-                updated_at=updated_at or datetime.now(),
+                created_at=created_at or local_now(),
+                updated_at=updated_at or local_now(),
                 metadata=metadata,
                 last_consolidated=last_consolidated
             )

@@ -32,6 +32,8 @@ import type { MCPStatus } from '../api/types';
 import { useAppStore } from '../store';
 import { PageLayout } from '../components/PageLayout';
 import { formatQueryError } from '../utils/errors';
+import { useAgentTimeZone } from '../hooks/useAgentTimeZone';
+import { formatAgentLocaleString } from '../utils/agentDatetime';
 
 const { Text } = Typography;
 
@@ -55,9 +57,11 @@ function mcpStatusLabel(status: MCPStatus['status'], t: TFunction): string {
 }
 
 export default function MCPServers() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const queryClient = useQueryClient();
   const { addToast, currentBotId } = useAppStore();
+  const agentTz = useAgentTimeZone();
+  const locale = i18n.language.startsWith('zh') ? 'zh-CN' : 'en-US';
   const [selectedServer, setSelectedServer] = useState<string | null>(null);
   const [testing, setTesting] = useState<string | null>(null);
 
@@ -227,7 +231,7 @@ export default function MCPServers() {
                   <p className="mt-2 text-xs text-gray-500 flex items-center gap-1">
                     <ClockCircleOutlined />
                     {t('mcp.lastConnectedPrefix')}{' '}
-                    {new Date(server.last_connected).toLocaleString()}
+                    {formatAgentLocaleString(server.last_connected, agentTz, locale)}
                   </p>
                 )}
               </Card>
@@ -302,7 +306,11 @@ export default function MCPServers() {
                       <ClockCircleOutlined className="text-gray-400 text-xl" />
                       <span className="text-base font-semibold">
                         {selectedServerData.last_connected
-                          ? new Date(selectedServerData.last_connected).toLocaleString()
+                          ? formatAgentLocaleString(
+                              selectedServerData.last_connected,
+                              agentTz,
+                              locale,
+                            )
                           : t('mcp.never')}
                       </span>
                     </div>
@@ -337,7 +345,11 @@ export default function MCPServers() {
                     key: 'last_connected',
                     label: t('mcp.lastConnected'),
                     children: selectedServerData.last_connected
-                      ? new Date(selectedServerData.last_connected).toLocaleString()
+                      ? formatAgentLocaleString(
+                          selectedServerData.last_connected,
+                          agentTz,
+                          locale,
+                        )
                       : t('mcp.never'),
                   },
                 ]}
