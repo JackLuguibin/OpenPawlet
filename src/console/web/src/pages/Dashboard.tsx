@@ -89,13 +89,18 @@ export default function Dashboard() {
   // 用当前 bot 的 API 数据作为展示源，避免与 store 中其他 bot 或旧数据混用
   const displayStatus = data ?? status;
 
+  const modelPieByModel = useMemo(
+    () => displayStatus?.model_token_totals ?? displayStatus?.token_usage?.by_model,
+    [displayStatus?.model_token_totals, displayStatus?.token_usage?.by_model],
+  );
+
   const modelPieRows = useMemo(() => {
-    const rows = Object.entries(displayStatus?.token_usage?.by_model ?? {})
+    const rows = Object.entries(modelPieByModel ?? {})
       .filter(([, v]) => (v.total_tokens ?? 0) > 0)
       .map(([model, u]) => ({ type: model, value: u.total_tokens ?? 0 }));
     rows.sort((a, b) => b.value - a.value);
     return rows;
-  }, [displayStatus]);
+  }, [modelPieByModel]);
 
   const modelPieTotal = useMemo(
     () => modelPieRows.reduce((sum, r) => sum + r.value, 0),
@@ -190,7 +195,7 @@ export default function Dashboard() {
       color: modelPieColorRange,
       series: [
         {
-          name: t('dashboard.tokenUsageToday'),
+          name: t('dashboard.modelUsageAllTime'),
           type: 'pie',
           radius: '50%',
           center: ['50%', '55%'],
@@ -588,42 +593,64 @@ export default function Dashboard() {
                 <p className="font-semibold text-base">{displayStatus.model}</p>
               </div>
             </div>
-            {displayStatus?.token_usage && ((displayStatus?.token_usage?.total_tokens ?? 0) + (displayStatus?.token_usage?.prompt_tokens ?? 0) + (displayStatus?.token_usage?.completion_tokens ?? 0)) > 0 && (
+            {((displayStatus?.token_usage &&
+              ((displayStatus.token_usage.total_tokens ?? 0) > 0 ||
+                (displayStatus.token_usage.prompt_tokens ?? 0) > 0 ||
+                (displayStatus.token_usage.completion_tokens ?? 0) > 0)) ||
+              (modelPieByModel && Object.keys(modelPieByModel).length > 0)) && (
               <div className="flex flex-col gap-2 text-sm">
-                <div className="flex items-center gap-4">
-                  <div>
-                    <Text type="secondary" className="text-xs block">{t('dashboard.tokenUsageToday')}</Text>
-                    <span className="font-medium">
-                      {formatTokenCount(displayStatus?.token_usage?.total_tokens ?? 0)}
-                    </span>
-                    <Text type="secondary" className="text-xs ml-1">{t('common.total')}</Text>
+                {displayStatus?.token_usage &&
+                  ((displayStatus.token_usage.total_tokens ?? 0) > 0 ||
+                    (displayStatus.token_usage.prompt_tokens ?? 0) > 0 ||
+                    (displayStatus.token_usage.completion_tokens ?? 0) > 0) && (
+                  <div className="flex items-center gap-4">
+                    <div>
+                      <Text type="secondary" className="text-xs block">
+                        {t('dashboard.tokenUsageToday')}
+                      </Text>
+                      <span className="font-medium">
+                        {formatTokenCount(displayStatus.token_usage.total_tokens ?? 0)}
+                      </span>
+                      <Text type="secondary" className="text-xs ml-1">
+                        {t('common.total')}
+                      </Text>
+                    </div>
+                    <div>
+                      <Text type="secondary" className="text-xs block">
+                        {t('dashboard.chartPrompt')}
+                      </Text>
+                      <span className="font-medium">
+                        {formatTokenCount(displayStatus.token_usage.prompt_tokens ?? 0)}
+                      </span>
+                    </div>
+                    <div>
+                      <Text type="secondary" className="text-xs block">
+                        {t('dashboard.chartCompletion')}
+                      </Text>
+                      <span className="font-medium">
+                        {formatTokenCount(displayStatus.token_usage.completion_tokens ?? 0)}
+                      </span>
+                    </div>
                   </div>
+                )}
+                {modelPieByModel && Object.keys(modelPieByModel).length > 0 && (
                   <div>
-                    <Text type="secondary" className="text-xs block">{t('dashboard.chartPrompt')}</Text>
-                    <span className="font-medium">
-                      {formatTokenCount(displayStatus?.token_usage?.prompt_tokens ?? 0)}
-                    </span>
-                  </div>
-                  <div>
-                    <Text type="secondary" className="text-xs block">{t('dashboard.chartCompletion')}</Text>
-                    <span className="font-medium">
-                      {formatTokenCount(displayStatus?.token_usage?.completion_tokens ?? 0)}
-                    </span>
-                  </div>
-                </div>
-                {displayStatus?.token_usage?.by_model && Object.keys(displayStatus.token_usage.by_model).length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    {Object.entries(displayStatus.token_usage.by_model).map(([model, u]) => (
-                      <Tag key={model} className="m-0">
-                        {model}: {formatTokenCount(u.total_tokens ?? 0)}
-                        {displayStatus?.token_usage?.cost_by_model?.[model] != null &&
-                          displayStatus.token_usage.cost_by_model[model] > 0 && (
-                            <span className="ml-1 text-green-600 dark:text-green-400">
-                              ({formatCost(displayStatus.token_usage.cost_by_model[model])})
-                            </span>
-                          )}
-                      </Tag>
-                    ))}
+                    <Text type="secondary" className="text-xs block mb-1">
+                      {t('dashboard.modelTotalsByModel')}
+                    </Text>
+                    <div className="flex flex-wrap gap-2">
+                      {Object.entries(modelPieByModel).map(([model, u]) => (
+                        <Tag key={model} className="m-0">
+                          {model}: {formatTokenCount(u.total_tokens ?? 0)}
+                          {displayStatus?.token_usage?.cost_by_model?.[model] != null &&
+                            displayStatus.token_usage.cost_by_model[model] > 0 && (
+                              <span className="ml-1 text-green-600 dark:text-green-400">
+                                ({formatCost(displayStatus.token_usage.cost_by_model[model])})
+                              </span>
+                            )}
+                        </Tag>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>

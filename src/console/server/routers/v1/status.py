@@ -39,6 +39,7 @@ async def get_status(
                 "active_sessions": metrics.active_sessions,
                 "messages_today": metrics.messages_today,
                 "token_usage": metrics.token_usage_today,
+                "model_token_totals": metrics.model_token_totals,
                 "channels": list_channel_statuses(bot_id),
             }
         )

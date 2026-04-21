@@ -53,6 +53,7 @@ def _accumulate_token_usage_jsonl(
     day_prompt: dict[date, int],
     day_completion: dict[date, int],
     day_by_model: dict[date, dict[str, dict[str, int]]],
+    all_time_by_model: dict[str, dict[str, int]],
     default_model: str,
     today: date,
     start: date,
@@ -79,7 +80,7 @@ def _accumulate_token_usage_jsonl(
             msg_date = _message_local_date(data)
             if msg_date is None:
                 continue
-            if msg_date < start or msg_date > today:
+            if msg_date > today:
                 continue
             u = data.get("usage")
             if not isinstance(u, dict):
@@ -89,6 +90,11 @@ def _accumulate_token_usage_jsonl(
             if prompt == 0 and completion == 0:
                 continue
             model = _model_for_message(data, default_model)
+            b_all = all_time_by_model[model]
+            b_all["prompt_tokens"] += prompt
+            b_all["completion_tokens"] += completion
+            if msg_date < start:
+                continue
             day_prompt[msg_date] += prompt
             day_completion[msg_date] += completion
             bucket = day_by_model[msg_date][model]
@@ -118,11 +124,16 @@ def _iter_session_messages(session_dir: Path) -> Any:
 
 @dataclass(frozen=True)
 class DashboardMetrics:
-    """Per-workspace aggregates for status and usage history endpoints."""
+    """Per-workspace aggregates for status and usage history endpoints.
+
+    ``model_token_totals`` sums all dates found in session JSONL and provider ``usage/*.jsonl`` logs
+    (not limited to the rolling ``history_days`` window).
+    """
 
     active_sessions: int
     messages_today: int
     token_usage_today: TokenUsage | None
+    model_token_totals: dict[str, dict[str, int | None]] | None
     history: list[UsageHistoryItem]
 
 
@@ -146,6 +157,9 @@ def collect_dashboard_metrics(
             lambda: {"prompt_tokens": 0, "completion_tokens": 0},
         )
     )
+    all_time_by_model: dict[str, dict[str, int]] = defaultdict(
+        lambda: {"prompt_tokens": 0, "completion_tokens": 0},
+    )
 
     messages_today = 0
 
@@ -159,13 +173,18 @@ def collect_dashboard_metrics(
             continue
         if msg_date == today:
             messages_today += 1
-        if msg_date < start or msg_date > today:
+        if msg_date > today:
             continue
         usage = _usage_pair(msg)
         if usage is None:
             continue
         prompt, completion = usage
         model = _model_for_message(msg, default_model)
+        b_all = all_time_by_model[model]
+        b_all["prompt_tokens"] += prompt
+        b_all["completion_tokens"] += completion
+        if msg_date < start:
+            continue
         day_prompt[msg_date] += prompt
         day_completion[msg_date] += completion
         bucket = day_by_model[msg_date][model]
@@ -177,6 +196,7 @@ def collect_dashboard_metrics(
         day_prompt=day_prompt,
         day_completion=day_completion,
         day_by_model=day_by_model,
+        all_time_by_model=all_time_by_model,
         default_model=default_model,
         today=today,
         start=start,
@@ -233,9 +253,26 @@ def collect_dashboard_metrics(
         )
         cursor += timedelta(days=1)
 
+    model_token_totals: dict[str, dict[str, int | None]] | None = None
+    if all_time_by_model:
+        model_token_totals = {}
+        for model, parts in all_time_by_model.items():
+            p = int(parts["prompt_tokens"])
+            c = int(parts["completion_tokens"])
+            if p == 0 and c == 0:
+                continue
+            model_token_totals[model] = {
+                "prompt_tokens": p,
+                "completion_tokens": c,
+                "total_tokens": p + c,
+            }
+        if not model_token_totals:
+            model_token_totals = None
+
     return DashboardMetrics(
         active_sessions=active_sessions,
         messages_today=messages_today,
         token_usage_today=token_usage_today,
+        model_token_totals=model_token_totals,
         history=history,
     )

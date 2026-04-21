@@ -134,6 +134,8 @@ export interface StatusResponse {
   active_sessions: number;
   messages_today: number;
   token_usage?: TokenUsage;
+  /** Cumulative tokens per model (all logged history), for charts; today-only detail stays in token_usage. */
+  model_token_totals?: Record<string, { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }>;
   channels: ChannelStatus[];
   mcp_servers: MCPStatus[];
 }

@@ -54,6 +54,7 @@ class StatusResponse(BaseModel):
     active_sessions: int
     messages_today: int
     token_usage: TokenUsage | None = None
+    model_token_totals: dict[str, dict[str, int | None]] | None = None
     channels: list[ChannelStatus]
     mcp_servers: list[MCPStatus]
 
