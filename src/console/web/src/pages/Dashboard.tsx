@@ -27,7 +27,8 @@ import {
   ThunderboltOutlined,
   BarChartOutlined,
 } from '@ant-design/icons';
-import { Column, Tiny, Pie } from '@ant-design/plots';
+import { Column, Tiny } from '@ant-design/plots';
+import { ModelPieChart, type EChartsOption } from '../components/ModelPieChart';
 import type { UsageHistoryItem } from '../api/types';
 import { formatTokenCount, formatCost } from '../utils/format';
 import { PageLayout } from '../components/PageLayout';
@@ -36,8 +37,29 @@ import { formatQueryError } from '../utils/errors';
 
 const { Text } = Typography;
 
-/** Placeholder slice so the donut still renders when there is no usage by model */
-const MODEL_PIE_EMPTY_TYPE = '__model_pie_empty__';
+/** Categorical colors for model share pie (light UI) */
+const MODEL_PIE_PALETTE_LIGHT = [
+  '#d97706',
+  '#2563eb',
+  '#059669',
+  '#7c3aed',
+  '#db2777',
+  '#0d9488',
+  '#ea580c',
+  '#4f46e5',
+];
+
+/** Categorical colors for model share pie (dark UI) */
+const MODEL_PIE_PALETTE_DARK = [
+  '#fbbf24',
+  '#60a5fa',
+  '#34d399',
+  '#a78bfa',
+  '#f472b6',
+  '#2dd4bf',
+  '#fb923c',
+  '#818cf8',
+];
 
 /** 将 usageHistory 转为柱状图分组数据 */
 function toColumnData(history: UsageHistoryItem[], t: TFunction) {
@@ -79,33 +101,134 @@ export default function Dashboard() {
   // 用当前 bot 的 API 数据作为展示源，避免与 store 中其他 bot 或旧数据混用
   const displayStatus = data ?? status;
 
-  const modelPieEmptyFill = useMemo(() => {
-    const dark =
+  const modelPieRows = useMemo(() => {
+    const rows = Object.entries(displayStatus?.token_usage?.by_model ?? {})
+      .filter(([, v]) => (v.total_tokens ?? 0) > 0)
+      .map(([model, u]) => ({ type: model, value: u.total_tokens ?? 0 }));
+    rows.sort((a, b) => b.value - a.value);
+    return rows;
+  }, [displayStatus]);
+
+  const modelPieTotal = useMemo(
+    () => modelPieRows.reduce((sum, r) => sum + r.value, 0),
+    [modelPieRows],
+  );
+
+  const isDarkUi = useMemo(() => {
+    return (
       theme === 'dark' ||
       (theme === 'system' &&
         typeof window !== 'undefined' &&
-        window.matchMedia('(prefers-color-scheme: dark)').matches);
-    return dark ? '#4b5563' : '#e2e8f0';
+        window.matchMedia('(prefers-color-scheme: dark)').matches)
+    );
   }, [theme]);
 
-  const modelPieRows = useMemo(
-    () =>
-      Object.entries(displayStatus?.token_usage?.by_model ?? {})
-        .filter(([, v]) => (v.total_tokens ?? 0) > 0)
-        .map(([model, u]) => ({ type: model, value: u.total_tokens ?? 0 })),
-    [displayStatus],
-  );
+  const modelPieEmptyFill = useMemo(() => (isDarkUi ? '#4b5563' : '#e2e8f0'), [isDarkUi]);
 
-  const modelPieData =
-    modelPieRows.length > 0
-      ? modelPieRows
-      : [{ type: MODEL_PIE_EMPTY_TYPE, value: 1 }];
+  const modelPieColorRange = useMemo(() => {
+    const n = modelPieRows.length;
+    if (n === 0) return [];
+    const base = isDarkUi ? MODEL_PIE_PALETTE_DARK : MODEL_PIE_PALETTE_LIGHT;
+    return Array.from({ length: n }, (_, i) => base[i % base.length]);
+  }, [modelPieRows.length, isDarkUi]);
+
+  const modelPieChartOption = useMemo((): EChartsOption => {
+    const titleTextColor = isDarkUi ? '#f3f4f6' : '#111827';
+    const subtextColor = isDarkUi ? '#9ca3af' : '#6b7280';
+    const legendTextColor = isDarkUi ? '#d1d5db' : '#4b5563';
+    const tooltipTextColor = isDarkUi ? '#e5e7eb' : '#1f2937';
+    const tooltipBg = isDarkUi ? 'rgba(17, 24, 39, 0.92)' : 'rgba(255, 255, 255, 0.96)';
+
+    const empty = modelPieRows.length === 0;
+    if (empty) {
+      return {
+        backgroundColor: 'transparent',
+        title: {
+          text: t('dashboard.modelShareTitle'),
+          subtext: t('dashboard.noUsageData'),
+          left: 'center',
+          textStyle: { color: titleTextColor, fontSize: 16, fontWeight: 600 },
+          subtextStyle: { color: subtextColor },
+        },
+        tooltip: { show: false },
+        legend: { show: false },
+        series: [
+          {
+            type: 'pie',
+            radius: '50%',
+            center: ['50%', '55%'],
+            silent: true,
+            animation: false,
+            label: { show: false },
+            labelLine: { show: false },
+            data: [
+              {
+                value: 1,
+                name: '',
+                itemStyle: { color: modelPieEmptyFill },
+              },
+            ],
+          },
+        ],
+      };
+    }
+
+    return {
+      backgroundColor: 'transparent',
+      title: {
+        text: t('dashboard.modelShareTitle'),
+        subtext: formatTokenCount(modelPieTotal),
+        left: 'center',
+        textStyle: { color: titleTextColor, fontSize: 16, fontWeight: 600 },
+        subtextStyle: { color: subtextColor },
+      },
+      tooltip: {
+        trigger: 'item',
+        backgroundColor: tooltipBg,
+        borderColor: isDarkUi ? '#374151' : '#e5e7eb',
+        textStyle: { color: tooltipTextColor },
+        formatter: (params) => {
+          if (!params || typeof params !== 'object' || !('name' in params)) return '';
+          const p = params as { name: string; value: number; percent: number };
+          return `${p.name}<br/><span style="font-variant-numeric: tabular-nums">${formatTokenCount(p.value)} (${p.percent.toFixed(1)}%)</span>`;
+        },
+      },
+      legend: {
+        orient: 'vertical',
+        left: 'left',
+        textStyle: { color: legendTextColor },
+        type: 'scroll',
+      },
+      color: modelPieColorRange,
+      series: [
+        {
+          name: t('dashboard.tokenUsageToday'),
+          type: 'pie',
+          radius: '50%',
+          center: ['50%', '55%'],
+          data: modelPieRows.map((r) => ({ name: r.type, value: r.value })),
+          emphasis: {
+            itemStyle: {
+              shadowBlur: 10,
+              shadowOffsetX: 0,
+              shadowColor: 'rgba(0, 0, 0, 0.5)',
+            },
+          },
+        },
+      ],
+    };
+  }, [
+    modelPieRows,
+    modelPieColorRange,
+    modelPieEmptyFill,
+    modelPieTotal,
+    isDarkUi,
+    t,
+  ]);
 
   const columnChartWrapRef = useRef<HTMLDivElement>(null);
   /** Plot 实例（类型声明成 Chart）：autoFit 只监听 window.resize，容器尺寸变化需 triggerResize */
   const columnPlotRef = useRef<{ triggerResize: () => void } | null>(null);
-  const pieChartWrapRef = useRef<HTMLDivElement>(null);
-  const piePlotRef = useRef<{ triggerResize: () => void } | null>(null);
 
   useEffect(() => {
     const el = columnChartWrapRef.current;
@@ -122,22 +245,6 @@ export default function Dashboard() {
     ro.observe(el);
     return () => ro.disconnect();
   }, [usageLoading, usageHistory]);
-
-  useEffect(() => {
-    const el = pieChartWrapRef.current;
-    if (!el || typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver(() => {
-      requestAnimationFrame(() => {
-        try {
-          piePlotRef.current?.triggerResize();
-        } catch {
-          piePlotRef.current = null;
-        }
-      });
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [displayStatus?.token_usage]);
 
   useEffect(() => {
     if (data) {
@@ -485,64 +592,11 @@ export default function Dashboard() {
         </Card>
 
         <Card
-          title={
-            <span className="flex items-center gap-2">
-              <ThunderboltOutlined className="text-amber-500" /> {t('dashboard.modelShareTitle')}
-            </span>
-          }
           size="small"
           className="flex min-h-0 min-w-0 flex-col [&_.ant-card-head]:shrink-0 [&_.ant-card-body]:flex [&_.ant-card-body]:min-h-0 [&_.ant-card-body]:flex-1 [&_.ant-card-body]:flex-col"
         >
-          <div className="flex min-h-0 w-full flex-1 flex-col gap-4">
-            <div
-              ref={pieChartWrapRef}
-              className="flex min-h-[200px] w-full min-w-0 flex-1 flex-col [&_.antv-chart]:min-h-0"
-            >
-              <Pie
-                className="flex min-h-0 flex-1 flex-col [&>div]:min-h-0 [&>div]:flex-1"
-                containerStyle={{ width: '100%', height: '100%', flex: 1, minHeight: 0 }}
-                data={modelPieData}
-                angleField="value"
-                colorField="type"
-                radius={0.8}
-                innerRadius={0.4}
-                label={false}
-                legend={false}
-                autoFit
-                style={
-                  modelPieRows.length === 0
-                    ? { fill: modelPieEmptyFill }
-                    : undefined
-                }
-                onReady={(chart) => {
-                  const plot = chart as unknown as { triggerResize: () => void };
-                  piePlotRef.current = plot;
-                  plot.triggerResize();
-                }}
-                tooltip={
-                  modelPieRows.length === 0
-                    ? false
-                    : {
-                        items: [
-                          {
-                            channel: 'y',
-                            valueFormatter: (v: number) => formatTokenCount(v),
-                          },
-                        ],
-                      }
-                }
-              />
-            </div>
-            <div className="flex shrink-0 flex-col gap-2">
-              {modelPieRows.map(({ type: model, value: tokens }) => (
-                <div key={model} className="flex items-center justify-between gap-4">
-                  <span className="font-medium truncate max-w-[100px]">{model}</span>
-                  <span className="text-amber-600 dark:text-amber-400 font-mono">
-                    {formatTokenCount(tokens)}
-                  </span>
-                </div>
-              ))}
-            </div>
+          <div className="flex min-h-[360px] w-full flex-1 flex-col">
+            <ModelPieChart option={modelPieChartOption} style={{ height: '100%', width: '100%', minHeight: 360 }} />
           </div>
         </Card>
       </div>
