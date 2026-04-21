@@ -35,7 +35,7 @@ export default function WebSocketDebugPanel() {
       <Drawer
         title={t('websocketDebug.drawerTitle')}
         placement="right"
-        width={480}
+        size={480}
         open={open}
         onClose={() => setOpen(false)}
         destroyOnClose={false}
