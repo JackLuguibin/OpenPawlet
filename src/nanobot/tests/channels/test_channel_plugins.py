@@ -15,7 +15,6 @@ from nanobot.channels.manager import ChannelManager
 from nanobot.config.schema import ChannelsConfig
 from nanobot.utils.restart import RestartNotice
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -207,8 +206,8 @@ async def test_manager_propagates_groq_transcription_api_base_to_channels():
     fake_config = SimpleNamespace(
         channels=ChannelsConfig.model_validate({
             "fakeplugin": {"enabled": True, "allowFrom": ["*"]},
+            "transcriptionLanguage": "en",
         }),
-        transcription_provider="groq",
         providers=SimpleNamespace(
             groq=SimpleNamespace(api_key="groq-key", api_base="http://proxy.local/v1/audio/transcriptions"),
             openai=SimpleNamespace(api_key="openai-key", api_base="https://api.openai.com/v1/audio/transcriptions"),
@@ -230,6 +229,7 @@ async def test_manager_propagates_groq_transcription_api_base_to_channels():
     assert channel.transcription_provider == "groq"
     assert channel.transcription_api_key == "groq-key"
     assert channel.transcription_api_base == "http://proxy.local/v1/audio/transcriptions"
+    assert channel.transcription_language == "en"
 
 
 @pytest.mark.asyncio
@@ -276,6 +276,7 @@ async def test_base_channel_passes_api_base_to_openai_transcription_provider():
     channel.transcription_provider = "openai"
     channel.transcription_api_key = "k"
     channel.transcription_api_base = "http://override/v1/audio/transcriptions"
+    channel.transcription_language = "en"
 
     captured: dict[str, object] = {}
 
@@ -294,7 +295,7 @@ async def test_base_channel_passes_api_base_to_openai_transcription_provider():
     assert result == "ok"
     assert captured["api_key"] == "k"
     assert captured["api_base"] == "http://override/v1/audio/transcriptions"
-    assert captured["language"] is None
+    assert captured["language"] == "en"
 
 
 def test_openai_transcription_provider_honors_api_base_argument():
@@ -413,9 +414,10 @@ async def test_transcription_provider_omits_language_when_none(tmp_path, provide
 
 
 def test_channels_login_uses_discovered_plugin_class(monkeypatch):
+    from typer.testing import CliRunner
+
     from nanobot.cli.commands import app
     from nanobot.config.schema import Config
-    from typer.testing import CliRunner
 
     runner = CliRunner()
     seen: dict[str, object] = {}
@@ -441,9 +443,10 @@ def test_channels_login_uses_discovered_plugin_class(monkeypatch):
 
 
 def test_channels_login_sets_custom_config_path(monkeypatch, tmp_path):
+    from typer.testing import CliRunner
+
     from nanobot.cli.commands import app
     from nanobot.config.schema import Config
-    from typer.testing import CliRunner
 
     runner = CliRunner()
     seen: dict[str, object] = {}
@@ -470,9 +473,10 @@ def test_channels_login_sets_custom_config_path(monkeypatch, tmp_path):
 
 
 def test_channels_status_sets_custom_config_path(monkeypatch, tmp_path):
+    from typer.testing import CliRunner
+
     from nanobot.cli.commands import app
     from nanobot.config.schema import Config
-    from typer.testing import CliRunner
 
     runner = CliRunner()
     seen: dict[str, object] = {}
