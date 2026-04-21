@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import type { TFunction } from 'i18next';
 import { useAppStore } from '../store';
 import * as api from '../api/client';
 import {
@@ -27,9 +26,8 @@ import {
   ThunderboltOutlined,
   BarChartOutlined,
 } from '@ant-design/icons';
-import { Column, Tiny } from '@ant-design/plots';
+import ReactECharts from 'echarts-for-react';
 import { ModelPieChart, type EChartsOption } from '../components/ModelPieChart';
-import type { UsageHistoryItem } from '../api/types';
 import { formatTokenCount, formatCost } from '../utils/format';
 import { PageLayout } from '../components/PageLayout';
 import { useBots } from '../hooks/useBots';
@@ -60,16 +58,6 @@ const MODEL_PIE_PALETTE_DARK = [
   '#fb923c',
   '#818cf8',
 ];
-
-/** 将 usageHistory 转为柱状图分组数据 */
-function toColumnData(history: UsageHistoryItem[], t: TFunction) {
-  const prompt = t('dashboard.chartPrompt');
-  const completion = t('dashboard.chartCompletion');
-  return history.flatMap((d) => [
-    { date: d.date, type: prompt, value: d.prompt_tokens ?? 0 },
-    { date: d.date, type: completion, value: d.completion_tokens ?? 0 },
-  ]);
-}
 
 function formatUptime(seconds: number): string {
   const hours = Math.floor(seconds / 3600);
@@ -226,25 +214,184 @@ export default function Dashboard() {
     t,
   ]);
 
-  const columnChartWrapRef = useRef<HTMLDivElement>(null);
-  /** Plot 实例（类型声明成 Chart）：autoFit 只监听 window.resize，容器尺寸变化需 triggerResize */
-  const columnPlotRef = useRef<{ triggerResize: () => void } | null>(null);
+  /** Daily token: vertical stacked bars (same stack/tooltip style as horizontal example, rotated 90°) */
+  const dailyTokenStackBarOption = useMemo((): EChartsOption => {
+    const history = usageHistory ?? [];
+    if (history.length === 0) {
+      return { series: [] };
+    }
 
-  useEffect(() => {
-    const el = columnChartWrapRef.current;
-    if (!el || typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver(() => {
-      requestAnimationFrame(() => {
-        try {
-          columnPlotRef.current?.triggerResize();
-        } catch {
-          columnPlotRef.current = null;
-        }
-      });
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [usageLoading, usageHistory]);
+    const labelOnBarColor = '#ffffff';
+    const axisLabelColor = isDarkUi ? '#9ca3af' : '#6b7280';
+    const legendTextColor = isDarkUi ? '#d1d5db' : '#4b5563';
+    const tooltipTextColor = isDarkUi ? '#e5e7eb' : '#1f2937';
+    const tooltipBg = isDarkUi ? 'rgba(17, 24, 39, 0.92)' : 'rgba(255, 255, 255, 0.96)';
+    const splitLineColor = isDarkUi ? '#374151' : '#e5e7eb';
+
+    const xCategories = history.map((d) => d.date.slice(5));
+    const promptLabel = t('dashboard.chartPrompt');
+    const completionLabel = t('dashboard.chartCompletion');
+    const promptData = history.map((d) => d.prompt_tokens ?? 0);
+    const completionData = history.map((d) => d.completion_tokens ?? 0);
+
+    return {
+      backgroundColor: 'transparent',
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: { type: 'shadow' },
+        backgroundColor: tooltipBg,
+        borderColor: isDarkUi ? '#374151' : '#e5e7eb',
+        textStyle: { color: tooltipTextColor },
+        formatter: (params: unknown) => {
+          if (!Array.isArray(params) || params.length === 0) return '';
+          const rows = params as Array<{
+            axisValue?: string;
+            seriesName?: string;
+            value?: number | string;
+            marker?: string;
+          }>;
+          const axis = rows[0].axisValue ?? '';
+          const lines = rows.map(
+            (p) =>
+              `${p.marker ?? ''} ${p.seriesName ?? ''}: ${formatTokenCount(Number(p.value ?? 0))}`,
+          );
+          return [axis, ...lines].join('<br/>');
+        },
+      },
+      legend: {
+        textStyle: { color: legendTextColor },
+      },
+      grid: {
+        left: 8,
+        right: 16,
+        top: 36,
+        bottom: 36,
+        containLabel: true,
+      },
+      xAxis: {
+        type: 'category',
+        data: xCategories,
+        axisLabel: {
+          color: axisLabelColor,
+          rotate: 30,
+          interval: 0,
+        },
+        axisTick: { alignWithLabel: true },
+      },
+      yAxis: {
+        type: 'value',
+        axisLabel: {
+          color: axisLabelColor,
+          formatter: (v: string | number) => formatTokenCount(Number(v)),
+        },
+        splitLine: { lineStyle: { color: splitLineColor, type: 'dashed' } },
+      },
+      series: [
+        {
+          name: promptLabel,
+          type: 'bar',
+          stack: 'total',
+          itemStyle: { color: '#3b82f6' },
+          emphasis: { focus: 'series' },
+          label: {
+            show: true,
+            color: labelOnBarColor,
+            formatter: (p: unknown) => {
+              const v =
+                typeof p === 'object' && p !== null && 'value' in p
+                  ? Number((p as { value: unknown }).value)
+                  : 0;
+              return v > 0 ? formatTokenCount(v) : '';
+            },
+          },
+          data: promptData,
+        },
+        {
+          name: completionLabel,
+          type: 'bar',
+          stack: 'total',
+          itemStyle: { color: '#22c55e' },
+          emphasis: { focus: 'series' },
+          label: {
+            show: true,
+            color: labelOnBarColor,
+            formatter: (p: unknown) => {
+              const v =
+                typeof p === 'object' && p !== null && 'value' in p
+                  ? Number((p as { value: unknown }).value)
+                  : 0;
+              return v > 0 ? formatTokenCount(v) : '';
+            },
+          },
+          data: completionData,
+        },
+      ],
+    };
+  }, [usageHistory, t, isDarkUi]);
+
+  /** Compact sparkline for model card: daily total tokens (ECharts, matches main charts) */
+  const dailyTokenSparklineOption = useMemo((): EChartsOption => {
+    const history = usageHistory ?? [];
+    if (history.length === 0) {
+      return { series: [] };
+    }
+    const dates = history.map((d) => d.date.slice(5));
+    const values = history.map((d) => d.total_tokens ?? 0);
+    const tooltipBg = isDarkUi ? 'rgba(17, 24, 39, 0.92)' : 'rgba(255, 255, 255, 0.96)';
+    const tooltipTextColor = isDarkUi ? '#e5e7eb' : '#1f2937';
+
+    return {
+      backgroundColor: 'transparent',
+      grid: { left: 0, right: 0, top: 2, bottom: 0, containLabel: false },
+      xAxis: {
+        type: 'category',
+        data: dates,
+        boundaryGap: false,
+        show: false,
+      },
+      yAxis: {
+        type: 'value',
+        show: false,
+        scale: true,
+      },
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: { type: 'line', lineStyle: { color: '#3b82f6', width: 1 } },
+        backgroundColor: tooltipBg,
+        borderColor: isDarkUi ? '#374151' : '#e5e7eb',
+        textStyle: { color: tooltipTextColor, fontSize: 12 },
+        formatter: (params: unknown) => {
+          if (!Array.isArray(params) || params.length === 0) return '';
+          const p = params[0] as { axisValue?: string; value?: number };
+          const v = Number(p.value ?? 0);
+          return `${p.axisValue ?? ''}<br/>${formatTokenCount(v)}`;
+        },
+      },
+      series: [
+        {
+          type: 'line',
+          smooth: true,
+          symbol: 'none',
+          sampling: 'lttb',
+          lineStyle: { width: 1.5, color: '#3b82f6' },
+          areaStyle: {
+            color: {
+              type: 'linear',
+              x: 0,
+              y: 0,
+              x2: 0,
+              y2: 1,
+              colorStops: [
+                { offset: 0, color: 'rgba(59, 130, 246, 0.35)' },
+                { offset: 1, color: 'rgba(59, 130, 246, 0.05)' },
+              ],
+            },
+          },
+          data: values,
+        },
+      ],
+    };
+  }, [usageHistory, isDarkUi]);
 
   useEffect(() => {
     if (data) {
@@ -486,16 +633,12 @@ export default function Dashboard() {
               <div className="w-full min-w-[320px]" style={{ maxWidth: 480 }}>
                 <Text type="secondary" className="text-xs block mb-1">{t('dashboard.dailyTokenUsage')}</Text>
                 <div style={{ height: 44 }}>
-                  <Tiny.Area
-                    data={usageHistory.map((d) => ({
-                      date: d.date.slice(5),
-                      value: d.total_tokens ?? 0,
-                    }))}
-                    xField="date"
-                    yField="value"
-                    smooth
-                    color="#3b82f6"
-                    areaStyle={{ fill: 'l(90) 0:rgba(59,130,246,0.35) 1:rgba(59,130,246,0.05)' }}
+                  <ReactECharts
+                    style={{ width: '100%', height: '100%' }}
+                    option={dailyTokenSparklineOption}
+                    opts={{ renderer: 'canvas' }}
+                    notMerge
+                    lazyUpdate
                   />
                 </div>
               </div>
@@ -521,64 +664,13 @@ export default function Dashboard() {
             </div>
           ) : usageHistory && usageHistory.length > 0 ? (
             <div className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col">
-              <div
-                ref={columnChartWrapRef}
-                className="flex min-h-0 w-full flex-1 flex-col [&_.antv-chart]:min-h-0"
-              >
-                <Column
-                  className="flex min-h-0 flex-1 flex-col [&>div]:min-h-0 [&>div]:flex-1"
-                  containerStyle={{ width: '100%', height: '100%', flex: 1, minHeight: 0 }}
-                  data={toColumnData(usageHistory, t)}
-                  xField="date"
-                  yField="value"
-                  seriesField="type"
-                  group
-                  autoFit
-                  onReady={(chart) => {
-                    const plot = chart as unknown as { triggerResize: () => void };
-                    columnPlotRef.current = plot;
-                    plot.triggerResize();
-                  }}
-                  marginLeft={52}
-                marginRight={8}
-                marginBottom={28}
-                scale={{
-                  x: { padding: 0.5 },
-                }}
-                style={{
-                  fill: (d: { type: string }) =>
-                    d.type === t('dashboard.chartPrompt')
-                      ? '#3b82f6'
-                      : d.type === t('dashboard.chartCompletion')
-                        ? '#22c55e'
-                        : '#94a3b8',
-                }}
-                label={{
-                  text: 'value',
-                  position: 'top',
-                  style: { dy: -16 },
-                  formatter: (v: unknown) => {
-                    const n = Number(v);
-                    return n > 0 ? formatTokenCount(n) : '';
-                  },
-                }}
-                axis={{
-                  x: {
-                    label: {
-                      formatter: (v: string) => (typeof v === 'string' ? v.slice(5) : String(v)),
-                    },
-                    labelTextAlign: 'center',
-                    labelTextBaseline: 'middle',
-                    labelTransform: 'rotate(-30deg)',
-                    labelSpacing: 12,
-                  },
-                  y: {
-                    label: {
-                      formatter: (v: string) => formatTokenCount(Number(v)),
-                    },
-                  },
-                }}
-                legend={{ position: 'top' }}
+              <div className="min-h-0 w-full min-w-0 flex-1">
+                <ReactECharts
+                  style={{ width: '100%', height: '100%', minHeight: 280 }}
+                  option={dailyTokenStackBarOption}
+                  opts={{ renderer: 'canvas' }}
+                  notMerge
+                  lazyUpdate
                 />
               </div>
             </div>
