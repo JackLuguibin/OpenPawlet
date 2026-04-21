@@ -345,7 +345,7 @@ export default function Sessions() {
             emptyText: error ? (
               <div className="text-red-500">{t('sessions.loadError', { error: formatQueryError(error) })}</div>
             ) : (
-              <Space direction="vertical" className="py-8">
+              <Space orientation="vertical" className="py-8">
                 <MessageOutlined className="text-4xl text-gray-300 dark:text-gray-600" />
                 <span className="text-gray-600 dark:text-gray-400">{t('sessions.empty')}</span>
                 <Button

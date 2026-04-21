@@ -469,7 +469,7 @@ export default function Dashboard() {
       <PageLayout variant="bleed">
         <Alert
           type="error"
-          message={t('dashboard.loadError')}
+          title={t('dashboard.loadError')}
           description={formatQueryError(error)}
           showIcon
         />

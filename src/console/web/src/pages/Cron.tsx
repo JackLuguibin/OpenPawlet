@@ -260,7 +260,7 @@ export default function Cron() {
       <PageLayout variant="bleed">
         <Alert
           type="error"
-          message={t('cron.loadFailed')}
+          title={t('cron.loadFailed')}
           description={formatQueryError(error)}
           showIcon
         />

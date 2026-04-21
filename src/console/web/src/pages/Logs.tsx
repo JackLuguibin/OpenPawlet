@@ -350,7 +350,7 @@ export default function Logs() {
             emptyText: error ? (
               <div className="text-red-500">{t('logs.loadError', { error: formatQueryError(error) })}</div>
             ) : (
-              <Space direction="vertical" className="py-6">
+              <Space orientation="vertical" className="py-6">
                 <CodeOutlined className="text-4xl text-gray-300" />
                 <span>{t('logs.empty')}</span>
                 {(toolFilter || statusFilter || searchQuery) && (

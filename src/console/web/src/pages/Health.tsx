@@ -46,7 +46,7 @@ export default function Health() {
   if (error) {
     return (
       <PageLayout variant="bleed">
-        <Alert type="error" message={t('health.loadFailed')} description={formatQueryError(error)} showIcon />
+        <Alert type="error" title={t('health.loadFailed')} description={formatQueryError(error)} showIcon />
       </PageLayout>
     );
   }

@@ -262,7 +262,7 @@ export default function Channels() {
       <PageLayout variant="bleed">
         <Alert
           type="error"
-          message={t('channels.errorLoad')}
+          title={t('channels.errorLoad')}
           description={formatQueryError(error)}
           showIcon
         />
@@ -308,7 +308,7 @@ export default function Channels() {
         type="info"
         showIcon
         icon={<InfoCircleOutlined />}
-        message={t('channels.configAlert')}
+        title={t('channels.configAlert')}
         className="shrink-0 rounded-xl border-0 bg-sky-50/90 dark:bg-sky-950/35"
       />
 
