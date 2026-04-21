@@ -319,6 +319,24 @@ export function buildNanobotChannelWsUrl(
   return `${proto}//${window.location.host}${pathNorm}/?${query}`;
 }
 
+/**
+ * Tear down a WebSocket without triggering Chromium's
+ * "WebSocket is closed before the connection is established" when the socket is
+ * still CONNECTING (common with React 18 StrictMode double mount).
+ */
+function disposeNanobotWebSocket(ws: WebSocket): void {
+  if (ws.readyState === WebSocket.CONNECTING) {
+    ws.addEventListener("open", () => ws.close(), { once: true });
+    return;
+  }
+  if (
+    ws.readyState === WebSocket.OPEN ||
+    ws.readyState === WebSocket.CLOSING
+  ) {
+    ws.close();
+  }
+}
+
 export function useNanobotChannelWebSocket(options: {
   enabled: boolean;
   /**
@@ -392,8 +410,9 @@ export function useNanobotChannelWebSocket(options: {
       clearReconnect();
       setReady(false);
       if (wsRef.current) {
-        wsRef.current.close();
+        const w = wsRef.current;
         wsRef.current = null;
+        disposeNanobotWebSocket(w);
       }
       return;
     }
@@ -431,8 +450,9 @@ export function useNanobotChannelWebSocket(options: {
       useAppStore.getState().setNanobotChatId(null);
       useAppStore.getState().setNanobotClientId(null);
       if (wsRef.current) {
-        wsRef.current.close();
+        const w = wsRef.current;
         wsRef.current = null;
+        disposeNanobotWebSocket(w);
       }
     };
 
@@ -463,6 +483,7 @@ export function useNanobotChannelWebSocket(options: {
 
         ws.onopen = () => {
           if (cancelled || myGen !== connectGeneration) {
+            disposeNanobotWebSocket(ws);
             return;
           }
           isConnectingRef.current = false;
