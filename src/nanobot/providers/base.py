@@ -8,6 +8,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
+from pathlib import Path
 from typing import Any
 
 from loguru import logger
@@ -162,6 +163,36 @@ class LLMProvider(ABC):
         self.api_key = api_key
         self.api_base = api_base
         self.generation: GenerationSettings = GenerationSettings()
+        self._token_usage_recorder: Any = None
+
+    def attach_token_usage_jsonl(self, workspace: str | Path) -> None:
+        """Log successful LLM completions' token usage to ``<workspace>/usage/token_usage_*.jsonl``."""
+        from nanobot.utils.token_usage_jsonl import TokenUsageJsonlRecorder
+
+        self._token_usage_recorder = TokenUsageJsonlRecorder(Path(workspace))
+
+    def _maybe_record_token_usage(
+        self,
+        response: LLMResponse,
+        kw: dict[str, Any],
+        *,
+        streaming: bool,
+    ) -> None:
+        rec = self._token_usage_recorder
+        if rec is None or response.finish_reason == "error" or not response.usage:
+            return
+        model = kw.get("model")
+        if model is None:
+            try:
+                model = self.get_default_model()
+            except Exception:
+                model = None
+        rec.record(
+            dict(response.usage),
+            model=model,
+            finish_reason=response.finish_reason,
+            streaming=streaming,
+        )
 
     @staticmethod
     def _sanitize_empty_content(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -553,6 +584,7 @@ class LLMProvider(ABC):
             messages,
             retry_mode=retry_mode,
             on_retry_wait=on_retry_wait,
+            streaming=True,
         )
 
     async def chat_with_retry(
@@ -594,6 +626,7 @@ class LLMProvider(ABC):
             messages,
             retry_mode=retry_mode,
             on_retry_wait=on_retry_wait,
+            streaming=False,
         )
 
     @classmethod
@@ -701,6 +734,7 @@ class LLMProvider(ABC):
         *,
         retry_mode: str,
         on_retry_wait: Callable[[str], Awaitable[None]] | None,
+        streaming: bool = False,
     ) -> LLMResponse:
         attempt = 0
         delays = list(self._CHAT_RETRY_DELAYS)
@@ -712,6 +746,7 @@ class LLMProvider(ABC):
             attempt += 1
             response = await call(**kw)
             if response.finish_reason != "error":
+                self._maybe_record_token_usage(response, kw, streaming=streaming)
                 return response
             last_response = response
             error_key = ((response.content or "").strip().lower() or None)
@@ -734,6 +769,7 @@ class LLMProvider(ABC):
                     # subsequent iterations do not repeat the error-retry cycle.
                     if result.finish_reason != "error":
                         self._strip_image_content_inplace(original_messages)
+                        self._maybe_record_token_usage(result, retry_kw, streaming=streaming)
                     return result
                 return response
 
@@ -780,7 +816,10 @@ class LLMProvider(ABC):
                 on_retry_wait=on_retry_wait,
             )
 
-        return last_response if last_response is not None else await call(**kw)
+        final = last_response if last_response is not None else await call(**kw)
+        if final.finish_reason != "error":
+            self._maybe_record_token_usage(final, kw, streaming=streaming)
+        return final
 
     @abstractmethod
     def get_default_model(self) -> str:

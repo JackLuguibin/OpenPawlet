@@ -47,6 +47,55 @@ def _model_for_message(msg: dict[str, Any], default_model: str) -> str:
     return default_model
 
 
+def _accumulate_token_usage_jsonl(
+    workspace: Path,
+    *,
+    day_prompt: dict[date, int],
+    day_completion: dict[date, int],
+    day_by_model: dict[date, dict[str, dict[str, int]]],
+    default_model: str,
+    today: date,
+    start: date,
+) -> None:
+    """Merge LLM usage rows from ``usage/token_usage_*.jsonl`` (provider-level log)."""
+    usage_dir = workspace / "usage"
+    if not usage_dir.is_dir():
+        return
+    for path in sorted(usage_dir.glob("token_usage_*.jsonl")):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        for line in text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                data = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(data, dict) or data.get("_type") != "llm_token_usage":
+                continue
+            msg_date = _message_local_date(data)
+            if msg_date is None:
+                continue
+            if msg_date < start or msg_date > today:
+                continue
+            u = data.get("usage")
+            if not isinstance(u, dict):
+                continue
+            prompt = int(u.get("prompt_tokens") or 0)
+            completion = int(u.get("completion_tokens") or 0)
+            if prompt == 0 and completion == 0:
+                continue
+            model = _model_for_message(data, default_model)
+            day_prompt[msg_date] += prompt
+            day_completion[msg_date] += completion
+            bucket = day_by_model[msg_date][model]
+            bucket["prompt_tokens"] += prompt
+            bucket["completion_tokens"] += completion
+
+
 def _iter_session_messages(session_dir: Path) -> Any:
     for path in sorted(session_dir.glob("*.jsonl")):
         try:
@@ -122,6 +171,16 @@ def collect_dashboard_metrics(
         bucket = day_by_model[msg_date][model]
         bucket["prompt_tokens"] += prompt
         bucket["completion_tokens"] += completion
+
+    _accumulate_token_usage_jsonl(
+        mgr.workspace,
+        day_prompt=day_prompt,
+        day_completion=day_completion,
+        day_by_model=day_by_model,
+        default_model=default_model,
+        today=today,
+        start=start,
+    )
 
     token_usage_today: TokenUsage | None = None
     pt_today = day_prompt.get(today, 0)

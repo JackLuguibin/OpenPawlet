@@ -474,6 +474,9 @@ def _make_provider(config: Config):
         max_tokens=defaults.max_tokens,
         reasoning_effort=defaults.reasoning_effort,
     )
+    from nanobot.utils.token_usage_jsonl import attach_token_usage_jsonl
+
+    attach_token_usage_jsonl(provider, config.workspace_path)
     return provider
 
 
