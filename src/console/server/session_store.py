@@ -12,6 +12,59 @@ from nanobot.utils.helpers import safe_filename
 
 from console.server.bot_workspace import workspace_root
 
+_VALID_TRANSCRIPT_ROLES = frozenset({"user", "assistant", "system", "tool"})
+
+
+def _transcript_file_path(ws: Path, session_key: str) -> Path:
+    """Path to ``<workspace>/transcripts/{safe_key}.jsonl`` (matches ``SessionTranscriptWriter``)."""
+    safe_key = safe_filename(session_key.replace(":", "_"))
+    return ws / "transcripts" / f"{safe_key}.jsonl"
+
+
+def parse_transcript_jsonl(path: Path) -> list[dict[str, Any]]:
+    """Read append-only transcript JSONL and return chat message dicts in file order.
+
+    Skips compaction / eviction records (``_event``) and non-message rows so the result
+    is a linear history suitable for UI replay without duplicating evicted lines.
+    """
+    out: list[dict[str, Any]] = []
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            data = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(data, dict):
+            continue
+        if data.get("_event"):
+            continue
+        if data.get("_type") == "metadata":
+            continue
+        role = data.get("role")
+        if role not in _VALID_TRANSCRIPT_ROLES:
+            continue
+        out.append(data)
+    return out
+
+
+def load_transcript_messages(bot_id: str | None, session_key: str) -> list[dict[str, Any]] | None:
+    """Load messages from ``workspace/transcripts/{key}.jsonl``.
+
+    Returns ``None`` if the transcript file is absent (caller may fall back to session JSONL).
+    Returns an empty list if the file exists but yields no message lines.
+    """
+    root = workspace_root(bot_id)
+    path = _transcript_file_path(root, session_key)
+    if not path.is_file():
+        return None
+    return parse_transcript_jsonl(path)
+
 
 def _primary_and_legacy_paths(mgr: SessionManager, key: str) -> tuple[Path, Path]:
     safe_key = safe_filename(key.replace(":", "_"))

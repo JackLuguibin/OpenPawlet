@@ -233,6 +233,17 @@ export async function getSession(key: string, botId?: string | null): Promise<{
   return fetchJson(appendBotQuery(`${API_BASE}/sessions/${encodeURIComponent(key)}`, botId));
 }
 
+/** Chat history for refresh: prefers append-only transcript JSONL when present. */
+export async function getSessionTranscript(key: string, botId?: string | null): Promise<{
+  key: string;
+  messages: unknown[];
+  message_count: number;
+}> {
+  return fetchJson(
+    appendBotQuery(`${API_BASE}/sessions/${encodeURIComponent(key)}/transcript`, botId)
+  );
+}
+
 export async function createSession(key?: string, botId?: string | null): Promise<SessionInfo> {
   return fetchJson<SessionInfo>(`${API_BASE}/sessions${botQuery(botId)}`, {
     method: 'POST',

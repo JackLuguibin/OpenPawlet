@@ -856,7 +856,7 @@ function pickNewestCreatedSessionKey(rows: SessionInfo[]): string | null {
   return best.key;
 }
 
-/** True when GET /sessions/:key failed because the session does not exist. */
+/** True when GET /sessions/:key/transcript failed because the session does not exist. */
 function isSessionMissingError(error: unknown): boolean {
   if (!(error instanceof Error)) {
     return false;
@@ -1112,7 +1112,7 @@ export default function Chat() {
   /**
    * After deleting the current session, `navigate` is async while `useParams` still
    * holds the old key briefly; `activeSessionKey` would still match the deleted id
-   * and trigger GET /sessions/:key → 404. Suppress JSONL fetch until the route
+   * and trigger GET /sessions/:key/transcript → 404. Suppress history fetch until the route
    * param leaves that key.
    */
   const suppressSessionDetailForKeyRef = useRef<string | null>(null);
@@ -1518,7 +1518,7 @@ export default function Chat() {
   const { data: sessionData, isError: sessionQueryError, error: sessionQueryErrorObj } =
     useQuery({
       queryKey: ["session", activeSessionKey, currentBotId],
-      queryFn: () => api.getSession(activeSessionKey!, currentBotId),
+      queryFn: () => api.getSessionTranscript(activeSessionKey!, currentBotId),
       enabled: shouldFetchSessionJsonl && !sessionJsonlFetchSuppressedForDeletedRoute,
       retry: false,
     });
@@ -1602,7 +1602,7 @@ export default function Chat() {
       });
       setShowSuggestions(serverMessages.length === 0);
     } else if (sessionData?.messages && isStreaming) {
-      // Stream just started and getSession returned a session (user message is already in it).
+      // Stream just started and session/transcript fetch returned messages (user turn already persisted).
       // Load those messages so the user message appears immediately.
       const serverMessages = sessionData.messages as Message[];
       setMessages((prev) => {
@@ -1617,7 +1617,7 @@ export default function Chat() {
     }
   }, [sessionData, activeSessionKey, isStreaming]);
 
-  // Keep sidebar message_count in sync with GET /sessions/:key without refetching the full list.
+  // Keep sidebar message_count in sync with GET /sessions/:key/transcript without refetching the full list.
   const sessionMessageCount = sessionData?.message_count;
   useEffect(() => {
     if (!activeSessionKey || sessionMessageCount === undefined) {

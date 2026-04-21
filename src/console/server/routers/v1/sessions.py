@@ -21,6 +21,7 @@ from console.server.session_store import (
     delete_session_files,
     list_session_rows,
     load_session,
+    load_transcript_messages,
     save_empty_session,
 )
 
@@ -94,6 +95,41 @@ async def delete_sessions_batch(
         except OSError as exc:
             failed.append(BatchDeleteFailure(key=key, error=str(exc)))
     return DataResponse(data=BatchDeleteResponse(deleted=deleted, failed=failed))
+
+
+@router.get(
+    "/sessions/{session_key}/transcript",
+    response_model=DataResponse[SessionMessagesPayload],
+)
+async def get_session_transcript(
+    session_key: str,
+    bot_id: str | None = Query(default=None, alias="bot_id"),
+) -> DataResponse[SessionMessagesPayload]:
+    """Load chat history from append-only transcript JSONL (full verbatim log).
+
+    Falls back to ``sessions/*.jsonl`` when no transcript file exists (older runs
+    without ``persist_session_transcript``).
+    """
+    tmsgs = load_transcript_messages(bot_id, session_key)
+    if tmsgs is not None:
+        return DataResponse(
+            data=SessionMessagesPayload(
+                key=session_key,
+                messages=tmsgs,
+                message_count=len(tmsgs),
+            )
+        )
+    session = load_session(bot_id, session_key)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    messages = session.messages
+    return DataResponse(
+        data=SessionMessagesPayload(
+            key=session_key,
+            messages=messages,
+            message_count=len(messages),
+        )
+    )
 
 
 @router.get("/sessions", response_model=DataResponse[list[SessionInfo]])
