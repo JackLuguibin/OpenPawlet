@@ -731,21 +731,24 @@ def test_dashscope_thinking_enabled_with_reasoning_effort() -> None:
 
 
 def test_dashscope_thinking_disabled_for_minimal() -> None:
-    """'minimal' → wire 'minimum' + thinking off on DashScope."""
+    """'minimal' → wire 'minimum' + thinking off. DashScope rejects literal
+    'minimal' (invalid_value); outbound translation preserves no-thinking via
+    extra_body."""
     kw = _build_kwargs_for("dashscope", "qwen3-plus", reasoning_effort="minimal")
     assert kw["reasoning_effort"] == "minimum"
     assert kw["extra_body"] == {"enable_thinking": False}
 
 
 def test_dashscope_thinking_disabled_for_minimum_alias() -> None:
-    """Native 'minimum' spelling must also disable thinking, not enable it."""
+    """Native 'minimum' (DashScope docs) is the same semantic as 'minimal';
+    thinking must stay disabled, not enabled."""
     kw = _build_kwargs_for("dashscope", "qwen3-plus", reasoning_effort="minimum")
     assert kw["reasoning_effort"] == "minimum"
     assert kw["extra_body"] == {"enable_thinking": False}
 
 
 def test_non_dashscope_minimal_not_retranslated() -> None:
-    """DashScope-specific translation must not leak to other providers."""
+    """DashScope-only wire mapping must not change 'minimal' for other providers."""
     kw = _build_kwargs_for("openai", "gpt-5", reasoning_effort="minimal")
     assert kw["reasoning_effort"] == "minimal"
 
