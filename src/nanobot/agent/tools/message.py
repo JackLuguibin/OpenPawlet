@@ -1,5 +1,6 @@
 """Message tool for sending messages to users."""
 
+from contextvars import ContextVar
 from typing import Any, Awaitable, Callable
 
 from nanobot.agent.tools.base import Tool, tool_parameters
@@ -34,12 +35,15 @@ class MessageTool(Tool):
         self._default_chat_id = default_chat_id
         self._default_message_id = default_message_id
         self._sent_in_turn: bool = False
+        self._channel_ctx: ContextVar[str | None] = ContextVar("message_tool_channel", default=None)
+        self._chat_id_ctx: ContextVar[str | None] = ContextVar("message_tool_chat_id", default=None)
+        self._message_id_ctx: ContextVar[str | None] = ContextVar("message_tool_message_id", default=None)
 
     def set_context(self, channel: str, chat_id: str, message_id: str | None = None) -> None:
-        """Set the current message context."""
-        self._default_channel = channel
-        self._default_chat_id = chat_id
-        self._default_message_id = message_id
+        """Set the current message context (task-local when running under asyncio)."""
+        self._channel_ctx.set(channel)
+        self._chat_id_ctx.set(chat_id)
+        self._message_id_ctx.set(message_id)
 
     def set_send_callback(self, callback: Callable[[OutboundMessage], Awaitable[None]]) -> None:
         """Set the callback for sending messages."""
@@ -73,16 +77,22 @@ class MessageTool(Tool):
     ) -> str:
         from nanobot.utils.helpers import strip_think
         content = strip_think(content)
-        
-        channel = channel or self._default_channel
-        chat_id = chat_id or self._default_chat_id
+
+        ctx_ch = self._channel_ctx.get()
+        ctx_chat = self._chat_id_ctx.get()
+        ref_ch = self._default_channel if ctx_ch is None else ctx_ch
+        ref_chat = self._default_chat_id if ctx_chat is None else ctx_chat
+
+        channel = channel or ref_ch
+        chat_id = chat_id or ref_chat
         # Only inherit default message_id when targeting the same channel+chat.
         # Cross-chat sends must not carry the original message_id, because
         # some channels (e.g. Feishu) use it to determine the target
         # conversation via their Reply API, which would route the message
         # to the wrong chat entirely.
-        if channel == self._default_channel and chat_id == self._default_chat_id:
-            message_id = message_id or self._default_message_id
+        if channel == ref_ch and chat_id == ref_chat:
+            ctx_mid = self._message_id_ctx.get()
+            message_id = message_id or (self._default_message_id if ctx_mid is None else ctx_mid)
         else:
             message_id = None
 
@@ -104,7 +114,7 @@ class MessageTool(Tool):
 
         try:
             await self._send_callback(msg)
-            if channel == self._default_channel and chat_id == self._default_chat_id:
+            if channel == ref_ch and chat_id == ref_chat:
                 self._sent_in_turn = True
             media_info = f" with {len(media)} attachments" if media else ""
             return f"Message sent to {channel}:{chat_id}{media_info}"
