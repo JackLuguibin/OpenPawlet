@@ -244,6 +244,19 @@ export async function getSessionTranscript(key: string, botId?: string | null): 
   );
 }
 
+/** Verbatim on-disk JSONL (session store or append-only transcript) for debugging. */
+export async function getSessionJsonlRaw(
+  key: string,
+  botId?: string | null,
+  source: 'session' | 'transcript' = 'session',
+): Promise<{ key: string; source: 'session' | 'transcript'; text: string }> {
+  const base = `${API_BASE}/sessions/${encodeURIComponent(key)}/jsonl-raw`;
+  if (source === 'transcript') {
+    return fetchJson(appendBotQuery(`${base}?source=transcript`, botId));
+  }
+  return fetchJson(appendBotQuery(base, botId));
+}
+
 export async function createSession(key?: string, botId?: string | null): Promise<SessionInfo> {
   return fetchJson<SessionInfo>(`${API_BASE}/sessions${botQuery(botId)}`, {
     method: 'POST',

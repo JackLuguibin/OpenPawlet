@@ -23,7 +23,7 @@ import { registerChatHandler, getWSRef } from "../hooks/useWebSocket";
 import { useAgentTimeZone } from "../hooks/useAgentTimeZone";
 import { formatChatMessageTime } from "../utils/agentDatetime";
 import * as api from "../api/client";
-import { Button, Tag, Popconfirm, Checkbox, Spin } from "antd";
+import { Button, Tag, Popconfirm, Checkbox, Spin, Modal, Select } from "antd";
 import {
   PlusOutlined,
   LoadingOutlined,
@@ -47,8 +47,13 @@ import {
   Wrench,
   Info,
   X,
+  FileText,
 } from "lucide-react";
 import type { SessionInfo, StreamChunk, ToolCall } from "../api/types";
+import CodeMirror from "@uiw/react-codemirror";
+import { javascript } from "@codemirror/lang-javascript";
+import { EditorView } from "@codemirror/view";
+import { vscodeDark, vscodeLight } from "@uiw/codemirror-theme-vscode";
 import { normalizeToolCallsArray } from "../utils/toolCalls";
 import type { TextAreaRef } from "antd/es/input/TextArea";
 import Input from "antd/es/input";
@@ -858,6 +863,25 @@ function pickNewestCreatedSessionKey(rows: SessionInfo[]): string | null {
   return best.key;
 }
 
+/** Pretty-print each JSONL line; copy still uses raw file text from the API. */
+function formatJsonlForDisplay(raw: string): string {
+  const lines = raw.split("\n");
+  const blocks: string[] = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0) {
+      continue;
+    }
+    try {
+      const obj: unknown = JSON.parse(trimmed);
+      blocks.push(JSON.stringify(obj, null, 2));
+    } catch {
+      blocks.push(line);
+    }
+  }
+  return blocks.join("\n\n");
+}
+
 /** True when GET /sessions/:key/transcript failed because the session does not exist. */
 function isSessionMissingError(error: unknown): boolean {
   if (!(error instanceof Error)) {
@@ -936,6 +960,27 @@ export default function Chat() {
   const [showSuggestions, setShowSuggestions] = useState(true);
   const [subagentTasks, setSubagentTasks] = useState<SubagentTask[]>([]);
   const [subagentPanelOpen, setSubagentPanelOpen] = useState(true);
+  const [sessionJsonlModalOpen, setSessionJsonlModalOpen] = useState(false);
+  const [sessionJsonlFileSource, setSessionJsonlFileSource] = useState<
+    "session" | "transcript"
+  >("session");
+  const jsonlViewTheme = useAppStore((s) => s.theme);
+  const [codeMirrorIsDark, setCodeMirrorIsDark] = useState(false);
+  useEffect(() => {
+    if (jsonlViewTheme === "light") {
+      setCodeMirrorIsDark(false);
+      return;
+    }
+    if (jsonlViewTheme === "dark") {
+      setCodeMirrorIsDark(true);
+      return;
+    }
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    setCodeMirrorIsDark(mq.matches);
+    const onChange = () => setCodeMirrorIsDark(mq.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, [jsonlViewTheme]);
   const [nanobotContextUsage, setNanobotContextUsage] =
     useState<NanobotContextUsage | null>(null);
   const [statusJsonLoading, setStatusJsonLoading] = useState(false);
@@ -1525,6 +1570,41 @@ export default function Chat() {
       enabled: shouldFetchSessionJsonl && !sessionJsonlFetchSuppressedForDeletedRoute,
       retry: false,
     });
+
+  const {
+    data: sessionJsonlData,
+    isPending: sessionJsonlPending,
+    isError: sessionJsonlError,
+    error: sessionJsonlErr,
+  } = useQuery({
+    queryKey: [
+      "sessionJsonlRaw",
+      activeSessionKey,
+      currentBotId,
+      sessionJsonlFileSource,
+    ],
+    queryFn: () =>
+      api.getSessionJsonlRaw(
+        activeSessionKey!,
+        currentBotId,
+        sessionJsonlFileSource,
+      ),
+    enabled: sessionJsonlModalOpen && Boolean(activeSessionKey),
+    retry: false,
+  });
+
+  const sessionJsonlDisplayText = useMemo(() => {
+    const raw = sessionJsonlData?.text;
+    if (raw == null || raw === "") {
+      return "";
+    }
+    return formatJsonlForDisplay(raw);
+  }, [sessionJsonlData?.text]);
+
+  const sessionJsonlCmExtensions = useMemo(
+    () => [javascript(), EditorView.lineWrapping],
+    [],
+  );
 
   /**
    * 路由里带了 :sessionKey 但磁盘上已无该会话（例如旧 bookmark）时，改为打开列表中最新创建的会话。
@@ -2516,6 +2596,31 @@ export default function Chat() {
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
+              {activeSessionKey ? (
+                <>
+                  <Button
+                    icon={<FileText className="w-4 h-4" />}
+                    onClick={() => {
+                      setSessionJsonlFileSource("session");
+                      setSessionJsonlModalOpen(true);
+                    }}
+                    className="hidden md:inline-flex"
+                  >
+                    {t("chat.viewContextJsonl")}
+                  </Button>
+                  <Button
+                    shape="circle"
+                    icon={<FileText className="w-4 h-4" />}
+                    onClick={() => {
+                      setSessionJsonlFileSource("session");
+                      setSessionJsonlModalOpen(true);
+                    }}
+                    className="md:!hidden shrink-0"
+                    title={t("chat.viewContextJsonl")}
+                    aria-label={t("chat.viewContextJsonl")}
+                  />
+                </>
+              ) : null}
               {sessions && sessions.length > 0 && (
                 <>
                   <Button
@@ -2842,6 +2947,92 @@ export default function Chat() {
           />
         )}
       </div>
+
+      <Modal
+        open={sessionJsonlModalOpen}
+        onCancel={() => setSessionJsonlModalOpen(false)}
+        title={t("chat.viewContextJsonl")}
+        footer={null}
+        width="min(100vw - 2rem, 48rem)"
+        destroyOnClose
+        styles={{
+          root: { maxHeight: "min(92vh, 44rem)" },
+          body: {
+            display: "flex",
+            flexDirection: "column",
+            minHeight: 0,
+            maxHeight: "min(82vh, 40rem)",
+            overflow: "hidden",
+            padding: "8px 24px 20px",
+          },
+        }}
+      >
+        <div className="flex h-[min(70vh,32rem)] min-h-[14rem] flex-col gap-3">
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <span className="text-sm text-gray-500 dark:text-gray-400">
+              {t("chat.contextJsonlFileSource")}
+            </span>
+            <Select
+              value={sessionJsonlFileSource}
+              onChange={(v) => setSessionJsonlFileSource(v)}
+              className="min-w-[12rem]"
+              options={[
+                { value: "session", label: t("chat.contextJsonlFileSession") },
+                {
+                  value: "transcript",
+                  label: t("chat.contextJsonlFileTranscript"),
+                },
+              ]}
+            />
+            <Button
+              type="primary"
+              icon={<Copy className="w-3.5 h-3.5" />}
+              disabled={!sessionJsonlData?.text}
+              onClick={() => {
+                if (sessionJsonlData?.text) {
+                  void navigator.clipboard.writeText(sessionJsonlData.text);
+                  addToast({
+                    type: "success",
+                    message: t("chat.contextJsonlCopied"),
+                  });
+                }
+              }}
+            >
+              {t("chat.contextJsonlCopy")}
+            </Button>
+          </div>
+          {sessionJsonlPending ? (
+            <div className="flex min-h-0 flex-1 items-center justify-center">
+              <Spin />
+            </div>
+          ) : sessionJsonlError ? (
+            <p className="m-0 shrink-0 text-sm text-red-600 dark:text-red-400">
+              {t("chat.contextJsonlLoadError")}:{" "}
+              {sessionJsonlErr instanceof Error
+                ? sessionJsonlErr.message
+                : String(sessionJsonlErr)}
+            </p>
+          ) : (
+            <div
+              className="min-h-0 flex-1 overflow-hidden rounded-xl border border-gray-200/90 bg-white dark:border-gray-600/80 dark:bg-[#1e1e1e]"
+            >
+              <CodeMirror
+                value={sessionJsonlDisplayText}
+                height="100%"
+                className="h-full min-h-0 text-[13px] [&_.cm-editor]:!h-full [&_.cm-editor]:!max-h-full [&_.cm-scroller]:!overflow-auto [&_.cm-content]:!pb-3"
+                readOnly
+                theme={codeMirrorIsDark ? vscodeDark : vscodeLight}
+                extensions={sessionJsonlCmExtensions}
+                basicSetup={{
+                  lineNumbers: true,
+                  foldGutter: true,
+                  highlightActiveLine: false,
+                }}
+              />
+            </div>
+          )}
+        </div>
+      </Modal>
     </div>
   );
 }

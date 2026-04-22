@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import Literal
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Query
@@ -15,6 +17,7 @@ from console.server.models import (
     OkBody,
     SessionDetail,
     SessionInfo,
+    SessionJsonlRawPayload,
 )
 from console.server.models.sessions import Message, SessionMessagesPayload
 from console.server.session_store import (
@@ -22,10 +25,20 @@ from console.server.session_store import (
     list_session_rows,
     load_session,
     load_transcript_messages,
+    read_session_jsonl_raw,
+    read_transcript_jsonl_raw,
     save_empty_session,
 )
 
 router = APIRouter(tags=["Sessions"])
+
+_READ_JSONL_RAW: dict[
+    Literal["session", "transcript"],
+    Callable[[str | None, str], str | None],
+] = {
+    "session": read_session_jsonl_raw,
+    "transcript": read_transcript_jsonl_raw,
+}
 
 _PREVIEW_LIMIT = 8
 
@@ -128,6 +141,32 @@ async def get_session_transcript(
             key=session_key,
             messages=messages,
             message_count=len(messages),
+        )
+    )
+
+
+@router.get(
+    "/sessions/{session_key}/jsonl-raw",
+    response_model=DataResponse[SessionJsonlRawPayload],
+)
+async def get_session_jsonl_raw(
+    session_key: str,
+    bot_id: str | None = Query(default=None, alias="bot_id"),
+    source: Literal["session", "transcript"] = Query(default="session"),
+) -> DataResponse[SessionJsonlRawPayload]:
+    """Return the raw on-disk JSONL for the session store or the append-only transcript file."""
+    text = _READ_JSONL_RAW[source](bot_id, session_key)
+    if text is None:
+        _detail = {
+            "session": "Session JSONL not found",
+            "transcript": "Transcript JSONL not found",
+        }[source]
+        raise HTTPException(status_code=404, detail=_detail)
+    return DataResponse(
+        data=SessionJsonlRawPayload(
+            key=session_key,
+            source=source,
+            text=text,
         )
     )
 

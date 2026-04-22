@@ -6,11 +6,9 @@ import json
 from pathlib import Path
 from typing import Any
 
-from nanobot.config.paths import get_legacy_sessions_dir
+from console.server.bot_workspace import workspace_root
 from nanobot.session.manager import Session, SessionManager
 from nanobot.utils.helpers import safe_filename
-
-from console.server.bot_workspace import workspace_root
 
 _VALID_TRANSCRIPT_ROLES = frozenset({"user", "assistant", "system", "tool"})
 
@@ -21,17 +19,19 @@ def _transcript_file_path(ws: Path, session_key: str) -> Path:
     return ws / "transcripts" / f"{safe_key}.jsonl"
 
 
-def parse_transcript_jsonl(path: Path) -> list[dict[str, Any]]:
-    """Read append-only transcript JSONL and return chat message dicts in file order.
-
-    Skips compaction / eviction records (``_event``) and non-message rows so the result
-    is a linear history suitable for UI replay without duplicating evicted lines.
-    """
-    out: list[dict[str, Any]] = []
+def _read_utf8_file(path: Path) -> str | None:
+    """Return file contents, or ``None`` if the path is not a file or read fails."""
+    if not path.is_file():
+        return None
     try:
-        text = path.read_text(encoding="utf-8")
+        return path.read_text(encoding="utf-8")
     except OSError:
-        return []
+        return None
+
+
+def _parse_transcript_jsonl_text(text: str) -> list[dict[str, Any]]:
+    """Parse transcript JSONL text into message dicts in line order (see ``parse_transcript_jsonl``)."""
+    out: list[dict[str, Any]] = []
     for line in text.splitlines():
         line = line.strip()
         if not line:
@@ -53,31 +53,40 @@ def parse_transcript_jsonl(path: Path) -> list[dict[str, Any]]:
     return out
 
 
+def parse_transcript_jsonl(path: Path) -> list[dict[str, Any]]:
+    """Read append-only transcript JSONL and return chat message dicts in file order.
+
+    Skips compaction / eviction records (``_event``) and non-message rows so the result
+    is a linear history suitable for UI replay without duplicating evicted lines.
+    """
+    text = _read_utf8_file(path)
+    if text is None:
+        return []
+    return _parse_transcript_jsonl_text(text)
+
+
 def load_transcript_messages(bot_id: str | None, session_key: str) -> list[dict[str, Any]] | None:
     """Load messages from ``workspace/transcripts/{key}.jsonl``.
 
     Returns ``None`` if the transcript file is absent (caller may fall back to session JSONL).
     Returns an empty list if the file exists but yields no message lines.
     """
-    root = workspace_root(bot_id)
-    path = _transcript_file_path(root, session_key)
-    if not path.is_file():
+    path = _transcript_file_path(workspace_root(bot_id), session_key)
+    text = _read_utf8_file(path)
+    if text is None:
         return None
-    return parse_transcript_jsonl(path)
+    return _parse_transcript_jsonl_text(text)
 
 
 def _primary_and_legacy_paths(mgr: SessionManager, key: str) -> tuple[Path, Path]:
-    safe_key = safe_filename(key.replace(":", "_"))
-    primary = mgr.sessions_dir / f"{safe_key}.jsonl"
-    legacy = get_legacy_sessions_dir() / f"{safe_key}.jsonl"
-    return primary, legacy
+    """Current workspace session file and legacy global path (``SessionManager``)."""
+    return (mgr._get_session_path(key), mgr._get_legacy_session_path(key))
 
 
 def _count_jsonl_messages(path: Path) -> int:
     """Count chat message lines (exclude leading metadata row if present)."""
-    try:
-        text = path.read_text(encoding="utf-8")
-    except OSError:
+    text = _read_utf8_file(path)
+    if text is None:
         return 0
     lines = [ln for ln in text.splitlines() if ln.strip()]
     if not lines:
@@ -126,15 +135,32 @@ def save_empty_session(bot_id: str | None, session_key: str) -> Session:
     return session
 
 
+def read_session_jsonl_raw(bot_id: str | None, session_key: str) -> str | None:
+    """Return verbatim UTF-8 text of ``<workspace>/sessions/{key}.jsonl`` (or legacy path).
+
+    Returns ``None`` if no session file exists.
+    """
+    mgr = SessionManager(workspace_root(bot_id))
+    for path in _primary_and_legacy_paths(mgr, session_key):
+        text = _read_utf8_file(path)
+        if text is not None:
+            return text
+    return None
+
+
+def read_transcript_jsonl_raw(bot_id: str | None, session_key: str) -> str | None:
+    """Return verbatim UTF-8 text of ``<workspace>/transcripts/{key}.jsonl`` if the file exists."""
+    return _read_utf8_file(_transcript_file_path(workspace_root(bot_id), session_key))
+
+
 def delete_session_files(bot_id: str | None, session_key: str) -> bool:
     """Delete session JSONL from workspace and legacy global dir.
 
     Returns True if at least one file was removed.
     """
     mgr = SessionManager(workspace_root(bot_id))
-    primary, legacy = _primary_and_legacy_paths(mgr, session_key)
     removed = False
-    for path in (primary, legacy):
+    for path in _primary_and_legacy_paths(mgr, session_key):
         if path.is_file():
             path.unlink()
             removed = True

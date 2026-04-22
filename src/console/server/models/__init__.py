@@ -54,6 +54,7 @@ from console.server.models.sessions import (
     CreateSessionBody,
     SessionDetail,
     SessionInfo,
+    SessionJsonlRawPayload,
     SessionMessagesPayload,
 )
 from console.server.models.skills import (
@@ -128,6 +129,7 @@ __all__ = [
     "RegistrySearchItem",
     "SessionDetail",
     "SessionInfo",
+    "SessionJsonlRawPayload",
     "SessionMessagesPayload",
     "SetDefaultBotBody",
     "SkillBundleUpdateBody",

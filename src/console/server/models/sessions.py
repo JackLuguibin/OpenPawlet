@@ -49,6 +49,16 @@ class SessionMessagesPayload(BaseModel):
     message_count: int
 
 
+class SessionJsonlRawPayload(BaseModel):
+    """Raw JSONL file contents for debugging (session store or append-only transcript)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    key: str
+    source: Literal["session", "transcript"]
+    text: str
+
+
 class CreateSessionBody(BaseModel):
     """POST /sessions body."""
 
