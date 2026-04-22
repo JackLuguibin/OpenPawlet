@@ -54,10 +54,6 @@ if TYPE_CHECKING:
 
 UNIFIED_SESSION_KEY = "unified:default"
 
-# Channels that receive explicit turn lifecycle markers on the outbound bus
-# (handled in the channel implementation, e.g. WebSocket JSON frames).
-_SESSION_TURN_LIFECYCLE_CHANNELS = frozenset({"websocket"})
-
 
 class _LoopHook(AgentHook):
     """Core hook for the main loop."""
@@ -195,12 +191,15 @@ class AgentLoop:
         persist_session_transcript: bool = False,
         transcript_include_full_tool_results: bool = False,
     ):
-        from nanobot.config.schema import ExecToolConfig, ToolsConfig, WebToolsConfig
+        from nanobot.config.schema import ChannelsConfig, ExecToolConfig, ToolsConfig, WebToolsConfig
 
         _tc = tools_config or ToolsConfig()
         defaults = AgentDefaults()
         self.bus = bus
-        self.channels_config = channels_config
+        self.channels_config = channels_config or ChannelsConfig()
+        self._session_turn_lifecycle_channels = frozenset(
+            self.channels_config.session_turn_lifecycle_channels
+        )
         self.provider = provider
         self.workspace = workspace
         self.model = model or provider.get_default_model()
@@ -626,7 +625,7 @@ class AgentLoop:
 
         try:
             async with lock, gate:
-                turn_lifecycle = msg.channel in _SESSION_TURN_LIFECYCLE_CHANNELS
+                turn_lifecycle = msg.channel in self._session_turn_lifecycle_channels
                 if turn_lifecycle:
                     await self._publish_session_turn_lifecycle(msg, phase="start")
                 try:
