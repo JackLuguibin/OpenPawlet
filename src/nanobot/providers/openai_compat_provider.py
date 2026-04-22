@@ -429,10 +429,11 @@ class OpenAICompatProvider(LLMProvider):
         reasoning_effort: str | None,
     ) -> bool:
         """Use Responses API only for direct OpenAI requests that benefit from it."""
-        if self._spec and self._spec.name != "openai":
+        if self._spec and self._spec.name not in ("openai", "github_copilot"):
             return False
-        if not _is_direct_openai_base(self._effective_base):
-            return False
+        if self._spec is None or self._spec.name != "github_copilot":
+            if not _is_direct_openai_base(self._effective_base):
+                return False
 
         model_name = (model or self.default_model).lower()
         wants = False
@@ -510,6 +511,8 @@ class OpenAICompatProvider(LLMProvider):
     ) -> dict[str, Any]:
         """Build a Responses API body for direct OpenAI requests."""
         model_name = model or self.default_model
+        if self._spec and self._spec.strip_model_prefix:
+            model_name = model_name.split("/")[-1]
         sanitized_messages = self._sanitize_messages(self._sanitize_empty_content(messages))
         instructions, input_items = convert_messages(sanitized_messages)
 
@@ -970,6 +973,11 @@ class OpenAICompatProvider(LLMProvider):
                     self._record_responses_success(model, reasoning_effort)
                     return result
                 except Exception as responses_error:
+                    if self._spec and self._spec.name == "github_copilot":
+                        # Copilot gateway exposes GPT-5/o-series only via /responses;
+                        # falling back to /chat/completions cannot succeed and would
+                        # hide the real error.
+                        raise
                     if not self._should_fallback_from_responses_error(responses_error):
                         raise
                     self._record_responses_failure(model, reasoning_effort)
@@ -1028,6 +1036,11 @@ class OpenAICompatProvider(LLMProvider):
                         reasoning_content=reasoning_content,
                     )
                 except Exception as responses_error:
+                    if self._spec and self._spec.name == "github_copilot":
+                        # Copilot gateway exposes GPT-5/o-series only via /responses;
+                        # falling back to /chat/completions cannot succeed and would
+                        # hide the real error.
+                        raise
                     if not self._should_fallback_from_responses_error(responses_error):
                         raise
                     self._record_responses_failure(model, reasoning_effort)
