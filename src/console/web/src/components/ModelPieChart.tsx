@@ -29,7 +29,7 @@ export function EChartsWithResize({ option, className, style }: EChartsWithResiz
   }, []);
 
   return (
-    <div ref={shellRef} className="h-full w-full min-h-0 min-w-0 overflow-hidden">
+    <div ref={shellRef} className="h-full w-full min-h-0 min-w-0 overflow-visible">
       <ReactECharts
         option={option}
         className={className}

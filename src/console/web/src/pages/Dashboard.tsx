@@ -238,8 +238,8 @@ export default function Dashboard() {
       return { series: [] };
     }
 
-    const labelOnBarColor = '#ffffff';
     const axisLabelColor = isDarkUi ? '#9ca3af' : '#6b7280';
+    const totalLabelColor = isDarkUi ? '#e5e7eb' : '#374151';
     const legendTextColor = isDarkUi ? '#d1d5db' : '#4b5563';
     const tooltipTextColor = isDarkUi ? '#e5e7eb' : '#1f2937';
     const tooltipBg = isDarkUi ? 'rgba(17, 24, 39, 0.92)' : 'rgba(255, 255, 255, 0.96)';
@@ -279,10 +279,10 @@ export default function Dashboard() {
         textStyle: { color: legendTextColor },
       },
       grid: {
-        left: 8,
-        right: 16,
-        top: 36,
-        bottom: 36,
+        left: 16,
+        right: 12,
+        top: 40,
+        bottom: 56,
         containLabel: true,
       },
       xAxis: {
@@ -290,8 +290,9 @@ export default function Dashboard() {
         data: xCategories,
         axisLabel: {
           color: axisLabelColor,
-          rotate: 30,
+          rotate: 40,
           interval: 0,
+          margin: 12,
         },
         axisTick: { alignWithLabel: true },
       },
@@ -308,36 +309,35 @@ export default function Dashboard() {
           name: promptLabel,
           type: 'bar',
           stack: 'total',
+          barMaxWidth: 44,
+          barCategoryGap: '12%',
           itemStyle: { color: '#3b82f6' },
           emphasis: { focus: 'series' },
-          label: {
-            show: true,
-            color: labelOnBarColor,
-            formatter: (p: unknown) => {
-              const v =
-                typeof p === 'object' && p !== null && 'value' in p
-                  ? Number((p as { value: unknown }).value)
-                  : 0;
-              return v > 0 ? formatTokenCount(v) : '';
-            },
-          },
+          label: { show: false },
           data: promptData,
         },
         {
           name: completionLabel,
           type: 'bar',
           stack: 'total',
+          barMaxWidth: 44,
+          barCategoryGap: '12%',
           itemStyle: { color: '#22c55e' },
           emphasis: { focus: 'series' },
           label: {
             show: true,
-            color: labelOnBarColor,
+            position: 'top',
+            distance: 6,
+            color: totalLabelColor,
+            fontSize: 11,
+            fontWeight: 600,
             formatter: (p: unknown) => {
-              const v =
-                typeof p === 'object' && p !== null && 'value' in p
-                  ? Number((p as { value: unknown }).value)
+              const idx =
+                typeof p === 'object' && p !== null && 'dataIndex' in p
+                  ? Number((p as { dataIndex: unknown }).dataIndex)
                   : 0;
-              return v > 0 ? formatTokenCount(v) : '';
+              const total = (promptData[idx] ?? 0) + (completionData[idx] ?? 0);
+              return total > 0 ? formatTokenCount(total) : '';
             },
           },
           data: completionData,
@@ -676,7 +676,7 @@ export default function Dashboard() {
             </span>
           }
           size="small"
-          className="flex min-h-0 min-w-0 flex-col overflow-hidden [&_.ant-card-head]:shrink-0 [&_.ant-card-body]:flex [&_.ant-card-body]:min-h-0 [&_.ant-card-body]:flex-1 [&_.ant-card-body]:flex-col [&_.ant-card-body]:overflow-hidden"
+          className="flex min-h-0 min-w-0 flex-col overflow-hidden [&_.ant-card-head]:shrink-0 [&_.ant-card-body]:flex [&_.ant-card-body]:min-h-0 [&_.ant-card-body]:flex-1 [&_.ant-card-body]:flex-col [&_.ant-card-body]:overflow-visible"
         >
           {usageLoading ? (
             <div className="flex flex-1 items-center justify-center py-12">
@@ -687,9 +687,9 @@ export default function Dashboard() {
               <Text type="secondary" className="text-xs shrink-0 mb-1">
                 {t('dashboard.usageDailyByCalendar', { tz: agentTz })}
               </Text>
-              <div className="min-h-[280px] w-full min-w-0 flex-1 overflow-hidden lg:min-h-0">
+              <div className="min-h-[300px] w-full min-w-0 flex-1 overflow-visible pb-1 lg:min-h-0">
                 <EChartsWithResize
-                  style={{ width: '100%', height: '100%', minHeight: 280 }}
+                  style={{ width: '100%', height: '100%', minHeight: 300 }}
                   option={dailyTokenStackBarOption}
                 />
               </div>
