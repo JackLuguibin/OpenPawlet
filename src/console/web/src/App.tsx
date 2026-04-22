@@ -19,7 +19,6 @@ const Skills = lazy(() => import('./pages/Skills'));
 const Logs = lazy(() => import('./pages/Logs'));
 const Agents = lazy(() => import('./pages/Agents'));
 const Memory = lazy(() => import('./pages/Memory'));
-const BotProfile = lazy(() => import('./pages/BotProfile'));
 const Cron = lazy(() => import('./pages/Cron'));
 const Health = lazy(() => import('./pages/Health'));
 const Observability = lazy(() => import('./pages/Observability'));
@@ -62,7 +61,10 @@ function AppRoutes() {
             <Route path="/agents" element={<Agents />} />
             <Route path="/skills" element={<Skills />} />
             <Route path="/memory" element={<Memory />} />
-            <Route path="/bot-profile" element={<BotProfile />} />
+            <Route
+              path="/bot-profile"
+              element={<Navigate to="/memory?section=profile" replace />}
+            />
             <Route path="/settings" element={<Settings />} />
             <Route path="/logs" element={<Logs />} />
             <Route path="/activity" element={<Activity />} />

@@ -13,18 +13,41 @@ export interface SegmentedTabsProps<T extends string> {
   /** Accessible name for the tab list */
   ariaLabel?: string;
   className?: string;
+  /** `sm`: tighter pills for nested toolbars (e.g. under another tab row) */
+  size?: 'md' | 'sm';
+  /** Vertical spacing above/below the control */
+  margins?: 'default' | 'tight' | 'none';
+  /**
+   * Stretch to parent width; tab buttons share space evenly (best for 2–3 main sections).
+   */
+  fullWidth?: boolean;
 }
 
-const SHELL =
-  'inline-flex flex-wrap items-center gap-1 p-1.5 rounded-2xl max-w-full shrink-0 ' +
+const SHELL_BASE =
+  'inline-flex flex-wrap items-center gap-1 max-w-full ' +
   'bg-gradient-to-b from-gray-50/95 to-gray-100/90 dark:from-slate-800/90 dark:to-slate-900/75 ' +
   'border border-gray-200/90 dark:border-slate-600/40 ' +
   'shadow-sm shadow-gray-900/[0.04] dark:shadow-black/30 ' +
-  'backdrop-blur-sm ' +
-  'mt-4 mb-3';
+  'backdrop-blur-sm ';
+
+const SHELL_SIZES: Record<'md' | 'sm', string> = {
+  md: 'p-1.5 rounded-2xl shrink-0',
+  sm: 'p-1 rounded-xl shrink-0',
+};
+
+const MARGINS: Record<'default' | 'tight' | 'none', string> = {
+  default: 'mt-4 mb-3',
+  tight: 'mt-1.5 mb-2',
+  none: 'mt-0 mb-0',
+};
 
 const BTN_BASE =
   'relative shrink-0 rounded-xl px-4 py-2 text-sm font-semibold transition-all duration-200 ' +
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 ' +
+  'dark:focus-visible:ring-offset-slate-900';
+
+const BTN_SM =
+  'relative shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-all duration-200 ' +
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 ' +
   'dark:focus-visible:ring-offset-slate-900';
 
@@ -45,15 +68,24 @@ export function SegmentedTabs<T extends string>({
   onChange,
   ariaLabel,
   className = '',
+  size = 'md',
+  margins = 'default',
+  fullWidth = false,
 }: SegmentedTabsProps<T>) {
   const { t } = useTranslation();
   const tablistLabel = ariaLabel ?? t('common.tabList');
+  const btnBase = size === 'sm' ? BTN_SM : BTN_BASE;
+  const shell = [
+    SHELL_BASE,
+    SHELL_SIZES[size],
+    MARGINS[margins],
+    fullWidth ? 'flex w-full' : 'inline-flex shrink-0',
+    className,
+  ]
+    .filter(Boolean)
+    .join(' ');
   return (
-    <div
-      role="tablist"
-      aria-label={tablistLabel}
-      className={[SHELL, className].filter(Boolean).join(' ')}
-    >
+    <div role="tablist" aria-label={tablistLabel} className={shell}>
       {tabs.map(({ key, label }) => (
         <button
           key={key}
@@ -61,7 +93,13 @@ export function SegmentedTabs<T extends string>({
           role="tab"
           aria-selected={value === key}
           onClick={() => onChange(key)}
-          className={[BTN_BASE, value === key ? BTN_ACTIVE : BTN_INACTIVE].join(' ')}
+          className={[
+            btnBase,
+            fullWidth ? 'flex min-w-0 flex-1 items-center justify-center' : '',
+            value === key ? BTN_ACTIVE : BTN_INACTIVE,
+          ]
+            .filter(Boolean)
+            .join(' ')}
         >
           {label}
         </button>

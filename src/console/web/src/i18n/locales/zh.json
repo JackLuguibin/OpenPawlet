@@ -41,10 +41,9 @@
     "navHealth": "健康检查",
     "navActivity": "活动",
     "navMcp": "MCP",
-    "navMemory": "记忆",
+    "navMemoryAndProfile": "记忆与人设",
     "navWorkspace": "工作区",
     "navAgents": "智能体",
-    "navProfile": "人设",
     "navObservability": "可观测性",
     "navLogs": "日志",
     "navSkills": "技能",
@@ -328,6 +327,13 @@
     "sortOldest": "最早",
     "loadFailed": "加载活动失败：{{error}}",
     "empty": "暂无活动"
+  },
+  "memoryAndProfile": {
+    "pageTitle": "记忆与人设",
+    "pageSubtitle": "长期记忆、历史，以及 SOUL/USER 等引导文件。",
+    "sectionMemory": "记忆",
+    "sectionProfile": "人设",
+    "ariaMainSections": "记忆或人设"
   },
   "memory": {
     "title": "记忆",

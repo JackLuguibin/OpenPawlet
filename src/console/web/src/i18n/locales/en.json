@@ -41,10 +41,9 @@
     "navHealth": "Health",
     "navActivity": "Activity",
     "navMcp": "MCP",
-    "navMemory": "Memory",
+    "navMemoryAndProfile": "Memory & profile",
     "navWorkspace": "Workspace",
     "navAgents": "Agents",
-    "navProfile": "Profile",
     "navObservability": "Observability",
     "navLogs": "Logs",
     "navSkills": "Skills",
@@ -328,6 +327,13 @@
     "sortOldest": "Oldest",
     "loadFailed": "Failed to load activity: {{error}}",
     "empty": "No activity yet"
+  },
+  "memoryAndProfile": {
+    "pageTitle": "Memory & profile",
+    "pageSubtitle": "Long-term memory, history, and SOUL, USER, and other bootstrap files.",
+    "sectionMemory": "Memory",
+    "sectionProfile": "Profile",
+    "ariaMainSections": "Memory or profile"
   },
   "memory": {
     "title": "Memory",

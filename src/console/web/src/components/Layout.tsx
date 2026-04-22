@@ -25,7 +25,6 @@ import {
   Users,
   BookOpen,
   Brain,
-  UserCircle,
   Clock,
   Heart,
   Activity,
@@ -47,7 +46,6 @@ const LOCK_PAGE_SCROLL_PATHS = new Set([
   '/memory',
   '/workspace',
   '/agents',
-  '/bot-profile',
   '/logs',
   '/skills',
 ]);
@@ -107,10 +105,9 @@ export default function Layout({ children }: LayoutProps) {
         title: t('layout.sectionAgent'),
         items: [
           { path: '/mcp', label: t('layout.navMcp'), icon: Plug },
-          { path: '/memory', label: t('layout.navMemory'), icon: Brain },
+          { path: '/memory', label: t('layout.navMemoryAndProfile'), icon: Brain },
           { path: '/workspace', label: t('layout.navWorkspace'), icon: FolderOpen },
           { path: '/agents', label: t('layout.navAgents'), icon: Users },
-          { path: '/bot-profile', label: t('layout.navProfile'), icon: UserCircle },
           { path: '/observability', label: t('layout.navObservability'), icon: LineChart },
           { path: '/logs', label: t('layout.navLogs'), icon: FileText },
           { path: '/skills', label: t('layout.navSkills'), icon: BookOpen },

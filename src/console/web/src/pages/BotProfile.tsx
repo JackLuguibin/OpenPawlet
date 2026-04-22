@@ -6,8 +6,6 @@ import { EditOutlined, SaveOutlined, CloseOutlined, ReloadOutlined } from '@ant-
 import { Markdown } from '../components/Markdown';
 import * as api from '../api/client';
 import { useAppStore } from '../store';
-import { useBots } from '../hooks/useBots';
-import { PageLayout } from '../components/PageLayout';
 import { SegmentedTabs } from '../components/SegmentedTabs';
 import type { BotFilesResponse } from '../api/types';
 import { MARKDOWN_PROSE_CLASS } from '../utils/markdownProse';
@@ -15,11 +13,14 @@ import { formatQueryError, isNotFoundError } from '../utils/errors';
 
 type TabKey = keyof BotFilesResponse;
 
-export default function BotProfile() {
+/**
+ * Persona / bootstrap file editor (SOUL, USER, HEARTBEAT, etc.).
+ * Renders the inner layout only; used from the combined Memory & profile page.
+ */
+export function BotProfilePanel({ currentBotId }: { currentBotId: string | null }) {
   const queryClient = useQueryClient();
   const { t } = useTranslation();
-  const { currentBotId, addToast } = useAppStore();
-  const { data: bots = [], isLoading: botsLoading, isFetched: botsFetched } = useBots();
+  const { addToast } = useAppStore();
   const [activeTab, setActiveTab] = useState<TabKey>('soul');
   const [editMode, setEditMode] = useState(false);
   const [editContent, setEditContent] = useState('');
@@ -38,8 +39,6 @@ export default function BotProfile() {
 
   const activeTabLabel = tabs.find((x) => x.key === activeTab)?.label ?? activeTab;
   const activeFileLabel = `${activeTabLabel}.md`;
-
-  const waitingBot = botsFetched && bots.length > 0 && !currentBotId;
 
   const { data: botFiles, isLoading, isFetching, error } = useQuery({
     queryKey: ['bot-files', currentBotId],
@@ -78,37 +77,30 @@ export default function BotProfile() {
     updateFileMutation.mutate({ key: activeTab, content: editContent });
   };
 
-  if (botsLoading || waitingBot) {
-    return (
-      <PageLayout variant="center">
-        <Spin size="large" />
-      </PageLayout>
-    );
-  }
-
-  if (botsFetched && bots.length === 0) {
-    return (
-      <PageLayout variant="bleed">
-        <Empty description={t('dashboard.botRequired')} />
-      </PageLayout>
-    );
-  }
-
   return (
-    <PageLayout variant="bleed">
-      <div className="flex items-center justify-between shrink-0">
-        <div>
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
-            {t('botProfile.title')}
-          </h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{t('botProfile.subtitle')}</p>
+    <div className="flex min-h-0 flex-1 flex-col gap-0">
+      <div className="mb-1 flex min-w-0 flex-col gap-2 sm:mb-0 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+        <div className="min-w-0 flex-1">
+          <SegmentedTabs
+            ariaLabel={t('botProfile.ariaTabs')}
+            tabs={tabs}
+            value={activeTab}
+            onChange={(key) => {
+              setActiveTab(key);
+              setEditMode(false);
+            }}
+            size="sm"
+            margins="tight"
+            className="max-w-full"
+          />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center justify-end gap-2">
           {!editMode ? (
             <>
               <Button
                 type="default"
                 shape="circle"
+                size="small"
                 icon={<ReloadOutlined />}
                 title={t('botProfile.refreshBootstrap')}
                 aria-label={t('botProfile.refreshBootstrap')}
@@ -119,7 +111,7 @@ export default function BotProfile() {
                   }
                 }}
               />
-              <Button icon={<EditOutlined />} onClick={startEdit}>
+              <Button type="default" size="small" icon={<EditOutlined />} onClick={startEdit}>
                 {t('common.edit')}
               </Button>
             </>
@@ -127,29 +119,20 @@ export default function BotProfile() {
             <>
               <Button
                 type="primary"
+                size="small"
                 icon={<SaveOutlined />}
                 onClick={saveEdit}
                 loading={updateFileMutation.isPending}
               >
                 {t('common.save')}
               </Button>
-              <Button icon={<CloseOutlined />} onClick={cancelEdit}>
+              <Button size="small" icon={<CloseOutlined />} onClick={cancelEdit}>
                 {t('common.cancel')}
               </Button>
             </>
           )}
         </div>
       </div>
-
-      <SegmentedTabs
-        ariaLabel={t('botProfile.ariaTabs')}
-        tabs={tabs}
-        value={activeTab}
-        onChange={(key) => {
-          setActiveTab(key);
-          setEditMode(false);
-        }}
-      />
 
       {isLoading ? (
         <div className="flex min-h-0 flex-1 items-center justify-center py-12">
@@ -165,8 +148,8 @@ export default function BotProfile() {
         />
       ) : (
         <Card
-          className="flex-1 min-h-0 overflow-hidden flex flex-col rounded-2xl border border-gray-200/80 dark:border-gray-700/60 bg-white dark:bg-gray-800/40 shadow-sm hover:shadow-md transition-shadow"
-          styles={{ body: { padding: '2rem 2.5rem', flex: 1, minHeight: 0, overflowY: 'auto' } }}
+          className="flex-1 min-h-0 overflow-hidden flex flex-col rounded-2xl border border-gray-200/70 bg-white/90 shadow-sm shadow-gray-900/[0.04] dark:border-gray-700/50 dark:bg-gray-800/50 dark:shadow-none"
+          styles={{ body: { padding: '1.5rem 1.5rem 1.75rem', flex: 1, minHeight: 0, overflowY: 'auto' } }}
         >
           {editMode ? (
             <div className="flex flex-col gap-4">
@@ -197,6 +180,6 @@ export default function BotProfile() {
           )}
         </Card>
       )}
-    </PageLayout>
+    </div>
   );
 }
