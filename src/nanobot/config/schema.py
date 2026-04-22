@@ -31,6 +31,9 @@ class ChannelsConfig(Base):
     send_reasoning_content: bool = True  # push assistant reasoning_content on outbound sends; session history is unchanged
     send_max_retries: int = Field(default=3, ge=0, le=10)  # Max delivery attempts (initial send included)
     transcription_provider: str = "groq"  # Voice transcription backend: "groq" or "openai"
+    transcription_language: str | None = Field(
+        default=None, pattern=r"^[a-z]{2,3}$"
+    )  # Optional ISO-639-1 hint for audio transcription
     session_turn_lifecycle_channels: list[str] = Field(
         default_factory=lambda: ["websocket"],
     )  # channel names that get _session_turn_event start/end on the outbound bus
