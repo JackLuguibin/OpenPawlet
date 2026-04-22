@@ -127,12 +127,6 @@ packages = ["src/console", "src/nanobot"]
 exclude = [
     "/src/console/web/node_modules",
 ]
-# Build-time generated assets under .gitignore'd paths must ship in wheel/sdist.
-# `artifacts` bypasses the VCS filter (unlike `include`).
-# Build the web UI with `bun run build` into src/nanobot/web/dist/ before `python -m build`.
-artifacts = [
-    "src/nanobot/web/dist/**/*",
-]
 
 [tool.hatch.build.targets.sdist]
 include = [
