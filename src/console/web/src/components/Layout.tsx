@@ -11,7 +11,7 @@ import {
   MessageSquare,
   FolderOpen,
   Smartphone,
-  Plug,
+  Layers,
   Settings,
   FileText,
   ChevronLeft,
@@ -23,7 +23,6 @@ import {
   Moon,
   Monitor,
   Users,
-  BookOpen,
   Brain,
   Clock,
   Heart,
@@ -47,7 +46,6 @@ const LOCK_PAGE_SCROLL_PATHS = new Set([
   '/workspace',
   '/agents',
   '/logs',
-  '/skills',
 ]);
 
 interface LayoutProps {
@@ -104,13 +102,12 @@ export default function Layout({ children }: LayoutProps) {
       {
         title: t('layout.sectionAgent'),
         items: [
-          { path: '/mcp', label: t('layout.navMcp'), icon: Plug },
+          { path: '/mcp', label: t('layout.navMcpAndSkills'), icon: Layers },
           { path: '/memory', label: t('layout.navMemoryAndProfile'), icon: Brain },
           { path: '/workspace', label: t('layout.navWorkspace'), icon: FolderOpen },
           { path: '/agents', label: t('layout.navAgents'), icon: Users },
           { path: '/observability', label: t('layout.navObservability'), icon: LineChart },
           { path: '/logs', label: t('layout.navLogs'), icon: FileText },
-          { path: '/skills', label: t('layout.navSkills'), icon: BookOpen },
         ],
       },
       {

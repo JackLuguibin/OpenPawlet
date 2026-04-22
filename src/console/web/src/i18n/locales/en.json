@@ -40,13 +40,12 @@
     "navCron": "Cron",
     "navHealth": "Health",
     "navActivity": "Activity",
-    "navMcp": "MCP",
+    "navMcpAndSkills": "Skills & MCP",
     "navMemoryAndProfile": "Memory & profile",
     "navWorkspace": "Workspace",
     "navAgents": "Agents",
     "navObservability": "Observability",
     "navLogs": "Logs",
-    "navSkills": "Skills",
     "navSettings": "Settings",
     "wsConnected": "Connected",
     "wsConnecting": "Connecting…",
@@ -334,6 +333,13 @@
     "sectionMemory": "Memory",
     "sectionProfile": "Profile",
     "ariaMainSections": "Memory or profile"
+  },
+  "mcpAndSkills": {
+    "pageTitle": "Skills & MCP",
+    "pageSubtitle": "Workspace skill bundles and MCP tool servers to extend the agent.",
+    "sectionMcp": "MCP",
+    "sectionSkills": "Skills",
+    "ariaMainSections": "Skills or MCP"
   },
   "memory": {
     "title": "Memory",

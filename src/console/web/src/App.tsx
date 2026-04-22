@@ -13,9 +13,8 @@ const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Chat = lazy(() => import('./pages/Chat'));
 const Sessions = lazy(() => import('./pages/Sessions'));
 const Channels = lazy(() => import('./pages/Channels'));
-const MCPServers = lazy(() => import('./pages/MCPServers'));
+const McpAndSkills = lazy(() => import('./pages/McpAndSkills'));
 const Settings = lazy(() => import('./pages/Settings'));
-const Skills = lazy(() => import('./pages/Skills'));
 const Logs = lazy(() => import('./pages/Logs'));
 const Agents = lazy(() => import('./pages/Agents'));
 const Memory = lazy(() => import('./pages/Memory'));
@@ -57,9 +56,9 @@ function AppRoutes() {
             <Route path="/health" element={<Health />} />
             <Route path="/observability" element={<Observability />} />
             <Route path="/workspace" element={<Workspace />} />
-            <Route path="/mcp" element={<MCPServers />} />
+            <Route path="/mcp" element={<McpAndSkills />} />
             <Route path="/agents" element={<Agents />} />
-            <Route path="/skills" element={<Skills />} />
+            <Route path="/skills" element={<Navigate to="/mcp" replace />} />
             <Route path="/memory" element={<Memory />} />
             <Route
               path="/bot-profile"

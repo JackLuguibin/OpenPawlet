@@ -679,7 +679,7 @@ function BundleEditorSection({
   );
 }
 
-export default function Skills() {
+export default function Skills({ embedded = false }: { embedded?: boolean }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { addToast, currentBotId } = useAppStore();
@@ -1259,10 +1259,10 @@ export default function Skills() {
     </div>
   );
 
-  return (
-    <PageLayout variant="bleed" className="gap-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between shrink-0">
-        <div>
+  const mainColumn = (
+    <>
+      {!embedded && (
+        <div className="shrink-0">
           <h1 className="text-xl sm:text-2xl font-semibold text-gray-900 dark:text-gray-100">
             {t('skills.title')}
           </h1>
@@ -1270,49 +1270,58 @@ export default function Skills() {
             {t('skills.subtitle')}
           </p>
         </div>
-        <Space className="w-full sm:w-auto justify-end sm:justify-start" wrap>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => setSkillCreateModal(true)}
-            className="shadow-md shadow-primary-500/25 w-full sm:w-auto"
-          >
-            <span className="hidden sm:inline">{t('skills.addSkill')}</span>
-          </Button>
-        </Space>
-      </div>
+      )}
 
       {/* Registry: URL + search in one row on wide screens */}
       <div className="p-4 rounded-xl border border-gray-200/80 dark:border-gray-700/60 bg-white dark:bg-gray-800/40 shrink-0">
-        <p className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">
+        <p className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2 m-0">
           {t('skills.registryTitle')}
         </p>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_18rem] sm:items-stretch sm:gap-2">
-          <Input
-            placeholder={t('skills.registryUrlPlaceholder')}
-            value={registryUrl}
-            onChange={(e) => setRegistryUrl(e.target.value)}
-            className="min-w-0 border-gray-300 dark:border-gray-600 sm:h-full [&_.ant-input-affix-wrapper]:h-full"
-            size="middle"
-            allowClear
-          />
-          <Input.Search
-            placeholder={t('skills.registrySearchPlaceholder')}
-            value={registrySearch}
-            onChange={(e) => setRegistrySearch(e.target.value)}
-            onSearch={() => queryClient.invalidateQueries({ queryKey: ['skills-registry'] })}
-            loading={registryLoading}
-            enterButton={t('skills.search')}
-            disabled={!registryUrl.trim()}
-            className={`
-              min-w-0 w-full sm:h-full
-              !flex !flex-row !items-stretch
-              [&_.ant-input-affix-wrapper]:min-w-0 [&_.ant-input-affix-wrapper]:flex-1 [&_.ant-input-affix-wrapper]:h-full
-              [&_.ant-btn]:h-full [&_.ant-btn]:min-w-[4.5rem] [&_.ant-btn]:shrink-0
-            `}
-            size="middle"
-            allowClear
-          />
+        {/* h-9 matches App ConfigProvider controlHeight 36 */}
+        <div className="flex flex-col gap-2 min-[500px]:flex-row min-[500px]:items-center min-[500px]:gap-2">
+          <div className="flex min-h-9 min-w-0 items-stretch min-[500px]:min-h-0 min-[500px]:flex-1 min-[500px]:h-9">
+            <Input
+              placeholder={t('skills.registryUrlPlaceholder')}
+              value={registryUrl}
+              onChange={(e) => setRegistryUrl(e.target.value)}
+              className="h-full min-h-9 w-full min-[500px]:min-h-0 border-gray-300 dark:border-gray-600 [&_.ant-input-affix-wrapper]:!h-full [&_.ant-input-affix-wrapper]:!min-h-0 [&_.ant-input]:!h-full [&_.ant-input]:!leading-[22px]"
+              size="middle"
+              allowClear
+            />
+          </div>
+          <div className="flex w-full min-w-0 flex-row items-center gap-2 min-[500px]:contents">
+            <div className="flex min-h-9 min-w-0 flex-1 items-stretch min-[500px]:h-9 min-[500px]:w-[12rem] min-[500px]:min-h-0 min-[500px]:flex-initial md:w-[18rem]">
+              <Input.Search
+                placeholder={t('skills.registrySearchPlaceholder')}
+                value={registrySearch}
+                onChange={(e) => setRegistrySearch(e.target.value)}
+                onSearch={() => queryClient.invalidateQueries({ queryKey: ['skills-registry'] })}
+                loading={registryLoading}
+                enterButton={t('skills.search')}
+                disabled={!registryUrl.trim()}
+                className={`
+                  h-full min-h-9 w-full min-[500px]:min-h-0
+                  !flex !flex-row !items-stretch
+                  [&_.ant-input-group]:!flex [&_.ant-input-group]:!h-full [&_.ant-input-group]:!min-h-0 [&_.ant-input-group]:!items-stretch
+                  [&_.ant-input-affix-wrapper]:!h-full [&_.ant-input-affix-wrapper]:!min-h-0 [&_.ant-input-affix-wrapper]:!min-w-0 [&_.ant-input-affix-wrapper]:!flex-1
+                  [&_.ant-input]:!h-full [&_.ant-input]:!leading-[22px]
+                  [&_.ant-btn]:!h-full [&_.ant-btn]:!min-h-0 [&_.ant-btn]:!min-w-[4.5rem] [&_.ant-btn]:!shrink-0 [&_.ant-btn]:!self-stretch
+                `}
+                size="middle"
+                allowClear
+              />
+            </div>
+            <div className="flex h-9 min-w-0 shrink-0 items-stretch">
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => setSkillCreateModal(true)}
+                className="!inline-flex !h-full !min-h-0 !items-center !justify-center !px-3 shadow-md shadow-primary-500/25"
+              >
+                <span className="hidden sm:inline">{t('skills.addSkill')}</span>
+              </Button>
+            </div>
+          </div>
         </div>
         <div className="mt-3">
           {registryUrl.trim() && (
@@ -1486,6 +1495,21 @@ export default function Skills() {
             )}
           </div>
         </div>
+      )}
+
+    </>
+  );
+
+  return (
+    <>
+      {embedded ? (
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-hidden">
+          {mainColumn}
+        </div>
+      ) : (
+        <PageLayout variant="bleed" className="gap-4">
+          {mainColumn}
+        </PageLayout>
       )}
 
       <Modal
@@ -1795,6 +1819,6 @@ export default function Skills() {
           </Form.Item>
         </Form>
       </Modal>
-    </PageLayout>
+    </>
   );
 }

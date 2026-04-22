@@ -56,7 +56,7 @@ function mcpStatusLabel(status: MCPStatus['status'], t: TFunction): string {
   return t(`mcp.status.${status}`);
 }
 
-export default function MCPServers() {
+export function MCPServersPanel({ embedded = false }: { embedded?: boolean }) {
   const { t, i18n } = useTranslation();
   const queryClient = useQueryClient();
   const { addToast, currentBotId } = useAppStore();
@@ -116,7 +116,11 @@ export default function MCPServers() {
   };
 
   if (isLoading) {
-    return (
+    return embedded ? (
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center py-16">
+        <Spin size="large" />
+      </div>
+    ) : (
       <PageLayout variant="center">
         <Spin size="large" />
       </PageLayout>
@@ -124,7 +128,16 @@ export default function MCPServers() {
   }
 
   if (error) {
-    return (
+    return embedded ? (
+      <div className="shrink-0">
+        <Alert
+          type="error"
+          title={t('mcp.loadFailed')}
+          description={formatQueryError(error)}
+          showIcon
+        />
+      </div>
+    ) : (
       <PageLayout variant="bleed">
         <Alert
           type="error"
@@ -136,21 +149,31 @@ export default function MCPServers() {
     );
   }
 
-  return (
-    <PageLayout variant="bleed">
-      <div className="flex items-center justify-between shrink-0">
+  const headerRow = (
+    <div
+      className={`flex shrink-0 items-center ${
+        embedded ? 'justify-end' : 'justify-between'
+      }`}
+    >
+      {!embedded && (
         <div>
           <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
             {t('mcp.pageTitle')}
           </h1>
           <p className="text-sm text-gray-500 mt-1 hidden sm:block">{t('mcp.subtitle')}</p>
         </div>
-        <Space>
-          <Button icon={<ReloadOutlined />} onClick={() => refetch()}>
-            <span className="hidden sm:inline">{t('common.refresh')}</span>
-          </Button>
-        </Space>
-      </div>
+      )}
+      <Space>
+        <Button icon={<ReloadOutlined />} onClick={() => refetch()}>
+          <span className="hidden sm:inline">{t('common.refresh')}</span>
+        </Button>
+      </Space>
+    </div>
+  );
+
+  const main = (
+    <>
+      {headerRow}
 
       {mcpServers && mcpServers.length > 0 ? (
         <div className="flex-1 min-h-0 overflow-y-auto space-y-6 mt-4">
@@ -491,6 +514,12 @@ export default function MCPServers() {
           </Card>
         </div>
       )}
-    </PageLayout>
+    </>
+  );
+
+  return embedded ? (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">{main}</div>
+  ) : (
+    <PageLayout variant="bleed">{main}</PageLayout>
   );
 }
