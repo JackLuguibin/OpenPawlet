@@ -4,6 +4,7 @@ import asyncio
 import sys
 from contextlib import asynccontextmanager
 from types import ModuleType, SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -309,6 +310,30 @@ async def test_execute_handles_server_cancelled_error() -> None:
     result = await wrapper.execute()
 
     assert result == "(MCP tool call was cancelled)"
+
+
+@pytest.mark.asyncio
+async def test_tool_does_not_retry_on_cancelled_error() -> None:
+    """`asyncio.CancelledError` must short-circuit the retry loop.
+
+    Regression guard: the retry branch lives under ``except Exception``,
+    but ``CancelledError`` inherits from ``BaseException``, not
+    ``Exception``, so it naturally bypasses the retry branch today. If a
+    future refactor ever widens the retry branch to ``BaseException`` (or
+    re-orders the handlers), ``/stop`` would start retrying instead of
+    cancelling — this test pins that invariant.
+    """
+    session = AsyncMock()
+    session.call_tool = AsyncMock(side_effect=asyncio.CancelledError())
+
+    wrapper = _make_wrapper(session, timeout=5)
+
+    with patch("nanobot.agent.tools.mcp.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+        output = await wrapper.execute()
+
+    assert "cancelled" in output
+    assert session.call_tool.call_count == 1
+    mock_sleep.assert_not_called()
 
 
 @pytest.mark.asyncio
