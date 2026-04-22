@@ -758,6 +758,21 @@ def test_dashscope_no_extra_body_when_reasoning_effort_none() -> None:
     assert "extra_body" not in kw
 
 
+def test_minimax_reasoning_split_enabled_with_reasoning_effort() -> None:
+    kw = _build_kwargs_for("minimax", "MiniMax-M2.7", reasoning_effort="medium")
+    assert kw["extra_body"] == {"reasoning_split": True}
+
+
+def test_minimax_reasoning_split_disabled_for_minimal() -> None:
+    kw = _build_kwargs_for("minimax", "MiniMax-M2.7", reasoning_effort="minimal")
+    assert kw["extra_body"] == {"reasoning_split": False}
+
+
+def test_minimax_no_extra_body_when_reasoning_effort_none() -> None:
+    kw = _build_kwargs_for("minimax", "MiniMax-M2.7", reasoning_effort=None)
+    assert "extra_body" not in kw
+
+
 def test_volcengine_thinking_enabled() -> None:
     kw = _build_kwargs_for("volcengine", "doubao-seed-2-0-pro", reasoning_effort="high")
     assert kw["extra_body"] == {"thinking": {"type": "enabled"}}

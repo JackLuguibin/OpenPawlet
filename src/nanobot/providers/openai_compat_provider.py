@@ -416,6 +416,8 @@ class OpenAICompatProvider(LLMProvider):
             extra: dict[str, Any] | None = None
             if spec.name == "dashscope":
                 extra = {"enable_thinking": thinking_enabled}
+            elif spec.name == "minimax":
+                extra = {"reasoning_split": thinking_enabled}
             elif spec.name in (
                 "volcengine", "volcengine_coding_plan",
                 "byteplus", "byteplus_coding_plan",
