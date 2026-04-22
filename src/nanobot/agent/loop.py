@@ -7,9 +7,11 @@ import dataclasses
 import json
 import os
 import time
+import uuid
+from collections.abc import Awaitable, Callable
 from contextlib import AsyncExitStack, nullcontext
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Awaitable, Callable
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
@@ -26,14 +28,15 @@ from nanobot.agent.tools.message import MessageTool
 from nanobot.agent.tools.notebook import NotebookEditTool
 from nanobot.agent.tools.registry import ToolRegistry
 from nanobot.agent.tools.search import GlobTool, GrepTool
-from nanobot.agent.tools.shell import ExecTool
 from nanobot.agent.tools.self import MyTool
+from nanobot.agent.tools.shell import ExecTool
 from nanobot.agent.tools.spawn import SpawnTool
 from nanobot.agent.tools.web import WebFetchTool, WebSearchTool
 from nanobot.bus.events import InboundMessage, OutboundMessage
 from nanobot.bus.queue import MessageBus
 from nanobot.command import CommandContext, CommandRouter, register_builtin_commands
 from nanobot.config.schema import AgentDefaults
+from nanobot.observability.telemetry import get_trace_id
 from nanobot.providers.base import LLMProvider
 from nanobot.session.manager import Session, SessionManager
 from nanobot.session.transcript import SessionTranscriptWriter
@@ -43,6 +46,8 @@ from nanobot.utils.helpers import (
     image_placeholder_text,
     local_now,
     timestamp,
+)
+from nanobot.utils.helpers import (
     truncate_text as truncate_text_fn,
 )
 from nanobot.utils.runtime import EMPTY_FINAL_RESPONSE_MESSAGE
@@ -191,7 +196,12 @@ class AgentLoop:
         persist_session_transcript: bool = False,
         transcript_include_full_tool_results: bool = False,
     ):
-        from nanobot.config.schema import ChannelsConfig, ExecToolConfig, ToolsConfig, WebToolsConfig
+        from nanobot.config.schema import (
+            ChannelsConfig,
+            ExecToolConfig,
+            ToolsConfig,
+            WebToolsConfig,
+        )
 
         _tc = tools_config or ToolsConfig()
         defaults = AgentDefaults()
@@ -544,7 +554,7 @@ class AgentLoop:
                     and self.subagents.get_running_count_by_session(session.key) > 0):
                 try:
                     msg = await asyncio.wait_for(pending_queue.get(), timeout=300)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     logger.warning(
                         "Timeout waiting for sub-agent completion in session {}",
                         session.key,
@@ -599,7 +609,7 @@ class AgentLoop:
         while self._running:
             try:
                 msg = await asyncio.wait_for(self.bus.consume_inbound(), timeout=1.0)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 self.auto_compact.check_expired(
                     self._schedule_background,
                     active_session_keys=self._pending_queues.keys(),
@@ -696,64 +706,81 @@ class AgentLoop:
         try:
             async with lock, gate:
                 turn_lifecycle = msg.channel in self._session_turn_lifecycle_channels
-                if turn_lifecycle:
-                    await self._publish_session_turn_lifecycle(msg, phase="start")
-                try:
-                    on_stream = on_stream_end = None
-                    if msg.metadata.get("_wants_stream"):
-                        # Split one answer into distinct stream segments.
-                        stream_base_id = f"{msg.session_key}:{time.time_ns()}"
-                        stream_segment = 0
+                turn_id = str(uuid.uuid4())
+                t0 = time.perf_counter()
+                outcome = "ok"
+                with logger.contextualize(
+                    turn_id=turn_id,
+                    session_key=session_key,
+                    channel=msg.channel,
+                    chat_id=msg.chat_id,
+                    sender=msg.sender_id,
+                ):
+                    if turn_lifecycle:
+                        await self._publish_session_turn_lifecycle(msg, phase="start")
+                    try:
+                        on_stream = on_stream_end = None
+                        if msg.metadata.get("_wants_stream"):
+                            # Split one answer into distinct stream segments.
+                            stream_base_id = f"{msg.session_key}:{time.time_ns()}"
+                            stream_segment = 0
 
-                        def _current_stream_id() -> str:
-                            return f"{stream_base_id}:{stream_segment}"
+                            def _current_stream_id() -> str:
+                                return f"{stream_base_id}:{stream_segment}"
 
-                        async def on_stream(delta: str) -> None:
-                            meta = dict(msg.metadata or {})
-                            meta["_stream_delta"] = True
-                            meta["_stream_id"] = _current_stream_id()
+                            async def on_stream(delta: str) -> None:
+                                meta = dict(msg.metadata or {})
+                                meta["_stream_delta"] = True
+                                meta["_stream_id"] = _current_stream_id()
+                                await self.bus.publish_outbound(OutboundMessage(
+                                    channel=msg.channel, chat_id=msg.chat_id,
+                                    content=delta,
+                                    metadata=meta,
+                                ))
+
+                            async def on_stream_end(*, resuming: bool = False) -> None:
+                                nonlocal stream_segment
+                                meta = dict(msg.metadata or {})
+                                meta["_stream_end"] = True
+                                meta["_resuming"] = resuming
+                                meta["_stream_id"] = _current_stream_id()
+                                await self.bus.publish_outbound(OutboundMessage(
+                                    channel=msg.channel, chat_id=msg.chat_id,
+                                    content="",
+                                    metadata=meta,
+                                ))
+                                stream_segment += 1
+
+                        response = await self._process_message(
+                            msg, on_stream=on_stream, on_stream_end=on_stream_end,
+                            pending_queue=pending,
+                        )
+                        if response is not None:
+                            await self.bus.publish_outbound(response)
+                        elif msg.channel == "cli":
                             await self.bus.publish_outbound(OutboundMessage(
                                 channel=msg.channel, chat_id=msg.chat_id,
-                                content=delta,
-                                metadata=meta,
+                                content="", metadata=msg.metadata or {},
                             ))
-
-                        async def on_stream_end(*, resuming: bool = False) -> None:
-                            nonlocal stream_segment
-                            meta = dict(msg.metadata or {})
-                            meta["_stream_end"] = True
-                            meta["_resuming"] = resuming
-                            meta["_stream_id"] = _current_stream_id()
-                            await self.bus.publish_outbound(OutboundMessage(
-                                channel=msg.channel, chat_id=msg.chat_id,
-                                content="",
-                                metadata=meta,
-                            ))
-                            stream_segment += 1
-
-                    response = await self._process_message(
-                        msg, on_stream=on_stream, on_stream_end=on_stream_end,
-                        pending_queue=pending,
-                    )
-                    if response is not None:
-                        await self.bus.publish_outbound(response)
-                    elif msg.channel == "cli":
+                    except asyncio.CancelledError:
+                        outcome = "cancelled"
+                        logger.info("Task cancelled for session {}", session_key)
+                        raise
+                    except Exception:
+                        outcome = "error"
+                        logger.exception("Error processing message for session {}", session_key)
                         await self.bus.publish_outbound(OutboundMessage(
                             channel=msg.channel, chat_id=msg.chat_id,
-                            content="", metadata=msg.metadata or {},
+                            content="Sorry, I encountered an error.",
                         ))
-                except asyncio.CancelledError:
-                    logger.info("Task cancelled for session {}", session_key)
-                    raise
-                except Exception:
-                    logger.exception("Error processing message for session {}", session_key)
-                    await self.bus.publish_outbound(OutboundMessage(
-                        channel=msg.channel, chat_id=msg.chat_id,
-                        content="Sorry, I encountered an error.",
-                    ))
-                finally:
-                    if turn_lifecycle:
-                        await self._publish_session_turn_lifecycle(msg, phase="end")
+                    finally:
+                        elapsed_ms = (time.perf_counter() - t0) * 1000
+                        logger.info(
+                            "agent_turn_done outcome={} elapsed_ms={:.1f}",
+                            outcome, elapsed_ms,
+                        )
+                        if turn_lifecycle:
+                            await self._publish_session_turn_lifecycle(msg, phase="end")
         finally:
             # Drain any messages still in the pending queue and re-publish
             # them to the bus so they are processed as fresh inbound messages
@@ -1004,7 +1031,11 @@ class AgentLoop:
                 return None
 
         preview = final_content[:120] + "..." if len(final_content) > 120 else final_content
-        logger.info("Response to {}:{}: {}", msg.channel, msg.sender_id, preview)
+        tid = get_trace_id()
+        if tid:
+            logger.info("Response to {}:{} (trace_id={}): {}", msg.channel, msg.sender_id, tid, preview)
+        else:
+            logger.info("Response to {}:{}: {}", msg.channel, msg.sender_id, preview)
 
         meta = dict(msg.metadata or {})
         if on_stream is not None and stop_reason != "error":
@@ -1268,10 +1299,33 @@ class AgentLoop:
             channel=channel, sender_id="user", chat_id=chat_id,
             content=content, media=media or [],
         )
-        return await self._process_message(
-            msg,
+        turn_id = str(uuid.uuid4())
+        t0 = time.perf_counter()
+        outcome = "ok"
+        with logger.contextualize(
+            turn_id=turn_id,
             session_key=session_key,
-            on_progress=on_progress,
-            on_stream=on_stream,
-            on_stream_end=on_stream_end,
-        )
+            channel=channel,
+            chat_id=chat_id,
+            sender=msg.sender_id,
+        ):
+            try:
+                return await self._process_message(
+                    msg,
+                    session_key=session_key,
+                    on_progress=on_progress,
+                    on_stream=on_stream,
+                    on_stream_end=on_stream_end,
+                )
+            except asyncio.CancelledError:
+                outcome = "cancelled"
+                raise
+            except Exception:
+                outcome = "error"
+                raise
+            finally:
+                elapsed_ms = (time.perf_counter() - t0) * 1000
+                logger.info(
+                    "agent_turn_done outcome={} elapsed_ms={:.1f}",
+                    outcome, elapsed_ms,
+                )

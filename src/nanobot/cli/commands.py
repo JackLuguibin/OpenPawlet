@@ -3,6 +3,7 @@
 import asyncio
 import os
 import select
+import time
 import signal
 import sys
 from contextlib import nullcontext
@@ -843,7 +844,7 @@ def gateway(
 
     console.print(f"[green]✓[/green] Heartbeat: every {hb_cfg.interval_s}s")
 
-    async def _health_server(host: str, health_port: int):
+    async def _health_server(host: str, health_port: int, start_perf: float):
         """Lightweight HTTP health endpoint on the gateway port."""
         import json as _json
 
@@ -861,11 +862,41 @@ def gateway(
                 method, path = parts[0], parts[1]
 
             if method == "GET" and path == "/health":
-                body = _json.dumps({"status": "ok"})
+                uptime_s = round(time.perf_counter() - start_perf, 3)
+                body = _json.dumps(
+                    {
+                        "status": "ok",
+                        "version": __version__,
+                        "uptime_s": uptime_s,
+                    }
+                )
                 resp = (
                     f"HTTP/1.0 200 OK\r\n"
                     f"Content-Type: application/json\r\n"
                     f"Content-Length: {len(body)}\r\n"
+                    f"\r\n{body}"
+                )
+            elif method == "GET" and (
+                path == "/v1/observability/recent" or path.startswith("/v1/observability/recent?")
+            ):
+                from nanobot.observability.buffer import to_http_json
+                from urllib.parse import parse_qs
+
+                if "?" in path:
+                    _q = path.split("?", 1)[1]
+                else:
+                    _q = ""
+                _qmap = {k: v[0] for k, v in parse_qs(_q).items() if v}
+                try:
+                    _lim = int(_qmap.get("limit", "200"))
+                except ValueError:
+                    _lim = 200
+                _tid = (_qmap.get("trace_id") or "").strip() or None
+                body = _json.dumps(to_http_json(limit=_lim, trace_id=_tid))
+                resp = (
+                    f"HTTP/1.0 200 OK\r\n"
+                    f"Content-Type: application/json; charset=utf-8\r\n"
+                    f"Content-Length: {len(body.encode('utf-8'))}\r\n"
                     f"\r\n{body}"
                 )
             else:
@@ -902,13 +933,14 @@ def gateway(
     console.print(f"[green]✓[/green] Dream: {dream_cfg.describe_schedule()}")
 
     async def run():
+        start_perf = time.perf_counter()
         try:
             await cron.start()
             await heartbeat.start()
             await asyncio.gather(
                 agent.run(),
                 channels.start_all(),
-                _health_server(config.gateway.host, port),
+                _health_server(config.gateway.host, port, start_perf),
             )
         except KeyboardInterrupt:
             console.print("\nShutting down...")

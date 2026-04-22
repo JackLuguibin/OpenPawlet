@@ -29,6 +29,7 @@ import {
   Clock,
   Heart,
   Activity,
+  LineChart,
 } from 'lucide-react';
 
 import WebSocketDebugPanel from './WebSocketDebugPanel';
@@ -40,6 +41,7 @@ const LOCK_PAGE_SCROLL_PATHS = new Set([
   '/channels',
   '/cron',
   '/health',
+  '/observability',
   '/activity',
   '/mcp',
   '/memory',
@@ -109,6 +111,7 @@ export default function Layout({ children }: LayoutProps) {
           { path: '/workspace', label: t('layout.navWorkspace'), icon: FolderOpen },
           { path: '/agents', label: t('layout.navAgents'), icon: Users },
           { path: '/bot-profile', label: t('layout.navProfile'), icon: UserCircle },
+          { path: '/observability', label: t('layout.navObservability'), icon: LineChart },
           { path: '/logs', label: t('layout.navLogs'), icon: FileText },
           { path: '/skills', label: t('layout.navSkills'), icon: BookOpen },
         ],

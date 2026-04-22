@@ -20,6 +20,7 @@ from . import (
     health_audit,
     mcp,
     memory,
+    observability,
     sessions,
     skills,
     status,
@@ -31,6 +32,7 @@ from . import (
 api_router = APIRouter()
 api_router.include_router(health.router)
 api_router.include_router(health_audit.router)
+api_router.include_router(observability.router)
 api_router.include_router(bots.router)
 api_router.include_router(agents.router)
 api_router.include_router(status.router)

@@ -3,17 +3,24 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, field
 import inspect
+import time
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from loguru import logger
 
 from nanobot.agent.hook import AgentHook, AgentHookContext
-from nanobot.utils.prompt_templates import render_template
 from nanobot.agent.tools.registry import ToolRegistry
-from nanobot.providers.base import LLMProvider, ToolCallRequest
+from nanobot.observability.telemetry import (
+    agent_run_context,
+    llm_request_span,
+    log_llm_response,
+    log_tool_outcome,
+    tool_execution_span,
+)
+from nanobot.providers.base import LLMProvider, LLMResponse, ToolCallRequest
 from nanobot.utils.helpers import (
     build_assistant_message,
     estimate_message_tokens,
@@ -22,6 +29,7 @@ from nanobot.utils.helpers import (
     maybe_persist_tool_result,
     truncate_text,
 )
+from nanobot.utils.prompt_templates import render_template
 from nanobot.utils.runtime import (
     EMPTY_FINAL_RESPONSE_MESSAGE,
     build_finalization_retry_message,
@@ -225,6 +233,10 @@ class AgentRunner:
         return injected_messages
 
     async def run(self, spec: AgentRunSpec) -> AgentRunResult:
+        async with agent_run_context(spec.session_key):
+            return await self._run_inner(spec)
+
+    async def _run_inner(self, spec: AgentRunSpec) -> AgentRunResult:
         hook = spec.hook or AgentHook()
         messages = list(spec.initial_messages)
         final_content: str | None = None
@@ -304,6 +316,7 @@ class AgentRunner:
                     spec,
                     response.tool_calls,
                     external_lookup_counts,
+                    iteration,
                 )
                 tool_events.extend(new_events)
                 context.tool_results = list(results)
@@ -393,7 +406,9 @@ class AgentRunner:
                 )
                 if hook.wants_streaming():
                     await hook.on_stream_end(context, resuming=False)
-                response = await self._request_finalization_retry(spec, messages_for_model)
+                response = await self._request_finalization_retry(
+                    spec, messages_for_model, iteration,
+                )
                 retry_usage = self._usage_dict(response.usage)
                 self._accumulate_usage(usage, retry_usage)
                 raw_usage = self._merge_usage(raw_usage, retry_usage)
@@ -563,6 +578,20 @@ class AgentRunner:
             kwargs["reasoning_effort"] = spec.reasoning_effort
         return kwargs
 
+    @staticmethod
+    def _llm_obs_summary(response: LLMResponse) -> dict[str, Any]:
+        u = response.usage or {}
+        return {
+            "finish_reason": response.finish_reason,
+            "n_tool_calls": len(response.tool_calls),
+            "content_chars": len(response.content or ""),
+            "prompt_tokens": u.get("prompt_tokens", 0),
+            "completion_tokens": u.get("completion_tokens", 0),
+            "cached_tokens": u.get("cached_tokens", 0),
+            "error_kind": response.error_kind,
+            "retry_after": response.retry_after,
+        }
+
     async def _request_model(
         self,
         spec: AgentRunSpec,
@@ -575,25 +604,60 @@ class AgentRunner:
             messages,
             tools=spec.tools.get_definitions(),
         )
-        if hook.wants_streaming():
-            async def _stream(delta: str) -> None:
-                await hook.on_stream(context, delta)
+        streaming = hook.wants_streaming()
+        t0 = time.perf_counter()
+        with llm_request_span(
+            kind="chat",
+            model=spec.model,
+            iteration=context.iteration,
+            streaming=streaming,
+        ):
+            if streaming:
+                async def _stream(delta: str) -> None:
+                    await hook.on_stream(context, delta)
 
-            return await self.provider.chat_stream_with_retry(
-                **kwargs,
-                on_content_delta=_stream,
-            )
-        return await self.provider.chat_with_retry(**kwargs)
+                response = await self.provider.chat_stream_with_retry(
+                    **kwargs,
+                    on_content_delta=_stream,
+                )
+            else:
+                response = await self.provider.chat_with_retry(**kwargs)
+        wall_ms = (time.perf_counter() - t0) * 1000.0
+        log_llm_response(
+            kind="chat",
+            model=spec.model,
+            iteration=context.iteration,
+            wall_ms=wall_ms,
+            response_summary=self._llm_obs_summary(response),
+        )
+        return response
 
     async def _request_finalization_retry(
         self,
         spec: AgentRunSpec,
         messages: list[dict[str, Any]],
+        iteration: int,
     ):
         retry_messages = list(messages)
         retry_messages.append(build_finalization_retry_message())
         kwargs = self._build_request_kwargs(spec, retry_messages, tools=None)
-        return await self.provider.chat_with_retry(**kwargs)
+        t0 = time.perf_counter()
+        with llm_request_span(
+            kind="finalize_retry",
+            model=spec.model,
+            iteration=iteration,
+            streaming=False,
+        ):
+            response = await self.provider.chat_with_retry(**kwargs)
+        wall_ms = (time.perf_counter() - t0) * 1000.0
+        log_llm_response(
+            kind="finalize_retry",
+            model=spec.model,
+            iteration=iteration,
+            wall_ms=wall_ms,
+            response_summary=self._llm_obs_summary(response),
+        )
+        return response
 
     @staticmethod
     def _usage_dict(usage: dict[str, Any] | None) -> dict[str, int]:
@@ -624,18 +688,21 @@ class AgentRunner:
         spec: AgentRunSpec,
         tool_calls: list[ToolCallRequest],
         external_lookup_counts: dict[str, int],
+        iteration: int,
     ) -> tuple[list[Any], list[dict[str, str]], BaseException | None]:
         batches = self._partition_tool_batches(spec, tool_calls)
         tool_results: list[tuple[Any, dict[str, str], BaseException | None]] = []
         for batch in batches:
             if spec.concurrent_tools and len(batch) > 1:
                 tool_results.extend(await asyncio.gather(*(
-                    self._run_tool(spec, tool_call, external_lookup_counts)
+                    self._run_tool(spec, tool_call, external_lookup_counts, iteration)
                     for tool_call in batch
                 )))
             else:
                 for tool_call in batch:
-                    tool_results.append(await self._run_tool(spec, tool_call, external_lookup_counts))
+                    tool_results.append(
+                        await self._run_tool(spec, tool_call, external_lookup_counts, iteration),
+                    )
 
         results: list[Any] = []
         events: list[dict[str, str]] = []
@@ -652,8 +719,34 @@ class AgentRunner:
         spec: AgentRunSpec,
         tool_call: ToolCallRequest,
         external_lookup_counts: dict[str, int],
+        iteration: int,
     ) -> tuple[Any, dict[str, str], BaseException | None]:
-        _HINT = "\n\n[Analyze the error above and try a different approach.]"
+        t0 = time.perf_counter()
+        with tool_execution_span(
+            name=tool_call.name,
+            tool_call_id=tool_call.id,
+            iteration=iteration,
+        ):
+            out = await self._run_tool_body(spec, tool_call, external_lookup_counts)
+        wall_ms = (time.perf_counter() - t0) * 1000.0
+        _, event, _err = out
+        log_tool_outcome(
+            name=tool_call.name,
+            tool_call_id=tool_call.id,
+            iteration=iteration,
+            status=event.get("status", "unknown") or "unknown",
+            detail=event.get("detail"),
+            duration_ms=wall_ms,
+        )
+        return out
+
+    async def _run_tool_body(
+        self,
+        spec: AgentRunSpec,
+        tool_call: ToolCallRequest,
+        external_lookup_counts: dict[str, int],
+    ) -> tuple[Any, dict[str, str], BaseException | None]:
+        _HINT = "\n\n[Analyze the error above and try a different approach.]"  # noqa: N806
         lookup_error = repeated_external_lookup_error(
             tool_call.name,
             tool_call.arguments,

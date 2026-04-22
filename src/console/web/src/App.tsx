@@ -22,6 +22,7 @@ const Memory = lazy(() => import('./pages/Memory'));
 const BotProfile = lazy(() => import('./pages/BotProfile'));
 const Cron = lazy(() => import('./pages/Cron'));
 const Health = lazy(() => import('./pages/Health'));
+const Observability = lazy(() => import('./pages/Observability'));
 const Workspace = lazy(() => import('./pages/Workspace'));
 const Activity = lazy(() => import('./pages/Activity'));
 
@@ -55,6 +56,7 @@ function AppRoutes() {
             <Route path="/channels" element={<Channels />} />
             <Route path="/cron" element={<Cron />} />
             <Route path="/health" element={<Health />} />
+            <Route path="/observability" element={<Observability />} />
             <Route path="/workspace" element={<Workspace />} />
             <Route path="/mcp" element={<MCPServers />} />
             <Route path="/agents" element={<Agents />} />

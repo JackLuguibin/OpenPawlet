@@ -289,6 +289,18 @@ async def test_health_endpoint(aiohttp_client, app) -> None:
 
 @pytest.mark.skipif(not HAS_AIOHTTP, reason="aiohttp not installed")
 @pytest.mark.asyncio
+async def test_observability_recent_endpoint(aiohttp_client, app) -> None:
+    client = await aiohttp_client(app)
+    resp = await client.get("/v1/observability/recent?limit=10")
+    assert resp.status == 200
+    body = await resp.json()
+    assert body.get("ok") is True
+    assert "events" in body
+    assert isinstance(body["events"], list)
+
+
+@pytest.mark.skipif(not HAS_AIOHTTP, reason="aiohttp not installed")
+@pytest.mark.asyncio
 async def test_multimodal_content_extracts_text(aiohttp_client, mock_agent) -> None:
     app = create_app(mock_agent, model_name="m")
     client = await aiohttp_client(app)

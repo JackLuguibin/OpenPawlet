@@ -9,12 +9,14 @@ export type EChartsWithResizeProps = {
   option: EChartsOption;
   className?: string;
   style?: CSSProperties;
+  /** Forwarded to echarts-for-react (e.g. `{ click: (p) => ... }`). */
+  onEvents?: Record<string, (params: unknown) => void>;
 };
 
 /**
  * Wraps echarts-for-react so the canvas tracks container size after flex/grid or window changes.
  */
-export function EChartsWithResize({ option, className, style }: EChartsWithResizeProps) {
+export function EChartsWithResize({ option, className, style, onEvents }: EChartsWithResizeProps) {
   const shellRef = useRef<HTMLDivElement>(null);
   const instanceRef = useRef<echarts.ECharts | null>(null);
 
@@ -37,6 +39,7 @@ export function EChartsWithResize({ option, className, style }: EChartsWithResiz
         opts={{ renderer: 'canvas' }}
         notMerge
         lazyUpdate
+        onEvents={onEvents}
         onChartReady={(chart) => {
           instanceRef.current = chart;
           chart.resize();

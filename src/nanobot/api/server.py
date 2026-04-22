@@ -370,6 +370,18 @@ async def handle_health(request: web.Request) -> web.Response:
     return web.json_response({"status": "ok"})
 
 
+async def handle_observability_recent(request: web.Request) -> web.Response:
+    """GET /v1/observability/recent?limit=&trace_id= — recent LLM / tool / run events (in-memory)."""
+    from nanobot.observability.buffer import to_http_json
+
+    try:
+        lim = int(request.query.get("limit", "200"))
+    except ValueError:
+        lim = 200
+    tid = request.query.get("trace_id", "").strip() or None
+    return web.json_response(to_http_json(limit=lim, trace_id=tid))
+
+
 # ---------------------------------------------------------------------------
 # App factory
 # ---------------------------------------------------------------------------
@@ -393,5 +405,6 @@ def create_app(
 
     app.router.add_post("/v1/chat/completions", handle_chat_completions)
     app.router.add_get("/v1/models", handle_models)
+    app.router.add_get("/v1/observability/recent", handle_observability_recent)
     app.router.add_get("/health", handle_health)
     return app

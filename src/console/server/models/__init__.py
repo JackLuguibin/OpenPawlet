@@ -47,6 +47,13 @@ from console.server.models.errors import ErrorDetail, ErrorResponse
 from console.server.models.health import HealthResponse
 from console.server.models.health_audit import HealthAuditResponse, HealthIssue
 from console.server.models.memory import MemoryResponse
+from console.server.models.observability import (
+    AgentObservabilityEvent,
+    AgentObservabilityTimeline,
+    ConsoleObservabilityInfo,
+    NanobotGatewayInfo,
+    ObservabilityResponse,
+)
 from console.server.models.sessions import (
     BatchDeleteBody,
     BatchDeleteFailure,
@@ -119,6 +126,11 @@ __all__ = [
     "HealthResponse",
     "InstallFromRegistryBody",
     "MemoryResponse",
+    "AgentObservabilityEvent",
+    "AgentObservabilityTimeline",
+    "ConsoleObservabilityInfo",
+    "NanobotGatewayInfo",
+    "ObservabilityResponse",
     "OkBody",
     "OkWithAgentId",
     "OkWithJobId",

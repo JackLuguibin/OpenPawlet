@@ -644,7 +644,7 @@ export default function Settings() {
               <div className="pr-0.5">
                 <Collapse
                   defaultActiveKey={[]}
-                  expandIconPosition="end"
+                  expandIconPlacement="end"
                   className="settings-provider-collapse border-0 bg-transparent"
                   items={filteredProviderNames.map((name) => {
                     const entry = providerForm[name] ?? {
@@ -819,7 +819,8 @@ export default function Settings() {
           {channels && Object.keys(channels).length > 0 ? (
             <div className="space-y-3">
               {Object.entries(channels).map(([name, channelConfig]) => {
-                const enabled = (channelConfig as Record<string, unknown>).enabled !== false;
+                const cfg = (channelConfig ?? {}) as Record<string, unknown>;
+                const enabled = cfg.enabled !== false;
                 return (
                   <Card key={name} size="small" className="min-w-0 w-full">
                     <div className="flex items-center justify-between gap-3 min-w-0">
@@ -831,7 +832,7 @@ export default function Settings() {
                             type="secondary"
                             className="text-xs break-words [overflow-wrap:anywhere]"
                           >
-                            {Object.keys(channelConfig)
+                            {Object.keys(cfg)
                               .filter((k) => k !== 'enabled')
                               .join(', ') || t('settings.channelsDefaultConfig')}
                           </Text>

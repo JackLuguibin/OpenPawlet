@@ -21,6 +21,8 @@ import type {
   ActivityItem,
   ChannelRefreshResult,
   MCPTestResult,
+  ObservabilityResponse,
+  AgentObservabilityTimeline,
 } from './types';
 
 const API_BASE = '/api/v1';
@@ -593,6 +595,25 @@ export async function healthCheck(): Promise<{ status: string; version: string }
 
 export async function getHealthAudit(botId?: string | null): Promise<{ issues: HealthIssue[] }> {
   return fetchJson(`${API_BASE}/health/audit${botQuery(botId)}`);
+}
+
+export async function getObservability(
+  botId?: string | null
+): Promise<ObservabilityResponse> {
+  return fetchJson<ObservabilityResponse>(`${API_BASE}/observability${botQuery(botId)}`);
+}
+
+export async function getObservabilityTimeline(
+  botId?: string | null,
+  options?: { limit?: number; traceId?: string | null }
+): Promise<AgentObservabilityTimeline> {
+  const p = new URLSearchParams();
+  p.set('limit', String(options?.limit ?? 200));
+  if (options?.traceId) {
+    p.set('trace_id', options.traceId);
+  }
+  const withQuery = `${API_BASE}/observability/timeline?${p.toString()}`;
+  return fetchJson<AgentObservabilityTimeline>(appendBotQuery(withQuery, botId));
 }
 
 // ====================

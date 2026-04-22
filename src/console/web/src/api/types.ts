@@ -127,6 +127,42 @@ export interface HealthIssue {
   metadata?: Record<string, unknown>;
 }
 
+/** GET /observability — console API + nanobot gateway /health probe */
+export interface ConsoleObservabilityInfo {
+  status: string;
+  version: string;
+}
+
+export interface NanobotGatewayObservability {
+  endpoint: string;
+  ok: boolean;
+  status?: string | null;
+  version?: string | null;
+  uptime_s?: number | null;
+  error?: string | null;
+}
+
+export interface ObservabilityResponse {
+  console: ConsoleObservabilityInfo;
+  nanobot_gateway: NanobotGatewayObservability;
+}
+
+/** GET /observability/timeline — in-memory run / LLM / tool events from nanobot gateway */
+export interface AgentObservabilityEvent {
+  ts: number;
+  event: string;
+  trace_id?: string | null;
+  session_key?: string | null;
+  payload: Record<string, unknown>;
+}
+
+export interface AgentObservabilityTimeline {
+  ok: boolean;
+  source_endpoint: string;
+  error?: string | null;
+  events: AgentObservabilityEvent[];
+}
+
 export interface StatusResponse {
   running: boolean;
   uptime_seconds: number;

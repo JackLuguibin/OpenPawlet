@@ -761,6 +761,7 @@ async def test_runner_batches_read_only_tools_before_exclusive_work():
             ToolCallRequest(id="rw1", name="write_a", arguments={}),
         ],
         {},
+        0,
     )
 
     assert shared_events[0:2] == ["start:read_a", "start:read_b"]
@@ -805,6 +806,7 @@ async def test_runner_does_not_batch_exclusive_read_only_tools():
             ToolCallRequest(id="ro2", name="read_b", arguments={}),
         ],
         {},
+        0,
     )
 
     assert shared_events[0] == "start:read_a"

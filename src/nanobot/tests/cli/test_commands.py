@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from typer.testing import CliRunner
 
+from nanobot import __version__
 from nanobot.bus.events import OutboundMessage
 from nanobot.cli.commands import _make_provider, app
 from nanobot.config.schema import Config
@@ -1417,7 +1418,10 @@ def test_gateway_health_endpoint_binds_and_serves_expected_responses(
     assert health_writer.closed is True
     assert "HTTP/1.0 200 OK" in health_response
     health_body = json.loads(health_response.split("\r\n\r\n", 1)[1])
-    assert health_body == {"status": "ok"}
+    assert health_body["status"] == "ok"
+    assert health_body["version"] == __version__
+    assert isinstance(health_body["uptime_s"], int | float)
+    assert health_body["uptime_s"] >= 0
 
     missing_response, missing_writer = _call_handler("/missing")
     assert missing_writer.closed is True
