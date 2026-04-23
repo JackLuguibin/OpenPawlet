@@ -65,9 +65,11 @@ class Nanobot:
         provider = _make_provider(config)
         from nanobot.utils.token_usage_jsonl import attach_token_usage_jsonl
 
-        attach_token_usage_jsonl(provider, config.workspace_path)
-        bus = MessageBus()
         defaults = config.agents.defaults
+        attach_token_usage_jsonl(
+            provider, config.workspace_path, timezone=defaults.timezone
+        )
+        bus = MessageBus()
 
         loop = AgentLoop(
             bus=bus,

@@ -14,9 +14,7 @@ from loguru import logger
 
 from console.server.config import ServerSettings, get_settings
 from console.server.models import ErrorDetail, ErrorResponse
-from console.server.nanobot_user_config import read_default_timezone, resolve_config_path
 from console.server.routers import v1
-from nanobot.utils.helpers import configure_process_timezone
 
 _ERR_VALIDATION_CODE = "VALIDATION_ERROR"
 _ERR_VALIDATION_MSG = "Request validation failed"
@@ -34,7 +32,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         host=settings.host,
         port=settings.port,
     )
-    configure_process_timezone(read_default_timezone(resolve_config_path(None)))
     yield
     logger.info("Shutting down OpenPawlet console server")
 

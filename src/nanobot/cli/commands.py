@@ -477,7 +477,9 @@ def _make_provider(config: Config):
     )
     from nanobot.utils.token_usage_jsonl import attach_token_usage_jsonl
 
-    attach_token_usage_jsonl(provider, config.workspace_path)
+    attach_token_usage_jsonl(
+        provider, config.workspace_path, timezone=defaults.timezone
+    )
     return provider
 
 
@@ -576,7 +578,10 @@ def serve(
     sync_workspace_templates(runtime_config.workspace_path)
     bus = MessageBus()
     provider = _make_provider(runtime_config)
-    session_manager = SessionManager(runtime_config.workspace_path)
+    session_manager = SessionManager(
+        runtime_config.workspace_path,
+        timezone=runtime_config.agents.defaults.timezone,
+    )
     agent_loop = AgentLoop(
         bus=bus,
         provider=provider,
@@ -662,7 +667,10 @@ def gateway(
     sync_workspace_templates(config.workspace_path)
     bus = MessageBus()
     provider = _make_provider(config)
-    session_manager = SessionManager(config.workspace_path)
+    session_manager = SessionManager(
+        config.workspace_path,
+        timezone=config.agents.defaults.timezone,
+    )
 
     # Preserve existing single-workspace installs, but keep custom workspaces clean.
     if is_default_workspace(config.workspace_path):

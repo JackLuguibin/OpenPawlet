@@ -17,13 +17,10 @@ from console.server.models import (
 from console.server.nanobot_user_config import (
     build_config_response,
     merge_config_section,
-    read_default_timezone,
     resolve_config_path,
     save_full_config,
     validate_core_config,
 )
-from nanobot.utils.helpers import configure_process_timezone
-
 router = APIRouter(tags=["Config"])
 
 
@@ -65,8 +62,6 @@ async def put_config(
         data = build_config_response(path)
     except ValidationError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
-    # Keep console process ``local_now`` in sync with config (no restart).
-    configure_process_timezone(read_default_timezone(path))
     return DataResponse(data=ConfigSection.model_validate(data))
 
 

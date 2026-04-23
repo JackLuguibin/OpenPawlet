@@ -168,7 +168,7 @@ def collect_dashboard_metrics(
     default_model = read_default_model(cfg_path) or "unknown"
     iana_tz = read_default_timezone(cfg_path)
 
-    mgr = SessionManager(workspace_root(bot_id))
+    mgr = SessionManager(workspace_root(bot_id), timezone=iana_tz)
     active_sessions = len(list(mgr.sessions_dir.glob("*.jsonl")))
 
     today = _today_in_config_tz(iana_tz)

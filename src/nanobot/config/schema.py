@@ -88,7 +88,7 @@ class AgentDefaults(Base):
     max_tool_result_chars: int = 16_000
     provider_retry_mode: Literal["standard", "persistent"] = "standard"
     reasoning_effort: str | None = None  # low / medium / high / adaptive - enables LLM thinking mode
-    # Used for runtime prompt clock, cron defaults, and (via configure_process_timezone) session/usage logs.
+    # Used for runtime prompt clock, cron defaults, session/usage logs, and explicit ``local_now(tz)`` call sites.
     timezone: str = "UTC"  # IANA, e.g. "Asia/Shanghai"; invalid values fall back to OS local for logs.
     unified_session: bool = False  # Share one session across all channels (single-user multi-device)
     disabled_skills: list[str] = Field(default_factory=list)  # Skill names to exclude from loading (e.g. ["summarize", "skill-creator"])

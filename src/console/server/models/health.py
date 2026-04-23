@@ -7,12 +7,13 @@ from datetime import datetime
 from pydantic import Field
 
 from console.server.models.base import BaseResponse
+from console.server.nanobot_user_config import read_default_timezone, resolve_config_path
 from nanobot.utils.helpers import local_now
 
 
 def _server_now() -> datetime:
-    """Return current time (same zone as ``agents.defaults.timezone`` when configured)."""
-    return local_now()
+    """Return current time in ``agents.defaults.timezone`` when set in config."""
+    return local_now(read_default_timezone(resolve_config_path(None)))
 
 
 class HealthResponse(BaseResponse):

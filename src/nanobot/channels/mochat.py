@@ -89,7 +89,7 @@ def _str_field(src: dict, *keys: str) -> str:
 def _make_synthetic_event(
     message_id: str, author: str, content: Any,
     meta: Any, group_id: str, converse_id: str,
-    timestamp: Any = None, *, author_info: Any = None,
+    timestamp: Any = None, *, author_info: Any = None, agent_timezone: str | None = None,
 ) -> dict[str, Any]:
     """Build a synthetic ``message.add`` event dict."""
     payload: dict[str, Any] = {
@@ -101,7 +101,7 @@ def _make_synthetic_event(
         payload["authorInfo"] = _safe_dict(author_info)
     return {
         "type": "message.add",
-        "timestamp": timestamp or local_now().isoformat(),
+        "timestamp": timestamp or local_now(agent_timezone).isoformat(),
         "payload": payload,
     }
 
@@ -267,11 +267,12 @@ class MochatChannel(BaseChannel):
     def default_config(cls) -> dict[str, Any]:
         return MochatConfig().model_dump(by_alias=True)
 
-    def __init__(self, config: Any, bus: MessageBus):
+    def __init__(self, config: Any, bus: MessageBus, *, agent_timezone: str | None = None):
         if isinstance(config, dict):
             config = MochatConfig.model_validate(config)
         super().__init__(config, bus)
         self.config: MochatConfig = config
+        self._agent_timezone = agent_timezone
         self._http: httpx.AsyncClient | None = None
         self._socket: Any = None
         self._ws_connected = self._ws_ready = False
@@ -673,6 +674,7 @@ class MochatChannel(BaseChannel):
                             meta=m.get("meta"), group_id=str(resp.get("groupId") or ""),
                             converse_id=panel_id, timestamp=m.get("createdAt"),
                             author_info=m.get("authorInfo"),
+                            agent_timezone=self._agent_timezone,
                         )
                         await self._process_inbound_event(panel_id, evt, "panel")
             except asyncio.CancelledError:
@@ -839,6 +841,7 @@ class MochatChannel(BaseChannel):
             content=payload.get("content"), meta=payload.get("meta"),
             group_id=group_id, converse_id=panel_id,
             timestamp=payload.get("createdAt"), author_info=payload.get("authorInfo"),
+            agent_timezone=self._agent_timezone,
         )
         await self._process_inbound_event(panel_id, evt, "panel")
 
@@ -867,6 +870,7 @@ class MochatChannel(BaseChannel):
             content=str(detail.get("messagePlainContent") or detail.get("messageSnippet") or ""),
             meta={"source": "notify:chat.inbox.append", "converseId": converse_id},
             group_id="", converse_id=converse_id, timestamp=payload.get("createdAt"),
+            agent_timezone=self._agent_timezone,
         )
         await self._process_inbound_event(session_id, evt, "session")
 
@@ -901,7 +905,7 @@ class MochatChannel(BaseChannel):
         try:
             self._state_dir.mkdir(parents=True, exist_ok=True)
             self._cursor_path.write_text(json.dumps({
-                "schemaVersion": 1, "updatedAt": local_now().isoformat(),
+                "schemaVersion": 1, "updatedAt": local_now(self._agent_timezone).isoformat(),
                 "cursors": self._session_cursor,
             }, ensure_ascii=False, indent=2) + "\n", "utf-8")
         except Exception as e:

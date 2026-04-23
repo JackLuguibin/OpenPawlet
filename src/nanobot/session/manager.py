@@ -17,11 +17,12 @@ from nanobot.config.paths import get_legacy_sessions_dir
 from nanobot.utils.helpers import ensure_dir, find_legal_message_start, local_now, safe_filename, timestamp
 
 
-def _as_agent_aware(dt: datetime) -> datetime:
+def _as_agent_aware(dt: datetime, agent_tz: str | None) -> datetime:
     """Attach agent zone to naive datetimes from legacy session files."""
     if dt.tzinfo is not None:
         return dt
-    tz = local_now().tzinfo
+    anchor = local_now(agent_tz)
+    tz = anchor.tzinfo
     if tz is not None:
         return dt.replace(tzinfo=tz)
     return dt.astimezone()
@@ -33,21 +34,30 @@ class Session:
 
     key: str  # channel:chat_id
     messages: list[dict[str, Any]] = field(default_factory=list)
-    created_at: datetime = field(default_factory=local_now)
-    updated_at: datetime = field(default_factory=local_now)
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
     last_consolidated: int = 0  # Number of messages already consolidated to files
+    agent_timezone: str | None = field(default=None, compare=False, repr=False)
+
+    def __post_init__(self) -> None:
+        n = local_now(self.agent_timezone)
+        if self.created_at is None:
+            self.created_at = n
+        if self.updated_at is None:
+            self.updated_at = n
 
     def add_message(self, role: str, content: str, **kwargs: Any) -> None:
         """Add a message to the session."""
+        tz = self.agent_timezone
         msg = {
             "role": role,
             "content": content,
-            "timestamp": timestamp(),
+            "timestamp": timestamp(tz),
             **kwargs
         }
         self.messages.append(msg)
-        self.updated_at = local_now()
+        self.updated_at = local_now(tz)
 
     def get_history(self, max_messages: int = 500) -> list[dict[str, Any]]:
         """Return unconsolidated messages for LLM input, aligned to a legal tool-call boundary."""
@@ -78,7 +88,7 @@ class Session:
         """Clear all messages and reset session to initial state."""
         self.messages = []
         self.last_consolidated = 0
-        self.updated_at = local_now()
+        self.updated_at = local_now(self.agent_timezone)
 
     def retain_recent_legal_suffix(
         self,
@@ -119,7 +129,7 @@ class Session:
         dropped = len(self.messages) - len(retained)
         self.messages = retained
         self.last_consolidated = max(0, self.last_consolidated - dropped)
-        self.updated_at = local_now()
+        self.updated_at = local_now(self.agent_timezone)
 
 
 class SessionManager:
@@ -129,11 +139,21 @@ class SessionManager:
     Sessions are stored as JSONL files in the sessions directory.
     """
 
-    def __init__(self, workspace: Path):
+    def __init__(self, workspace: Path, timezone: str | None = None):
         self.workspace = workspace
+        self._timezone = timezone
         self.sessions_dir = ensure_dir(self.workspace / "sessions")
         self.legacy_sessions_dir = get_legacy_sessions_dir()
         self._cache: dict[str, Session] = {}
+
+    @property
+    def agent_timezone(self) -> str | None:
+        """IANA timezone for session clocks (same source as :attr:`AgentLoop.timezone`)."""
+        return self._timezone
+
+    def configure_timezone(self, tz: str | None) -> None:
+        """Set the agent timezone used for new timestamps and naive-datetime repair."""
+        self._timezone = tz
 
     @staticmethod
     def safe_key(key: str) -> str:
@@ -159,11 +179,15 @@ class SessionManager:
             The session.
         """
         if key in self._cache:
-            return self._cache[key]
+            sess = self._cache[key]
+            sess.agent_timezone = self._timezone
+            return sess
 
         session = self._load(key)
         if session is None:
-            session = Session(key=key)
+            session = Session(key=key, agent_timezone=self._timezone)
+        else:
+            session.agent_timezone = self._timezone
 
         self._cache[key] = session
         return session
@@ -203,6 +227,7 @@ class SessionManager:
                         created_at = (
                             _as_agent_aware(
                                 datetime.fromisoformat(data["created_at"].replace("Z", "+00:00")),
+                                self._timezone,
                             )
                             if data.get("created_at")
                             else None
@@ -210,6 +235,7 @@ class SessionManager:
                         updated_at = (
                             _as_agent_aware(
                                 datetime.fromisoformat(data["updated_at"].replace("Z", "+00:00")),
+                                self._timezone,
                             )
                             if data.get("updated_at")
                             else None
@@ -221,10 +247,11 @@ class SessionManager:
             return Session(
                 key=key,
                 messages=messages,
-                created_at=created_at or local_now(),
-                updated_at=updated_at or local_now(),
+                created_at=created_at or local_now(self._timezone),
+                updated_at=updated_at or local_now(self._timezone),
                 metadata=metadata,
-                last_consolidated=last_consolidated
+                last_consolidated=last_consolidated,
+                agent_timezone=self._timezone,
             )
         except Exception as e:
             logger.warning("Failed to load session {}: {}", key, e)
@@ -264,6 +291,7 @@ class SessionManager:
                             try:
                                 created_at = _as_agent_aware(
                                     datetime.fromisoformat(data["created_at"].replace("Z", "+00:00")),
+                                    self._timezone,
                                 )
                             except (ValueError, TypeError):
                                 pass
@@ -271,6 +299,7 @@ class SessionManager:
                             try:
                                 updated_at = _as_agent_aware(
                                     datetime.fromisoformat(data["updated_at"].replace("Z", "+00:00")),
+                                    self._timezone,
                                 )
                             except (ValueError, TypeError):
                                 pass
@@ -287,10 +316,11 @@ class SessionManager:
             return Session(
                 key=key,
                 messages=messages,
-                created_at=created_at or local_now(),
-                updated_at=updated_at or local_now(),
+                created_at=created_at or local_now(self._timezone),
+                updated_at=updated_at or local_now(self._timezone),
                 metadata=metadata,
-                last_consolidated=last_consolidated
+                last_consolidated=last_consolidated,
+                agent_timezone=self._timezone,
             )
         except Exception as e:
             logger.warning("Repair failed for session {}: {}", key, e)

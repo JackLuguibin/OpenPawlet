@@ -33,9 +33,9 @@ class LineAge:
     age_days: int  # days since last modification
 
 
-def _compute_line_ages(annotated) -> list[LineAge]:
+def _compute_line_ages(annotated, tz_name: str | None) -> list[LineAge]:
     """Convert annotate results to per-line ages."""
-    anchor = local_now()
+    anchor = local_now(tz_name)
     tz = anchor.tzinfo
     now = anchor.date()
     ages: list[LineAge] = []
@@ -49,9 +49,16 @@ def _compute_line_ages(annotated) -> list[LineAge]:
 class GitStore:
     """Git-backed version control for memory files."""
 
-    def __init__(self, workspace: Path, tracked_files: list[str]):
+    def __init__(
+        self,
+        workspace: Path,
+        tracked_files: list[str],
+        *,
+        timezone: str | None = None,
+    ):
         self._workspace = workspace
         self._tracked_files = tracked_files
+        self._timezone = timezone
 
     def is_initialized(self) -> bool:
         """Check if the git repo has been initialized."""
@@ -234,7 +241,7 @@ class GitStore:
                     if commit.type_name != b"commit":
                         break
                     dt = datetime.fromtimestamp(commit.commit_time, tz=timezone.utc)
-                    anchor = local_now()
+                    anchor = local_now(self._timezone)
                     tz = anchor.tzinfo
                     dt = dt.astimezone(tz) if tz is not None else dt.astimezone()
                     ts = dt.strftime("%Y-%m-%d %H:%M")
@@ -277,7 +284,7 @@ class GitStore:
         if not annotated:
             return []
 
-        return _compute_line_ages(annotated)
+        return _compute_line_ages(annotated, self._timezone)
 
     def diff_commits(self, sha1: str, sha2: str) -> str:
         """Show diff between two commits."""

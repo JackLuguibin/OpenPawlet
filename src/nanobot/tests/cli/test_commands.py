@@ -847,7 +847,7 @@ def _patch_serve_runtime(monkeypatch, config: Config, seen: dict[str, object]) -
         monkeypatch,
         config,
         message_bus=lambda: object(),
-        session_manager=lambda _workspace: object(),
+        session_manager=lambda *_a, **_k: object(),
     )
     monkeypatch.setattr("nanobot.agent.loop.AgentLoop", _FakeAgentLoop)
     monkeypatch.setattr("nanobot.api.server.create_app", _fake_create_app)
@@ -914,7 +914,7 @@ def test_gateway_uses_workspace_directory_for_cron_store(monkeypatch, tmp_path: 
         monkeypatch,
         config,
         message_bus=lambda: object(),
-        session_manager=lambda _workspace: object(),
+        session_manager=lambda *_a, **_k: object(),
         cron_service=_StopCron,
     )
 
@@ -943,7 +943,7 @@ def test_gateway_cron_evaluator_receives_scheduled_reminder_context(
     monkeypatch.setattr("nanobot.cli.commands.sync_workspace_templates", lambda _path: None)
     monkeypatch.setattr("nanobot.cli.commands._make_provider", lambda _config: provider)
     monkeypatch.setattr("nanobot.bus.queue.MessageBus", lambda: bus)
-    monkeypatch.setattr("nanobot.session.manager.SessionManager", lambda _workspace: object())
+    monkeypatch.setattr("nanobot.session.manager.SessionManager", lambda *_a, **_k: object())
 
     class _FakeCron:
         def __init__(self, _store_path: Path) -> None:
@@ -1054,7 +1054,7 @@ def test_gateway_cron_job_suppresses_intermediate_progress(
     monkeypatch.setattr("nanobot.cli.commands.sync_workspace_templates", lambda _path: None)
     monkeypatch.setattr("nanobot.cli.commands._make_provider", lambda _config: object())
     monkeypatch.setattr("nanobot.bus.queue.MessageBus", lambda: bus)
-    monkeypatch.setattr("nanobot.session.manager.SessionManager", lambda _workspace: object())
+    monkeypatch.setattr("nanobot.session.manager.SessionManager", lambda *_a, **_k: object())
 
     class _FakeCron:
         def __init__(self, _store_path: Path) -> None:
@@ -1146,7 +1146,7 @@ def test_gateway_workspace_override_does_not_migrate_legacy_cron(
         monkeypatch,
         config,
         message_bus=lambda: object(),
-        session_manager=lambda _workspace: object(),
+        session_manager=lambda *_a, **_k: object(),
         cron_service=_StopCron,
         get_cron_dir=lambda: legacy_dir,
     )
@@ -1185,7 +1185,7 @@ def test_gateway_custom_config_workspace_does_not_migrate_legacy_cron(
         monkeypatch,
         config,
         message_bus=lambda: object(),
-        session_manager=lambda _workspace: object(),
+        session_manager=lambda *_a, **_k: object(),
         cron_service=_StopCron,
         get_cron_dir=lambda: legacy_dir,
     )
@@ -1386,7 +1386,7 @@ def test_gateway_health_endpoint_binds_and_serves_expected_responses(
         monkeypatch,
         config,
         message_bus=lambda: object(),
-        session_manager=lambda _workspace: object(),
+        session_manager=lambda *_a, **_k: object(),
     )
     monkeypatch.setattr("nanobot.agent.loop.AgentLoop", _FakeAgentLoop)
     monkeypatch.setattr("nanobot.channels.manager.ChannelManager", _FakeChannelManager)

@@ -167,11 +167,13 @@ class LLMProvider(ABC):
         self.generation: GenerationSettings = GenerationSettings()
         self._token_usage_recorder: Any = None
 
-    def attach_token_usage_jsonl(self, workspace: str | Path) -> None:
+    def attach_token_usage_jsonl(
+        self, workspace: str | Path, *, timezone: str | None = None
+    ) -> None:
         """Log successful LLM completions' token usage to ``<workspace>/usage/token_usage_*.jsonl``."""
         from nanobot.utils.token_usage_jsonl import TokenUsageJsonlRecorder
 
-        self._token_usage_recorder = TokenUsageJsonlRecorder(Path(workspace))
+        self._token_usage_recorder = TokenUsageJsonlRecorder(Path(workspace), timezone=timezone)
 
     def _maybe_record_token_usage(
         self,

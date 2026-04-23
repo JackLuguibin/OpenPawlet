@@ -44,9 +44,15 @@ class MemoryStore:
         r"^\[\d{4}-\d{2}-\d{2}[^\]]*\]\s+[A-Z][A-Z0-9_]*(?:\s+\[tools:\s*[^\]]+\])?:"
     )
 
-    def __init__(self, workspace: Path, max_history_entries: int = _DEFAULT_MAX_HISTORY):
+    def __init__(
+        self,
+        workspace: Path,
+        max_history_entries: int = _DEFAULT_MAX_HISTORY,
+        timezone: str | None = None,
+    ):
         self.workspace = workspace
         self.max_history_entries = max_history_entries
+        self.timezone = timezone
         self.memory_dir = ensure_dir(workspace / "memory")
         self.memory_file = self.memory_dir / "MEMORY.md"
         self.history_file = self.memory_dir / "history.jsonl"
@@ -56,9 +62,13 @@ class MemoryStore:
         self._cursor_file = self.memory_dir / ".cursor"
         self._dream_cursor_file = self.memory_dir / ".dream_cursor"
         self._corruption_logged = False  # rate-limit non-int cursor warning
-        self._git = GitStore(workspace, tracked_files=[
-            "SOUL.md", "USER.md", "memory/MEMORY.md",
-        ])
+        self._git = GitStore(
+            workspace,
+            tracked_files=[
+                "SOUL.md", "USER.md", "memory/MEMORY.md",
+            ],
+            timezone=timezone,
+        )
         self._maybe_migrate_legacy_history()
 
     @property
@@ -182,13 +192,13 @@ class MemoryStore:
     def _legacy_fallback_timestamp(self) -> str:
         try:
             mt = self.legacy_history_file.stat().st_mtime
-            anchor = local_now()
+            anchor = local_now(self.timezone)
             tz = anchor.tzinfo
             dt = datetime.fromtimestamp(mt, tz=timezone.utc)
             dt = dt.astimezone(tz) if tz is not None else dt.astimezone()
             return dt.strftime("%Y-%m-%d %H:%M")
         except OSError:
-            return local_now().strftime("%Y-%m-%d %H:%M")
+            return local_now(self.timezone).strftime("%Y-%m-%d %H:%M")
 
     def _next_legacy_backup_path(self) -> Path:
         candidate = self.memory_dir / "HISTORY.md.bak"
@@ -241,7 +251,7 @@ class MemoryStore:
         undone by history replay / consolidation downstream.
         """
         cursor = self._next_cursor()
-        ts = local_now().strftime("%Y-%m-%d %H:%M")
+        ts = local_now(self.timezone).strftime("%Y-%m-%d %H:%M")
         raw = entry.rstrip()
         content = strip_think(raw)
         if raw and not content:
@@ -800,7 +810,7 @@ class Dream:
         )
 
         # Current file contents + per-line age annotations (MEMORY.md only)
-        current_date = local_now().strftime("%Y-%m-%d")
+        current_date = local_now(self.store.timezone).strftime("%Y-%m-%d")
         raw_memory = self.store.read_memory() or "(empty)"
         current_memory = (
             self._annotate_with_ages(raw_memory)

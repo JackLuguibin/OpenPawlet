@@ -7,8 +7,17 @@ from pathlib import Path
 from typing import Any
 
 from console.server.bot_workspace import workspace_root
+from console.server.nanobot_user_config import read_default_timezone, resolve_config_path
 from nanobot.session.manager import Session, SessionManager
 from nanobot.utils.helpers import safe_filename
+
+
+def _session_manager(bot_id: str | None) -> SessionManager:
+    path = resolve_config_path(bot_id)
+    return SessionManager(
+        workspace_root(bot_id),
+        timezone=read_default_timezone(path),
+    )
 
 _VALID_TRANSCRIPT_ROLES = frozenset({"user", "assistant", "system", "tool"})
 
@@ -102,7 +111,7 @@ def _count_jsonl_messages(path: Path) -> int:
 
 def list_session_rows(bot_id: str | None) -> list[dict[str, Any]]:
     """Return session list entries with keys, timestamps, and message counts."""
-    mgr = SessionManager(workspace_root(bot_id))
+    mgr = _session_manager(bot_id)
     rows = mgr.list_sessions()
     out: list[dict[str, Any]] = []
     for row in rows:
@@ -120,17 +129,17 @@ def list_session_rows(bot_id: str | None) -> list[dict[str, Any]]:
 
 def load_session(bot_id: str | None, session_key: str) -> Session | None:
     """Load a session from disk, or ``None`` if it does not exist."""
-    mgr = SessionManager(workspace_root(bot_id))
+    mgr = _session_manager(bot_id)
     return mgr._load(session_key)
 
 
 def save_empty_session(bot_id: str | None, session_key: str) -> Session:
     """Create a new empty session file if missing (POST /sessions)."""
-    mgr = SessionManager(workspace_root(bot_id))
+    mgr = _session_manager(bot_id)
     existing = mgr._load(session_key)
     if existing is not None:
         return existing
-    session = Session(key=session_key)
+    session = Session(key=session_key, agent_timezone=mgr.agent_timezone)
     mgr.save(session)
     return session
 
@@ -140,7 +149,7 @@ def read_session_jsonl_raw(bot_id: str | None, session_key: str) -> str | None:
 
     Returns ``None`` if no session file exists.
     """
-    mgr = SessionManager(workspace_root(bot_id))
+    mgr = _session_manager(bot_id)
     for path in _primary_and_legacy_paths(mgr, session_key):
         text = _read_utf8_file(path)
         if text is not None:
@@ -158,7 +167,7 @@ def delete_session_files(bot_id: str | None, session_key: str) -> bool:
 
     Returns True if at least one file was removed.
     """
-    mgr = SessionManager(workspace_root(bot_id))
+    mgr = _session_manager(bot_id)
     removed = False
     for path in _primary_and_legacy_paths(mgr, session_key):
         if path.is_file():

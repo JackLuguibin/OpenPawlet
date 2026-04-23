@@ -16,6 +16,7 @@ class TokenUsageJsonlRecorder:
     """Write one JSON object per line to ``usage/token_usage_YYYY-MM-DD.jsonl`` (local calendar day)."""
 
     workspace: Path
+    timezone: str | None = None
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
     def __post_init__(self) -> None:
@@ -39,7 +40,7 @@ class TokenUsageJsonlRecorder:
                 continue
         if not normalized:
             return
-        now = local_now()
+        now = local_now(self.timezone)
         row: dict[str, Any] = {
             "_type": "llm_token_usage",
             "timestamp": now.isoformat(),
@@ -56,6 +57,8 @@ class TokenUsageJsonlRecorder:
                 f.write(line)
 
 
-def attach_token_usage_jsonl(provider: Any, workspace: str | Path) -> None:
+def attach_token_usage_jsonl(
+    provider: Any, workspace: str | Path, *, timezone: str | None = None
+) -> None:
     """Attach :class:`TokenUsageJsonlRecorder` to *provider* for the given workspace root."""
-    provider.attach_token_usage_jsonl(workspace)
+    provider.attach_token_usage_jsonl(workspace, timezone=timezone)

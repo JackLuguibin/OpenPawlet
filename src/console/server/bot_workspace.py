@@ -194,7 +194,9 @@ def tool_logs_path(bot_id: str | None) -> Path:
 
 def iso_now() -> str:
     """ISO-8601 ``now`` in the configured agent timezone (see ``agents.defaults.timezone``)."""
-    return local_now().isoformat()
+    from console.server.nanobot_user_config import read_default_timezone, resolve_config_path
+
+    return local_now(read_default_timezone(resolve_config_path(None))).isoformat()
 
 
 def new_id(prefix: str = "") -> str:

@@ -42,7 +42,6 @@ from nanobot.session.manager import Session, SessionManager
 from nanobot.session.transcript import SessionTranscriptWriter
 from nanobot.utils.document import extract_documents
 from nanobot.utils.helpers import (
-    configure_process_timezone,
     image_placeholder_text,
     local_now,
     timestamp,
@@ -236,9 +235,10 @@ class AgentLoop:
         self._last_usage: dict[str, int] = {}
         self._extra_hooks: list[AgentHook] = hooks or []
 
-        self.context = ContextBuilder(workspace, timezone=timezone, disabled_skills=disabled_skills)
-        configure_process_timezone(self.context.timezone)
-        self.sessions = session_manager or SessionManager(workspace)
+        self.timezone = timezone
+        self.context = ContextBuilder(workspace, timezone=self.timezone, disabled_skills=disabled_skills)
+        self.sessions = session_manager or SessionManager(workspace, timezone=self.timezone)
+        self.sessions.configure_timezone(self.timezone)
         self.tools = ToolRegistry()
         self.runner = AgentRunner(provider)
         self.subagents = SubagentManager(
@@ -251,6 +251,7 @@ class AgentLoop:
             exec_config=self.exec_config,
             restrict_to_workspace=restrict_to_workspace,
             disabled_skills=disabled_skills,
+            timezone=self.timezone,
         )
         self._unified_session = unified_session
         self._running = False
@@ -287,6 +288,7 @@ class AgentLoop:
                 enabled=True,
                 include_full_tool_results=transcript_include_full_tool_results,
                 max_tool_result_chars=self.max_tool_result_chars,
+                timezone=self.timezone,
             )
         self.auto_compact = AutoCompact(
             sessions=self.sessions,
@@ -348,7 +350,7 @@ class AgentLoop:
         self.tools.register(SpawnTool(manager=self.subagents))
         if self.cron_service:
             self.tools.register(
-                CronTool(self.cron_service, default_timezone=self.context.timezone or "UTC")
+                CronTool(self.cron_service, default_timezone=self.timezone or "UTC")
             )
 
     async def _connect_mcp(self) -> None:
@@ -531,7 +533,7 @@ class AgentLoop:
                 runtime_ctx = self.context._build_runtime_context(
                     pending_msg.channel,
                     pending_msg.chat_id,
-                    self.context.timezone,
+                    self.timezone,
                 )
                 if isinstance(user_content, str):
                     merged: str | list[dict[str, Any]] = f"{runtime_ctx}\n\n{user_content}"
@@ -1157,9 +1159,9 @@ class AgentLoop:
                     if not filtered:
                         continue
                     entry["content"] = filtered
-            entry.setdefault("timestamp", timestamp())
+            entry.setdefault("timestamp", timestamp(self.timezone))
             session.messages.append(entry)
-            session.updated_at = local_now()
+            session.updated_at = local_now(self.timezone)
 
     def _persist_subagent_followup(self, session: Session, msg: InboundMessage) -> bool:
         """Persist subagent follow-ups before prompt assembly so history stays durable.
@@ -1225,12 +1227,12 @@ class AgentLoop:
         restored_messages: list[dict[str, Any]] = []
         if isinstance(assistant_message, dict):
             restored = dict(assistant_message)
-            restored.setdefault("timestamp", timestamp())
+            restored.setdefault("timestamp", timestamp(self.timezone))
             restored_messages.append(restored)
         for message in completed_tool_results:
             if isinstance(message, dict):
                 restored = dict(message)
-                restored.setdefault("timestamp", timestamp())
+                restored.setdefault("timestamp", timestamp(self.timezone))
                 restored_messages.append(restored)
         for tool_call in pending_tool_calls:
             if not isinstance(tool_call, dict):
@@ -1243,7 +1245,7 @@ class AgentLoop:
                     "tool_call_id": tool_id,
                     "name": name,
                     "content": "Error: Task interrupted before this tool finished.",
-                    "timestamp": timestamp(),
+                    "timestamp": timestamp(self.timezone),
                 }
             )
 
@@ -1274,10 +1276,10 @@ class AgentLoop:
                 {
                     "role": "assistant",
                     "content": "Error: Task interrupted before a response was generated.",
-                    "timestamp": timestamp(),
+                    "timestamp": timestamp(self.timezone),
                 }
             )
-            session.updated_at = local_now()
+            session.updated_at = local_now(self.timezone)
 
         self._clear_pending_user_turn(session)
         return True

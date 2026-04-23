@@ -19,11 +19,13 @@ class SessionTranscriptWriter:
         enabled: bool,
         include_full_tool_results: bool,
         max_tool_result_chars: int,
+        timezone: str | None = None,
     ) -> None:
         self._workspace = workspace
         self.enabled = enabled
         self.include_full_tool_results = include_full_tool_results
         self.max_tool_result_chars = max_tool_result_chars
+        self._agent_timezone = timezone
         self._dir = ensure_dir(workspace / "transcripts") if enabled else None
 
     def _path(self, session_key: str) -> Path:
@@ -48,7 +50,7 @@ class SessionTranscriptWriter:
         if m.get("timestamp"):
             entry["timestamp"] = m["timestamp"]
         else:
-            entry["timestamp"] = timestamp()
+            entry["timestamp"] = timestamp(self._agent_timezone)
 
         if role == "tool" and not self.include_full_tool_results:
             content = entry.get("content")
@@ -98,7 +100,7 @@ class SessionTranscriptWriter:
             return
         record: dict[str, Any] = {
             "_event": event,
-            "timestamp": timestamp(),
+            "timestamp": timestamp(self._agent_timezone),
             "messages": messages,
         }
         if metadata:

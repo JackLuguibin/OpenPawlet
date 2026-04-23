@@ -69,6 +69,8 @@ class ChannelManager:
                 kwargs: dict[str, Any] = {}
                 if cls.name == "websocket" and self._session_manager is not None:
                     kwargs["session_manager"] = self._session_manager
+                if cls.name == "mochat":
+                    kwargs["agent_timezone"] = self.config.agents.defaults.timezone
                 channel = cls(section, self.bus, **kwargs)
                 channel.transcription_provider = transcription_provider
                 channel.transcription_api_key = transcription_key

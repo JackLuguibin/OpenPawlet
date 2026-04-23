@@ -10,6 +10,7 @@ from typing import Any
 
 from loguru import logger
 
+from nanobot.agent.context import ContextBuilder
 from nanobot.agent.hook import AgentHook, AgentHookContext
 from nanobot.utils.prompt_templates import render_template
 from nanobot.agent.runner import AgentRunSpec, AgentRunner
@@ -81,10 +82,12 @@ class SubagentManager:
         exec_config: "ExecToolConfig | None" = None,
         restrict_to_workspace: bool = False,
         disabled_skills: list[str] | None = None,
+        timezone: str | None = None,
     ):
         self.provider = provider
         self.workspace = workspace
         self.bus = bus
+        self.timezone = timezone
         self.model = model or provider.get_default_model()
         self.web_config = web_config or WebToolsConfig()
         self.max_tool_result_chars = max_tool_result_chars
@@ -176,9 +179,14 @@ class SubagentManager:
                 tools.register(WebSearchTool(config=self.web_config.search, proxy=self.web_config.proxy))
                 tools.register(WebFetchTool(proxy=self.web_config.proxy))
             system_prompt = self._build_subagent_prompt()
+            runtime = ContextBuilder._build_runtime_context(
+                origin["channel"],
+                origin["chat_id"],
+                self.timezone,
+            )
             messages: list[dict[str, Any]] = [
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": task},
+                {"role": "user", "content": f"{runtime}\n\n{task}"},
             ]
 
             result = await self.runner.run(AgentRunSpec(
