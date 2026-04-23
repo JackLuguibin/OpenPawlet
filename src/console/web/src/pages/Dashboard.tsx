@@ -537,9 +537,9 @@ export default function Dashboard() {
 
       {/* Stat Cards：统一高度与数值区对齐；小屏 2 列、中屏 3 列、大屏 6 列，避免窄屏横向溢出 */}
       <div
-        className="grid shrink-0 grid-cols-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-4 min-w-0 [&_.ant-statistic-title]:min-h-[18px] [&_.ant-statistic-title]:text-[11px] [&_.ant-statistic-title]:leading-tight [&_.ant-statistic-content]:min-h-[32px] [&_.ant-statistic-content]:flex [&_.ant-statistic-content]:items-end [&_.ant-statistic-content-value]:text-sm [&_.ant-statistic-content-value]:sm:text-base [&_.ant-statistic-content-value]:xl:text-lg"
+        className="grid shrink-0 grid-cols-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2 sm:gap-3 min-w-0 [&_.ant-statistic-title]:mb-0 [&_.ant-statistic-title]:min-h-[14px] [&_.ant-statistic-title]:text-[10px] [&_.ant-statistic-title]:leading-tight [&_.ant-statistic-content]:mt-0.5 [&_.ant-statistic-content]:min-h-[24px] [&_.ant-statistic-content]:flex [&_.ant-statistic-content]:items-end [&_.ant-statistic-content-value]:text-xs [&_.ant-statistic-content-value]:sm:text-sm [&_.ant-statistic-content-value]:xl:text-base"
       >
-        <Card hoverable className="h-full min-w-0 [&_.ant-card-body]:flex [&_.ant-card-body]:flex-col [&_.ant-card-body]:h-full [&_.ant-card-body]:min-w-0">
+        <Card size="small" hoverable className="h-full min-w-0 [&_.ant-card-body]:flex [&_.ant-card-body]:flex-col [&_.ant-card-body]:h-full [&_.ant-card-body]:min-w-0 [&_.ant-card-body]:py-2">
           <Statistic
             title={t('dashboard.statStatus')}
             value={displayStatus?.running ? t('dashboard.statRunning') : t('dashboard.statStopped')}
@@ -553,28 +553,28 @@ export default function Dashboard() {
             }
           />
         </Card>
-        <Card hoverable className="h-full min-w-0 [&_.ant-card-body]:flex [&_.ant-card-body]:flex-col [&_.ant-card-body]:h-full [&_.ant-card-body]:min-w-0">
+        <Card size="small" hoverable className="h-full min-w-0 [&_.ant-card-body]:flex [&_.ant-card-body]:flex-col [&_.ant-card-body]:h-full [&_.ant-card-body]:min-w-0 [&_.ant-card-body]:py-2">
           <Statistic
             title={t('dashboard.statUptime')}
             value={displayStatus?.running && displayStatus?.uptime_seconds ? formatUptime(displayStatus.uptime_seconds) : '-'}
             prefix={<ClockCircleOutlined className="text-blue-500" />}
           />
         </Card>
-        <Card hoverable className="h-full min-w-0 [&_.ant-card-body]:flex [&_.ant-card-body]:flex-col [&_.ant-card-body]:h-full [&_.ant-card-body]:min-w-0">
+        <Card size="small" hoverable className="h-full min-w-0 [&_.ant-card-body]:flex [&_.ant-card-body]:flex-col [&_.ant-card-body]:h-full [&_.ant-card-body]:min-w-0 [&_.ant-card-body]:py-2">
           <Statistic
             title={t('dashboard.statActiveSessions')}
             value={displayStatus?.active_sessions ?? 0}
             prefix={<TeamOutlined className="text-purple-500" />}
           />
         </Card>
-        <Card hoverable className="h-full min-w-0 [&_.ant-card-body]:flex [&_.ant-card-body]:flex-col [&_.ant-card-body]:h-full [&_.ant-card-body]:min-w-0">
+        <Card size="small" hoverable className="h-full min-w-0 [&_.ant-card-body]:flex [&_.ant-card-body]:flex-col [&_.ant-card-body]:h-full [&_.ant-card-body]:min-w-0 [&_.ant-card-body]:py-2">
           <Statistic
             title={t('dashboard.statMessagesToday')}
             value={displayStatus?.messages_today ?? 0}
             prefix={<MessageOutlined className="text-orange-500" />}
           />
         </Card>
-        <Card hoverable className="h-full min-w-0 [&_.ant-card-body]:flex [&_.ant-card-body]:flex-col [&_.ant-card-body]:h-full [&_.ant-card-body]:min-w-0">
+        <Card size="small" hoverable className="h-full min-w-0 [&_.ant-card-body]:flex [&_.ant-card-body]:flex-col [&_.ant-card-body]:h-full [&_.ant-card-body]:min-w-0 [&_.ant-card-body]:py-2">
           <Statistic
             title={t('dashboard.statTokensToday')}
             value={
@@ -585,7 +585,7 @@ export default function Dashboard() {
             prefix={<ThunderboltOutlined className="text-amber-500" />}
           />
         </Card>
-        <Card hoverable className="h-full min-w-0 [&_.ant-card-body]:flex [&_.ant-card-body]:flex-col [&_.ant-card-body]:h-full [&_.ant-card-body]:min-w-0">
+        <Card size="small" hoverable className="h-full min-w-0 [&_.ant-card-body]:flex [&_.ant-card-body]:flex-col [&_.ant-card-body]:h-full [&_.ant-card-body]:min-w-0 [&_.ant-card-body]:py-2">
           <Statistic
             title={t('dashboard.statCostToday')}
             value={
