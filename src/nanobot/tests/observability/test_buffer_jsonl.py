@@ -1,4 +1,4 @@
-"""Tests for optional JSONL persistence of observability events."""
+"""Tests for JSONL persistence of observability events (always on)."""
 
 from __future__ import annotations
 
@@ -16,17 +16,14 @@ def _today_events_path(base: Path) -> Path:
     return base / "observability" / f"events_{day}.jsonl"
 
 
-def test_jsonl_data_dir_mode_appends_with_buffer_off(
+def test_jsonl_always_appends_with_buffer_off(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """NANOBOT_OBS_JSONL=1 writes under get_data_dir()/observability/events_YYYY-MM-DD.jsonl."""
     import nanobot.observability.buffer as buf
 
     monkeypatch.setattr(buf, "get_data_dir", lambda: ensure_dir(tmp_path))
     monkeypatch.setenv("NANOBOT_OBS_BUFFER", "0")
-    monkeypatch.setenv("NANOBOT_OBS_JSONL", "1")
 
-    assert buf.is_jsonl_enabled() is True
     buf.record_event(
         "llm",
         trace_id="tr-1",
@@ -43,32 +40,16 @@ def test_jsonl_data_dir_mode_appends_with_buffer_off(
     assert isinstance(row["ts"], (int, float))
 
 
-def test_jsonl_disabled_does_not_write(
+def test_buffer_on_also_appends_jsonl(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     import nanobot.observability.buffer as buf
 
     monkeypatch.setattr(buf, "get_data_dir", lambda: ensure_dir(tmp_path))
-    monkeypatch.setenv("NANOBOT_OBS_BUFFER", "0")
-    monkeypatch.setenv("NANOBOT_OBS_JSONL", "0")
+    monkeypatch.setenv("NANOBOT_OBS_BUFFER", "1")
 
-    assert buf.is_jsonl_enabled() is False
-    buf.record_event("llm", trace_id="t", session_key="s", payload={})
-    assert not (tmp_path / "observability").exists()
-
-
-def test_jsonl_explicit_path(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    import nanobot.observability.buffer as buf
-
-    target = tmp_path / "my_obs.jsonl"
-    monkeypatch.setenv("NANOBOT_OBS_BUFFER", "0")
-    monkeypatch.setenv("NANOBOT_OBS_JSONL", str(target))
-
-    buf.record_event("tool", trace_id=None, session_key="x", payload={"name": "n"})
-    assert target.is_file()
-    row = json.loads(target.read_text(encoding="utf-8").strip())
+    buf.record_event("tool", trace_id="t", session_key="s", payload={"name": "n"})
+    out = _today_events_path(tmp_path)
+    assert out.is_file()
+    row = json.loads(out.read_text(encoding="utf-8").strip().splitlines()[-1])
     assert row["event"] == "tool"
-    assert row["session_key"] == "x"
-    assert row["payload"] == {"name": "n"}

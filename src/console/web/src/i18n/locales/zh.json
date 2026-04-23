@@ -325,7 +325,11 @@
     "sortNewest": "最新",
     "sortOldest": "最早",
     "loadFailed": "加载活动失败：{{error}}",
-    "empty": "暂无活动"
+    "empty": "暂无活动",
+    "viewDetails": "查看详情",
+    "detailTitle": "活动详情",
+    "detailHint": "来自智能体可观测性缓冲区的原始元数据。",
+    "openInObservability": "在可观测性中打开"
   },
   "memoryAndProfile": {
     "pageTitle": "记忆与人设",
@@ -430,8 +434,8 @@
     "dashboardHint": "概览与分布基于最近一批拉取；下方活动流新事件在上，约每 8 秒自动刷新。",
     "traceIdFilterPlaceholder": "按 trace_id 过滤（可选）",
     "timelineError": "无法加载轨迹数据",
-    "timelineSourceError": "网关返回轨迹数据时出错",
-    "timelineDataUrl": "轨迹 API",
+    "timelineSourceError": "读取本地 JSONL 轨迹数据失败",
+    "timelineDataUrl": "JSONL（数据目录）",
     "timelineEmpty": "暂无事件。先与机器人对话，再点击刷新。",
     "loadFailed": "无法加载网关状态",
     "statTotalEvents": "本批事件数",

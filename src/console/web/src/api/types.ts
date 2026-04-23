@@ -147,7 +147,7 @@ export interface ObservabilityResponse {
   nanobot_gateway: NanobotGatewayObservability;
 }
 
-/** GET /observability/timeline — in-memory run / LLM / tool events from nanobot gateway */
+/** GET /observability/timeline — run / LLM / tool events from nanobot JSONL on disk */
 export interface AgentObservabilityEvent {
   ts: number;
   event: string;

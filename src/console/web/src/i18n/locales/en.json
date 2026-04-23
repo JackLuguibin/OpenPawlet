@@ -325,7 +325,11 @@
     "sortNewest": "Newest",
     "sortOldest": "Oldest",
     "loadFailed": "Failed to load activity: {{error}}",
-    "empty": "No activity yet"
+    "empty": "No activity yet",
+    "viewDetails": "Details",
+    "detailTitle": "Activity detail",
+    "detailHint": "Raw metadata from the agent observability buffer.",
+    "openInObservability": "Open in Observability"
   },
   "memoryAndProfile": {
     "pageTitle": "Memory & profile",
@@ -430,8 +434,8 @@
     "dashboardHint": "Metrics and distribution use the last loaded batch; the stream below is newest on top and refreshes about every 8s.",
     "traceIdFilterPlaceholder": "Filter by trace_id (optional)",
     "timelineError": "Could not load trace data",
-    "timelineSourceError": "Gateway returned an error for traces",
-    "timelineDataUrl": "Trace API",
+    "timelineSourceError": "Failed to read trace data from local JSONL",
+    "timelineDataUrl": "JSONL (data dir)",
     "timelineEmpty": "No events yet. Chat with the bot, then refresh.",
     "loadFailed": "Failed to load gateway status",
     "statTotalEvents": "Events in view",

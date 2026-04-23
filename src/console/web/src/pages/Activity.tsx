@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, type ComponentType } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import {
   Card,
   Spin,
@@ -12,6 +13,7 @@ import {
   Typography,
   Segmented,
   Badge,
+  Drawer,
 } from 'antd';
 import {
   ReloadOutlined,
@@ -30,8 +32,18 @@ import { PageLayout } from '../components/PageLayout';
 import { formatQueryError } from '../utils/errors';
 import { useAgentTimeZone } from '../hooks/useAgentTimeZone';
 import { formatAgentLocaleDate } from '../utils/agentDatetime';
+import type { ActivityItem } from '../api/types';
 
-const { Text } = Typography;
+const { Text, Paragraph } = Typography;
+
+function formatActivityMetadata(meta: Record<string, unknown> | undefined): string {
+  if (!meta || Object.keys(meta).length === 0) return '—';
+  try {
+    return JSON.stringify(meta, null, 2);
+  } catch {
+    return String(meta);
+  }
+}
 
 type ActivityIconComponent = ComponentType<{ className?: string }>;
 
@@ -60,11 +72,13 @@ const ACTIVITY_COLORS: Record<string, string> = {
 
 export default function Activity() {
   const { t, i18n } = useTranslation();
+  const navigate = useNavigate();
   const { currentBotId } = useAppStore();
   const agentTz = useAgentTimeZone();
   const locale = i18n.language.startsWith('zh') ? 'zh-CN' : 'en-US';
   const [typeFilter, setTypeFilter] = useState<string>('');
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
+  const [detailItem, setDetailItem] = useState<ActivityItem | null>(null);
 
   const formatTimeAgo = (dateStr?: string): string => {
     if (!dateStr) return '-';
@@ -145,6 +159,8 @@ export default function Activity() {
   const { data: activities, isLoading, error, refetch } = useQuery({
     queryKey: ['activity', currentBotId, typeFilter],
     queryFn: () => api.getRecentActivity(100, currentBotId, typeFilter || undefined),
+    refetchInterval: 15_000,
+    refetchOnWindowFocus: true,
   });
 
   // Subscribe to the bot's activity room so live updates arrive via WebSocket.
@@ -181,6 +197,13 @@ export default function Activity() {
       </PageLayout>
     );
   }
+
+  const activityDetailTraceId =
+    detailItem?.metadata &&
+    typeof detailItem.metadata.trace_id === 'string' &&
+    detailItem.metadata.trace_id
+      ? detailItem.metadata.trace_id
+      : '';
 
   return (
     <PageLayout variant="bleed">
@@ -277,11 +300,16 @@ export default function Activity() {
             styles={{ body: { padding: '1rem 1.5rem' } }}
           >
             <Timeline
-              items={sortedActivities.map((item) => ({
-                color: ACTIVITY_COLORS[item.type] || 'gray',
-                icon: (
-                  <div
-                    className={`
+              items={sortedActivities.map((item) => {
+                const traceForObs =
+                  typeof item.metadata?.trace_id === 'string' && item.metadata.trace_id
+                    ? item.metadata.trace_id
+                    : '';
+                return {
+                  color: ACTIVITY_COLORS[item.type] || 'gray',
+                  icon: (
+                    <div
+                      className={`
                       w-8 h-8 rounded-lg flex items-center justify-center
                       ${
                         item.type === 'error'
@@ -297,35 +325,53 @@ export default function Activity() {
                           : 'bg-gray-100 dark:bg-gray-700 text-gray-500'
                       }
                     `}
-                  >
-                    <ActivityIcon type={item.type} />
-                  </div>
-                ),
-                content: (
-                  <div className="pb-4">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-medium text-gray-900 dark:text-gray-100">
-                        {item.title}
-                      </span>
-                      <Tag
-                        color={ACTIVITY_COLORS[item.type] || 'default'}
-                        className="text-xs"
-                      >
-                        {item.type}
-                      </Tag>
+                    >
+                      <ActivityIcon type={item.type} />
                     </div>
-                    {item.description && (
-                      <Text type="secondary" className="text-sm block mt-1">
-                        {item.description}
-                      </Text>
-                    )}
-                    <div className="flex items-center gap-1 mt-2 text-xs text-gray-400">
-                      <ClockCircleOutlined />
-                      <span>{formatTimeAgo(item.timestamp)}</span>
+                  ),
+                  content: (
+                    <div className="pb-4">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium text-gray-900 dark:text-gray-100">
+                          {item.title}
+                        </span>
+                        <Tag
+                          color={ACTIVITY_COLORS[item.type] || 'default'}
+                          className="text-xs"
+                        >
+                          {item.type}
+                        </Tag>
+                      </div>
+                      {item.description && (
+                        <Text type="secondary" className="text-sm block mt-1">
+                          {item.description}
+                        </Text>
+                      )}
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2">
+                        <div className="flex items-center gap-1 text-xs text-gray-400">
+                          <ClockCircleOutlined />
+                          <span>{formatTimeAgo(item.timestamp)}</span>
+                        </div>
+                        <Space size="small" wrap className="text-xs">
+                          <Button type="link" size="small" className="px-0 h-auto" onClick={() => setDetailItem(item)}>
+                            {t('activity.viewDetails')}
+                          </Button>
+                          {traceForObs ? (
+                            <Button
+                              type="link"
+                              size="small"
+                              className="px-0 h-auto"
+                              onClick={() => navigate(`/observability?trace_id=${encodeURIComponent(traceForObs)}`)}
+                            >
+                              {t('activity.openInObservability')}
+                            </Button>
+                          ) : null}
+                        </Space>
+                      </div>
                     </div>
-                  </div>
-                ),
-              }))}
+                  ),
+                };
+              })}
             />
           </Card>
         ) : (
@@ -336,6 +382,53 @@ export default function Activity() {
           </Card>
         )}
       </div>
+
+      <Drawer
+        title={t('activity.detailTitle')}
+        placement="right"
+        width={560}
+        open={detailItem != null}
+        onClose={() => setDetailItem(null)}
+        destroyOnClose
+      >
+        {detailItem ? (
+          <div className="flex flex-col gap-3">
+            <div>
+              <Text strong className="text-gray-900 dark:text-gray-100">
+                {detailItem.title}
+              </Text>
+              <Tag color={ACTIVITY_COLORS[detailItem.type] || 'default'} className="ml-2 align-middle text-xs">
+                {detailItem.type}
+              </Tag>
+            </div>
+            {detailItem.description ? (
+              <Paragraph type="secondary" className="!mb-0 text-sm">
+                {detailItem.description}
+              </Paragraph>
+            ) : null}
+            <Text type="secondary" className="text-xs block">
+              {detailItem.timestamp}
+            </Text>
+            <Paragraph type="secondary" className="!mb-0 text-xs">
+              {t('activity.detailHint')}
+            </Paragraph>
+            <pre className="max-h-[min(70vh,520px)] overflow-auto rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs dark:border-gray-600 dark:bg-gray-900/80">
+              {formatActivityMetadata(detailItem.metadata as Record<string, unknown> | undefined)}
+            </pre>
+            {activityDetailTraceId ? (
+              <Button
+                type="primary"
+                onClick={() => {
+                  navigate(`/observability?trace_id=${encodeURIComponent(activityDetailTraceId)}`);
+                  setDetailItem(null);
+                }}
+              >
+                {t('activity.openInObservability')}
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+      </Drawer>
     </PageLayout>
   );
 }

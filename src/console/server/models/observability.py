@@ -39,7 +39,7 @@ class ObservabilityResponse(BaseModel):
 
 
 class AgentObservabilityEvent(BaseModel):
-    """One row from nanobot ``GET /v1/observability/recent`` (in-process ring buffer)."""
+    """One observability event row (JSONL on disk; optional in-memory buffer)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -51,7 +51,7 @@ class AgentObservabilityEvent(BaseModel):
 
 
 class AgentObservabilityTimeline(BaseModel):
-    """GET /observability/timeline — proxied agent trace buffer."""
+    """GET /observability/timeline — events read from data-dir JSONL (newest first)."""
 
     model_config = ConfigDict(extra="forbid")
 

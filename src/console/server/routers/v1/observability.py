@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from typing import Annotated
-from urllib.parse import urlencode
 
 import httpx
 from fastapi import APIRouter, Depends, Query
@@ -19,46 +18,18 @@ from console.server.models.observability import (
     ConsoleObservabilityInfo,
     NanobotGatewayInfo,
 )
+from console.server.nanobot_observability_client import gateway_health_url
+from console.server.observability_jsonl import data_dir_for_config, read_recent_observability_dicts
 from console.server.nanobot_user_config import resolve_config_path
 from nanobot.config.loader import load_config
 
 router = APIRouter(tags=["Observability"])
 
 _OBS_TIMEOUT = httpx.Timeout(3.0, connect=1.5)
-_OBS_TIMELINE_TIMEOUT = httpx.Timeout(8.0, connect=2.0)
-
-
-def _gateway_health_url(host: str, port: int) -> str:
-    """Map bind addresses (0.0.0.0, ::) to loopback; bracket IPv6 for URL."""
-    h = (host or "").strip()
-    if h in ("", "0.0.0.0", "::", "[::]"):
-        h = "127.0.0.1"
-    elif h.count(":") > 1 and not h.startswith("["):
-        h = f"[{h}]"
-    return f"http://{h}:{port}/health"
-
-
-def _gateway_timeline_url(
-    host: str,
-    port: int,
-    *,
-    limit: int = 200,
-    trace_id: str | None = None,
-) -> str:
-    """``GET {gateway}/v1/observability/recent`` (same port as /health in gateway mode)."""
-    h = (host or "").strip()
-    if h in ("", "0.0.0.0", "::", "[::]"):
-        h = "127.0.0.1"
-    elif h.count(":") > 1 and not h.startswith("["):
-        h = f"[{h}]"
-    q: dict[str, str] = {"limit": str(max(1, min(2000, limit)))}
-    if trace_id and trace_id.strip():
-        q["trace_id"] = trace_id.strip()
-    return f"http://{h}:{port}/v1/observability/recent?{urlencode(q)}"
 
 
 async def _probe_nanobot_gateway(host: str, port: int) -> NanobotGatewayInfo:
-    endpoint = _gateway_health_url(host, port)
+    endpoint = gateway_health_url(host, port)
     try:
         async with httpx.AsyncClient(timeout=_OBS_TIMEOUT) as client:
             r = await client.get(endpoint)
@@ -152,67 +123,37 @@ async def get_observability_timeline(
     limit: int = Query(default=200, ge=1, le=2000),
     trace_id: str | None = Query(default=None, alias="trace_id"),
 ) -> DataResponse[AgentObservabilityTimeline]:
-    """Proxy nanobot in-memory agent trace buffer (LLM / tool / run)."""
+    """Agent trace from JSONL on disk (LLM / tool / run; same path nanobot appends to)."""
     path = resolve_config_path(bot_id)
-    cfg = load_config(path)
-    endpoint = _gateway_timeline_url(cfg.gateway.host, cfg.gateway.port, limit=limit, trace_id=trace_id)
-    try:
-        async with httpx.AsyncClient(timeout=_OBS_TIMELINE_TIMEOUT) as client:
-            r = await client.get(endpoint)
-    except httpx.RequestError as e:
-        logger.debug("observability timeline failed: {} {}", endpoint, e)
+    _ = load_config(path)
+    data_dir = data_dir_for_config(path)
+    raw_list, source, err = read_recent_observability_dicts(
+        data_dir,
+        limit=limit,
+        trace_id=trace_id,
+    )
+    if err is not None:
+        logger.debug("observability timeline (jsonl) failed: {} {}", source, err)
         return DataResponse(
             data=AgentObservabilityTimeline(
                 ok=False,
-                source_endpoint=endpoint,
-                error=str(e) or type(e).__name__,
+                source_endpoint=source,
+                error=err,
                 events=[],
             )
         )
-    if r.status_code != 200:
-        return DataResponse(
-            data=AgentObservabilityTimeline(
-                ok=False,
-                source_endpoint=endpoint,
-                error=f"HTTP {r.status_code}",
-                events=[],
-            )
-        )
-    try:
-        body = r.json()
-    except json.JSONDecodeError:
-        return DataResponse(
-            data=AgentObservabilityTimeline(
-                ok=False,
-                source_endpoint=endpoint,
-                error="Response is not JSON",
-                events=[],
-            )
-        )
-    if not isinstance(body, dict) or "events" not in body:
-        return DataResponse(
-            data=AgentObservabilityTimeline(
-                ok=False,
-                source_endpoint=endpoint,
-                error="invalid body",
-                events=[],
-            )
-        )
-    raw_events = body.get("events")
-    if not isinstance(raw_events, list):
-        raw_events = []
+
     events: list[AgentObservabilityEvent] = []
-    for item in raw_events:
-        if not isinstance(item, dict):
-            continue
+    for item in raw_list:
         try:
             events.append(AgentObservabilityEvent.model_validate(item))
         except Exception:  # noqa: BLE001
             continue
+
     return DataResponse(
         data=AgentObservabilityTimeline(
-            ok=bool(body.get("ok", True)),
-            source_endpoint=endpoint,
+            ok=True,
+            source_endpoint=source,
             error=None,
             events=events,
         )

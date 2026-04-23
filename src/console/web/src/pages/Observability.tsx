@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Tag,
   Button,
@@ -306,8 +306,14 @@ function ObservabilityEventRow({ ev, dateLocale, t, onOpenDetail, showTraceIdCol
 export default function Observability() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { currentBotId } = useAppStore();
   const [traceIdFilter, setTraceIdFilter] = useState('');
+
+  useEffect(() => {
+    const tid = searchParams.get('trace_id')?.trim();
+    if (tid) setTraceIdFilter(tid);
+  }, [searchParams]);
   const [runFilter, setRunFilter] = useState<'all' | 'error'>('all');
   const [detailEvent, setDetailEvent] = useState<AgentObservabilityEvent | null>(null);
   /** session key: collapsed session hides nested traces (default: all expanded) */

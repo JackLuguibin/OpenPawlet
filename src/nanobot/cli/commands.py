@@ -884,29 +884,6 @@ def gateway(
                     f"Content-Length: {len(body)}\r\n"
                     f"\r\n{body}"
                 )
-            elif method == "GET" and (
-                path == "/v1/observability/recent" or path.startswith("/v1/observability/recent?")
-            ):
-                from nanobot.observability.buffer import to_http_json
-                from urllib.parse import parse_qs
-
-                if "?" in path:
-                    _q = path.split("?", 1)[1]
-                else:
-                    _q = ""
-                _qmap = {k: v[0] for k, v in parse_qs(_q).items() if v}
-                try:
-                    _lim = int(_qmap.get("limit", "200"))
-                except ValueError:
-                    _lim = 200
-                _tid = (_qmap.get("trace_id") or "").strip() or None
-                body = _json.dumps(to_http_json(limit=_lim, trace_id=_tid))
-                resp = (
-                    f"HTTP/1.0 200 OK\r\n"
-                    f"Content-Type: application/json; charset=utf-8\r\n"
-                    f"Content-Length: {len(body.encode('utf-8'))}\r\n"
-                    f"\r\n{body}"
-                )
             else:
                 body = "Not Found"
                 resp = (

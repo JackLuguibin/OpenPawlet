@@ -12,7 +12,7 @@ from typing import Any
 
 from loguru import logger
 
-from nanobot.observability.buffer import is_buffer_enabled, is_jsonl_enabled, record_event
+from nanobot.observability.buffer import record_event
 
 _TRACE_ID: ContextVar[str | None] = ContextVar("nb_trace_id", default=None)
 _SESSION_KEY: ContextVar[str | None] = ContextVar("nb_session_key", default=None)
@@ -41,13 +41,12 @@ async def agent_run_context(session_key: str | None):
     tok_sess = _SESSION_KEY.set(session_key)
     tok_depth = _SPAN_DEPTH.set(0)
     t0 = time.perf_counter()
-    if is_buffer_enabled() or is_jsonl_enabled():
-        record_event(
-            "run_start",
-            trace_id=trace_id,
-            session_key=session_key,
-            payload={},
-        )
+    record_event(
+        "run_start",
+        trace_id=trace_id,
+        session_key=session_key,
+        payload={},
+    )
     if is_observability_logging_enabled():
         logger.info(
             "obs | event=run_start | trace_id={} | session_key={!r}",
@@ -58,13 +57,12 @@ async def agent_run_context(session_key: str | None):
         yield trace_id
     finally:
         dt = (time.perf_counter() - t0) * 1000.0
-        if is_buffer_enabled() or is_jsonl_enabled():
-            record_event(
-                "run_end",
-                trace_id=trace_id,
-                session_key=session_key,
-                payload={"duration_ms": round(dt, 3)},
-            )
+        record_event(
+            "run_end",
+            trace_id=trace_id,
+            session_key=session_key,
+            payload={"duration_ms": round(dt, 3)},
+        )
         if is_observability_logging_enabled():
             logger.info(
                 "obs | event=run_end | trace_id={} | session_key={!r} | duration_ms={:.2f}",
@@ -112,19 +110,18 @@ def log_llm_response(
     """Model outcome, wall-clock duration, and token usage. Filter with ``grep 'obs | event=llm'``."""
     trace_id = get_trace_id()
     session_key = get_session_key()
-    if is_buffer_enabled() or is_jsonl_enabled():
-        record_event(
-            "llm",
-            trace_id=trace_id,
-            session_key=session_key,
-            payload={
-                "kind": kind,
-                "model": model,
-                "iteration": iteration,
-                "wall_ms": round(wall_ms, 3),
-                "summary": response_summary,
-            },
-        )
+    record_event(
+        "llm",
+        trace_id=trace_id,
+        session_key=session_key,
+        payload={
+            "kind": kind,
+            "model": model,
+            "iteration": iteration,
+            "wall_ms": round(wall_ms, 3),
+            "summary": response_summary,
+        },
+    )
     if not is_observability_logging_enabled():
         return
     try:
@@ -166,17 +163,16 @@ def log_tool_outcome(
 ) -> None:
     trace_id = get_trace_id()
     session_key = get_session_key()
-    if is_buffer_enabled() or is_jsonl_enabled():
-        pl: dict[str, Any] = {
-            "name": name,
-            "tool_call_id": tool_call_id,
-            "iteration": iteration,
-            "duration_ms": round(duration_ms, 3),
-            "status": status,
-        }
-        if detail is not None:
-            pl["detail"] = detail
-        record_event("tool", trace_id=trace_id, session_key=session_key, payload=pl)
+    pl: dict[str, Any] = {
+        "name": name,
+        "tool_call_id": tool_call_id,
+        "iteration": iteration,
+        "duration_ms": round(duration_ms, 3),
+        "status": status,
+    }
+    if detail is not None:
+        pl["detail"] = detail
+    record_event("tool", trace_id=trace_id, session_key=session_key, payload=pl)
     if not is_observability_logging_enabled():
         return
     tail = f" | detail={detail!r}" if detail else ""
