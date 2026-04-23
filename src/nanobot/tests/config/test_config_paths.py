@@ -1,4 +1,7 @@
+import time
 from pathlib import Path
+
+from nanobot.utils.helpers import safe_filename
 
 from nanobot.config.paths import (
     get_bridge_install_dir,
@@ -11,6 +14,7 @@ from nanobot.config.paths import (
     get_runtime_subdir,
     get_workspace_path,
     is_default_workspace,
+    observability_jsonl_path_for_session,
 )
 
 
@@ -47,3 +51,21 @@ def test_is_default_workspace_distinguishes_default_and_custom_paths() -> None:
     assert is_default_workspace(None) is True
     assert is_default_workspace(Path.home() / ".nanobot" / "workspace") is True
     assert is_default_workspace("~/custom-workspace") is False
+
+
+def test_observability_jsonl_path_uses_workspace_per_session(monkeypatch, tmp_path: Path) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+
+    class _Cfg:
+        workspace_path = ws
+
+    monkeypatch.setattr("nanobot.config.loader.load_config", lambda: _Cfg())
+    day = time.strftime("%Y-%m-%d", time.localtime())
+    sk = "chan:99"
+    safe = safe_filename(sk.replace(":", "_"))
+    assert observability_jsonl_path_for_session(sk) == (
+        ws / "observability" / "sessions" / safe / f"events_{day}.jsonl"
+    )
+    assert observability_jsonl_path_for_session(None) == ws / "observability" / f"events_{day}.jsonl"
+    assert observability_jsonl_path_for_session("  ") == ws / "observability" / f"events_{day}.jsonl"

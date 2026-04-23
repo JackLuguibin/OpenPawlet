@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 from nanobot.config.loader import get_config_path
-from nanobot.utils.helpers import ensure_dir
+from nanobot.utils.helpers import ensure_dir, safe_filename
 
 
 def get_data_dir() -> Path:
@@ -60,3 +61,21 @@ def get_bridge_install_dir() -> Path:
 def get_legacy_sessions_dir() -> Path:
     """Return the legacy global session directory used for migration fallback."""
     return Path.home() / ".nanobot" / "sessions"
+
+
+def observability_jsonl_path_for_session(session_key: str | None) -> Path:
+    """Daily JSONL path under the agent workspace for observability events.
+
+    With a session: ``<workspace>/observability/sessions/{safe_key}/events_YYYY-MM-DD.jsonl``.
+    Without: ``<workspace>/observability/events_YYYY-MM-DD.jsonl`` (same basename layout as before).
+    """
+    from nanobot.config.loader import load_config
+
+    day = time.strftime("%Y-%m-%d", time.localtime())
+    ws = load_config().workspace_path.resolve()
+    base = ws / "observability"
+    key = (session_key or "").strip()
+    if key:
+        safe = safe_filename(key.replace(":", "_"))
+        return base / "sessions" / safe / f"events_{day}.jsonl"
+    return base / f"events_{day}.jsonl"

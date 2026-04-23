@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -166,7 +167,8 @@ def delete_session_files(bot_id: str | None, session_key: str) -> bool:
     """Delete session JSONL from workspace and legacy global dir.
 
     When a session file is removed, also deletes the matching append-only transcript
-    at ``<workspace>/transcripts/{safe_key}.jsonl`` (see ``SessionTranscriptWriter``).
+    at ``<workspace>/transcripts/{safe_key}.jsonl`` (see ``SessionTranscriptWriter``)
+    and the observability JSONL tree at ``<workspace>/observability/sessions/{safe_key}/``.
 
     Returns True if at least one session file was removed.
     """
@@ -180,5 +182,13 @@ def delete_session_files(bot_id: str | None, session_key: str) -> bool:
         tr_path = _transcript_file_path(workspace_root(bot_id), session_key)
         if tr_path.is_file():
             tr_path.unlink()
+        obs_sess = (
+            workspace_root(bot_id)
+            / "observability"
+            / "sessions"
+            / safe_filename(session_key.replace(":", "_"))
+        )
+        if obs_sess.is_dir():
+            shutil.rmtree(obs_sess)
     mgr.invalidate(session_key)
     return removed

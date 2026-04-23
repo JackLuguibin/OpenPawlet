@@ -19,7 +19,8 @@ from console.server.models.observability import (
     NanobotGatewayInfo,
 )
 from console.server.nanobot_observability_client import gateway_health_url
-from console.server.observability_jsonl import data_dir_for_config, read_recent_observability_dicts
+from console.server.bot_workspace import workspace_root
+from console.server.observability_jsonl import read_recent_observability_dicts
 from console.server.nanobot_user_config import resolve_config_path
 from nanobot.config.loader import load_config
 
@@ -123,12 +124,11 @@ async def get_observability_timeline(
     limit: int = Query(default=200, ge=1, le=2000),
     trace_id: str | None = Query(default=None, alias="trace_id"),
 ) -> DataResponse[AgentObservabilityTimeline]:
-    """Agent trace from JSONL on disk (LLM / tool / run; same path nanobot appends to)."""
+    """Agent trace from JSONL under the bot workspace (LLM / tool / run; same paths nanobot appends to)."""
     path = resolve_config_path(bot_id)
     _ = load_config(path)
-    data_dir = data_dir_for_config(path)
     raw_list, source, err = read_recent_observability_dicts(
-        data_dir,
+        workspace_root(bot_id),
         limit=limit,
         trace_id=trace_id,
     )

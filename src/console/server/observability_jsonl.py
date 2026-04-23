@@ -6,42 +6,46 @@ import json
 from pathlib import Path
 from typing import Any
 
-from nanobot.utils.helpers import ensure_dir
-
-
-def data_dir_for_config(config_path: Path) -> Path:
-    """Match nanobot ``get_data_dir()`` for a given config file (parent directory)."""
-    return ensure_dir(config_path.resolve().parent)
-
 
 def _sorted_newest_event_files(obs_dir: Path) -> list[Path]:
+    """Collect ``events_*.jsonl`` under ``obs_dir`` and per-session ``obs_dir/sessions/*/``."""
     if not obs_dir.is_dir():
         return []
-    # Lexicographic reverse works for events_YYYY-MM-DD.jsonl
-    return sorted(obs_dir.glob("events_*.jsonl"), key=lambda p: p.name, reverse=True)
+    files: list[Path] = []
+    files.extend(obs_dir.glob("events_*.jsonl"))
+    sessions = obs_dir / "sessions"
+    if sessions.is_dir():
+        for sub in sessions.iterdir():
+            if sub.is_dir():
+                files.extend(sub.glob("events_*.jsonl"))
+    # Lexicographic reverse works for events_YYYY-MM-DD.jsonl; tie-break by path for same day.
+    return sorted(files, key=lambda p: (p.name, str(p)), reverse=True)
 
 
 def read_recent_observability_dicts(
-    data_dir: Path,
+    workspace_root: Path,
     *,
     limit: int,
     trace_id: str | None = None,
 ) -> tuple[list[dict[str, Any]], str, str | None]:
-    """Load newest events from JSONL under ``data_dir/observability/``.
+    """Load newest events from JSONL under ``<workspace_root>/observability/``.
+
+    Session runs append to ``observability/sessions/{safe_session_key}/events_*.jsonl``;
+    events without a session use ``observability/events_*.jsonl``.
 
     Same row shape as nanobot ``buffer.record_event`` (``ts``, ``event``, ``trace_id``, ...).
 
     Returns ``(rows, source_label, error)`` when the directory is missing, there are no
-    files yet, or read fails. Nanobot always appends to these files when events are recorded.
+    files yet, or read fails.
     """
     lim = max(1, min(2000, int(limit)))
-    obs_dir = data_dir / "observability"
+    obs_dir = workspace_root / "observability"
     label = f"jsonl:{obs_dir}"
     if not obs_dir.is_dir():
         return (
             [],
             label,
-            "No observability/ directory under the bot data path (nanobot has not created it yet).",
+            "No observability/ directory under the workspace (nanobot has not created it yet).",
         )
     files = _sorted_newest_event_files(obs_dir)
     if not files:

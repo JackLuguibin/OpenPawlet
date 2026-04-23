@@ -12,7 +12,7 @@ from typing import Any
 
 from loguru import logger
 
-from nanobot.config.paths import get_data_dir
+from nanobot.config.paths import observability_jsonl_path_for_session
 from nanobot.utils.helpers import ensure_dir
 
 _MAX_DEFAULT = 500
@@ -28,9 +28,8 @@ def is_buffer_enabled() -> bool:
     return v not in ("0", "false", "no", "off")
 
 
-def _jsonl_output_path() -> Path:
-    day = time.strftime("%Y-%m-%d", time.localtime())
-    return get_data_dir() / "observability" / f"events_{day}.jsonl"
+def _jsonl_output_path(session_key: str | None) -> Path:
+    return observability_jsonl_path_for_session(session_key)
 
 
 def _log_jsonl_error(exc: OSError) -> None:
@@ -45,7 +44,9 @@ def _log_jsonl_error(exc: OSError) -> None:
 def _append_jsonl_line(row: dict[str, Any]) -> None:
     with _jsonl_lock:
         try:
-            path = _jsonl_output_path()
+            sk = row.get("session_key")
+            sk_s = sk.strip() if isinstance(sk, str) else None
+            path = _jsonl_output_path(sk_s)
             ensure_dir(path.parent)
             line = json.dumps(row, ensure_ascii=False) + "\n"
             with open(path, "a", encoding="utf-8") as f:

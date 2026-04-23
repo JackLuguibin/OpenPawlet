@@ -435,7 +435,7 @@
     "traceIdFilterPlaceholder": "Filter by trace_id (optional)",
     "timelineError": "Could not load trace data",
     "timelineSourceError": "Failed to read trace data from local JSONL",
-    "timelineDataUrl": "JSONL (data dir)",
+    "timelineDataUrl": "JSONL (workspace)",
     "timelineEmpty": "No events yet. Chat with the bot, then refresh.",
     "loadFailed": "Failed to load gateway status",
     "statTotalEvents": "Events in view",

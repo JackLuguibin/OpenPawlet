@@ -7,7 +7,8 @@ from loguru import logger
 
 from console.server.activity_feed import observability_rows_to_activity_items
 from console.server.models import ActivityItem, DataResponse
-from console.server.observability_jsonl import data_dir_for_config, read_recent_observability_dicts
+from console.server.bot_workspace import workspace_root
+from console.server.observability_jsonl import read_recent_observability_dicts
 from console.server.nanobot_user_config import resolve_config_path
 from nanobot.config.loader import load_config
 
@@ -20,12 +21,11 @@ async def recent_activity(
     bot_id: str | None = Query(default=None, alias="bot_id"),
     activity_type: str | None = Query(default=None, alias="activity_type"),
 ) -> DataResponse[list[ActivityItem]]:
-    """Recent agent activity (run / LLM / tool) from JSONL under the bot data directory."""
+    """Recent agent activity (run / LLM / tool) from JSONL under the bot workspace."""
     path = resolve_config_path(bot_id)
     _ = load_config(path)
-    data_dir = data_dir_for_config(path)
     rows, source, err = read_recent_observability_dicts(
-        data_dir,
+        workspace_root(bot_id),
         limit=limit,
         trace_id=None,
     )

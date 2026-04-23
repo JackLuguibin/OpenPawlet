@@ -47,3 +47,21 @@ def test_missing_dir_error(tmp_path: Path) -> None:
     out, _l, err = read_recent_observability_dicts(tmp_path, limit=10)
     assert out == []
     assert err is not None
+
+
+def test_read_from_session_subdir(tmp_path: Path) -> None:
+    day = time.strftime("%Y-%m-%d", time.localtime())
+    f = tmp_path / "observability" / "sessions" / "sk_a" / f"events_{day}.jsonl"
+    f.parent.mkdir(parents=True)
+    row = {
+        "ts": 1.0,
+        "event": "llm",
+        "trace_id": "x",
+        "session_key": "a:b",
+        "payload": {},
+    }
+    f.write_text(json.dumps(row) + "\n", encoding="utf-8")
+    out, _l, err = read_recent_observability_dicts(tmp_path, limit=10, trace_id=None)
+    assert err is None
+    assert len(out) == 1
+    assert out[0]["event"] == "llm"

@@ -435,7 +435,7 @@
     "traceIdFilterPlaceholder": "按 trace_id 过滤（可选）",
     "timelineError": "无法加载轨迹数据",
     "timelineSourceError": "读取本地 JSONL 轨迹数据失败",
-    "timelineDataUrl": "JSONL（数据目录）",
+    "timelineDataUrl": "JSONL（工作区）",
     "timelineEmpty": "暂无事件。先与机器人对话，再点击刷新。",
     "loadFailed": "无法加载网关状态",
     "statTotalEvents": "本批事件数",
