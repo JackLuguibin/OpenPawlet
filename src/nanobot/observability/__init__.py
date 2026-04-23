@@ -1,4 +1,4 @@
-"""Runtime observability: trace correlation, LLM/tool timings, optional OpenTelemetry."""
+"""Runtime observability: trace correlation, LLM/tool timings, buffer and optional JSONL."""
 
 from __future__ import annotations
 

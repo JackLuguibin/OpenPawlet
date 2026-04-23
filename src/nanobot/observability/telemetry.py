@@ -1,4 +1,4 @@
-"""Structured agent tracing: trace_id correlation, per-span durations, optional OTEL."""
+"""Structured agent tracing: trace_id correlation, log/buffer/JSONL events, span nesting depth."""
 
 from __future__ import annotations
 
@@ -12,17 +12,15 @@ from typing import Any
 
 from loguru import logger
 
-from nanobot.observability.buffer import is_buffer_enabled, record_event
+from nanobot.observability.buffer import is_buffer_enabled, is_jsonl_enabled, record_event
 
 _TRACE_ID: ContextVar[str | None] = ContextVar("nb_trace_id", default=None)
 _SESSION_KEY: ContextVar[str | None] = ContextVar("nb_session_key", default=None)
 _SPAN_DEPTH: ContextVar[int] = ContextVar("nb_span_depth", default=0)
 
-_SPAN_NAME_PREFIX = "openpawlet.nanobot"
-
 
 def is_observability_logging_enabled() -> bool:
-    """When False, trace_id is still set; structured span lines and OTel remain optional."""
+    """When False, trace_id is still set; ``obs |`` log lines are skipped."""
     v = (os.environ.get("NANOBOT_OBS_LOG") or "1").strip().lower()
     return v not in ("0", "false", "no", "off")
 
@@ -43,7 +41,7 @@ async def agent_run_context(session_key: str | None):
     tok_sess = _SESSION_KEY.set(session_key)
     tok_depth = _SPAN_DEPTH.set(0)
     t0 = time.perf_counter()
-    if is_buffer_enabled():
+    if is_buffer_enabled() or is_jsonl_enabled():
         record_event(
             "run_start",
             trace_id=trace_id,
@@ -60,7 +58,7 @@ async def agent_run_context(session_key: str | None):
         yield trace_id
     finally:
         dt = (time.perf_counter() - t0) * 1000.0
-        if is_buffer_enabled():
+        if is_buffer_enabled() or is_jsonl_enabled():
             record_event(
                 "run_end",
                 trace_id=trace_id,
@@ -77,31 +75,6 @@ async def agent_run_context(session_key: str | None):
         _SPAN_DEPTH.reset(tok_depth)
         _SESSION_KEY.reset(tok_sess)
         _TRACE_ID.reset(tok_trace)
-
-
-def _otel_tracer() -> Any | None:
-    try:
-        from opentelemetry import trace
-    except ImportError:
-        return None
-    return trace.get_tracer("openpawlet.nanobot", "0.0")
-
-
-@contextmanager
-def _sync_otel_span(
-    name: str,
-    attributes: dict[str, Any],
-) -> Iterator[None]:
-    tr = _otel_tracer()
-    if tr is None:
-        yield
-        return
-    full = f"{_SPAN_NAME_PREFIX}.{name}"
-    with tr.start_as_current_span(
-        full,
-        attributes={k: str(v) if not isinstance(v, (bool, int, float)) else v for k, v in attributes.items()},
-    ):
-        yield
 
 
 @contextmanager
@@ -123,13 +96,8 @@ def llm_request_span(
     streaming: bool,
 ) -> Iterator[None]:
     """Wrap a single provider chat / stream call (sync ``with`` around ``await`` is OK in async code)."""
-    attrs: dict[str, Any] = {
-        "llm.kind": kind,
-        "llm.model": model or "",
-        "llm.iteration": iteration,
-        "llm.streaming": streaming,
-    }
-    with _depth_span(), _sync_otel_span("llm", attrs):
+    _ = (kind, model, iteration, streaming)  # call-site / future use; depth nesting only
+    with _depth_span():
         yield
 
 
@@ -144,7 +112,7 @@ def log_llm_response(
     """Model outcome, wall-clock duration, and token usage. Filter with ``grep 'obs | event=llm'``."""
     trace_id = get_trace_id()
     session_key = get_session_key()
-    if is_buffer_enabled():
+    if is_buffer_enabled() or is_jsonl_enabled():
         record_event(
             "llm",
             trace_id=trace_id,
@@ -181,12 +149,9 @@ def tool_execution_span(
     tool_call_id: str,
     iteration: int,
 ) -> Iterator[None]:
-    attrs: dict[str, Any] = {
-        "tool.name": name,
-        "tool.call_id": tool_call_id,
-        "tool.iteration": iteration,
-    }
-    with _depth_span(), _sync_otel_span("tool", attrs):
+    """Track span nesting depth around a tool call (see ``_SPAN_DEPTH``)."""
+    _ = (name, tool_call_id, iteration)
+    with _depth_span():
         yield
 
 
@@ -201,7 +166,7 @@ def log_tool_outcome(
 ) -> None:
     trace_id = get_trace_id()
     session_key = get_session_key()
-    if is_buffer_enabled():
+    if is_buffer_enabled() or is_jsonl_enabled():
         pl: dict[str, Any] = {
             "name": name,
             "tool_call_id": tool_call_id,
