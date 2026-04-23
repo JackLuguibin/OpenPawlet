@@ -34,6 +34,7 @@ import WebSocketDebugPanel from './WebSocketDebugPanel';
 
 /** Lock main scroll; each page uses flex-1 min-h-0 and scrolls inside */
 const LOCK_PAGE_SCROLL_PATHS = new Set([
+  '/dashboard',
   '/sessions',
   '/settings',
   '/channels',

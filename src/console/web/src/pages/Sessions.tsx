@@ -1,4 +1,4 @@
-import { useState, useRef, useLayoutEffect } from 'react';
+import { useState, useRef, useLayoutEffect, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
@@ -13,6 +13,7 @@ import {
   Tag,
   Descriptions,
   Card,
+  Pagination,
   Tooltip,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -65,24 +66,10 @@ export default function Sessions() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'updated' | 'created' | 'messages'>('updated');
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const tableScrollBoxRef = useRef<HTMLDivElement>(null);
   const [tableBodyScrollY, setTableBodyScrollY] = useState(360);
-
-  useLayoutEffect(() => {
-    const el = tableScrollBoxRef.current;
-    if (!el) return;
-    const TABLE_HEAD_AND_PAGER_RESERVE = 118;
-
-    const update = () => {
-      const { height } = el.getBoundingClientRect();
-      setTableBodyScrollY(Math.max(160, Math.floor(height - TABLE_HEAD_AND_PAGER_RESERVE)));
-    };
-
-    update();
-    const ro = new ResizeObserver(() => update());
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
 
   const { data: sessions, isLoading, error } = useQuery({
     queryKey: ['sessions', currentBotId],
@@ -151,6 +138,76 @@ export default function Sessions() {
           return b.message_count - a.message_count;
       }
     });
+
+  const sessionList = useMemo(() => processedSessions ?? [], [processedSessions]);
+  const totalRows = sessionList.length;
+
+  const pagedSessions = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return sessionList.slice(start, start + pageSize);
+  }, [sessionList, page, pageSize]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery, sortBy]);
+
+  useEffect(() => {
+    if (totalRows === 0) {
+      if (page !== 1) setPage(1);
+      return;
+    }
+    const maxPage = Math.max(1, Math.ceil(totalRows / pageSize));
+    if (page > maxPage) setPage(maxPage);
+  }, [totalRows, page, pageSize]);
+
+  useLayoutEffect(() => {
+    const el = tableScrollBoxRef.current;
+    if (!el) return;
+
+    const readHeaderBlockHeight = (root: Element): number => {
+      const header = root.querySelector<HTMLElement>('.ant-table-header');
+      if (header) {
+        return header.getBoundingClientRect().height;
+      }
+      const sticky = root.querySelector<HTMLElement>('.ant-table-sticky-header');
+      if (sticky) {
+        return sticky.getBoundingClientRect().height;
+      }
+      const th = root.querySelector<HTMLElement>('.ant-table-thead');
+      return th ? th.getBoundingClientRect().height : 64;
+    };
+
+    const update = () => {
+      const boxH = el.clientHeight;
+      if (boxH < 1) return;
+
+      const headH = readHeaderBlockHeight(el);
+      let y = Math.max(80, Math.floor(boxH - headH - 2));
+
+      const tableRoot = el.querySelector<HTMLElement>('.ant-table');
+      if (tableRoot) {
+        const tableH = tableRoot.getBoundingClientRect().height;
+        if (tableH > 8 && tableH < boxH - 0.5) {
+          y = Math.max(80, y + Math.round(boxH - tableH));
+        }
+      }
+
+      setTableBodyScrollY(y);
+    };
+
+    update();
+    const ro = new ResizeObserver(() => update());
+    ro.observe(el);
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => update());
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+      ro.disconnect();
+    };
+  }, [isLoading, pagedSessions.length, error, totalRows]);
 
   const handleBatchDelete = () => {
     selectedRowKeys.forEach((key) => deleteMutation.mutate(String(key)));
@@ -270,7 +327,8 @@ export default function Sessions() {
   );
 
   return (
-    <PageLayout>
+    <PageLayout className="min-h-0 flex-1 overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-6 overflow-hidden">
       {/* Header */}
       <div className="flex shrink-0 items-center justify-between">
         <div>
@@ -306,7 +364,7 @@ export default function Sessions() {
       </div>
 
       <Card
-        className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-gray-200/90 shadow-sm dark:border-gray-700/80 dark:bg-gray-800/35"
+        className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-gray-200/90 shadow-sm dark:border-gray-700/80 dark:bg-gray-800/35 [&_.ant-card-body]:flex [&_.ant-card-body]:min-h-0 [&_.ant-card-body]:flex-1 [&_.ant-card-body]:flex-col [&_.ant-card-body]:overflow-hidden"
         styles={{ body: { padding: 0, display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 } }}
       >
         <div className="flex shrink-0 flex-col gap-3 border-b border-gray-100 px-4 py-3 dark:border-gray-700 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
@@ -329,50 +387,74 @@ export default function Sessions() {
           />
         </div>
 
-        <div ref={tableScrollBoxRef} className="min-h-0 min-w-0 flex-1">
-          <Table<SessionInfo>
-            className="sessions-page-table [&_.ant-table-thead>tr>th]:bg-gray-50/80 [&_.ant-table-thead>tr>th]:font-semibold dark:[&_.ant-table-thead>tr>th]:bg-gray-900/50"
-            dataSource={processedSessions}
-            columns={columns}
-            rowKey="key"
-            loading={isLoading}
-            rowSelection={{
-              selectedRowKeys,
-              onChange: setSelectedRowKeys,
-            }}
-            expandable={{
-              expandedRowRender,
-              expandRowByClick: false,
-            }}
-            scroll={{ x: 820, y: tableBodyScrollY }}
-          locale={{
-            emptyText: error ? (
-              <div className="text-red-500">{t('sessions.loadError', { error: formatQueryError(error) })}</div>
-            ) : (
-              <Space orientation="vertical" className="py-8">
-                <MessageOutlined className="text-4xl text-gray-300 dark:text-gray-600" />
-                <span className="text-gray-600 dark:text-gray-400">{t('sessions.empty')}</span>
-                <Button
-                  type="link"
-                  size="small"
-                  onClick={() => createMutation.mutate(undefined)}
-                >
-                  {t('sessions.emptyCreate')}
-                </Button>
-              </Space>
-            ),
-          }}
-            pagination={{
-              pageSize: 20,
-              showSizeChanger: true,
-              showTotal: (total) => t('sessions.paginationTotal', { total }),
-              className:
-                'shrink-0 px-4 py-3 mb-0 border-t border-gray-100 dark:border-gray-700 [&_.ant-pagination]:flex-wrap',
-            }}
-            size="middle"
-          />
+        <div className="flex h-0 min-h-0 w-full min-w-0 flex-1 flex-col">
+          <div
+            ref={tableScrollBoxRef}
+            className="flex h-0 w-full min-w-0 min-h-0 flex-1 flex-col overflow-hidden [&_.ant-table-body]:!min-h-[var(--session-tbody-y,120px)]"
+            style={
+              {
+                minHeight: 0,
+                ['--session-tbody-y' as string]: `${tableBodyScrollY}px`,
+              } as React.CSSProperties
+            }
+          >
+            <Table<SessionInfo>
+              style={{ display: 'flex', flex: 1, minHeight: 0, width: '100%', flexDirection: 'column' }}
+              className="sessions-page-table flex min-h-0 w-full min-w-0 flex-1 flex-col [&_.ant-spin]:!flex [&_.ant-spin]:!h-full [&_.ant-spin]:!min-h-0 [&_.ant-spin]:!flex-1 [&_.ant-spin]:!flex-col [&_.ant-spin-section]:shrink-0 [&_.ant-spin-container]:!flex [&_.ant-spin-container]:!h-full [&_.ant-spin-container]:!min-h-0 [&_.ant-spin-container]:!flex-1 [&_.ant-spin-container]:!flex-col [&_.ant-table]:!h-full [&_.ant-table]:!min-h-0 [&_.ant-table]:min-w-0 [&_.ant-table-thead>tr>th]:bg-gray-50/80 [&_.ant-table-thead>tr>th]:font-semibold dark:[&_.ant-table-thead>tr>th]:bg-gray-900/50"
+              dataSource={pagedSessions}
+              columns={columns}
+              rowKey="key"
+              loading={isLoading}
+              rowSelection={{
+                selectedRowKeys,
+                onChange: setSelectedRowKeys,
+              }}
+              expandable={{
+                expandedRowRender,
+                expandRowByClick: false,
+              }}
+              scroll={{ x: 820, y: tableBodyScrollY }}
+              pagination={false}
+              locale={{
+                emptyText: error ? (
+                  <div className="text-red-500">
+                    {t('sessions.loadError', { error: formatQueryError(error) })}
+                  </div>
+                ) : (
+                  <Space orientation="vertical" className="py-8">
+                    <MessageOutlined className="text-4xl text-gray-300 dark:text-gray-600" />
+                    <span className="text-gray-600 dark:text-gray-400">{t('sessions.empty')}</span>
+                    <Button
+                      type="link"
+                      size="small"
+                      onClick={() => createMutation.mutate(undefined)}
+                    >
+                      {t('sessions.emptyCreate')}
+                    </Button>
+                  </Space>
+                ),
+              }}
+              size="middle"
+            />
+          </div>
+          <div className="shrink-0 border-t border-gray-100 dark:border-gray-700">
+            <Pagination
+              size="small"
+              className="m-0 flex w-full max-w-full justify-end px-4 py-3 [&_ul]:mb-0 [&_ul]:flex-wrap"
+              current={page}
+              pageSize={pageSize}
+              total={totalRows}
+              showSizeChanger
+              showTotal={(n) => t('sessions.paginationTotal', { total: n })}
+              onChange={(p, size) => {
+                setPage(p);
+                if (size != null) setPageSize(size);
+              }}
+            />
+          </div>
         </div>
       </Card>
+      </div>
     </PageLayout>
   );
 }

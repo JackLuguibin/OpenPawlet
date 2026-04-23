@@ -58,6 +58,23 @@ const MODEL_PIE_PALETTE_DARK = [
   '#818cf8',
 ];
 
+/** Stat cards: responsive grid + Ant Statistic layout (spacing, alignment, KPI typography) */
+const DASHBOARD_STAT_GRID_CLASS =
+  'grid shrink-0 grid-cols-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2 sm:gap-3 min-w-0 ' +
+  '[&_.ant-statistic-title]:mb-0 [&_.ant-statistic-title]:min-h-[14px] [&_.ant-statistic-title]:text-center ' +
+  '[&_.ant-statistic-title]:text-[10px] [&_.ant-statistic-title]:leading-tight ' +
+  '[&_.ant-statistic-content-prefix]:inline-flex [&_.ant-statistic-content-prefix]:items-center [&_.ant-statistic-content-prefix]:me-0 ' +
+  '[&_.ant-statistic-content_.ant-badge-status]:align-middle [&_.ant-statistic-content_.ant-badge-status-dot]:!top-0 ' +
+  '[&_.ant-statistic-content]:mt-0.5 [&_.ant-statistic-content]:min-h-[28px] [&_.ant-statistic-content]:flex [&_.ant-statistic-content]:items-center ' +
+  '[&_.ant-statistic-content]:justify-center [&_.ant-statistic-content]:gap-1.5 ' +
+  '[&_.ant-statistic-content-value]:text-xs [&_.ant-statistic-content-value]:sm:text-sm [&_.ant-statistic-content-value]:xl:text-base ' +
+  '[&_.ant-statistic-content-value]:font-semibold [&_.ant-statistic-content-value]:tabular-nums ' +
+  '[&_.ant-statistic-skeleton]:pt-0';
+
+const DASHBOARD_STAT_CARD_CLASS =
+  'h-full min-w-0 [&_.ant-card-body]:flex [&_.ant-card-body]:flex-col [&_.ant-card-body]:h-full ' +
+  '[&_.ant-card-body]:min-w-0 [&_.ant-card-body]:py-2';
+
 function formatUptime(seconds: number): string {
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
@@ -498,7 +515,9 @@ export default function Dashboard() {
   }
 
   return (
-    <PageLayout>
+    <PageLayout className="min-h-0 flex-1 overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-hidden">
+      <div className="flex min-h-0 shrink flex-col gap-6 overflow-y-auto">
       {/* Header */}
       <div className="flex shrink-0 items-center justify-between">
         <div>
@@ -535,11 +554,8 @@ export default function Dashboard() {
         </Space>
       </div>
 
-      {/* Stat Cards：统一高度与数值区对齐；小屏 2 列、中屏 3 列、大屏 6 列，避免窄屏横向溢出 */}
-      <div
-        className="grid shrink-0 grid-cols-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2 sm:gap-3 min-w-0 [&_.ant-statistic-title]:mb-0 [&_.ant-statistic-title]:min-h-[14px] [&_.ant-statistic-title]:text-[10px] [&_.ant-statistic-title]:leading-tight [&_.ant-statistic-content]:mt-0.5 [&_.ant-statistic-content]:min-h-[24px] [&_.ant-statistic-content]:flex [&_.ant-statistic-content]:items-end [&_.ant-statistic-content-value]:text-xs [&_.ant-statistic-content-value]:sm:text-sm [&_.ant-statistic-content-value]:xl:text-base"
-      >
-        <Card size="small" hoverable className="h-full min-w-0 [&_.ant-card-body]:flex [&_.ant-card-body]:flex-col [&_.ant-card-body]:h-full [&_.ant-card-body]:min-w-0 [&_.ant-card-body]:py-2">
+      <div className={DASHBOARD_STAT_GRID_CLASS}>
+        <Card size="small" hoverable className={DASHBOARD_STAT_CARD_CLASS}>
           <Statistic
             title={t('dashboard.statStatus')}
             value={displayStatus?.running ? t('dashboard.statRunning') : t('dashboard.statStopped')}
@@ -553,28 +569,28 @@ export default function Dashboard() {
             }
           />
         </Card>
-        <Card size="small" hoverable className="h-full min-w-0 [&_.ant-card-body]:flex [&_.ant-card-body]:flex-col [&_.ant-card-body]:h-full [&_.ant-card-body]:min-w-0 [&_.ant-card-body]:py-2">
+        <Card size="small" hoverable className={DASHBOARD_STAT_CARD_CLASS}>
           <Statistic
             title={t('dashboard.statUptime')}
             value={displayStatus?.running && displayStatus?.uptime_seconds ? formatUptime(displayStatus.uptime_seconds) : '-'}
             prefix={<ClockCircleOutlined className="text-blue-500" />}
           />
         </Card>
-        <Card size="small" hoverable className="h-full min-w-0 [&_.ant-card-body]:flex [&_.ant-card-body]:flex-col [&_.ant-card-body]:h-full [&_.ant-card-body]:min-w-0 [&_.ant-card-body]:py-2">
+        <Card size="small" hoverable className={DASHBOARD_STAT_CARD_CLASS}>
           <Statistic
             title={t('dashboard.statActiveSessions')}
             value={displayStatus?.active_sessions ?? 0}
             prefix={<TeamOutlined className="text-purple-500" />}
           />
         </Card>
-        <Card size="small" hoverable className="h-full min-w-0 [&_.ant-card-body]:flex [&_.ant-card-body]:flex-col [&_.ant-card-body]:h-full [&_.ant-card-body]:min-w-0 [&_.ant-card-body]:py-2">
+        <Card size="small" hoverable className={DASHBOARD_STAT_CARD_CLASS}>
           <Statistic
             title={t('dashboard.statMessagesToday')}
             value={displayStatus?.messages_today ?? 0}
             prefix={<MessageOutlined className="text-orange-500" />}
           />
         </Card>
-        <Card size="small" hoverable className="h-full min-w-0 [&_.ant-card-body]:flex [&_.ant-card-body]:flex-col [&_.ant-card-body]:h-full [&_.ant-card-body]:min-w-0 [&_.ant-card-body]:py-2">
+        <Card size="small" hoverable className={DASHBOARD_STAT_CARD_CLASS}>
           <Statistic
             title={t('dashboard.statTokensToday')}
             value={
@@ -585,7 +601,7 @@ export default function Dashboard() {
             prefix={<ThunderboltOutlined className="text-amber-500" />}
           />
         </Card>
-        <Card size="small" hoverable className="h-full min-w-0 [&_.ant-card-body]:flex [&_.ant-card-body]:flex-col [&_.ant-card-body]:h-full [&_.ant-card-body]:min-w-0 [&_.ant-card-body]:py-2">
+        <Card size="small" hoverable className={DASHBOARD_STAT_CARD_CLASS}>
           <Statistic
             title={t('dashboard.statCostToday')}
             value={
@@ -666,9 +682,10 @@ export default function Dashboard() {
           </div>
         </Card>
       )}
+      </div>
 
-      {/* 每日 Token 使用量 + 按模型成本分布：占满主内容区剩余高度 */}
-      <div className="grid w-full min-w-0 grid-cols-1 gap-4 auto-rows-auto lg:flex-1 lg:min-h-0 lg:auto-rows-fr lg:grid-cols-2 lg:grid-rows-1">
+      {/* 每日 Token + 模型占比：在锁定主滚动后由 flex-1 占满视口剩余高度 */}
+      <div className="grid min-h-0 w-full min-w-0 flex-1 grid-cols-1 gap-4 auto-rows-[minmax(280px,auto)] lg:auto-rows-fr lg:grid-cols-2 lg:grid-rows-1">
         <Card
           title={
             <span className="flex items-center gap-2">
@@ -676,7 +693,7 @@ export default function Dashboard() {
             </span>
           }
           size="small"
-          className="flex min-h-0 min-w-0 flex-col overflow-hidden [&_.ant-card-head]:shrink-0 [&_.ant-card-body]:flex [&_.ant-card-body]:min-h-0 [&_.ant-card-body]:flex-1 [&_.ant-card-body]:flex-col [&_.ant-card-body]:overflow-visible"
+          className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden [&_.ant-card-head]:shrink-0 [&_.ant-card-body]:flex [&_.ant-card-body]:min-h-0 [&_.ant-card-body]:flex-1 [&_.ant-card-body]:flex-col [&_.ant-card-body]:overflow-visible"
         >
           {usageLoading ? (
             <div className="flex flex-1 items-center justify-center py-12">
@@ -687,9 +704,9 @@ export default function Dashboard() {
               <Text type="secondary" className="text-xs shrink-0 mb-1">
                 {t('dashboard.usageDailyByCalendar', { tz: agentTz })}
               </Text>
-              <div className="min-h-[300px] w-full min-w-0 flex-1 overflow-visible pb-1 lg:min-h-0">
+              <div className="min-h-0 w-full min-w-0 flex-1 overflow-visible pb-1">
                 <EChartsWithResize
-                  style={{ width: '100%', height: '100%', minHeight: 300 }}
+                  style={{ width: '100%', height: '100%' }}
                   option={dailyTokenStackBarOption}
                 />
               </div>
@@ -705,15 +722,16 @@ export default function Dashboard() {
 
         <Card
           size="small"
-          className="flex min-h-0 min-w-0 flex-col overflow-hidden [&_.ant-card-head]:shrink-0 [&_.ant-card-body]:flex [&_.ant-card-body]:min-h-0 [&_.ant-card-body]:flex-1 [&_.ant-card-body]:flex-col [&_.ant-card-body]:overflow-hidden"
+          className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden [&_.ant-card-head]:shrink-0 [&_.ant-card-body]:flex [&_.ant-card-body]:min-h-0 [&_.ant-card-body]:flex-1 [&_.ant-card-body]:flex-col [&_.ant-card-body]:overflow-hidden"
         >
-          <div className="flex min-h-[260px] w-full flex-col overflow-hidden sm:min-h-[300px] lg:min-h-[320px] lg:flex-1">
+          <div className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden">
             <ModelPieChart
               option={modelPieChartOption}
-              style={{ height: '100%', width: '100%', minHeight: 260 }}
+              style={{ height: '100%', width: '100%' }}
             />
           </div>
         </Card>
+      </div>
       </div>
 
     </PageLayout>
