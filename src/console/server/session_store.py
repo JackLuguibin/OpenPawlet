@@ -165,7 +165,10 @@ def read_transcript_jsonl_raw(bot_id: str | None, session_key: str) -> str | Non
 def delete_session_files(bot_id: str | None, session_key: str) -> bool:
     """Delete session JSONL from workspace and legacy global dir.
 
-    Returns True if at least one file was removed.
+    When a session file is removed, also deletes the matching append-only transcript
+    at ``<workspace>/transcripts/{safe_key}.jsonl`` (see ``SessionTranscriptWriter``).
+
+    Returns True if at least one session file was removed.
     """
     mgr = _session_manager(bot_id)
     removed = False
@@ -173,5 +176,9 @@ def delete_session_files(bot_id: str | None, session_key: str) -> bool:
         if path.is_file():
             path.unlink()
             removed = True
+    if removed:
+        tr_path = _transcript_file_path(workspace_root(bot_id), session_key)
+        if tr_path.is_file():
+            tr_path.unlink()
     mgr.invalidate(session_key)
     return removed
