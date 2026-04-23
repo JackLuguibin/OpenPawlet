@@ -277,7 +277,8 @@ export default function Channels() {
   const enabledTotal = channels?.filter((c) => c.enabled).length ?? 0;
 
   return (
-    <PageLayout variant="bleed" className="gap-8 mx-auto max-w-[1600px]">
+    <PageLayout className="min-h-0 flex-1 overflow-hidden !gap-0">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-6 overflow-hidden">
       <header className="flex shrink-0 flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="space-y-1">
           <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
@@ -418,6 +419,7 @@ export default function Channels() {
           <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{t('channels.emptyDesc')}</p>
         </div>
       )}
+      </div>
       </div>
 
       <Modal
