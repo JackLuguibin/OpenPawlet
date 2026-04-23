@@ -108,12 +108,14 @@ export default function Layout({ children }: LayoutProps) {
           { path: '/workspace', label: t('layout.navWorkspace'), icon: FolderOpen },
           { path: '/agents', label: t('layout.navAgents'), icon: Users },
           { path: '/observability', label: t('layout.navObservability'), icon: LineChart },
-          { path: '/logs', label: t('layout.navLogs'), icon: FileText },
         ],
       },
       {
         title: t('layout.sectionManagement'),
-        items: [{ path: '/settings', label: t('layout.navSettings'), icon: Settings }],
+        items: [
+          { path: '/logs', label: t('layout.navLogs'), icon: FileText },
+          { path: '/settings', label: t('layout.navSettings'), icon: Settings },
+        ],
       },
     ],
     [t],

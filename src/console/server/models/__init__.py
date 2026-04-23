@@ -54,6 +54,7 @@ from console.server.models.observability import (
     NanobotGatewayInfo,
     ObservabilityResponse,
 )
+from console.server.models.runtime_logs import RuntimeLogChunk, RuntimeLogsData
 from console.server.models.sessions import (
     BatchDeleteBody,
     BatchDeleteFailure,
@@ -139,6 +140,8 @@ __all__ = [
     "OkWithPath",
     "OkWithTopic",
     "RegistrySearchItem",
+    "RuntimeLogChunk",
+    "RuntimeLogsData",
     "SessionDetail",
     "SessionInfo",
     "SessionJsonlRawPayload",

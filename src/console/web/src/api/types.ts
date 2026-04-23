@@ -72,6 +72,18 @@ export interface MCPStatus {
   error?: string;
 }
 
+export interface RuntimeLogChunk {
+  source: 'nanobot' | 'console';
+  path: string;
+  text: string;
+  exists: boolean;
+  truncated: boolean;
+}
+
+export interface RuntimeLogsData {
+  chunks: RuntimeLogChunk[];
+}
+
 export interface ToolCallLog {
   id: string;
   tool_name: string;

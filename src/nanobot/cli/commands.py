@@ -663,6 +663,10 @@ def gateway(
     config = _load_runtime_config(config, workspace)
     port = port if port is not None else config.gateway.port
 
+    from nanobot.utils.runtime_file_log import install_runtime_file_log
+
+    install_runtime_file_log("nanobot", level="DEBUG" if verbose else "INFO")
+
     console.print(f"{__logo__} Starting nanobot gateway version {__version__} on port {port}...")
     sync_workspace_templates(config.workspace_path)
     bus = MessageBus()

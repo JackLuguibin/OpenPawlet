@@ -21,6 +21,7 @@ from . import (
     mcp,
     memory,
     observability,
+    runtime_logs,
     sessions,
     skills,
     status,
@@ -43,6 +44,7 @@ api_router.include_router(alerts.router)
 api_router.include_router(sessions.router)
 api_router.include_router(chat.router)
 api_router.include_router(tools.router)
+api_router.include_router(runtime_logs.router)
 api_router.include_router(memory.router)
 api_router.include_router(bot_files.router)
 api_router.include_router(config.router)

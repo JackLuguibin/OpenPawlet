@@ -17,6 +17,7 @@ import type {
   StatusResponse,
   SkillInfo,
   ToolCallLog,
+  RuntimeLogsData,
   BatchDeleteResponse,
   ActivityItem,
   ChannelRefreshResult,
@@ -296,6 +297,21 @@ export async function getToolLogs(
   if (toolName) params.append('tool_name', toolName);
   if (botId) params.append('bot_id', botId);
   return fetchJson<ToolCallLog[]>(`${API_BASE}/tools/log?${params}`);
+}
+
+// ====================
+// Runtime logs (local log files)
+// ====================
+
+export async function getRuntimeLogs(
+  source: 'all' | 'nanobot' | 'console' = 'all',
+  maxLines = 2000
+): Promise<RuntimeLogsData> {
+  const params = new URLSearchParams({
+    source,
+    max_lines: String(maxLines),
+  });
+  return fetchJson<RuntimeLogsData>(`${API_BASE}/runtime-logs?${params}`);
 }
 
 // ====================

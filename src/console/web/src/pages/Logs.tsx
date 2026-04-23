@@ -1,386 +1,312 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import {
-  Table,
-  Select,
-  Input,
-  Button,
-  Tag,
-  Statistic,
-  Card,
-  Space,
-  Segmented,
-  Tooltip,
-  Typography,
-} from 'antd';
-import type { ColumnsType } from 'antd/es/table';
-import {
-  ReloadOutlined,
-  CopyOutlined,
-  CheckOutlined,
-  CodeOutlined,
-} from '@ant-design/icons';
+import { Alert, Button, Input, Switch, Tooltip, Tabs } from 'antd';
+import { CopyOutlined, CheckOutlined, ReloadOutlined } from '@ant-design/icons';
+import { FileText, Terminal } from 'lucide-react';
 import { useAppStore } from '../store';
 import * as api from '../api/client';
 import { PageLayout } from '../components/PageLayout';
+import { RuntimeLogView } from '../components/RuntimeLogView';
 import { formatQueryError } from '../utils/errors';
-import { useAgentTimeZone } from '../hooks/useAgentTimeZone';
-import { formatAgentLocaleString, formatAgentLocaleTime } from '../utils/agentDatetime';
-import type { ToolCallLog } from '../api/types';
+import type { RuntimeLogChunk } from '../api/types';
 
-const { Text } = Typography;
+/** Default tail depth for runtime log API; Tab UI replaces per-source fetches. */
+const RUNTIME_LOG_MAX_LINES = 2000;
+
+function filterLines(text: string, q: string): string {
+  if (!q.trim()) return text;
+  const needle = q.toLowerCase();
+  return text
+    .split('\n')
+    .filter((line) => line.toLowerCase().includes(needle))
+    .join('\n');
+}
+
+function chunkKey(c: RuntimeLogChunk): string {
+  return c.source;
+}
+
+type LogPanelVariant = 'stacked' | 'tab';
+
+function LogPanel({
+  label,
+  chunk,
+  onCopy,
+  copied,
+  t,
+  variant = 'stacked',
+}: {
+  label: string;
+  chunk: RuntimeLogChunk;
+  onCopy: () => void;
+  copied: boolean;
+  t: (k: string) => string;
+  variant?: LogPanelVariant;
+}) {
+  const showMissing = !chunk.exists;
+  const headerMain =
+    variant === 'tab' ? null : (
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+        <Terminal className="h-4 w-4" aria-hidden />
+      </div>
+    );
+
+  return (
+    <div
+      className={[
+        'flex min-h-0 min-w-0 flex-col overflow-hidden',
+        variant === 'stacked'
+          ? 'flex-1 rounded-2xl border border-slate-200/90 bg-white shadow-sm dark:border-slate-600/60 dark:bg-slate-900/40 dark:shadow-none'
+          : 'h-full min-h-0',
+      ]
+        .filter(Boolean)
+        .join(' ')}
+    >
+      <div
+        className={[
+          'flex shrink-0 items-center justify-between gap-2 border-b border-slate-200/80 dark:border-slate-600/50',
+          variant === 'stacked' ? 'px-3 py-2.5 sm:px-4' : 'px-2 py-2 sm:px-3',
+        ].join(' ')}
+      >
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          {headerMain}
+          <div className="min-w-0 flex-1">
+            {variant === 'stacked' && (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">
+                  {label}
+                </span>
+                {chunk.truncated && (
+                  <span className="rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:text-amber-400">
+                    {t('logs.truncated')}
+                  </span>
+                )}
+              </div>
+            )}
+            {variant === 'tab' && chunk.truncated && (
+              <div className="mb-0.5">
+                <span className="rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:text-amber-400">
+                  {t('logs.truncated')}
+                </span>
+              </div>
+            )}
+            <Tooltip title={chunk.path}>
+              <p
+                className={[
+                  'truncate text-slate-500 dark:text-slate-400',
+                  variant === 'stacked' ? 'text-[11px]' : 'text-xs',
+                ].join(' ')}
+              >
+                {chunk.path}
+              </p>
+            </Tooltip>
+          </div>
+        </div>
+        <Button
+          type="default"
+          size="small"
+          className="shrink-0"
+          icon={copied ? <CheckOutlined className="text-emerald-500" /> : <CopyOutlined />}
+          onClick={onCopy}
+          disabled={showMissing && !chunk.text}
+        >
+          {t('logs.copyBlock')}
+        </Button>
+      </div>
+
+      <div
+        className={[
+          'min-h-0 flex-1 bg-[#0b0f19] p-0 dark:bg-[#070a12]',
+          variant === 'tab' && 'min-h-0',
+        ]
+          .filter(Boolean)
+          .join(' ')}
+      >
+        {showMissing && (
+          <p className="px-3 py-2 text-sm text-amber-600/95 dark:text-amber-400/95">{t('logs.emptyFile')}</p>
+        )}
+        <div
+          className={[
+            'h-full min-h-0 overflow-auto px-3 py-3 sm:px-4',
+            variant === 'stacked' && 'max-h-[min(58vh,560px)] min-h-[220px]',
+            variant === 'tab' && 'min-h-0',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+          style={{ scrollbarGutter: 'stable' }}
+        >
+          <RuntimeLogView
+            text={chunk.text || (showMissing ? '' : t('logs.empty'))}
+            aria-label={label}
+            className="min-h-0"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function Logs() {
-  const { t, i18n } = useTranslation();
-  const { addToast, currentBotId } = useAppStore();
-  const agentTz = useAgentTimeZone();
-  const locale = i18n.language.startsWith('zh') ? 'zh-CN' : 'en-US';
-  const [toolFilter, setToolFilter] = useState<string>('');
-  const [statusFilter, setStatusFilter] = useState<string>('');
+  const { t } = useTranslation();
+  const { addToast } = useAppStore();
   const [searchQuery, setSearchQuery] = useState('');
-  const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [limit, setLimit] = useState(100);
-  const tableAreaRef = useRef<HTMLDivElement>(null);
-  const [tableScrollY, setTableScrollY] = useState(320);
+  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
+  const [activeLogTab, setActiveLogTab] = useState<'nanobot' | 'console'>('nanobot');
 
-  useLayoutEffect(() => {
-    const el = tableAreaRef.current;
-    if (!el) return;
-    const measure = () => {
-      const h = el.getBoundingClientRect().height;
-      // Ant Design table: header + horizontal scroll + pagination (~110px)
-      setTableScrollY(Math.max(160, Math.floor(h - 110)));
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
-  const { data: logs, isLoading, error, refetch } = useQuery({
-    queryKey: ['tool-logs', toolFilter, statusFilter, limit, currentBotId],
-    queryFn: () => api.getToolLogs(limit, toolFilter || undefined, currentBotId),
-    refetchInterval: false,
+  const { data, isLoading, error, refetch, isFetching } = useQuery({
+    queryKey: ['runtime-logs', 'all', RUNTIME_LOG_MAX_LINES],
+    queryFn: () => api.getRuntimeLogs('all', RUNTIME_LOG_MAX_LINES),
+    refetchInterval: autoRefresh ? 5000 : false,
   });
 
-  const filteredLogs = logs?.filter((log) => {
-    if (statusFilter && log.status !== statusFilter) return false;
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      return (
-        log.tool_name.toLowerCase().includes(q) ||
-        JSON.stringify(log.arguments).toLowerCase().includes(q) ||
-        (log.result?.toLowerCase().includes(q) ?? false)
-      );
+  const displayChunks = useMemo(() => {
+    const chunks = data?.chunks ?? [];
+    if (!searchQuery.trim()) return chunks;
+    return chunks.map((c) => ({
+      ...c,
+      text: filterLines(c.text, searchQuery),
+    }));
+  }, [data?.chunks, searchQuery]);
+
+  useEffect(() => {
+    if (displayChunks.length === 0) return;
+    const keys = new Set(displayChunks.map((c) => c.source));
+    if (!keys.has(activeLogTab)) {
+      const first = displayChunks[0]!.source;
+      setActiveLogTab(first);
     }
-    return true;
-  });
+  }, [displayChunks, activeLogTab]);
 
-  const formatDuration = (ms: number) => {
-    if (ms < 1000) return `${ms}ms`;
-    return `${(ms / 1000).toFixed(1)}s`;
-  };
-
-  const formatDate = (dateStr?: string) => {
-    if (!dateStr) return '';
-    return formatAgentLocaleTime(dateStr, agentTz, locale);
-  };
-
-  const formatFullDate = (dateStr?: string) => {
-    if (!dateStr) return '';
-    return formatAgentLocaleString(dateStr, agentTz, locale);
-  };
-
-  const copyToClipboard = async (text: string, id: string) => {
+  const copyText = async (key: string, text: string) => {
     try {
       await navigator.clipboard.writeText(text);
-      setCopiedId(id);
-      setTimeout(() => setCopiedId(null), 2000);
+      setCopied(key);
+      setTimeout(() => setCopied(null), 2000);
     } catch {
       addToast({ type: 'error', message: t('logs.copyFailed') });
     }
   };
 
-  const uniqueTools = [...new Set(logs?.map((log) => log.tool_name) || [])];
-
-  const successCount = filteredLogs?.filter((l) => l.status === 'success').length ?? 0;
-  const errorCount = filteredLogs?.filter((l) => l.status === 'error').length ?? 0;
-  const avgDuration =
-    filteredLogs && filteredLogs.length > 0
-      ? Math.round(
-          filteredLogs.reduce((sum, l) => sum + l.duration_ms, 0) / filteredLogs.length
-        )
-      : 0;
-
-  const columns: ColumnsType<ToolCallLog> = [
-    {
-      title: t('logs.colStatus'),
-      key: 'status',
-      width: 100,
-      render: (_, log) => (
-        <Tag color={log.status === 'success' ? 'success' : 'error'}>{log.status}</Tag>
-      ),
-    },
-    {
-      title: t('logs.colTool'),
-      dataIndex: 'tool_name',
-      key: 'tool_name',
-      render: (name: string) => (
-        <span className="font-mono font-medium flex items-center gap-1.5">
-          <CodeOutlined className="text-gray-400" />
-          {name}
-        </span>
-      ),
-    },
-    {
-      title: t('logs.colArguments'),
-      key: 'arguments',
-      render: (_, log) => {
-        const argStr = JSON.stringify(log.arguments);
-        return (
-          <Text
-            type="secondary"
-            className="font-mono text-xs"
-            style={{ maxWidth: 300, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-          >
-            {argStr.slice(0, 80)}
-            {argStr.length > 80 && '…'}
-          </Text>
-        );
-      },
-    },
-    {
-      title: t('logs.colTime'),
-      dataIndex: 'timestamp',
-      key: 'timestamp',
-      width: 110,
-      render: (ts: string) => (
-        <Tooltip title={formatFullDate(ts)}>
-          <span className="text-gray-500 text-xs">{formatDate(ts)}</span>
-        </Tooltip>
-      ),
-    },
-    {
-      title: t('logs.colDuration'),
-      dataIndex: 'duration_ms',
-      key: 'duration_ms',
-      width: 100,
-      render: (ms: number) => (
-        <span className={ms > 5000 ? 'text-amber-500 font-medium' : 'text-gray-500'}>
-          {formatDuration(ms)}
-        </span>
-      ),
-      sorter: (a, b) => a.duration_ms - b.duration_ms,
-    },
-  ];
-
-  const expandedRowRender = (log: ToolCallLog) => (
-    <div className="space-y-4 py-2 px-4">
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <Text type="secondary" className="text-xs font-medium">
-            {t('logs.arguments')}
-          </Text>
-          <Button
-            size="small"
-            type="text"
-            icon={
-              copiedId === `args-${log.id}` ? (
-                <CheckOutlined className="text-green-500" />
-              ) : (
-                <CopyOutlined />
-              )
-            }
-            onClick={() =>
-              copyToClipboard(JSON.stringify(log.arguments, null, 2), `args-${log.id}`)
-            }
-          />
-        </div>
-        <pre className="p-3 bg-gray-900 dark:bg-gray-950 rounded-xl text-xs text-gray-100 font-mono overflow-x-auto max-h-48">
-          {JSON.stringify(log.arguments, null, 2)}
-        </pre>
-      </div>
-
-      {log.result && (
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <Text type="secondary" className="text-xs font-medium">
-              {t('logs.result')}
-            </Text>
-            <Button
-              size="small"
-              type="text"
-              icon={
-                copiedId === `result-${log.id}` ? (
-                  <CheckOutlined className="text-green-500" />
-                ) : (
-                  <CopyOutlined />
-                )
-              }
-              onClick={() => copyToClipboard(log.result!, `result-${log.id}`)}
-            />
-          </div>
-          <pre className="p-3 bg-gray-900 dark:bg-gray-950 rounded-xl text-xs text-gray-100 font-mono overflow-x-auto max-h-64 whitespace-pre-wrap break-all">
-            {log.result}
-          </pre>
-        </div>
-      )}
-    </div>
-  );
-
   return (
     <PageLayout>
-      {/* Header */}
-      <div className="flex shrink-0 items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
-            {t('logs.title')}
-          </h1>
-          <p className="text-sm text-gray-500 mt-1">{t('logs.subtitle')}</p>
+      <div className="flex min-h-0 flex-1 flex-col gap-5">
+        <div className="flex shrink-0 flex-col gap-4">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between lg:gap-6">
+            <div className="max-w-2xl min-w-0">
+              <h1 className="gradient-text text-2xl font-bold tracking-tight sm:text-3xl">
+                {t('logs.title')}
+              </h1>
+              <p className="mt-1.5 text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+                {t('logs.subtitle')}
+              </p>
+            </div>
+            <div className="flex w-full min-w-0 flex-col gap-2.5 sm:flex-row sm:items-center sm:gap-3 lg:max-w-[min(100%,32rem)] lg:shrink-0 xl:max-w-[36rem]">
+              <Input.Search
+                allowClear
+                placeholder={t('logs.searchPlaceholder')}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="min-w-0 sm:flex-1"
+              />
+              <div className="flex shrink-0 items-center justify-start gap-3 sm:ms-auto sm:justify-end">
+                <label className="mb-0 flex cursor-pointer items-center gap-2 text-sm leading-none text-slate-600 dark:text-slate-300">
+                  <Switch checked={autoRefresh} onChange={setAutoRefresh} size="small" />
+                  <span className="whitespace-nowrap">{t('logs.autoRefresh')}</span>
+                </label>
+                <Button
+                  type="primary"
+                  icon={<ReloadOutlined />}
+                  loading={isFetching}
+                  onClick={() => refetch()}
+                  disabled={isLoading}
+                  className="shadow-sm"
+                >
+                  {t('common.refresh')}
+                </Button>
+              </div>
+            </div>
+          </div>
         </div>
-        <Button icon={<ReloadOutlined />} onClick={() => refetch()}>
-          {t('common.refresh')}
-        </Button>
-      </div>
 
-      {/* Stats */}
-      {filteredLogs && filteredLogs.length > 0 && (
-        <div className="grid shrink-0 grid-cols-3 gap-4">
-          <Card size="small">
-            <Statistic title={t('logs.totalCalls')} value={filteredLogs.length} />
-          </Card>
-          <Card size="small">
-            <Statistic
-              title={t('logs.successRate')}
-              value={
-                filteredLogs.length > 0
-                  ? Math.round((successCount / filteredLogs.length) * 100)
-                  : 0
+        {error && (
+          <Alert
+            type="error"
+            showIcon
+            className="shrink-0"
+            message={t('logs.loadError', { error: formatQueryError(error) })}
+          />
+        )}
+
+        <div className="min-h-0 flex-1 flex flex-col">
+          {isLoading && !data && (
+            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 py-20 text-slate-500 dark:border-slate-600">
+              <FileText className="mb-2 h-10 w-10 opacity-40" />
+              {t('common.loading')}
+            </div>
+          )}
+
+          {!isLoading && displayChunks.length === 0 && !error && (
+            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 py-20 text-slate-500 dark:border-slate-600">
+              <FileText className="mb-2 h-10 w-10 opacity-40" />
+              {t('logs.empty')}
+            </div>
+          )}
+
+          {displayChunks.length === 1 && (
+            <LogPanel
+              label={
+                displayChunks[0]!.source === 'nanobot'
+                  ? t('logs.sourceNanobot')
+                  : t('logs.sourceConsole')
               }
-              suffix="%"
-              styles={{ content: { color: '#16a34a' } }}
+              chunk={displayChunks[0]!}
+              copied={copied === chunkKey(displayChunks[0]!)}
+              onCopy={() => copyText(chunkKey(displayChunks[0]!), displayChunks[0]!.text || '')}
+              t={t}
+              variant="stacked"
             />
-          </Card>
-          <Card size="small">
-            <Statistic title={t('logs.avgDuration')} value={formatDuration(avgDuration)} />
-          </Card>
+          )}
+
+          {displayChunks.length > 1 && (
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-sm dark:border-slate-600/60 dark:bg-slate-900/30 dark:shadow-none">
+              <Tabs
+                activeKey={activeLogTab}
+                onChange={(key) => setActiveLogTab(key as 'nanobot' | 'console')}
+                type="line"
+                size="middle"
+                className="logs-runtime-tabs text-slate-800 dark:text-slate-100 [&_.ant-tabs-nav::before]:border-slate-200/80 dark:[&_.ant-tabs-nav::before]:border-slate-600/50"
+                items={displayChunks.map((chunk) => {
+                  const k = chunkKey(chunk);
+                  const label =
+                    chunk.source === 'nanobot' ? t('logs.sourceNanobot') : t('logs.sourceConsole');
+                  return {
+                    key: k,
+                    label: (
+                      <span className="inline-flex max-w-[200px] items-center gap-1.5 sm:max-w-none">
+                        <Terminal className="h-3.5 w-3.5 opacity-60" aria-hidden />
+                        <span className="truncate">{label}</span>
+                      </span>
+                    ),
+                    children: (
+                      <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
+                        <LogPanel
+                          label={label}
+                          chunk={chunk}
+                          copied={copied === k}
+                          onCopy={() => copyText(k, chunk.text || '')}
+                          t={t}
+                          variant="tab"
+                        />
+                      </div>
+                    ),
+                  };
+                })}
+              />
+            </div>
+          )}
         </div>
-      )}
-
-      {/* Filters — same shell as Activity toolbar (see `.activity-filter-bar` in index.css) */}
-      <div className="activity-filter-bar shrink-0">
-        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4 sm:gap-y-2">
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3 sm:flex-[1_1_280px]">
-            <Input.Search
-              placeholder={t('logs.searchPlaceholder')}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onSearch={setSearchQuery}
-              allowClear
-              className="w-full min-w-[200px] max-w-[min(100%,280px)] sm:w-[240px]"
-            />
-
-            <Select
-              value={toolFilter || undefined}
-              placeholder={t('logs.allTools')}
-              allowClear
-              onChange={(val) => setToolFilter(val || '')}
-              className="w-full min-w-[160px] sm:w-[180px]"
-              options={[
-                ...uniqueTools.map((tool) => ({ value: tool, label: tool })),
-              ]}
-            />
-          </div>
-
-          <div className="flex min-w-0 flex-wrap items-center gap-3 border-t border-slate-200/90 pt-3 dark:border-slate-600/70 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0">
-            <Segmented
-              className="activity-type-segmented min-w-max"
-              value={statusFilter || 'all'}
-              onChange={(val) => setStatusFilter(val === 'all' ? '' : String(val))}
-              options={[
-                { value: 'all', label: t('logs.segAll') },
-                {
-                  value: 'success',
-                  label: (
-                    <span className="text-green-600 dark:text-green-400">
-                      {t('logs.segSuccess', { count: successCount })}
-                    </span>
-                  ),
-                },
-                {
-                  value: 'error',
-                  label: (
-                    <span className="text-red-600 dark:text-red-400">
-                      {t('logs.segError', { count: errorCount })}
-                    </span>
-                  ),
-                },
-              ]}
-            />
-
-            <Select
-              value={limit}
-              onChange={setLimit}
-              className="w-full min-w-[112px] sm:w-[120px]"
-              options={[
-                { value: 50, label: t('logs.lastN', { count: 50 }) },
-                { value: 100, label: t('logs.lastN', { count: 100 }) },
-                { value: 200, label: t('logs.lastN', { count: 200 }) },
-                { value: 500, label: t('logs.lastN', { count: 500 }) },
-              ]}
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Table — 见 index.css `.logs-page-table-host`（scroll.y 只设 max-height，空表需 min-height 撑满） */}
-      <div
-        ref={tableAreaRef}
-        className="logs-page-table-host min-h-0 min-w-0 flex flex-1 flex-col"
-        style={{ ['--logs-table-body-y' as string]: `${tableScrollY}px` }}
-      >
-        <Table<ToolCallLog>
-          dataSource={filteredLogs}
-          columns={columns}
-          rowKey="id"
-          loading={isLoading}
-          scroll={{ y: tableScrollY }}
-          expandable={{
-            expandedRowRender,
-            expandRowByClick: true,
-          }}
-          locale={{
-            emptyText: error ? (
-              <div className="text-red-500">{t('logs.loadError', { error: formatQueryError(error) })}</div>
-            ) : (
-              <Space orientation="vertical" className="py-6">
-                <CodeOutlined className="text-4xl text-gray-300" />
-                <span>{t('logs.empty')}</span>
-                {(toolFilter || statusFilter || searchQuery) && (
-                  <Button
-                    type="link"
-                    size="small"
-                    onClick={() => {
-                      setToolFilter('');
-                      setStatusFilter('');
-                      setSearchQuery('');
-                    }}
-                  >
-                    {t('logs.clearFilters')}
-                  </Button>
-                )}
-              </Space>
-            ),
-          }}
-          pagination={{
-            pageSize: 20,
-            showSizeChanger: true,
-            showTotal: (total) => `${total} logs`,
-            className: 'shrink-0',
-          }}
-          size="middle"
-        />
       </div>
     </PageLayout>
   );

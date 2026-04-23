@@ -11,6 +11,7 @@ import uvicorn
 
 from console.server.app import create_app
 from console.server.config import get_settings
+from console.server.runtime_log_setup import setup_console_runtime_file_logging
 
 
 def _web_root() -> Path:
@@ -44,6 +45,7 @@ def _run_npm_web(npm_script: str) -> None:
 def _run_server() -> None:
     """Run the FastAPI server via uvicorn."""
     settings = get_settings()
+    setup_console_runtime_file_logging(app_log_level=settings.log_level)
     app = create_app(settings)
     uvicorn.run(
         app,

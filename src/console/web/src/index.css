@@ -214,6 +214,42 @@ body {
   display: none;
 }
 
+/* Runtime logs: tab content fills flex area below tab bar */
+.logs-runtime-tabs.ant-tabs {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.logs-runtime-tabs .ant-tabs-nav {
+  flex-shrink: 0;
+}
+
+.logs-runtime-tabs .ant-tabs-content-holder {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.logs-runtime-tabs .ant-tabs-content,
+.logs-runtime-tabs .ant-tabs-content-top {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* Only the visible pane: `display:none` on `.ant-tabs-tabpane-hidden` must not be overridden */
+.logs-runtime-tabs .ant-tabs-tabpane:not(.ant-tabs-tabpane-hidden) {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
 /* Segmented 高度对齐 Input.Search（Input 高 36px，Segmented 默认略低） */
 .ant-segmented {
   height: 36px;
