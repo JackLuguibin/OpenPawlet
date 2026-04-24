@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store';
@@ -75,6 +75,9 @@ const DASHBOARD_STAT_CARD_CLASS =
   'h-full min-w-0 [&_.ant-card-body]:flex [&_.ant-card-body]:flex-col [&_.ant-card-body]:h-full ' +
   '[&_.ant-card-body]:min-w-0 [&_.ant-card-body]:py-2';
 
+/** Pie legend layout: when the charts area (not window) is this narrow, use horizontal legend. */
+const CHARTS_AREA_NARROW_PX = 520;
+
 function formatUptime(seconds: number): string {
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
@@ -85,9 +88,8 @@ function formatUptime(seconds: number): string {
 export default function Dashboard() {
   const { t } = useTranslation();
   const agentTz = useAgentTimeZone();
-  const [chartLayoutNarrow, setChartLayoutNarrow] = useState(() =>
-    typeof window !== 'undefined' ? window.matchMedia('(max-width: 1023px)').matches : false,
-  );
+  const chartsAreaRef = useRef<HTMLDivElement>(null);
+  const [chartLayoutNarrow, setChartLayoutNarrow] = useState(false);
   const queryClient = useQueryClient();
   const { setStatus, setChannels, setMCPServers, status, addToast, currentBotId, theme } =
     useAppStore();
@@ -437,12 +439,20 @@ export default function Dashboard() {
     }
   }, [data, setStatus, setChannels, setMCPServers]);
 
-  useEffect(() => {
-    const mq = window.matchMedia('(max-width: 1023px)');
-    const apply = () => setChartLayoutNarrow(mq.matches);
-    apply();
-    mq.addEventListener('change', apply);
-    return () => mq.removeEventListener('change', apply);
+  // Match pie legend to the actual charts row width (sidebar / split panes can be narrower than the window).
+  useLayoutEffect(() => {
+    const el = chartsAreaRef.current;
+    if (!el) return;
+    const apply = (width: number) => {
+      setChartLayoutNarrow(width < CHARTS_AREA_NARROW_PX);
+    };
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect?.width;
+      if (w != null && Number.isFinite(w)) apply(w);
+    });
+    ro.observe(el);
+    apply(el.getBoundingClientRect().width);
+    return () => ro.disconnect();
   }, []);
 
   const stopMutation = useMutation({
@@ -686,8 +696,12 @@ export default function Dashboard() {
       )}
       </div>
 
-      {/* 每日 Token + 模型占比：在锁定主滚动后由 flex-1 占满视口剩余高度 */}
-      <div className="grid min-h-0 w-full min-w-0 flex-1 grid-cols-1 gap-4 auto-rows-[minmax(280px,auto)] lg:auto-rows-fr lg:grid-cols-2 lg:grid-rows-1">
+      {/* 每日 Token + 模型占比：在锁定主滚动后由 flex-1 占满视口；区域过高时在内部滚动，避免饼图行被父级 overflow 裁切 */}
+      <div
+        ref={chartsAreaRef}
+        className="min-h-0 w-full min-w-0 flex-1 overflow-y-auto overflow-x-hidden"
+      >
+      <div className="grid min-h-0 w-full min-w-0 grid-cols-1 gap-4 auto-rows-[minmax(200px,auto)] lg:min-h-full lg:grid-cols-2 lg:grid-rows-1 lg:auto-rows-[minmax(0,1fr)]">
         <Card
           title={
             <span className="flex items-center gap-2">
@@ -724,15 +738,16 @@ export default function Dashboard() {
 
         <Card
           size="small"
-          className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden [&_.ant-card-head]:shrink-0 [&_.ant-card-body]:flex [&_.ant-card-body]:min-h-0 [&_.ant-card-body]:flex-1 [&_.ant-card-body]:flex-col [&_.ant-card-body]:overflow-hidden"
+          className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden [&_.ant-card-head]:shrink-0 [&_.ant-card-body]:flex [&_.ant-card-body]:min-h-0 [&_.ant-card-body]:flex-1 [&_.ant-card-body]:flex-col [&_.ant-card-body]:overflow-x-hidden [&_.ant-card-body]:overflow-y-hidden"
         >
-          <div className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden">
+          <div className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col">
             <ModelPieChart
               option={modelPieChartOption}
               style={{ height: '100%', width: '100%' }}
             />
           </div>
         </Card>
+      </div>
       </div>
       </div>
 
