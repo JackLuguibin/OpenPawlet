@@ -295,13 +295,15 @@ export default function Dashboard() {
         },
       },
       legend: {
+        bottom: 0,
+        left: 'center',
         textStyle: { color: legendTextColor },
       },
       grid: {
-        left: 16,
-        right: 12,
-        top: 40,
-        bottom: 56,
+        left: 8,
+        right: 8,
+        top: 8,
+        bottom: chartLayoutNarrow ? 52 : 40,
         containLabel: true,
       },
       xAxis: {
@@ -363,7 +365,7 @@ export default function Dashboard() {
         },
       ],
     };
-  }, [usageHistory, t, isDarkUi]);
+  }, [usageHistory, t, isDarkUi, chartLayoutNarrow]);
 
   /** Compact sparkline for model card: daily total tokens (ECharts, matches main charts) */
   const dailyTokenSparklineOption = useMemo((): EChartsOption => {
@@ -701,7 +703,7 @@ export default function Dashboard() {
         ref={chartsAreaRef}
         className="min-h-0 w-full min-w-0 flex-1 overflow-y-auto overflow-x-hidden"
       >
-      <div className="grid min-h-0 w-full min-w-0 grid-cols-1 gap-4 auto-rows-[minmax(200px,auto)] lg:min-h-full lg:grid-cols-2 lg:grid-rows-1 lg:auto-rows-[minmax(0,1fr)]">
+      <div className="grid min-h-0 w-full min-w-0 grid-cols-1 gap-4 auto-rows-[minmax(280px,auto)] lg:min-h-full lg:grid-cols-2 lg:grid-rows-1 lg:auto-rows-[minmax(280px,1fr)]">
         <Card
           title={
             <span className="flex items-center gap-2">
@@ -720,9 +722,9 @@ export default function Dashboard() {
               <Text type="secondary" className="text-xs shrink-0 mb-1">
                 {t('dashboard.usageDailyByCalendar', { tz: agentTz })}
               </Text>
-              <div className="min-h-0 w-full min-w-0 flex-1 overflow-visible pb-1">
+              <div className="min-h-[260px] w-full min-w-0 flex-1 overflow-visible pb-1 lg:min-h-[280px]">
                 <EChartsWithResize
-                  style={{ width: '100%', height: '100%' }}
+                  style={{ width: '100%', height: '100%', minHeight: 260 }}
                   option={dailyTokenStackBarOption}
                 />
               </div>
