@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from loguru import logger
-from nanobot.config.loader import _migrate_config
+from nanobot.config.loader import migrate_config
 from nanobot.config.schema import Config
 from pydantic import ValidationError
 
@@ -15,15 +15,26 @@ CONFIG_ROOT_KEYS = frozenset(
     {"agents", "channels", "providers", "api", "gateway", "tools"}
 )
 
+# Shared OpenAPI description for the optional ``bot_id`` query parameter.
+# The console is currently single-instance (one ``~/.nanobot/config.json``);
+# ``bot_id`` is kept as a parameter on every bot-scoped route so the REST
+# surface is stable once per-bot storage lands, but it is **ignored today**.
+BOT_ID_DESCRIPTION = (
+    "Reserved for future multi-instance support. Currently ignored; the "
+    "console always operates against the single nanobot config under "
+    "``~/.nanobot/config.json``."
+)
+
 
 def resolve_config_path(bot_id: str | None) -> Path:
     """Return ``config.json`` path for the given bot.
 
-    Per-bot paths are reserved; currently all requests use the default nanobot
-    config file (``~/.nanobot/config.json``).
+    Per-bot paths are **reserved** for a future multi-instance storage layout;
+    today the console is single-instance and always resolves to
+    :func:`nanobot.config.loader.get_config_path` (``~/.nanobot/config.json``).
 
     Args:
-        bot_id: Optional bot identifier (ignored until multi-instance storage exists).
+        bot_id: Optional bot identifier (ignored; see ``BOT_ID_DESCRIPTION``).
 
     Returns:
         Absolute path to the JSON config file.
@@ -61,7 +72,7 @@ def load_raw_config(path: Path) -> dict[str, Any]:
         return {}
     if not isinstance(data, dict):
         return {}
-    return _migrate_config(data)
+    return migrate_config(data)
 
 
 def merge_config_section(

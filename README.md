@@ -6,7 +6,7 @@
 
 OpenPawlet (PyPI package name `open-pawlet`) is a **web console** for the **[nanobot](https://github.com/JackLuguibin/nanobot)** ecosystem. It exposes an HTTP API and a browser UI that works alongside the `nanobot gateway` over WebSocket so you can manage bot-related resources locally or in deployment.
 
-**Stack:** FastAPI backend (consistent error envelope and OpenAPI; docs can be disabled in production via settings) and a Vite frontend under `src/console/web` (HMR in development, production build supported).
+**Stack:** FastAPI backend (consistent error envelope and OpenAPI; Swagger/ReDoc/`openapi.json` are served by default at `/docs`, `/redoc`, `/openapi.json` — set each `*_url` to empty to hide) and a Vite frontend under `src/console/web` (HMR in development, production build supported).
 
 ## Feature areas
 
@@ -86,43 +86,74 @@ cd src/console/web && npm install && cd ../../..
 
 ### 3. Run
 
-**API only** (defaults to `0.0.0.0:8000`; tune with `NANOBOT_SERVER_*` env vars, see `ServerSettings`):
+> `console` and `open-pawlet` are the **same command** (both entry points map
+> to `console.cli:main`). Use whichever name you prefer; the examples below use
+> the shorter `console` alias.
 
-```bash
-console server
-```
+#### Single-command production (recommended for local use)
 
-**Frontend dev**:
-
-```bash
-console web dev
-```
-
-**All-in-one** (requires `honcho` and a working `nanobot` CLI for the gateway):
-
-```bash
-honcho start
-```
-
-The default `Procfile` runs: `nanobot gateway`, `console server`, and `console web dev`.
-
-**Single-command production** (API + SPA on one port, nanobot gateway spawned automatically):
+API + SPA on one port, nanobot gateway spawned automatically:
 
 ```bash
 npm --prefix src/console/web run build
-open-pawlet start   # binds 0.0.0.0:8000 by default; open http://localhost:8000
+console start   # open http://localhost:8000
 ```
 
-`open-pawlet start` runs the FastAPI server, mounts the prebuilt SPA from
+`console start` runs the FastAPI server, mounts the prebuilt SPA from
 `src/console/web/dist` (so the UI and `/api/v1/*` share a single origin and
 port), **and spawns `nanobot gateway` as a child process** so the console can
 immediately talk to nanobot over WebSocket. On first launch it also runs
 `nanobot onboard` if `~/.nanobot/config.json` is missing. Pressing Ctrl+C
 stops both processes together.
 
-Pass `--no-gateway` when the gateway is managed externally (honcho, systemd,
-docker-compose, …) and you only want the API + SPA in this command. Run
-`npm run build` (or `console web build`) whenever the frontend changes.
+Flags:
+
+- `--no-gateway` — the gateway is managed externally (honcho, systemd,
+  docker-compose, …); this command only serves API + SPA.
+- `--strict-gateway` — fail fast (exit non-zero) if the gateway subprocess
+  cannot be started. By default the console logs a warning and keeps running
+  in degraded mode (WebSocket features will be unavailable until a gateway
+  comes up).
+
+Re-run `npm run build` (or `console web build`) after frontend changes.
+
+#### Separated dev processes (hot reload)
+
+Run the backend and the Vite dev server in two terminals:
+
+```bash
+console server        # FastAPI on http://localhost:8000
+console web dev       # Vite on   http://localhost:3000  (open this for the UI)
+```
+
+Open the **Vite URL** (`http://localhost:3000`); Vite proxies `/api/*` to
+`:8000` and `/nanobot-ws/*` to the gateway on `:8765`. You may still want
+`nanobot gateway` running separately for WebSocket-based features.
+
+#### All-in-one via Honcho (three processes)
+
+```bash
+honcho start
+```
+
+The default `Procfile` runs three processes: `gateway` (bootstraps
+`~/.nanobot/config.json` via `scripts/ensure-nanobot-onboard.sh` then runs
+`nanobot gateway`), `server` (`console server`), and `web` (`console web
+dev`). Same URLs as the separated-dev setup above.
+
+#### Configuration
+
+Settings are resolved with the following **priority (highest first)**:
+
+1. Environment variables prefixed with `NANOBOT_SERVER_` (e.g.
+   `NANOBOT_SERVER_PORT=9000`)
+2. Optional `.env` file in the working directory
+3. `~/.nanobot/nanobot_web.json` under the top-level `server` key
+4. Built-in defaults (see `console.server.config.schema.ServerSettings`)
+
+The JSON file is **opt-in**: it is no longer written automatically on first
+boot. Create a starter file with `console init-config` when you want to
+persist non-default values to disk.
 
 ## Version history (timeline)
 

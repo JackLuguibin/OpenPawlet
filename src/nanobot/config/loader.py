@@ -44,7 +44,7 @@ def load_config(config_path: Path | None = None) -> Config:
         try:
             with open(path, encoding="utf-8") as f:
                 data = json.load(f)
-            data = _migrate_config(data)
+            data = migrate_config(data)
             config = Config.model_validate(data)
         except (json.JSONDecodeError, ValueError, pydantic.ValidationError) as e:
             logger.warning(f"Failed to load config from {path}: {e}")
@@ -110,8 +110,13 @@ def _env_replace(match: re.Match[str]) -> str:
     return value
 
 
-def _migrate_config(data: dict) -> dict:
-    """Migrate old config formats to current."""
+def migrate_config(data: dict) -> dict:
+    """Migrate old config formats to current.
+
+    This is a **public helper** so the console layer (and any other consumer)
+    can apply the same migrations when they read ``config.json`` directly,
+    without having to reach into a private symbol.
+    """
     # Move tools.exec.restrictToWorkspace → tools.restrictToWorkspace
     tools = data.get("tools", {})
     exec_cfg = tools.get("exec", {})
@@ -133,3 +138,9 @@ def _migrate_config(data: dict) -> dict:
             tools.pop("mySet", None)
 
     return data
+
+
+# Backwards-compatible private alias. Older code paths imported
+# ``_migrate_config`` directly; keep the symbol working while new code should
+# prefer :func:`migrate_config`.
+_migrate_config = migrate_config

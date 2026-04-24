@@ -126,6 +126,15 @@ def _mount_spa(app: FastAPI) -> bool:
     return True
 
 
+def _ws_close_label(exc: BaseException) -> str:
+    """Compact human-readable tag for a websockets ``ConnectionClosed``."""
+    code = getattr(exc, "code", None)
+    reason = getattr(exc, "reason", "") or ""
+    if code is None:
+        return type(exc).__name__
+    return f"code={code} reason={reason!r}" if reason else f"code={code}"
+
+
 async def _nanobot_ws_proxy(
     websocket: WebSocket,
     rest_path: str,
@@ -146,9 +155,18 @@ async def _nanobot_ws_proxy(
     target_path = f"/{rest_path}" if rest_path else "/"
     target_url = f"ws://{gateway_host}:{gateway_port}{target_path}"
     if query_string:
+        # Intentionally not logging the query string: it can carry client
+        # identifiers or bot-internal state (e.g. ?client_id=...&auth=...).
         target_url = f"{target_url}?{query_string}"
 
-    logger.debug("[nanobot-ws-proxy] {} → {}", websocket.client, target_url)
+    client_addr = websocket.client
+    logger.debug(
+        "[nanobot-ws-proxy] open client={} → {}:{}{}",
+        client_addr,
+        gateway_host,
+        gateway_port,
+        target_path,
+    )
 
     try:
         async with websockets.connect(target_url) as remote_ws:
@@ -158,6 +176,10 @@ async def _nanobot_ws_proxy(
                     while True:
                         frame = await websocket.receive()
                         if frame.get("type") == "websocket.disconnect":
+                            logger.debug(
+                                "[nanobot-ws-proxy] client {} closed the connection",
+                                client_addr,
+                            )
                             break
                         text = frame.get("text")
                         data = frame.get("bytes")
@@ -165,8 +187,20 @@ async def _nanobot_ws_proxy(
                             await remote_ws.send(text)
                         elif data is not None:
                             await remote_ws.send(data)
-                except Exception:
-                    pass
+                except websockets.exceptions.ConnectionClosed as exc:
+                    logger.debug(
+                        "[nanobot-ws-proxy] upstream closed while reading from client "
+                        "{}: {}",
+                        client_addr,
+                        _ws_close_label(exc),
+                    )
+                except Exception as exc:
+                    # Log but swallow: the outer task will close both sides.
+                    logger.warning(
+                        "[nanobot-ws-proxy] client→gateway error (client={}): {}",
+                        client_addr,
+                        exc,
+                    )
                 finally:
                     await remote_ws.close()
 
@@ -177,15 +211,27 @@ async def _nanobot_ws_proxy(
                             await websocket.send_text(message)
                         else:
                             await websocket.send_bytes(message)
-                except websockets.exceptions.ConnectionClosed:
-                    pass
-                except Exception:
-                    pass
+                except websockets.exceptions.ConnectionClosed as exc:
+                    logger.debug(
+                        "[nanobot-ws-proxy] gateway closed (client={}): {}",
+                        client_addr,
+                        _ws_close_label(exc),
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "[nanobot-ws-proxy] gateway→client error (client={}): {}",
+                        client_addr,
+                        exc,
+                    )
                 finally:
                     try:
                         await websocket.close()
-                    except Exception:
-                        pass
+                    except Exception as close_exc:
+                        logger.debug(
+                            "[nanobot-ws-proxy] client close failed (client={}): {}",
+                            client_addr,
+                            close_exc,
+                        )
 
             tasks = [
                 asyncio.create_task(_client_to_remote()),
@@ -196,25 +242,48 @@ async def _nanobot_ws_proxy(
                 task.cancel()
                 try:
                     await task
-                except (asyncio.CancelledError, Exception):
+                except asyncio.CancelledError:
                     pass
+                except Exception as exc:  # noqa: BLE001 - already shutting down
+                    logger.debug(
+                        "[nanobot-ws-proxy] pending task ended with {} (client={})",
+                        exc,
+                        client_addr,
+                    )
 
     except OSError as exc:
         logger.warning(
-            "[nanobot-ws-proxy] Cannot reach gateway at {}: {}",
-            target_url,
+            "[nanobot-ws-proxy] cannot reach gateway at ws://{}:{}{} "
+            "(client={}): {}. Is `nanobot gateway` running?",
+            gateway_host,
+            gateway_port,
+            target_path,
+            client_addr,
             exc,
         )
         try:
             await websocket.close(code=1014)
-        except Exception:
-            pass
+        except Exception as close_exc:
+            logger.debug(
+                "[nanobot-ws-proxy] client close after OSError failed: {}",
+                close_exc,
+            )
     except Exception as exc:
-        logger.warning("[nanobot-ws-proxy] Unexpected error: {}", exc)
+        logger.exception(
+            "[nanobot-ws-proxy] unexpected proxy error (client={}, target={}:{}{}): {}",
+            client_addr,
+            gateway_host,
+            gateway_port,
+            target_path,
+            exc,
+        )
         try:
             await websocket.close(code=1011)
-        except Exception:
-            pass
+        except Exception as close_exc:
+            logger.debug(
+                "[nanobot-ws-proxy] client close after error failed: {}",
+                close_exc,
+            )
 
 
 def _mount_nanobot_ws_proxy(app: FastAPI, gateway_host: str, gateway_port: int) -> None:

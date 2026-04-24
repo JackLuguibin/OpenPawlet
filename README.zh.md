@@ -6,8 +6,8 @@ OpenPawlet（PyPI 包名 `open-pawlet`）是围绕 **[nanobot](https://github.co
 
 ## 功能概览
 
-- **后端**：基于 FastAPI 的 OpenPawlet 控制台服务，统一错误响应与 OpenAPI 文档（生产环境可按配置隐藏）。
-- **前端**：`web` 目录下的 Vite 应用，支持开发态热更新与生产构建。
+- **后端**：基于 FastAPI 的 OpenPawlet 控制台服务，统一错误响应与 OpenAPI 文档；默认在 `/docs`、`/redoc`、`/openapi.json` 暴露，将对应配置项置空即可隐藏。
+- **前端**：`src/console/web` 目录下的 Vite 应用，支持开发态热更新与生产构建。
 - **典型场景**：与 `nanobot gateway` 一起运行，通过控制台观察状态、调试会话、管理 Bot 相关资源。
 
 ## 界面预览
@@ -66,47 +66,66 @@ cd src/console/web && npm install && cd ../../..
 
 ### 3. 运行方式
 
-**仅启动 API 服务**（默认监听 `0.0.0.0:8000`，可用环境变量 `NANOBOT_SERVER_*` 调整，见 `ServerSettings`）：
+> `console` 与 `open-pawlet` 是**同一个命令**（都映射到 `console.cli:main`），
+> 二者任选其一，以下示例使用更短的 `console` 作为别名。
+
+#### 单命令生产模式（推荐本机使用）
+
+API 与 SPA 共用同一端口，并自动派生 nanobot gateway：
 
 ```bash
-console server
+npm --prefix src/console/web run build
+console start   # 打开 http://localhost:8000
 ```
 
-**前端开发**：
+`console start` 会启动 FastAPI，并从 `src/console/web/dist` 挂载已构建的 SPA，
+使前端页面与 `/api/v1/*` 共用同一端口；**同时以子进程方式拉起 `nanobot gateway`**，
+使控制台可立即通过 WebSocket 与 nanobot 协同。首次运行若缺少 `~/.nanobot/config.json`
+会自动执行 `nanobot onboard`。按 Ctrl+C 可一并停止两个进程。
+
+可选参数：
+
+- `--no-gateway`：网关由外部进程托管（honcho、systemd、docker-compose 等）时使用，
+  本命令只负责 API + SPA。
+- `--strict-gateway`：当网关子进程无法启动时直接失败退出（非零返回码）。默认行为是
+  记录警告后继续运行（降级模式：WebSocket 相关能力在网关恢复前不可用）。
+
+前端有更新时先执行 `npm run build`（或 `console web build`）再启动即可。
+
+#### 分进程开发模式（热更新）
+
+在两个终端分别运行后端与 Vite 开发服：
 
 ```bash
-console web dev
+console server        # FastAPI 监听 http://localhost:8000
+console web dev       # Vite    监听 http://localhost:3000  （请打开该地址访问 UI）
 ```
 
-**一键多进程**（需已安装 `honcho`，且本机可用 `nanobot` 命令启动网关）：
+请在浏览器中访问 **Vite 地址** `http://localhost:3000`；Vite 会把 `/api/*` 代理到
+`:8000`，把 `/nanobot-ws/*` 代理到网关的 `:8765`。通常还需要单独启动
+`nanobot gateway` 才能联调基于 WebSocket 的能力。
+
+#### Honcho 一键三进程
 
 ```bash
 honcho start
 ```
 
-`Procfile` 中默认包含：`nanobot gateway`、`console server`、`console web dev`。
+`Procfile` 中默认包含三条进程：`gateway`（先通过 `scripts/ensure-nanobot-onboard.sh`
+自举 `~/.nanobot/config.json`，再运行 `nanobot gateway`）、`server`（即 `console server`）、
+`web`（即 `console web dev`）。访问地址与上面的「分进程开发模式」一致。
 
-**生产单命令**（API 与 SPA 同一端口，并自动派生 nanobot gateway）：
+#### 配置优先级
 
-```bash
-npm --prefix src/console/web run build
-open-pawlet start   # 默认监听 0.0.0.0:8000，访问 http://localhost:8000
-```
+控制台的设置按以下**优先级自高向低**解析：
 
-`open-pawlet start` 会启动 FastAPI 服务，并从 `src/console/web/dist` 挂载已构建的
-SPA，使前端页面和 `/api/v1/*` 共用同一端口与来源；**同时以子进程方式拉起
-`nanobot gateway`**，控制台无需额外命令即可通过 WebSocket 与 nanobot 协同。
-首次运行若缺少 `~/.nanobot/config.json` 会自动执行 `nanobot onboard` 完成初始化，
-按 Ctrl+C 可一并停止两个进程。
+1. 前缀为 `NANOBOT_SERVER_` 的环境变量（例如 `NANOBOT_SERVER_PORT=9000`）
+2. 当前工作目录下可选的 `.env` 文件
+3. `~/.nanobot/nanobot_web.json` 顶层 `server` 段
+4. 内置默认值（见 `console.server.config.schema.ServerSettings`）
 
-如果网关已由外部进程管理（honcho、systemd、docker-compose 等），可附加
-`--no-gateway` 参数只启动 API + SPA：
-
-```bash
-open-pawlet start --no-gateway
-```
-
-前端有更新时先执行 `npm run build`（或 `console web build`）再启动即可。
+JSON 文件已改为**可选**：首次启动不会再自动写入默认值。如需把自定义值持久化到磁盘，
+可执行 `console init-config` 生成一份起始文件。
 
 ## 版本历史（时间线）
 

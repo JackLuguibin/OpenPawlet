@@ -1,4 +1,4 @@
-"""CLI for the OpenPawlet console: backend server and web UI (dev / build)."""
+"""CLI for the OpenPawlet console: backend server, web UI, and init helpers."""
 
 from __future__ import annotations
 
@@ -14,7 +14,11 @@ import uvicorn
 from loguru import logger
 
 from console.server.app import create_app
-from console.server.config import get_settings
+from console.server.config import (
+    find_config_file,
+    get_settings,
+    write_default_config,
+)
 from console.server.runtime_log_setup import setup_console_runtime_file_logging
 
 
@@ -129,13 +133,17 @@ def _run_server() -> None:
     )
 
 
-def _run_start(*, with_gateway: bool = True) -> None:
+def _run_start(*, with_gateway: bool = True, strict_gateway: bool = False) -> None:
     """Run FastAPI with the prebuilt SPA mounted, plus an optional gateway subprocess.
 
-    By default this also spawns ``nanobot gateway`` so a single ``open-pawlet
-    start`` invocation brings up everything the console needs. Pass
-    ``with_gateway=False`` (via ``--no-gateway``) to skip the subprocess when
-    the gateway is managed externally (honcho, systemd, docker-compose, …).
+    Args:
+        with_gateway: When True (default), spawn ``nanobot gateway`` as a
+            managed child process so a single invocation brings up everything
+            the console needs.
+        strict_gateway: When True, abort the whole command (non-zero exit) if
+            the gateway cannot be started. Default is a warning + degraded
+            mode so the user can still load the UI and fix the gateway
+            separately.
     """
     settings = get_settings()
     setup_console_runtime_file_logging(app_log_level=settings.log_level)
@@ -146,11 +154,23 @@ def _run_start(*, with_gateway: bool = True) -> None:
         try:
             gateway_proc = _spawn_nanobot_gateway()
         except FileNotFoundError as exc:
-            logger.error("[gateway] {}", exc)
+            if strict_gateway:
+                raise SystemExit(f"[gateway] {exc}") from exc
+            logger.warning(
+                "[gateway] {}\n[gateway] Continuing without a managed gateway; "
+                "WebSocket features will be unavailable until one is running.",
+                exc,
+            )
         except SystemExit:
             raise
-        except Exception:  # noqa: BLE001 - don't block the console on gateway failures
-            logger.exception("[gateway] Could not start nanobot gateway subprocess")
+        except Exception as exc:  # noqa: BLE001 - broad on purpose for degraded mode
+            if strict_gateway:
+                raise
+            logger.exception(
+                "[gateway] Could not start nanobot gateway subprocess; continuing "
+                "in degraded mode (pass --strict-gateway to fail fast): {}",
+                exc,
+            )
         else:
             atexit.register(_terminate_subprocess, gateway_proc)
 
@@ -167,10 +187,34 @@ def _run_start(*, with_gateway: bool = True) -> None:
         _terminate_subprocess(gateway_proc)
 
 
+def _run_gateway_only() -> None:
+    """Bootstrap ``~/.nanobot/config.json`` then exec ``nanobot gateway``.
+
+    Used by the ``Procfile`` so honcho can launch the gateway without
+    shelling out to a separate bash helper. The current process is replaced
+    by ``nanobot gateway`` so signals and exit codes propagate cleanly.
+    """
+    nanobot_bin = _nanobot_executable()
+    _ensure_nanobot_onboarded(nanobot_bin)
+    logger.info("[gateway] Exec into nanobot gateway: {}", nanobot_bin)
+    os.execv(nanobot_bin, [nanobot_bin, "gateway"])
+
+
+def _run_init_config(force: bool = False) -> None:
+    """Write a default ``nanobot_web.json`` next to the nanobot config file."""
+    path = find_config_file()
+    if path.exists() and not force:
+        raise SystemExit(
+            f"Config already exists at {path}. Pass --force to overwrite."
+        )
+    written = write_default_config(path)
+    print(f"Wrote default server config to {written}")
+
+
 def main() -> None:
     """Parse CLI arguments and dispatch to subcommands."""
     parser = argparse.ArgumentParser(
-        description="OpenPawlet console: API server and web UI.",
+        description="OpenPawlet console: API server, web UI, and init helpers.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -189,6 +233,32 @@ def main() -> None:
             "Do not spawn the nanobot gateway subprocess. Use when the "
             "gateway is managed externally (e.g. honcho, systemd)."
         ),
+    )
+    start_parser.add_argument(
+        "--strict-gateway",
+        action="store_true",
+        help=(
+            "Exit non-zero when the gateway subprocess cannot be started. "
+            "Default is to log a warning and continue in degraded mode."
+        ),
+    )
+
+    subparsers.add_parser(
+        "gateway",
+        help=(
+            "Bootstrap ~/.nanobot/config.json if missing, then run "
+            "'nanobot gateway'. Handy for Procfile entries."
+        ),
+    )
+
+    init_parser = subparsers.add_parser(
+        "init-config",
+        help="Write a default nanobot_web.json next to the nanobot config.",
+    )
+    init_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite an existing file.",
     )
 
     web_parser = subparsers.add_parser(
@@ -209,7 +279,14 @@ def main() -> None:
     if args.command == "server":
         _run_server()
     elif args.command == "start":
-        _run_start(with_gateway=not args.no_gateway)
+        _run_start(
+            with_gateway=not args.no_gateway,
+            strict_gateway=bool(args.strict_gateway),
+        )
+    elif args.command == "gateway":
+        _run_gateway_only()
+    elif args.command == "init-config":
+        _run_init_config(force=bool(args.force))
     elif args.command == "web":
         _run_npm_web(args.web_action)
     else:
