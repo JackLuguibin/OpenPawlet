@@ -390,6 +390,8 @@ export default function Dashboard() {
       },
       tooltip: {
         trigger: 'axis',
+        // Sparkline sits in overflow-hidden cards; render tooltip on body so it is not clipped.
+        appendToBody: true,
         axisPointer: { type: 'line', lineStyle: { color: '#3b82f6', width: 1 } },
         backgroundColor: tooltipBg,
         borderColor: isDarkUi ? '#374151' : '#e5e7eb',
