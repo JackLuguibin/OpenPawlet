@@ -186,11 +186,11 @@ export default function Workspace() {
 
   return (
     <PageLayout variant="bleed">
-      <header className="shrink-0 rounded-2xl border border-gray-200/80 bg-gradient-to-b from-white to-gray-50/95 px-4 py-4 shadow-sm ring-1 ring-black/[0.03] dark:border-gray-700/60 dark:from-gray-800/90 dark:to-gray-900/50 dark:ring-white/[0.06] sm:px-5">
+      <header className="shrink-0 rounded-md border border-gray-200/80 bg-gradient-to-b from-white to-gray-50/95 px-4 py-4 shadow-sm ring-1 ring-black/[0.03] dark:border-gray-700/60 dark:from-gray-800/90 dark:to-gray-900/50 dark:ring-white/[0.06] sm:px-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-start gap-3 sm:gap-4">
             <div
-              className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-500/10 text-primary-600 dark:bg-primary-400/15 dark:text-primary-300"
+              className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary-500/10 text-primary-600 dark:bg-primary-400/15 dark:text-primary-300"
               aria-hidden
             >
               <FolderOutlined className="text-lg" />
@@ -265,7 +265,7 @@ export default function Workspace() {
         <Card
           title={t('workspace.fileListTitle')}
           size="small"
-          className="w-72 shrink-0 flex flex-col rounded-2xl border border-gray-200/80 dark:border-gray-700/60 bg-white dark:bg-gray-800/40 shadow-sm hover:shadow-md transition-shadow overflow-hidden"
+          className="w-72 shrink-0 flex flex-col rounded-md border border-gray-200/80 dark:border-gray-700/60 bg-white dark:bg-gray-800/40 shadow-sm hover:shadow-md transition-shadow overflow-hidden"
           styles={{ body: { flex: 1, minHeight: 0, overflowY: 'auto', padding: '1rem' } }}
         >
           {treeData.length > 0 ? (
@@ -284,7 +284,7 @@ export default function Workspace() {
         </Card>
 
         <Card
-          className="flex-1 min-h-0 overflow-hidden flex flex-col rounded-2xl border border-gray-200/80 dark:border-gray-700/60 bg-white dark:bg-gray-800/40 shadow-sm hover:shadow-md transition-shadow"
+          className="flex-1 min-h-0 overflow-hidden flex flex-col rounded-md border border-gray-200/80 dark:border-gray-700/60 bg-white dark:bg-gray-800/40 shadow-sm hover:shadow-md transition-shadow"
           styles={{
             body: {
               padding: '2rem 2.5rem',
@@ -320,11 +320,11 @@ export default function Workspace() {
               </div>
             </div>
           ) : viewMode === 'preview' && !isMarkdown ? (
-            <pre className="text-sm overflow-auto max-h-full p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+            <pre className="text-sm overflow-auto max-h-full p-4 bg-gray-50 dark:bg-gray-800 rounded-md">
               {fileData?.content ?? ''}
             </pre>
           ) : (
-            <pre className="text-sm overflow-auto max-h-full p-4 bg-gray-50 dark:bg-gray-800 rounded-lg whitespace-pre-wrap">
+            <pre className="text-sm overflow-auto max-h-full p-4 bg-gray-50 dark:bg-gray-800 rounded-md whitespace-pre-wrap">
               {fileData?.content ?? ''}
             </pre>
           )}

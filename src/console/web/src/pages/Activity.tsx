@@ -285,7 +285,7 @@ export default function Activity() {
       {/* Activity List */}
       <div className="mt-4 flex min-h-0 flex-1 flex-col overflow-y-auto">
         {error ? (
-          <Card className="rounded-xl border border-red-200 dark:border-red-800">
+          <Card className="rounded-md border border-red-200 dark:border-red-800">
             <Empty
               description={
                 <span className="text-red-500">
@@ -296,7 +296,7 @@ export default function Activity() {
           </Card>
         ) : activities && activities.length > 0 ? (
           <Card
-            className="rounded-xl border border-gray-200/80 dark:border-gray-700/60 bg-white dark:bg-gray-800/40"
+            className="rounded-md border border-gray-200/80 dark:border-gray-700/60 bg-white dark:bg-gray-800/40"
             styles={{ body: { padding: '1rem 1.5rem' } }}
           >
             <Timeline
@@ -310,7 +310,7 @@ export default function Activity() {
                   icon: (
                     <div
                       className={`
-                      w-8 h-8 rounded-lg flex items-center justify-center
+                      w-8 h-8 rounded-md flex items-center justify-center
                       ${
                         item.type === 'error'
                           ? 'bg-red-100 dark:bg-red-900/30 text-red-500'
@@ -376,7 +376,7 @@ export default function Activity() {
           </Card>
         ) : (
           <Card
-            className="flex min-h-0 flex-1 flex-col rounded-xl border border-gray-200/80 dark:border-gray-700/60 [&_.ant-card-body]:flex [&_.ant-card-body]:min-h-0 [&_.ant-card-body]:flex-1 [&_.ant-card-body]:flex-col [&_.ant-card-body]:items-center [&_.ant-card-body]:justify-center"
+            className="flex min-h-0 flex-1 flex-col rounded-md border border-gray-200/80 dark:border-gray-700/60 [&_.ant-card-body]:flex [&_.ant-card-body]:min-h-0 [&_.ant-card-body]:flex-1 [&_.ant-card-body]:flex-col [&_.ant-card-body]:items-center [&_.ant-card-body]:justify-center"
           >
             <Empty description={t('activity.empty')} />
           </Card>
@@ -412,7 +412,7 @@ export default function Activity() {
             <Paragraph type="secondary" className="!mb-0 text-xs">
               {t('activity.detailHint')}
             </Paragraph>
-            <pre className="max-h-[min(70vh,520px)] overflow-auto rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs dark:border-gray-600 dark:bg-gray-900/80">
+            <pre className="max-h-[min(70vh,520px)] overflow-auto rounded-md border border-gray-200 bg-gray-50 p-3 text-xs dark:border-gray-600 dark:bg-gray-900/80">
               {formatActivityMetadata(detailItem.metadata as Record<string, unknown> | undefined)}
             </pre>
             {activityDetailTraceId ? (

@@ -189,13 +189,13 @@ export function MCPServersPanel({ embedded = false }: { embedded?: boolean }) {
                   selectedServer === server.name
                     ? 'border-blue-500 border-2 shadow-md shadow-blue-500/10'
                     : ''
-                } rounded-2xl border border-gray-200/80 dark:border-gray-700/60 bg-white dark:bg-gray-800/40`}
+                } rounded-md border border-gray-200/80 dark:border-gray-700/60 bg-white dark:bg-gray-800/40`}
                 size="small"
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
                     <div
-                      className={`p-3 rounded-xl ${
+                      className={`p-3 rounded ${
                         server.status === 'connected'
                           ? 'bg-green-100 dark:bg-green-900/30'
                           : server.status === 'error'
@@ -263,10 +263,10 @@ export function MCPServersPanel({ embedded = false }: { embedded?: boolean }) {
 
           {selectedServerData && (
             <Card
-              className="rounded-2xl border border-gray-200/80 dark:border-gray-700/60"
+              className="rounded-md border border-gray-200/80 dark:border-gray-700/60"
               title={
                 <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-xl bg-purple-100 dark:bg-purple-900/30">
+                  <div className="p-2 rounded bg-purple-100 dark:bg-purple-900/30">
                     <ApiOutlined className="text-purple-600 text-lg" />
                   </div>
                   <div>
@@ -393,7 +393,7 @@ export function MCPServersPanel({ embedded = false }: { embedded?: boolean }) {
           {!selectedServerData && (
             <Card
               title={t('mcp.configReference')}
-              className="rounded-2xl border border-gray-200/80 dark:border-gray-700/60"
+              className="rounded-md border border-gray-200/80 dark:border-gray-700/60"
             >
               <Alert
                 title={
@@ -409,7 +409,7 @@ export function MCPServersPanel({ embedded = false }: { embedded?: boolean }) {
                 showIcon
                 className="mb-4"
               />
-              <pre className="p-5 bg-gray-900 dark:bg-gray-950 rounded-xl overflow-x-auto text-sm text-gray-100 font-mono">
+              <pre className="p-5 bg-gray-900 dark:bg-gray-950 rounded-md overflow-x-auto text-sm text-gray-100 font-mono">
                 {EXAMPLE_CONFIG}
               </pre>
             </Card>
@@ -418,13 +418,13 @@ export function MCPServersPanel({ embedded = false }: { embedded?: boolean }) {
       ) : (
         <div className="mt-2 flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-y-auto">
           <Card
-            className="w-full min-w-0 flex-1 rounded-xl border border-gray-200/90 bg-white shadow-sm dark:border-gray-700/80 dark:bg-gray-800/50 dark:shadow-none"
+            className="w-full min-w-0 flex-1 rounded-md border border-gray-200/90 bg-white shadow-sm dark:border-gray-700/80 dark:bg-gray-800/50 dark:shadow-none"
             styles={{ body: { padding: 0 } }}
           >
             <div className="border-b border-gray-100 bg-gray-50/80 px-4 py-3 dark:border-gray-700/60 dark:bg-gray-900/30 sm:px-5">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
                 <div className="flex shrink-0 justify-center sm:justify-start">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-600 dark:bg-gray-800">
+                  <div className="flex h-12 w-12 items-center justify-center rounded border border-gray-200 bg-white shadow-sm dark:border-gray-600 dark:bg-gray-800">
                     <Plug
                       className="h-6 w-6 text-indigo-600 dark:text-indigo-400"
                       strokeWidth={1.35}
@@ -450,7 +450,7 @@ export function MCPServersPanel({ embedded = false }: { embedded?: boolean }) {
                 <h3 className="text-xs font-semibold text-gray-900 dark:text-gray-100">
                   {t('mcp.whatIsTitle')}
                 </h3>
-                <div className="rounded-lg border border-gray-200 bg-gray-50/90 p-2.5 text-xs leading-snug text-gray-700 dark:border-gray-600/80 dark:bg-gray-900/40 dark:text-gray-300 sm:text-[13px] sm:leading-relaxed">
+                <div className="rounded-md border border-gray-200 bg-gray-50/90 p-2.5 text-xs leading-snug text-gray-700 dark:border-gray-600/80 dark:bg-gray-900/40 dark:text-gray-300 sm:text-[13px] sm:leading-relaxed">
                   <p className="flex gap-2">
                     <InfoCircleOutlined className="mt-0.5 shrink-0 text-indigo-500 dark:text-indigo-400" />
                     <span>{t('mcp.whatIsBody')}</span>
@@ -462,7 +462,7 @@ export function MCPServersPanel({ embedded = false }: { embedded?: boolean }) {
                 <h3 className="text-xs font-semibold text-gray-900 dark:text-gray-100">
                   {t('mcp.setupTitle')}
                 </h3>
-                <ol className="list-decimal space-y-1 rounded-lg border border-gray-200 bg-white py-2 pl-8 pr-2.5 text-xs text-gray-700 dark:border-gray-600/80 dark:bg-gray-900/25 dark:text-gray-300 sm:text-[13px] sm:leading-snug">
+                <ol className="list-decimal space-y-1 rounded-md border border-gray-200 bg-white py-2 pl-8 pr-2.5 text-xs text-gray-700 dark:border-gray-600/80 dark:bg-gray-900/25 dark:text-gray-300 sm:text-[13px] sm:leading-snug">
                   <li>
                     {t('mcp.step1Prefix')}
                     <Link
@@ -495,7 +495,7 @@ export function MCPServersPanel({ embedded = false }: { embedded?: boolean }) {
                   {t('mcp.copyExample')}
                 </Button>
               </div>
-              <div className="overflow-hidden rounded-md border border-gray-800/90">
+              <div className="overflow-hidden rounded border border-gray-800/90">
                 <pre className="m-0 bg-[#0d1117] p-2.5 text-[11px] leading-tight text-gray-100 font-mono dark:bg-[#0a0a0f] sm:p-3 sm:text-xs sm:leading-snug">
                   {EXAMPLE_CONFIG}
                 </pre>

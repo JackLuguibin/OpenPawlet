@@ -148,7 +148,7 @@ export function BotProfilePanel({ currentBotId }: { currentBotId: string | null 
         />
       ) : (
         <Card
-          className="flex-1 min-h-0 overflow-hidden flex flex-col rounded-2xl border border-gray-200/70 bg-white/90 shadow-sm shadow-gray-900/[0.04] dark:border-gray-700/50 dark:bg-gray-800/50 dark:shadow-none"
+          className="flex-1 min-h-0 overflow-hidden flex flex-col rounded-md border border-gray-200/70 bg-white/90 shadow-sm shadow-gray-900/[0.04] dark:border-gray-700/50 dark:bg-gray-800/50 dark:shadow-none"
           styles={{ body: { padding: '1.5rem 1.5rem 1.75rem', flex: 1, minHeight: 0, overflowY: 'auto' } }}
         >
           {editMode ? (

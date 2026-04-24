@@ -620,7 +620,7 @@ export default function Dashboard() {
           {/* One wrapping row: model | stats | sparkline; sparkline drops to its own full-width row only on very narrow screens */}
           <div className="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-4">
             <div className="flex min-w-0 shrink-0 items-center gap-3">
-              <div className="shrink-0 rounded-xl bg-blue-100 p-2.5 dark:bg-blue-900/30">
+              <div className="shrink-0 rounded-md bg-blue-100 p-2.5 dark:bg-blue-900/30">
                 <ThunderboltOutlined className="text-lg text-blue-600" />
               </div>
               <div className="min-w-0">

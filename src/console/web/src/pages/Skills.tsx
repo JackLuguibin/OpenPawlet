@@ -338,7 +338,7 @@ function BundleEditorSection({
     <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden lg:flex-row">
       <div
         className="
-                flex max-h-72 w-full shrink-0 flex-col overflow-hidden rounded-xl border
+                flex max-h-72 w-full shrink-0 flex-col overflow-hidden rounded-md border
                 border-gray-200 bg-gray-50/90 dark:border-gray-700 dark:bg-gray-900/50
                 lg:max-h-none lg:min-h-0 lg:w-72 xl:w-80
               "
@@ -349,7 +349,7 @@ function BundleEditorSection({
         <div className="flex-1 overflow-y-auto p-2 space-y-1">
           <div
             className="
-                    rounded-lg border border-dashed border-gray-300/90 dark:border-gray-600/80
+                    rounded-md border border-dashed border-gray-300/90 dark:border-gray-600/80
                     bg-white/70 dark:bg-gray-800/50 overflow-hidden
                   "
           >
@@ -399,7 +399,7 @@ function BundleEditorSection({
                   setActiveFile('bundle-root');
                 }}
                 className={`
-                        flex flex-1 min-w-0 items-center gap-2 text-left px-2 py-2 rounded-lg text-sm transition-colors
+                        flex flex-1 min-w-0 items-center gap-2 text-left px-2 py-2 rounded-md text-sm transition-colors
                         ${activeFile === 'bundle-root'
                           ? 'bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 font-medium'
                           : 'text-gray-800 dark:text-gray-100 hover:bg-gray-100/80 dark:hover:bg-gray-800/60'
@@ -435,7 +435,7 @@ function BundleEditorSection({
                       type="button"
                       onClick={() => setActiveFile('skill')}
                       className={`
-                            flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-2 text-left text-sm transition-colors
+                            flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-2 text-left text-sm transition-colors
                             ${activeFile === 'skill'
                               ? 'bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 font-medium'
                               : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800/80'
@@ -500,7 +500,7 @@ function BundleEditorSection({
                             type="button"
                             onClick={() => setActiveFile(row.id)}
                             className={`
-                            flex-1 min-w-0 flex items-center gap-2 text-left px-2 py-2 rounded-lg text-sm transition-colors
+                            flex-1 min-w-0 flex items-center gap-2 text-left px-2 py-2 rounded-md text-sm transition-colors
                             ${activeFile === row.id
                               ? 'bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 font-medium'
                               : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800/80'
@@ -603,7 +603,7 @@ function BundleEditorSection({
         {activeFile === 'bundle-root' ? (
           <div
             className="
-                    rounded-xl border border-dashed border-gray-200 dark:border-gray-600
+                    rounded-md border border-dashed border-gray-200 dark:border-gray-600
                     bg-gray-50/80 dark:bg-gray-900/40 px-4 py-6 text-sm text-gray-600 dark:text-gray-400
                   "
           >
@@ -1228,7 +1228,7 @@ export default function Skills({ embedded = false }: { embedded?: boolean }) {
   }) => (
     <div
       className={`
-        group flex items-center justify-between gap-4 px-5 py-4 rounded-xl
+        group flex items-center justify-between gap-4 px-5 py-4 rounded-md
         border border-gray-200/70 dark:border-gray-700/60
         bg-white dark:bg-gray-800/50
         hover:border-primary-300/60 dark:hover:border-primary-500/40
@@ -1237,7 +1237,7 @@ export default function Skills({ embedded = false }: { embedded?: boolean }) {
       `}
     >
       <div className="flex items-center gap-4 min-w-0 flex-1">
-        <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-gradient-to-br from-primary-50 to-primary-100 dark:from-primary-900/40 dark:to-primary-800/30 flex items-center justify-center">
+        <div className="flex-shrink-0 w-10 h-10 rounded-md bg-gradient-to-br from-primary-50 to-primary-100 dark:from-primary-900/40 dark:to-primary-800/30 flex items-center justify-center">
           <ReadOutlined className="text-primary-500 dark:text-primary-400 text-base" />
         </div>
         <div className="min-w-0 flex-1">
@@ -1273,7 +1273,7 @@ export default function Skills({ embedded = false }: { embedded?: boolean }) {
       )}
 
       {/* Registry: URL + search in one row on wide screens */}
-      <div className="p-4 rounded-xl border border-gray-200/80 dark:border-gray-700/60 bg-white dark:bg-gray-800/40 shrink-0">
+      <div className="p-4 rounded-md border border-gray-200/80 dark:border-gray-700/60 bg-white dark:bg-gray-800/40 shrink-0">
         <p className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2 m-0">
           {t('skills.registryTitle')}
         </p>
@@ -1326,7 +1326,7 @@ export default function Skills({ embedded = false }: { embedded?: boolean }) {
         <div className="mt-3">
           {registryUrl.trim() && (
             registrySkills.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-gray-200 dark:border-gray-600/80 bg-gray-50/80 dark:bg-gray-900/30 py-8 px-4">
+              <div className="rounded-md border border-dashed border-gray-200 dark:border-gray-600/80 bg-gray-50/80 dark:bg-gray-900/30 py-8 px-4">
                 <Empty
                   image={Empty.PRESENTED_IMAGE_SIMPLE}
                   description={registryLoading ? t('common.loading') : t('skills.registryEmpty')}
@@ -1339,7 +1339,7 @@ export default function Skills({ embedded = false }: { embedded?: boolean }) {
                   return (
                     <div
                       key={s.name}
-                      className="flex items-center justify-between px-4 py-3 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-100 dark:border-gray-700/50 hover:border-primary-200 dark:hover:border-primary-500/30 transition-colors"
+                      className="flex items-center justify-between px-4 py-3 rounded bg-gray-50 dark:bg-gray-800/60 border border-gray-100 dark:border-gray-700/50 hover:border-primary-200 dark:hover:border-primary-500/30 transition-colors"
                     >
                       <div>
                         <p className="font-medium text-gray-900 dark:text-gray-100">{s.name}</p>
@@ -1353,7 +1353,7 @@ export default function Skills({ embedded = false }: { embedded?: boolean }) {
                         disabled={!!installed}
                         loading={installFromRegistryMutation.isPending}
                         onClick={() => installFromRegistryMutation.mutate(s.name)}
-                        className="!rounded-lg"
+                        className="!rounded-md"
                       >
                         {installed ? t('skills.installedLabel') : t('skills.install')}
                       </Button>
@@ -1371,12 +1371,12 @@ export default function Skills({ embedded = false }: { embedded?: boolean }) {
           <Spin size="large" />
         </div>
       ) : !skills || skills.length === 0 ? (
-        <div className="flex-1 flex flex-col items-center justify-center min-h-[min(20rem,45vh)] rounded-2xl border border-dashed border-gray-200/90 dark:border-gray-700/70 bg-gray-50/50 dark:bg-gray-800/20 px-6 py-10">
+        <div className="flex-1 flex flex-col items-center justify-center min-h-[min(20rem,45vh)] rounded-md border border-dashed border-gray-200/90 dark:border-gray-700/70 bg-gray-50/50 dark:bg-gray-800/20 px-6 py-10">
           <Empty description={t('skills.noSkills')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
         </div>
       ) : (
         <div className="flex flex-col flex-1 min-h-0 gap-3">
-          <div className="flex shrink-0 items-start gap-2 rounded-lg border border-primary-200/60 bg-primary-50/40 px-3 py-2 text-xs text-gray-600 dark:border-primary-800/50 dark:bg-primary-950/30 dark:text-gray-400">
+          <div className="flex shrink-0 items-start gap-2 rounded-md border border-primary-200/60 bg-primary-50/40 px-3 py-2 text-xs text-gray-600 dark:border-primary-800/50 dark:bg-primary-950/30 dark:text-gray-400">
             <InfoCircleOutlined className="mt-0.5 shrink-0 text-primary-500 dark:text-primary-400" />
             <span>{t('skills.restartCompact')}</span>
           </div>
@@ -1545,7 +1545,7 @@ export default function Skills({ embedded = false }: { embedded?: boolean }) {
         {skillViewModal && (
           <div className="overflow-auto max-h-[60vh]">
             {skillViewMode === 'raw' ? (
-              <pre className="p-4 rounded-lg bg-gray-50 dark:bg-gray-900 text-sm font-mono whitespace-pre-wrap">
+              <pre className="p-4 rounded-md bg-gray-50 dark:bg-gray-900 text-sm font-mono whitespace-pre-wrap">
                 {skillViewModal.content}
               </pre>
             ) : (

@@ -82,7 +82,7 @@ export default function McpAndSkills() {
   return (
     <PageLayout className="min-h-0 flex-1 overflow-hidden">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden">
-        <div className="shrink-0 rounded-2xl border border-gray-200/80 bg-white/70 shadow-sm shadow-gray-900/[0.03] backdrop-blur-sm dark:border-gray-700/50 dark:bg-gray-800/50">
+        <div className="shrink-0 rounded-md border border-gray-200/80 bg-white/70 shadow-sm shadow-gray-900/[0.03] backdrop-blur-sm dark:border-gray-700/50 dark:bg-gray-800/50">
           <div className="px-4 py-4 sm:px-5 sm:py-5">
             <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
               {t('mcpAndSkills.pageTitle')}

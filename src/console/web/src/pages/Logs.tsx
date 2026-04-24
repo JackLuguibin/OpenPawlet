@@ -47,7 +47,7 @@ function LogPanel({
   const showMissing = !chunk.exists;
   const headerMain =
     variant === 'tab' ? null : (
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
         <Terminal className="h-4 w-4" aria-hidden />
       </div>
     );
@@ -57,7 +57,7 @@ function LogPanel({
       className={[
         'flex min-h-0 min-w-0 flex-col overflow-hidden',
         variant === 'stacked'
-          ? 'flex-1 rounded-2xl border border-slate-200/90 bg-white shadow-sm dark:border-slate-600/60 dark:bg-slate-900/40 dark:shadow-none'
+          ? 'flex-1 rounded-md border border-slate-200/90 bg-white shadow-sm dark:border-slate-600/60 dark:bg-slate-900/40 dark:shadow-none'
           : 'h-full min-h-0',
       ]
         .filter(Boolean)
@@ -78,7 +78,7 @@ function LogPanel({
                   {label}
                 </span>
                 {chunk.truncated && (
-                  <span className="rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:text-amber-400">
+                  <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:text-amber-400">
                     {t('logs.truncated')}
                   </span>
                 )}
@@ -86,7 +86,7 @@ function LogPanel({
             )}
             {variant === 'tab' && chunk.truncated && (
               <div className="mb-0.5">
-                <span className="rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:text-amber-400">
+                <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:text-amber-400">
                   {t('logs.truncated')}
                 </span>
               </div>
@@ -191,7 +191,7 @@ export default function Logs() {
 
   return (
     <PageLayout>
-      <div className="flex min-h-0 flex-1 flex-col gap-5">
+      <div className="flex min-h-0 flex-1 flex-col gap-5 [&_.ant-input-affix-wrapper]:!rounded-md [&_.ant-btn]:!rounded-md [&_.ant-alert]:!rounded-md">
         <div className="flex shrink-0 flex-col gap-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between lg:gap-6">
             <div className="max-w-2xl min-w-0">
@@ -241,14 +241,14 @@ export default function Logs() {
 
         <div className="min-h-0 flex-1 flex flex-col">
           {isLoading && !data && (
-            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 py-20 text-slate-500 dark:border-slate-600">
+            <div className="flex flex-col items-center justify-center rounded-md border border-dashed border-slate-200 py-20 text-slate-500 dark:border-slate-600">
               <FileText className="mb-2 h-10 w-10 opacity-40" />
               {t('common.loading')}
             </div>
           )}
 
           {!isLoading && displayChunks.length === 0 && !error && (
-            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 py-20 text-slate-500 dark:border-slate-600">
+            <div className="flex flex-col items-center justify-center rounded-md border border-dashed border-slate-200 py-20 text-slate-500 dark:border-slate-600">
               <FileText className="mb-2 h-10 w-10 opacity-40" />
               {t('logs.empty')}
             </div>
@@ -270,7 +270,7 @@ export default function Logs() {
           )}
 
           {displayChunks.length > 1 && (
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-sm dark:border-slate-600/60 dark:bg-slate-900/30 dark:shadow-none">
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-slate-200/90 bg-white shadow-sm dark:border-slate-600/60 dark:bg-slate-900/30 dark:shadow-none">
               <Tabs
                 activeKey={activeLogTab}
                 onChange={(key) => setActiveLogTab(key as 'nanobot' | 'console')}

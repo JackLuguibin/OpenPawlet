@@ -138,7 +138,7 @@ export default function Memory() {
   return (
     <PageLayout className="min-h-0 flex-1 overflow-hidden">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-hidden">
-        <div className="shrink-0 rounded-2xl border border-gray-200/80 bg-white/70 shadow-sm shadow-gray-900/[0.03] backdrop-blur-sm dark:border-gray-700/50 dark:bg-gray-800/50">
+        <div className="shrink-0 rounded-md border border-gray-200/80 bg-white/70 shadow-sm shadow-gray-900/[0.03] backdrop-blur-sm dark:border-gray-700/50 dark:bg-gray-800/50">
           <div className="px-4 py-4 sm:px-5 sm:py-5">
             <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
               {t('memoryAndProfile.pageTitle')}
@@ -183,7 +183,7 @@ export default function Memory() {
             />
           ) : activeMemoryTab === 'long_term' ? (
             <Card
-              className="flex-1 min-h-0 overflow-hidden flex flex-col rounded-2xl border border-gray-200/70 bg-white/90 shadow-sm shadow-gray-900/[0.04] dark:border-gray-700/50 dark:bg-gray-800/50 dark:shadow-none"
+              className="flex-1 min-h-0 overflow-hidden flex flex-col rounded-md border border-gray-200/70 bg-white/90 shadow-sm shadow-gray-900/[0.04] dark:border-gray-700/50 dark:bg-gray-800/50 dark:shadow-none"
               styles={{ body: { padding: '1.5rem 1.75rem 2rem', flex: 1, minHeight: 0, overflowY: 'auto' } }}
             >
               {longTermContent ? (
@@ -205,7 +205,7 @@ export default function Memory() {
                   <Card
                     key={historyEntryKey(entry, idx)}
                     size="small"
-                    className="rounded-xl border-l-4 border-l-primary-500 shadow-sm hover:shadow-md transition-all bg-white dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700/50"
+                    className="rounded border-l-4 border-l-primary-500 shadow-sm hover:shadow-md transition-all bg-white dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700/50"
                   >
                     <div className="flex gap-4">
                       {entry.timestamp && (

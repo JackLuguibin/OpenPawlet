@@ -257,7 +257,7 @@ export default function Sessions() {
       width: 108,
       align: 'center',
       render: (count: number) => (
-        <span className="inline-flex min-w-[2.5rem] items-center justify-center rounded-md bg-gray-100 px-2 py-0.5 text-sm font-medium tabular-nums text-gray-800 dark:bg-gray-700/80 dark:text-gray-100">
+        <span className="inline-flex min-w-[2.5rem] items-center justify-center rounded bg-gray-100 px-2 py-0.5 text-sm font-medium tabular-nums text-gray-800 dark:bg-gray-700/80 dark:text-gray-100">
           <MessageOutlined className="mr-1 text-xs opacity-70" />
           {count}
         </span>
@@ -364,7 +364,7 @@ export default function Sessions() {
       </div>
 
       <Card
-        className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-gray-200/90 shadow-sm dark:border-gray-700/80 dark:bg-gray-800/35 [&_.ant-card-body]:flex [&_.ant-card-body]:min-h-0 [&_.ant-card-body]:flex-1 [&_.ant-card-body]:flex-col [&_.ant-card-body]:overflow-hidden"
+        className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-md border border-gray-200/90 shadow-sm dark:border-gray-700/80 dark:bg-gray-800/35 [&_.ant-card-body]:flex [&_.ant-card-body]:min-h-0 [&_.ant-card-body]:flex-1 [&_.ant-card-body]:flex-col [&_.ant-card-body]:overflow-hidden"
         styles={{ body: { padding: 0, display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 } }}
       >
         <div className="flex shrink-0 flex-col gap-3 border-b border-gray-100 px-4 py-3 dark:border-gray-700 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">

@@ -303,7 +303,7 @@ export default function Cron() {
       <div className="flex shrink-0 flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-start gap-4 min-w-0">
           <div
-            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500/15 to-indigo-600/10 ring-1 ring-violet-500/20 dark:from-violet-400/20 dark:to-indigo-500/15 dark:ring-violet-400/25"
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-violet-500/15 to-indigo-600/10 ring-1 ring-violet-500/20 dark:from-violet-400/20 dark:to-indigo-500/15 dark:ring-violet-400/25"
             aria-hidden
           >
             <ClockCircleOutlined className="text-xl text-violet-600 dark:text-violet-300" />
@@ -329,12 +329,12 @@ export default function Cron() {
 
       <Card
         size="small"
-        className="shrink-0 overflow-hidden rounded-2xl border border-gray-200/90 bg-white/90 shadow-sm dark:border-gray-700/80 dark:bg-gray-900/50"
+        className="shrink-0 overflow-hidden rounded-md border border-gray-200/90 bg-white/90 shadow-sm dark:border-gray-700/80 dark:bg-gray-900/50"
         styles={{ body: { padding: 0 } }}
       >
         <div className="grid divide-y divide-gray-100 dark:divide-gray-800 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
           <div className="flex items-center gap-3 p-4 sm:p-5">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-100 dark:bg-blue-950/50">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-blue-100 dark:bg-blue-950/50">
               <SyncOutlined className="text-lg text-blue-600 dark:text-blue-400" />
             </div>
             <div className="min-w-0">
@@ -383,14 +383,14 @@ export default function Cron() {
       <Card
         title={
           <span className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-gray-100">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-800">
+            <span className="flex h-8 w-8 items-center justify-center rounded-md bg-gray-100 dark:bg-gray-800">
               <SyncOutlined className="text-blue-500 dark:text-blue-400 text-sm" />
             </span>
             {t('cron.taskListTitle')}
           </span>
         }
         size="small"
-        className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-gray-200/90 bg-white/90 shadow-sm dark:border-gray-700/80 dark:bg-gray-900/50 [&_.ant-card-head]:border-b-gray-200/80 dark:[&_.ant-card-head]:border-b-gray-700/80"
+        className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-md border border-gray-200/90 bg-white/90 shadow-sm dark:border-gray-700/80 dark:bg-gray-900/50 [&_.ant-card-head]:border-b-gray-200/80 dark:[&_.ant-card-head]:border-b-gray-700/80"
         styles={{
           body: {
             display: 'flex',
@@ -431,7 +431,7 @@ export default function Cron() {
                   job.state.last_run_at_ms;
                 return (
                   <List.Item
-                    className={`mb-2 rounded-xl border border-gray-100 bg-gray-50/80 px-3 py-2 transition-colors last:mb-0 dark:border-gray-800 dark:bg-gray-800/25 ${!job.enabled ? 'opacity-70' : 'hover:border-gray-200 dark:hover:border-gray-700'}`}
+                    className={`mb-2 rounded border border-gray-100 bg-gray-50/80 px-3 py-2 transition-colors last:mb-0 dark:border-gray-800 dark:bg-gray-800/25 ${!job.enabled ? 'opacity-70' : 'hover:border-gray-200 dark:hover:border-gray-700'}`}
                     actions={[
                       hasDetails && (
                         <Button

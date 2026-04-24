@@ -98,26 +98,26 @@ function App() {
         algorithm: isDark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
         token: {
           colorPrimary: '#3b82f6',
-          borderRadius: 10,
+          borderRadius: 6,
           fontFamily: '"Plus Jakarta Sans", Inter, system-ui, -apple-system, sans-serif',
           colorBgContainer: isDark ? undefined : '#ffffff',
           colorBgElevated: isDark ? undefined : '#ffffff',
         },
         components: {
           Card: {
-            borderRadiusLG: 16,
-            borderRadius: 12,
+            borderRadiusLG: 6,
+            borderRadius: 6,
           },
           Button: {
-            borderRadius: 10,
+            borderRadius: 6,
             controlHeight: 36,
           },
           Input: {
-            borderRadius: 10,
+            borderRadius: 6,
             controlHeight: 36,
           },
           Select: {
-            borderRadius: 10,
+            borderRadius: 6,
             controlHeight: 36,
           },
         },

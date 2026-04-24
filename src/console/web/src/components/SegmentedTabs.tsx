@@ -31,8 +31,8 @@ const SHELL_BASE =
   'backdrop-blur-sm ';
 
 const SHELL_SIZES: Record<'md' | 'sm', string> = {
-  md: 'p-1.5 rounded-2xl shrink-0',
-  sm: 'p-1 rounded-xl shrink-0',
+  md: 'p-1.5 rounded-md shrink-0',
+  sm: 'p-1 rounded-md shrink-0',
 };
 
 const MARGINS: Record<'default' | 'tight' | 'none', string> = {
@@ -42,12 +42,12 @@ const MARGINS: Record<'default' | 'tight' | 'none', string> = {
 };
 
 const BTN_BASE =
-  'relative shrink-0 rounded-xl px-4 py-2 text-sm font-semibold transition-all duration-200 ' +
+  'relative shrink-0 rounded-md px-4 py-2 text-sm font-semibold transition-all duration-200 ' +
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 ' +
   'dark:focus-visible:ring-offset-slate-900';
 
 const BTN_SM =
-  'relative shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-all duration-200 ' +
+  'relative shrink-0 rounded-md px-2.5 py-1.5 text-xs font-semibold transition-all duration-200 ' +
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 ' +
   'dark:focus-visible:ring-offset-slate-900';
 

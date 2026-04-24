@@ -202,7 +202,7 @@ export function SubagentPanel({ tasks, collapsed = false, onCollapse }: Subagent
                         <Text type="secondary" className="text-xs block mb-1">
                           {t('subagent.taskDesc')}
                         </Text>
-                        <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-2 text-xs line-clamp-3">
+                        <div className="bg-gray-50 dark:bg-gray-900 rounded-md p-2 text-xs line-clamp-3">
                           <Text>{task.task}</Text>
                         </div>
                       </div>
@@ -214,7 +214,7 @@ export function SubagentPanel({ tasks, collapsed = false, onCollapse }: Subagent
                         <Text type="secondary" className="text-xs block mb-1">
                           {t('subagent.taskResult')}
                         </Text>
-                        <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-2 text-xs max-h-60 overflow-y-auto">
+                        <div className="bg-gray-50 dark:bg-gray-900 rounded-md p-2 text-xs max-h-60 overflow-y-auto">
                           <Markdown>{task.result}</Markdown>
                         </div>
                       </div>

@@ -488,7 +488,7 @@ export default function Agents() {
             return (
               <Card
                 key={agent.id}
-                className="rounded-2xl border border-gray-200/80 dark:border-gray-700/60 bg-white dark:bg-gray-800/40 shadow-sm hover:shadow-lg transition-all duration-300 relative overflow-hidden group"
+                className="rounded-md border border-gray-200/80 dark:border-gray-700/60 bg-white dark:bg-gray-800/40 shadow-sm hover:shadow-lg transition-all duration-300 relative overflow-hidden group"
                 styles={{ body: { padding: 0 } }}
                 hoverable
               >
@@ -508,7 +508,7 @@ export default function Agents() {
                       className="mt-1 shrink-0"
                     />
                     <div
-                      className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 transition-transform group-hover:scale-105"
+                      className="w-9 h-9 rounded-md flex items-center justify-center shrink-0 transition-transform group-hover:scale-105"
                       style={{ backgroundColor: `${categoryConfig.color}15` }}
                     >
                       <Bot className="w-[18px] h-[18px]" style={{ color: categoryConfig.color }} />
@@ -519,7 +519,7 @@ export default function Agents() {
                       </h3>
                       <div className="flex flex-wrap items-center gap-1">
                         <Tag
-                          className="text-xs !m-0 border-0 px-1.5 py-0.5 rounded-md leading-none"
+                          className="text-xs !m-0 border-0 px-1.5 py-0.5 rounded leading-none"
                           style={{
                             backgroundColor: `${categoryConfig.color}20`,
                             color: categoryConfig.color,
@@ -529,7 +529,7 @@ export default function Agents() {
                         </Tag>
                         {agent.enabled && (
                           <Tag
-                            className="text-xs !m-0 border-0 px-1.5 py-0.5 rounded-md leading-none dark:!bg-[#2a1f4a] dark:!text-[#b37feb]"
+                            className="text-xs !m-0 border-0 px-1.5 py-0.5 rounded leading-none dark:!bg-[#2a1f4a] dark:!text-[#b37feb]"
                             style={{ backgroundColor: '#f0f0ff', color: '#722ed1' }}
                           >
                             {t('agents.tagSys')}
@@ -613,7 +613,7 @@ export default function Agents() {
       {/* Batch Actions */}
       {selectedAgents.size > 0 && (
         <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-10">
-          <Card className="shadow-xl border border-gray-200 dark:border-gray-700 rounded-xl">
+          <Card className="shadow-xl border border-gray-200 dark:border-gray-700 rounded-md">
             <Space size="middle">
                 <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
                   {t('agents.batchSelected', { count: selectedAgents.size })}

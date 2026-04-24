@@ -81,7 +81,7 @@ export default function Health() {
     <PageLayout>
       <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-start gap-3">
-          <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 dark:bg-emerald-900/40">
+          <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-emerald-100 dark:bg-emerald-900/40">
             <Heart className="h-5 w-5 text-emerald-600 dark:text-emerald-300" />
           </div>
           <div>
@@ -124,7 +124,7 @@ export default function Health() {
           {obsData && (
             <div className="flex flex-col gap-5">
               <div className="grid gap-4 md:grid-cols-2">
-                <div className="rounded-xl border border-gray-200/90 bg-gray-50/80 p-4 dark:border-gray-700 dark:bg-gray-800/40">
+                <div className="rounded-md border border-gray-200/90 bg-gray-50/80 p-4 dark:border-gray-700 dark:bg-gray-800/40">
                   <Text strong className="mb-1 block text-sm text-gray-800 dark:text-gray-100">
                     {t('health.consoleApi')}
                   </Text>
@@ -137,7 +137,7 @@ export default function Health() {
                     </StatRow>
                   </div>
                 </div>
-                <div className="rounded-xl border border-gray-200/90 bg-gray-50/80 p-4 dark:border-gray-700 dark:bg-gray-800/40">
+                <div className="rounded-md border border-gray-200/90 bg-gray-50/80 p-4 dark:border-gray-700 dark:bg-gray-800/40">
                   <Text strong className="mb-1 block text-sm text-gray-800 dark:text-gray-100">
                     {t('health.nanobotGateway')}
                   </Text>
@@ -175,7 +175,7 @@ export default function Health() {
 
               <Link
                 to="/observability"
-                className="group flex items-center justify-between gap-3 rounded-xl border border-violet-200/90 bg-violet-50/60 px-4 py-3 transition-colors hover:border-violet-300 hover:bg-violet-100/70 dark:border-violet-500/25 dark:bg-violet-950/35 dark:hover:border-violet-400/40 dark:hover:bg-violet-900/40"
+                className="group flex items-center justify-between gap-3 rounded-md border border-violet-200/90 bg-violet-50/60 px-4 py-3 transition-colors hover:border-violet-300 hover:bg-violet-100/70 dark:border-violet-500/25 dark:bg-violet-950/35 dark:hover:border-violet-400/40 dark:hover:bg-violet-900/40"
               >
                 <span className="flex min-w-0 items-center gap-2 text-sm font-medium text-violet-800 dark:text-violet-200">
                   <LineChart className="h-4 w-4 shrink-0" />

@@ -310,7 +310,7 @@ export default function Channels() {
         showIcon
         icon={<InfoCircleOutlined />}
         title={t('channels.configAlert')}
-        className="shrink-0 rounded-xl border-0 bg-sky-50/90 dark:bg-sky-950/35"
+        className="shrink-0 rounded-md border-0 bg-sky-50/90 dark:bg-sky-950/35"
       />
 
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -325,7 +325,7 @@ export default function Channels() {
               <div
                 key={channel.name}
                 className={`
-                  group relative flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-sm shadow-slate-900/[0.04] transition-all duration-300 dark:border-slate-700 dark:bg-slate-900/40
+                  group relative flex h-full flex-col overflow-hidden rounded-md border border-slate-200/90 bg-white shadow-sm shadow-slate-900/[0.04] transition-all duration-300 dark:border-slate-700 dark:bg-slate-900/40
                   hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-xl dark:hover:border-slate-600
                   ${!channel.enabled ? 'opacity-[0.92]' : ''}
                 `}
@@ -337,7 +337,7 @@ export default function Channels() {
                 <div className="flex flex-1 flex-col gap-3 p-4 pt-3">
                   <div className="flex gap-3">
                     <div
-                      className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl transition-transform duration-300 group-hover:scale-[1.03] ${iconShell}`}
+                      className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-md transition-transform duration-300 group-hover:scale-[1.03] ${iconShell}`}
                     >
                       <ChannelIcon name={channel.name} size={22} className={channel.enabled ? 'text-white' : undefined} />
                     </div>
@@ -411,8 +411,8 @@ export default function Channels() {
           })}
         </div>
       ) : (
-        <div className="rounded-2xl border-2 border-dashed border-slate-200 bg-gradient-to-b from-slate-50/80 to-white px-8 py-20 text-center dark:border-slate-700 dark:from-slate-900/40 dark:to-slate-900/20">
-          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100 text-3xl dark:bg-slate-800">
+        <div className="rounded-md border-2 border-dashed border-slate-200 bg-gradient-to-b from-slate-50/80 to-white px-8 py-20 text-center dark:border-slate-700 dark:from-slate-900/40 dark:to-slate-900/20">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-md bg-slate-100 text-3xl dark:bg-slate-800">
             📡
           </div>
           <p className="text-lg font-semibold text-slate-800 dark:text-slate-100">{t('channels.emptyTitle')}</p>

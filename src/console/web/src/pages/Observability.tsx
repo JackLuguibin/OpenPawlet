@@ -495,7 +495,7 @@ export default function Observability() {
         </div>
 
         <Card
-          className="mt-4 flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-gray-200/90 shadow-sm dark:border-gray-700/80 dark:bg-gray-800/35"
+          className="mt-4 flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-gray-200/90 shadow-sm dark:border-gray-700/80 dark:bg-gray-800/35"
           styles={{
             body: { padding: 0, display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 },
           }}
@@ -508,7 +508,7 @@ export default function Observability() {
             {timeline && !timeline.ok && timeline.error && !timelineError && (
               <Alert
                 type="warning"
-                className="mb-3 rounded-md py-1.5 text-sm"
+                className="mb-3 rounded py-1.5 text-sm"
                 title={t('observability.timelineSourceError')}
                 description={timeline.error}
                 showIcon
@@ -517,7 +517,7 @@ export default function Observability() {
             {timelineError && (
               <Alert
                 type="warning"
-                className="mb-3 rounded-md py-1.5"
+                className="mb-3 rounded py-1.5"
                 title={t('observability.timelineError')}
                 description={formatQueryError(timelineError)}
                 showIcon
@@ -542,7 +542,7 @@ export default function Observability() {
                   onChange={(e) => setTraceIdFilter(e.target.value)}
                   onPressEnter={() => void refetchTimeline()}
                   prefix={<Search className="h-4 w-4 text-gray-400" strokeWidth={2} aria-hidden />}
-                  className="!w-full !rounded-md font-mono text-sm dark:!bg-gray-950/50"
+                  className="!w-full !rounded font-mono text-sm dark:!bg-gray-950/50"
                 />
               </div>
             </div>
@@ -823,7 +823,7 @@ export default function Observability() {
               <Text type="secondary" className="!mb-2 !block text-[11px] uppercase tracking-wide">
                 {t('observability.detailInputOutput')}
               </Text>
-              <pre className="h-full max-h-[calc(100vh-12rem)] overflow-auto rounded-md border border-slate-200/90 bg-slate-950/90 p-3 font-mono text-[11px] leading-relaxed text-slate-100 dark:border-slate-700">
+              <pre className="h-full max-h-[calc(100vh-12rem)] overflow-auto rounded border border-slate-200/90 bg-slate-950/90 p-3 font-mono text-[11px] leading-relaxed text-slate-100 dark:border-slate-700">
                 {formatJsonPayload(detailEvent.payload)}
               </pre>
             </div>

@@ -234,7 +234,7 @@ export default function Layout({ children }: LayoutProps) {
       <button
         type="button"
         onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-        className="lg:hidden fixed top-3 left-3 z-50 p-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-md"
+        className="lg:hidden fixed top-3 left-3 z-50 p-2 rounded-md bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-md"
         aria-expanded={mobileMenuOpen}
         aria-controls={mobileNavId}
         aria-label={mobileMenuOpen ? t('layout.closeMenu') : t('layout.openMenu')}
@@ -265,7 +265,7 @@ export default function Layout({ children }: LayoutProps) {
       >
         {/* Logo */}
         <div className="h-16 flex items-center px-4 border-b border-gray-200/50 dark:border-gray-700/50 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm">
-          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-primary-500 to-primary-600 shadow-lg shadow-primary-500/25">
+          <div className="flex items-center justify-center w-10 h-10 rounded-md bg-gradient-to-br from-primary-500 to-primary-600 shadow-lg shadow-primary-500/25">
             <Bot className="w-5 h-5 text-white" />
           </div>
           {!sidebarCollapsed && (
@@ -319,7 +319,7 @@ export default function Layout({ children }: LayoutProps) {
               type="button"
               title={wsUi.title}
               onClick={() => window.location.reload()}
-              className="inline-flex h-6 items-center gap-2 rounded-md px-2 text-xs leading-none text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+              className="inline-flex h-6 items-center gap-2 rounded px-2 text-xs leading-none text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
             >
               <Badge status={wsUi.badge} className={wsUi.badgeClass} />
               <span className="text-xs text-gray-600 dark:text-gray-400">

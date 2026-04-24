@@ -283,7 +283,7 @@ function ChatInput({
   return (
     <div className="space-y-2">
       <div
-        className={`relative rounded-2xl border transition-all duration-200 bg-white dark:bg-gray-900 ${
+        className={`relative rounded-md border transition-all duration-200 bg-white dark:bg-gray-900 ${
           focused
             ? "border-blue-400 dark:border-blue-500 shadow-[0_0_0_3px_rgba(59,130,246,0.15)]"
             : "border-gray-200 dark:border-gray-700 shadow-sm hover:border-gray-300 dark:hover:border-gray-600"
@@ -319,7 +319,7 @@ function ChatInput({
           <div className="flex items-center gap-2 shrink-0">
             {showContextMeter && (
               <div
-                className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-gray-100/90 dark:bg-gray-800/90 border border-gray-200/80 dark:border-gray-600/80 text-[11px] tabular-nums text-gray-600 dark:text-gray-300 max-w-[min(100vw-8rem,14rem)]"
+                className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-gray-100/90 dark:bg-gray-800/90 border border-gray-200/80 dark:border-gray-600/80 text-[11px] tabular-nums text-gray-600 dark:text-gray-300 max-w-[min(100vw-8rem,14rem)]"
                 title={t("chat.contextTooltip")}
               >
                 {contextLoading ? (
@@ -345,7 +345,7 @@ function ChatInput({
           <button
             onClick={isStreaming ? onStop : onSend}
             disabled={!isStreaming && !canSend}
-            className={`flex items-center justify-center w-8 h-8 rounded-xl transition-all duration-150 ${
+            className={`flex items-center justify-center w-8 h-8 rounded-md transition-all duration-150 ${
               isStreaming
                 ? "bg-red-500 hover:bg-red-600 text-white shadow-md shadow-red-500/30 hover:shadow-red-500/40 hover:scale-105"
                 : canSend
@@ -516,7 +516,7 @@ function ArgumentValueNode({ value }: { value: unknown }): ReactNode {
     const multiline = value.includes("\n") || value.length > 160;
     if (multiline) {
       return (
-        <pre className="text-[11px] sm:text-xs font-mono leading-relaxed m-0 whitespace-pre-wrap break-words text-slate-700 dark:text-slate-200 bg-slate-100/80 dark:bg-slate-900/50 rounded-md px-2.5 py-2 ring-1 ring-inset ring-slate-200/70 dark:ring-slate-600/45">
+        <pre className="text-[11px] sm:text-xs font-mono leading-relaxed m-0 whitespace-pre-wrap break-words text-slate-700 dark:text-slate-200 bg-slate-100/80 dark:bg-slate-900/50 rounded px-2.5 py-2 ring-1 ring-inset ring-slate-200/70 dark:ring-slate-600/45">
           {value}
         </pre>
       );
@@ -572,7 +572,7 @@ function ToolCallParametersTable({
         </dl>
       ) : null}
       {internal.length > 0 ? (
-        <div className="rounded-lg bg-amber-50/90 dark:bg-amber-950/25 ring-1 ring-amber-200/80 dark:ring-amber-800/45 px-3 py-2 space-y-2">
+        <div className="rounded-md bg-amber-50/90 dark:bg-amber-950/25 ring-1 ring-amber-200/80 dark:ring-amber-800/45 px-3 py-2 space-y-2">
           <div className="text-[10px] font-semibold uppercase tracking-wider text-amber-800/90 dark:text-amber-200/85">
             {t("chat.partialPayload")}
           </div>
@@ -612,7 +612,7 @@ function ToolCallIdCopy({ callId }: { callId: string }) {
       <button
         type="button"
         onClick={onCopy}
-        className="shrink-0 rounded-md p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 dark:hover:bg-white/10 dark:hover:text-slate-200 transition-colors"
+        className="shrink-0 rounded p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 dark:hover:bg-white/10 dark:hover:text-slate-200 transition-colors"
         title={t("chat.copyCallId")}
         aria-label={t("chat.copyCallId")}
       >
@@ -681,7 +681,7 @@ function MessageThinkingBlock({ text }: { text: string }) {
     return null;
   }
   return (
-    <details className="group text-left rounded-xl overflow-hidden bg-gradient-to-br from-slate-50/95 to-slate-100/40 dark:from-slate-800/35 dark:to-slate-900/25 ring-1 ring-slate-200/70 dark:ring-slate-600/40 border-l-[3px] border-l-primary-500/85 dark:border-l-primary-400/70 shadow-sm shadow-slate-900/5">
+    <details className="group text-left rounded-md overflow-hidden bg-gradient-to-br from-slate-50/95 to-slate-100/40 dark:from-slate-800/35 dark:to-slate-900/25 ring-1 ring-slate-200/70 dark:ring-slate-600/40 border-l-[3px] border-l-primary-500/85 dark:border-l-primary-400/70 shadow-sm shadow-slate-900/5">
       <summary className="cursor-pointer list-none flex items-center gap-2.5 px-3.5 py-2.5 [&::-webkit-details-marker]:hidden select-none hover:bg-slate-100/60 dark:hover:bg-white/[0.04] transition-colors">
         <ChevronRight
           className="h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-slate-500 transition-transform duration-200 group-open:rotate-90"
@@ -744,16 +744,16 @@ function MessageToolCallsBlock({
           return (
             <details
               key={tc.id}
-              className="group rounded-xl text-left bg-white/90 dark:bg-gray-900/45 ring-1 ring-slate-200/80 dark:ring-slate-700/55 shadow-sm shadow-slate-900/[0.04] dark:shadow-black/20"
+              className="group rounded-md text-left bg-white/90 dark:bg-gray-900/45 ring-1 ring-slate-200/80 dark:ring-slate-700/55 shadow-sm shadow-slate-900/[0.04] dark:shadow-black/20"
             >
-              <summary className="cursor-pointer list-none flex flex-wrap items-center gap-x-2 gap-y-1.5 px-3 py-2.5 [&::-webkit-details-marker]:hidden hover:bg-slate-50/90 dark:hover:bg-white/[0.04] transition-colors rounded-xl">
+              <summary className="cursor-pointer list-none flex flex-wrap items-center gap-x-2 gap-y-1.5 px-3 py-2.5 [&::-webkit-details-marker]:hidden hover:bg-slate-50/90 dark:hover:bg-white/[0.04] transition-colors rounded-md">
                 <ChevronRight
                   className="h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-slate-500 transition-transform duration-200 group-open:rotate-90"
                   aria-hidden
                   strokeWidth={2.25}
                 />
                 <span
-                  className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-slate-200/90 text-slate-600 dark:bg-slate-700/90 dark:text-slate-300"
+                  className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-slate-200/90 text-slate-600 dark:bg-slate-700/90 dark:text-slate-300"
                   title={t("chat.toolCallType")}
                 >
                   {tc.tool_call_type ?? "function"}
@@ -802,13 +802,13 @@ function MessageToolCallsBlock({
                       <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">
                         {t("chat.result")}
                       </div>
-                      <pre className="text-[11px] sm:text-xs font-mono leading-relaxed m-0 whitespace-pre-wrap break-words text-slate-700 dark:text-slate-200 bg-emerald-50/80 dark:bg-emerald-950/35 rounded-md px-2.5 py-2 ring-1 ring-inset ring-emerald-200/70 dark:ring-emerald-800/45 max-h-56 overflow-y-auto">
+                      <pre className="text-[11px] sm:text-xs font-mono leading-relaxed m-0 whitespace-pre-wrap break-words text-slate-700 dark:text-slate-200 bg-emerald-50/80 dark:bg-emerald-950/35 rounded px-2.5 py-2 ring-1 ring-inset ring-emerald-200/70 dark:ring-emerald-800/45 max-h-56 overflow-y-auto">
                         {tc.result || "(empty)"}
                       </pre>
                     </div>
                   ) : null}
-                  <details className="group/json rounded-lg ring-1 ring-slate-200/65 dark:ring-slate-600/45 bg-slate-50/60 dark:bg-slate-950/40">
-                    <summary className="cursor-pointer list-none px-3 py-2 text-[11px] font-medium text-slate-500 dark:text-slate-400 [&::-webkit-details-marker]:hidden hover:bg-slate-100/70 dark:hover:bg-white/[0.05] rounded-lg transition-colors">
+                  <details className="group/json rounded-md ring-1 ring-slate-200/65 dark:ring-slate-600/45 bg-slate-50/60 dark:bg-slate-950/40">
+                    <summary className="cursor-pointer list-none px-3 py-2 text-[11px] font-medium text-slate-500 dark:text-slate-400 [&::-webkit-details-marker]:hidden hover:bg-slate-100/70 dark:hover:bg-white/[0.05] rounded-md transition-colors">
                       {t("chat.rawJson")}
                     </summary>
                     <pre className="text-[11px] sm:text-xs font-mono leading-relaxed text-slate-600 dark:text-slate-400 px-3 pb-3 pt-0 m-0 overflow-x-auto whitespace-pre-wrap break-words">
@@ -2495,7 +2495,7 @@ export default function Chat() {
                   sessionSidebarRowRefs.current.delete(session.key);
                 }
               }}
-              className={`flex items-stretch gap-2 rounded-xl transition-all ${
+              className={`flex items-stretch gap-2 rounded-md transition-all ${
                 activeSessionKey === session.key
                   ? "bg-gradient-to-r from-primary-50 to-blue-50 dark:from-primary-900/30 dark:to-blue-900/20 text-primary-700 dark:text-primary-300"
                   : "hover:bg-gray-100 dark:hover:bg-gray-700/50"
@@ -2523,7 +2523,7 @@ export default function Chat() {
               <button
                 type="button"
                 onClick={() => handleSelectSession(session.key)}
-                className="flex-1 min-w-0 text-left py-3.5 pr-2 rounded-l-xl"
+                className="flex-1 min-w-0 text-left py-3.5 pr-2 rounded-l-lg"
               >
                 <span className="text-sm font-medium truncate block leading-snug">
                   {session.title || session.key}
@@ -2551,7 +2551,7 @@ export default function Chat() {
                   type="button"
                   onClick={(e) => e.stopPropagation()}
                   title={t("chat.deleteSession")}
-                  className="self-center shrink-0 w-9 h-9 mr-2 my-2 flex items-center justify-center rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:text-gray-500 dark:hover:text-red-400 dark:hover:bg-red-500/10 transition-colors duration-150"
+                  className="self-center shrink-0 w-9 h-9 mr-2 my-2 flex items-center justify-center rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 dark:text-gray-500 dark:hover:text-red-400 dark:hover:bg-red-500/10 transition-colors duration-150"
                 >
                   <DeleteOutlined className="text-base" />
                 </button>
@@ -2585,7 +2585,7 @@ export default function Chat() {
           {/* Header */}
           <div className="h-12 px-6 flex items-center justify-between border-b border-gray-200/50 dark:border-gray-700/50 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-gradient-to-br from-primary-500 to-primary-600 shadow-lg shadow-primary-500/20">
+              <div className="p-2 rounded-md bg-gradient-to-br from-primary-500 to-primary-600 shadow-lg shadow-primary-500/20">
                 <Bot className="w-5 h-5 text-white" />
               </div>
               <div>
@@ -2653,7 +2653,7 @@ export default function Chat() {
           >
             {displayMessages.length === 0 && showSuggestions ? (
               <div className="min-h-full flex flex-col items-center justify-start pt-2 md:pt-4 text-center text-gray-600 dark:text-gray-300">
-                <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-primary-100 to-blue-100 dark:from-primary-900/30 dark:to-blue-900/20 flex items-center justify-center mb-6 shadow-xl shadow-primary-500/10">
+                <div className="w-20 h-20 rounded-md bg-gradient-to-br from-primary-100 to-blue-100 dark:from-primary-900/30 dark:to-blue-900/20 flex items-center justify-center mb-6 shadow-xl shadow-primary-500/10">
                   <Bot className="w-10 h-10 text-primary-600" />
                 </div>
                 <h3 className="text-2xl font-bold mb-3 bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
@@ -2670,7 +2670,7 @@ export default function Chat() {
                         setInput(suggestion.text);
                         inputRef.current?.focus();
                       }}
-                      className="flex items-center justify-between px-5 py-4 rounded-xl bg-white dark:bg-gray-800 shadow-sm hover:shadow-md border border-gray-100 dark:border-gray-700 text-left text-sm transition-shadow duration-200 group"
+                      className="flex items-center justify-between px-5 py-4 rounded-md bg-white dark:bg-gray-800 shadow-sm hover:shadow-md border border-gray-100 dark:border-gray-700 text-left text-sm transition-shadow duration-200 group"
                     >
                       <div className="flex items-center gap-3">
                         <Wand2 className="w-4 h-4 text-primary-500" />
@@ -2691,7 +2691,7 @@ export default function Chat() {
                     className={`flex gap-3 w-full min-w-0 overflow-visible ${msg.role === "user" ? "flex-row-reverse" : ""}`}
                   >
                     <div
-                      className={`w-10 h-10 min-w-[2.5rem] min-h-[2.5rem] rounded-xl flex items-center justify-center flex-shrink-0 overflow-visible p-1.5 box-border ${
+                      className={`w-10 h-10 min-w-[2.5rem] min-h-[2.5rem] rounded-md flex items-center justify-center flex-shrink-0 overflow-visible p-1.5 box-border ${
                         msg.role === "user"
                           ? "bg-sky-500 dark:bg-sky-600 text-white shadow-md shadow-sky-500/20"
                           : "bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-600"
@@ -2707,10 +2707,10 @@ export default function Chat() {
                       )}
                     </div>
                     <div
-                      className={`relative rounded-2xl px-5 py-4 ${
+                      className={`relative rounded-md px-5 py-4 ${
                         msg.role === "user"
-                          ? "shrink-0 w-fit max-w-[min(100%,85%)] min-w-[8rem] bg-sky-50 dark:bg-sky-950/45 text-slate-800 dark:text-slate-100 border border-sky-200/90 dark:border-sky-800/55 shadow-sm rounded-br-md"
-                          : "flex-1 min-w-0 mr-[calc(2.5rem+0.75rem)] bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm rounded-bl-md"
+                          ? "shrink-0 w-fit max-w-[min(100%,85%)] min-w-[8rem] bg-sky-50 dark:bg-sky-950/45 text-slate-800 dark:text-slate-100 border border-sky-200/90 dark:border-sky-800/55 shadow-sm rounded-br-sm"
+                          : "flex-1 min-w-0 mr-[calc(2.5rem+0.75rem)] bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm rounded-bl-sm"
                       }`}
                     >
                       {msg.role === "assistant" && msg.reasoning_content ? (
@@ -2756,10 +2756,10 @@ export default function Chat() {
                 {showStreamingAssistantBubble && (
                     <>
                       <div className="flex gap-3 w-full min-w-0">
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-600 flex items-center justify-center shrink-0">
+                        <div className="w-10 h-10 rounded-md bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-600 flex items-center justify-center shrink-0">
                           <Bot className="w-5 h-5 text-gray-600 dark:text-gray-300" />
                         </div>
-                        <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl px-5 py-4 shadow-sm min-w-0 flex-1 max-w-full mr-[calc(2.5rem+0.75rem)]">
+                        <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-md px-5 py-4 shadow-sm min-w-0 flex-1 max-w-full mr-[calc(2.5rem+0.75rem)]">
                           {streamingChannelNotices.length > 0 ? (
                             <div className="space-y-2 mb-3 pb-3 border-b border-amber-200/70 dark:border-amber-700/50">
                               <div className="flex items-center gap-2 pl-0.5">
@@ -2839,7 +2839,7 @@ export default function Chat() {
                               {streamingToolProgress.map((hint, idx) => (
                                 <pre
                                   key={`${idx}-${hint.slice(0, 24)}`}
-                                  className="text-[11px] sm:text-xs leading-relaxed font-mono text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-950/80 rounded-lg px-3 py-2.5 whitespace-pre-wrap break-all m-0 overflow-x-auto ring-1 ring-inset ring-slate-200/60 dark:ring-slate-700/50 border-0"
+                                  className="text-[11px] sm:text-xs leading-relaxed font-mono text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-950/80 rounded-md px-3 py-2.5 whitespace-pre-wrap break-all m-0 overflow-x-auto ring-1 ring-inset ring-slate-200/60 dark:ring-slate-700/50 border-0"
                                 >
                                   {formatToolHintMultiline(hint)}
                                 </pre>
@@ -2872,7 +2872,7 @@ export default function Chat() {
                           {toolCalls.map((tc) => (
                             <div
                               key={tc.id}
-                              className={`rounded-xl p-4 border ${
+                              className={`rounded-md p-4 border ${
                                 tc.status === "running"
                                   ? "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800"
                                   : tc.status === "success"
@@ -2896,12 +2896,12 @@ export default function Chat() {
                                 </Tag>
                               </div>
                               {tc.args && (
-                                <pre className="text-xs bg-gray-900 text-gray-100 p-2 rounded-lg overflow-x-auto">
+                                <pre className="text-xs bg-gray-900 text-gray-100 p-2 rounded-md overflow-x-auto">
                                   {tc.args}
                                 </pre>
                               )}
                               {tc.result && (
-                                <pre className="text-xs mt-2 bg-gray-900 text-gray-100 p-2 rounded-lg overflow-x-auto max-h-32">
+                                <pre className="text-xs mt-2 bg-gray-900 text-gray-100 p-2 rounded-md overflow-x-auto max-h-32">
                                   {tc.result.slice(0, 500)}
                                   {tc.result.length > 500 && "..."}
                                 </pre>
@@ -3014,7 +3014,7 @@ export default function Chat() {
             </p>
           ) : (
             <div
-              className="min-h-0 flex-1 overflow-hidden rounded-xl border border-gray-200/90 bg-white dark:border-gray-600/80 dark:bg-[#1e1e1e]"
+              className="min-h-0 flex-1 overflow-hidden rounded-md border border-gray-200/90 bg-white dark:border-gray-600/80 dark:bg-[#1e1e1e]"
             >
               <CodeMirror
                 value={sessionJsonlDisplayText}

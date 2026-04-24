@@ -94,7 +94,7 @@ export function WorkspaceCodeEditor({
   const extensions = useMemo(() => languageExtensionsForPath(filePath), [filePath]);
 
   return (
-    <div className="min-h-0 h-full min-w-0 overflow-hidden rounded-xl border border-gray-200/90 bg-white dark:border-gray-600/80 dark:bg-[#1e1e1e]">
+    <div className="min-h-0 h-full min-w-0 overflow-hidden rounded-md border border-gray-200/90 bg-white dark:border-gray-600/80 dark:bg-[#1e1e1e]">
       <CodeMirror
         value={value}
         height="100%"

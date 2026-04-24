@@ -45,7 +45,7 @@ const { Text } = Typography;
 
 /** Shared card chrome (border, radius). */
 const SETTINGS_CARD_SURFACE =
-  'w-full rounded-xl shadow-sm border border-gray-200/80 dark:border-gray-700/80';
+  'w-full rounded-md shadow-sm border border-gray-200/80 dark:border-gray-700/80';
 
 /** Card grows to fill tab pane; header stays visible, body scrolls. */
 const SETTINGS_SCROLL_CARD_CLASS = `${SETTINGS_CARD_SURFACE} min-h-0 flex flex-1 flex-col`;
@@ -636,7 +636,7 @@ export default function Settings() {
               description={t('settings.providersWarnDesc')}
               type="warning"
               showIcon
-              className="settings-providers-alert mb-4 rounded-lg border border-amber-200/70 bg-amber-50/90 dark:border-amber-900/45 dark:bg-amber-950/30 [&_.ant-alert-description]:text-sm"
+              className="settings-providers-alert mb-4 rounded-md border border-amber-200/70 bg-amber-50/90 dark:border-amber-900/45 dark:bg-amber-950/30 [&_.ant-alert-description]:text-sm"
             />
             {filteredProviderNames.length === 0 ? (
               <Empty className="py-6" description={t('settings.noMatchingProviders')} />
@@ -734,7 +734,7 @@ export default function Settings() {
             styles={{ body: { paddingTop: 10, paddingBottom: 10 } }}
           >
             <Form form={form} layout="vertical" className="[&_.ant-form-item]:mb-0">
-              <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2.5 dark:border-gray-700/50 dark:bg-gray-800/50">
+              <div className="rounded-md border border-gray-100 bg-gray-50 px-3 py-2.5 dark:border-gray-700/50 dark:bg-gray-800/50">
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     <p className="mb-0.5 text-sm font-medium leading-snug">
