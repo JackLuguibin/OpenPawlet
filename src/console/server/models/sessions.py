@@ -74,6 +74,45 @@ class SessionJsonlRawPayload(BaseModel):
     text: str
 
 
+class SessionContextEntry(BaseModel):
+    """One per-turn snapshot of the assembled LLM context.
+
+    Matches the JSONL records written by ``SessionContextWriter`` and mirrors
+    the fields the UI needs to present both a textual view and a structured
+    breakdown of the exact prompt sent to the model on a given turn.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    session_key: str | None = None
+    bot_id: str | None = None
+    channel: str | None = None
+    chat_id: str | None = None
+    turn_index: int | None = None
+    source: str | None = None
+    timestamp: str | None = None
+    system_prompt: str | None = None
+    messages: list[Any] | None = None
+    message_count: int | None = None
+    context_text: str | None = None
+
+
+class SessionContextPayload(BaseModel):
+    """GET /sessions/{key}/context response.
+
+    The writer overwrites ``<workspace>/context/{key}.jsonl`` with a single
+    record on every turn, so this response carries only the latest snapshot
+    (plus the raw file text for debug views).  ``latest`` is ``None`` when no
+    turn has been recorded yet for this session.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    key: str
+    latest: SessionContextEntry | None = None
+    text: str
+
+
 class CreateSessionBody(BaseModel):
     """POST /sessions body."""
 

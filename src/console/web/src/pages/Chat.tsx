@@ -23,7 +23,7 @@ import { registerChatHandler, getWSRef } from "../hooks/useWebSocket";
 import { useAgentTimeZone } from "../hooks/useAgentTimeZone";
 import { formatChatMessageTime } from "../utils/agentDatetime";
 import * as api from "../api/client";
-import { Button, Tag, Popconfirm, Checkbox, Spin, Modal, Select } from "antd";
+import { Button, Tag, Popconfirm, Checkbox, Spin, Modal, Select, Tabs } from "antd";
 import {
   PlusOutlined,
   LoadingOutlined,
@@ -956,6 +956,9 @@ export default function Chat() {
   const [sessionJsonlFileSource, setSessionJsonlFileSource] = useState<
     "session" | "transcript"
   >("session");
+  const [sessionContextTab, setSessionContextTab] = useState<
+    "assembled" | "raw"
+  >("assembled");
   const jsonlViewTheme = useAppStore((s) => s.theme);
   const [codeMirrorIsDark, setCodeMirrorIsDark] = useState(false);
   useEffect(() => {
@@ -1640,6 +1643,96 @@ export default function Chat() {
     () => [javascript(), EditorView.lineWrapping],
     [],
   );
+
+  /**
+   * Per-turn real assembled LLM context (system prompt + history + user turn).
+   * Only fetched while the dialog is open on the assembled-context tab so that
+   * large transcripts do not get streamed needlessly while the user sits on
+   * the raw JSONL view or the dialog is closed.
+   */
+  const {
+    data: sessionContextData,
+    isPending: sessionContextPending,
+    isError: sessionContextError,
+    error: sessionContextErr,
+  } = useQuery({
+    queryKey: ["sessionContext", activeSessionKey, currentBotId],
+    queryFn: () =>
+      api.getSessionContext(activeSessionKey!, currentBotId),
+    // Skip fetching while a turn is still streaming: the context file is
+    // rewritten mid-turn and we would otherwise read a half-written record.
+    // Once ``isStreaming`` flips back to false the effect below invalidates
+    // the query so the freshly-written snapshot is pulled automatically.
+    enabled:
+      sessionJsonlModalOpen &&
+      sessionContextTab === "assembled" &&
+      Boolean(activeSessionKey) &&
+      !isStreaming,
+    retry: false,
+  });
+
+  const sessionContextLatest = sessionContextData?.latest ?? null;
+  const sessionContextLatestText = sessionContextLatest?.context_text ?? "";
+  const sessionContextHasRecord = Boolean(sessionContextLatest);
+  const sessionContextTurnIndex = sessionContextLatest?.turn_index ?? null;
+  const sessionContextTimestamp = sessionContextLatest?.timestamp ?? null;
+
+  /**
+   * Refresh the assembled-context snapshot whenever the user either opens the
+   * dialog or switches back to the assembled tab.  The backend overwrites the
+   * ``context/{key}.jsonl`` file on every turn, so the cached query result is
+   * stale once a new turn completes — invalidating forces a fresh fetch.
+   */
+  useEffect(() => {
+    if (!sessionJsonlModalOpen) {
+      return;
+    }
+    if (sessionContextTab !== "assembled") {
+      return;
+    }
+    if (!activeSessionKey) {
+      return;
+    }
+    void queryClient.invalidateQueries({
+      queryKey: ["sessionContext", activeSessionKey, currentBotId],
+    });
+  }, [
+    sessionJsonlModalOpen,
+    sessionContextTab,
+    activeSessionKey,
+    currentBotId,
+    queryClient,
+  ]);
+
+  /**
+   * When a turn finishes streaming, the assembled context on disk has just
+   * been rewritten.  If the dialog is still open on the assembled tab, pull
+   * the new snapshot so the user does not have to close and reopen.
+   */
+  const prevIsStreamingRef = useRef<boolean>(false);
+  useEffect(() => {
+    const wasStreaming = prevIsStreamingRef.current;
+    prevIsStreamingRef.current = isStreaming;
+    if (!wasStreaming || isStreaming) {
+      return;
+    }
+    if (!sessionJsonlModalOpen || sessionContextTab !== "assembled") {
+      return;
+    }
+    if (!activeSessionKey) {
+      return;
+    }
+    void queryClient.invalidateQueries({
+      queryKey: ["sessionContext", activeSessionKey, currentBotId],
+    });
+  }, [
+    isStreaming,
+    sessionJsonlModalOpen,
+    sessionContextTab,
+    activeSessionKey,
+    currentBotId,
+    queryClient,
+  ]);
 
   /**
    * 路由里带了 :sessionKey 但磁盘上已无该会话（例如旧 bookmark）时，改为打开列表中最新创建的会话。
@@ -2860,6 +2953,7 @@ export default function Chat() {
                     icon={<FileText className="w-4 h-4" />}
                     onClick={() => {
                       setSessionJsonlFileSource("session");
+                      setSessionContextTab("assembled");
                       setSessionJsonlModalOpen(true);
                     }}
                     className="hidden md:inline-flex"
@@ -2871,6 +2965,7 @@ export default function Chat() {
                     icon={<FileText className="w-4 h-4" />}
                     onClick={() => {
                       setSessionJsonlFileSource("session");
+                      setSessionContextTab("assembled");
                       setSessionJsonlModalOpen(true);
                     }}
                     className="md:!hidden shrink-0"
@@ -3205,7 +3300,14 @@ export default function Chat() {
 
       <Modal
         open={sessionJsonlModalOpen}
-        onCancel={() => setSessionJsonlModalOpen(false)}
+        onCancel={() => {
+          setSessionJsonlModalOpen(false);
+          if (activeSessionKey) {
+            queryClient.removeQueries({
+              queryKey: ["sessionContext", activeSessionKey, currentBotId],
+            });
+          }
+        }}
         title={t("chat.viewContextJsonl")}
         footer={null}
         width="min(100vw - 2rem, 48rem)"
@@ -3222,71 +3324,162 @@ export default function Chat() {
           },
         }}
       >
-        <div className="flex h-[min(70vh,32rem)] min-h-[14rem] flex-col gap-3">
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
-            <span className="text-sm text-gray-500 dark:text-gray-400">
-              {t("chat.contextJsonlFileSource")}
-            </span>
-            <Select
-              value={sessionJsonlFileSource}
-              onChange={(v) => setSessionJsonlFileSource(v)}
-              className="min-w-[12rem]"
-              options={[
-                { value: "session", label: t("chat.contextJsonlFileSession") },
-                {
-                  value: "transcript",
-                  label: t("chat.contextJsonlFileTranscript"),
-                },
-              ]}
-            />
-            <Button
-              type="primary"
-              icon={<Copy className="w-3.5 h-3.5" />}
-              disabled={!sessionJsonlData?.text}
-              onClick={() => {
-                if (sessionJsonlData?.text) {
-                  void navigator.clipboard.writeText(sessionJsonlData.text);
-                  addToast({
-                    type: "success",
-                    message: t("chat.contextJsonlCopied"),
-                  });
-                }
-              }}
-            >
-              {t("chat.contextJsonlCopy")}
-            </Button>
-          </div>
-          {sessionJsonlPending ? (
-            <div className="flex min-h-0 flex-1 items-center justify-center">
-              <Spin />
-            </div>
-          ) : sessionJsonlError ? (
-            <p className="m-0 shrink-0 text-sm text-red-600 dark:text-red-400">
-              {t("chat.contextJsonlLoadError")}:{" "}
-              {sessionJsonlErr instanceof Error
-                ? sessionJsonlErr.message
-                : String(sessionJsonlErr)}
-            </p>
-          ) : (
-            <div
-              className="min-h-0 flex-1 overflow-hidden rounded-md border border-gray-200/90 bg-white dark:border-gray-600/80 dark:bg-[#1e1e1e]"
-            >
-              <CodeMirror
-                value={sessionJsonlDisplayText}
-                height="100%"
-                className="h-full min-h-0 text-[13px] [&_.cm-editor]:!h-full [&_.cm-editor]:!max-h-full [&_.cm-scroller]:!overflow-auto [&_.cm-content]:!pb-3"
-                readOnly
-                theme={codeMirrorIsDark ? vscodeDark : vscodeLight}
-                extensions={sessionJsonlCmExtensions}
-                basicSetup={{
-                  lineNumbers: true,
-                  foldGutter: true,
-                  highlightActiveLine: false,
-                }}
-              />
-            </div>
-          )}
-        </div>
+        <Tabs
+          activeKey={sessionContextTab}
+          onChange={(k) =>
+            setSessionContextTab(k === "raw" ? "raw" : "assembled")
+          }
+          className="h-[min(70vh,32rem)] min-h-[14rem] flex flex-col [&>.ant-tabs-content-holder]:flex-1 [&>.ant-tabs-content-holder]:min-h-0 [&_.ant-tabs-content]:h-full [&_.ant-tabs-tabpane]:h-full"
+          destroyInactiveTabPane
+          items={[
+            {
+              key: "assembled",
+              label: t("chat.contextAssembledTab"),
+              children: (
+                <div className="flex h-full min-h-0 flex-col gap-3">
+                  <div className="flex shrink-0 flex-wrap items-center gap-2">
+                    <span className="text-sm text-gray-500 dark:text-gray-400">
+                      {sessionContextHasRecord
+                        ? sessionContextTurnIndex != null
+                          ? t("chat.contextAssembledTurnInfo", {
+                              index: sessionContextTurnIndex,
+                              timestamp: sessionContextTimestamp ?? "",
+                            })
+                          : t("chat.contextAssembledLatest", {
+                              timestamp: sessionContextTimestamp ?? "",
+                            })
+                        : t("chat.contextAssembledEmpty")}
+                    </span>
+                    <Button
+                      type="primary"
+                      icon={<Copy className="w-3.5 h-3.5" />}
+                      disabled={!sessionContextLatestText}
+                      onClick={() => {
+                        if (sessionContextLatestText) {
+                          void navigator.clipboard.writeText(
+                            sessionContextLatestText,
+                          );
+                          addToast({
+                            type: "success",
+                            message: t("chat.contextJsonlCopied"),
+                          });
+                        }
+                      }}
+                    >
+                      {t("chat.contextJsonlCopy")}
+                    </Button>
+                  </div>
+                  {sessionContextPending ? (
+                    <div className="flex min-h-0 flex-1 items-center justify-center">
+                      <Spin />
+                    </div>
+                  ) : sessionContextError ? (
+                    <p className="m-0 shrink-0 text-sm text-red-600 dark:text-red-400">
+                      {t("chat.contextAssembledLoadError")}:{" "}
+                      {sessionContextErr instanceof Error
+                        ? sessionContextErr.message
+                        : String(sessionContextErr)}
+                    </p>
+                  ) : !sessionContextHasRecord ? (
+                    <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-gray-500 dark:text-gray-400">
+                      {t("chat.contextAssembledEmptyHint")}
+                    </div>
+                  ) : (
+                    <div className="min-h-0 flex-1 overflow-hidden rounded-md border border-gray-200/90 bg-white dark:border-gray-600/80 dark:bg-[#1e1e1e]">
+                      <CodeMirror
+                        value={sessionContextLatestText}
+                        height="100%"
+                        className="h-full min-h-0 text-[13px] [&_.cm-editor]:!h-full [&_.cm-editor]:!max-h-full [&_.cm-scroller]:!overflow-auto [&_.cm-content]:!pb-3"
+                        readOnly
+                        theme={codeMirrorIsDark ? vscodeDark : vscodeLight}
+                        extensions={sessionJsonlCmExtensions}
+                        basicSetup={{
+                          lineNumbers: true,
+                          foldGutter: true,
+                          highlightActiveLine: false,
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+              ),
+            },
+            {
+              key: "raw",
+              label: t("chat.contextRawTab"),
+              children: (
+                <div className="flex h-full min-h-0 flex-col gap-3">
+                  <div className="flex shrink-0 flex-wrap items-center gap-2">
+                    <span className="text-sm text-gray-500 dark:text-gray-400">
+                      {t("chat.contextJsonlFileSource")}
+                    </span>
+                    <Select
+                      value={sessionJsonlFileSource}
+                      onChange={(v) => setSessionJsonlFileSource(v)}
+                      className="min-w-[12rem]"
+                      options={[
+                        {
+                          value: "session",
+                          label: t("chat.contextJsonlFileSession"),
+                        },
+                        {
+                          value: "transcript",
+                          label: t("chat.contextJsonlFileTranscript"),
+                        },
+                      ]}
+                    />
+                    <Button
+                      type="primary"
+                      icon={<Copy className="w-3.5 h-3.5" />}
+                      disabled={!sessionJsonlData?.text}
+                      onClick={() => {
+                        if (sessionJsonlData?.text) {
+                          void navigator.clipboard.writeText(
+                            sessionJsonlData.text,
+                          );
+                          addToast({
+                            type: "success",
+                            message: t("chat.contextJsonlCopied"),
+                          });
+                        }
+                      }}
+                    >
+                      {t("chat.contextJsonlCopy")}
+                    </Button>
+                  </div>
+                  {sessionJsonlPending ? (
+                    <div className="flex min-h-0 flex-1 items-center justify-center">
+                      <Spin />
+                    </div>
+                  ) : sessionJsonlError ? (
+                    <p className="m-0 shrink-0 text-sm text-red-600 dark:text-red-400">
+                      {t("chat.contextJsonlLoadError")}:{" "}
+                      {sessionJsonlErr instanceof Error
+                        ? sessionJsonlErr.message
+                        : String(sessionJsonlErr)}
+                    </p>
+                  ) : (
+                    <div className="min-h-0 flex-1 overflow-hidden rounded-md border border-gray-200/90 bg-white dark:border-gray-600/80 dark:bg-[#1e1e1e]">
+                      <CodeMirror
+                        value={sessionJsonlDisplayText}
+                        height="100%"
+                        className="h-full min-h-0 text-[13px] [&_.cm-editor]:!h-full [&_.cm-editor]:!max-h-full [&_.cm-scroller]:!overflow-auto [&_.cm-content]:!pb-3"
+                        readOnly
+                        theme={codeMirrorIsDark ? vscodeDark : vscodeLight}
+                        extensions={sessionJsonlCmExtensions}
+                        basicSetup={{
+                          lineNumbers: true,
+                          foldGutter: true,
+                          highlightActiveLine: false,
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+              ),
+            },
+          ]}
+        />
       </Modal>
     </div>
   );

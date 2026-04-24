@@ -29,6 +29,12 @@ def _transcript_file_path(ws: Path, session_key: str) -> Path:
     return ws / "transcripts" / f"{safe_key}.jsonl"
 
 
+def _context_file_path(ws: Path, session_key: str) -> Path:
+    """Path to ``<workspace>/context/{safe_key}.jsonl`` (matches ``SessionContextWriter``)."""
+    safe_key = safe_filename(session_key.replace(":", "_"))
+    return ws / "context" / f"{safe_key}.jsonl"
+
+
 def _read_utf8_file(path: Path) -> str | None:
     """Return file contents, or ``None`` if the path is not a file or read fails."""
     if not path.is_file():
@@ -163,6 +169,35 @@ def read_transcript_jsonl_raw(bot_id: str | None, session_key: str) -> str | Non
     return _read_utf8_file(_transcript_file_path(workspace_root(bot_id), session_key))
 
 
+def read_context_jsonl_raw(bot_id: str | None, session_key: str) -> str | None:
+    """Return verbatim UTF-8 text of ``<workspace>/context/{key}.jsonl`` if present."""
+    return _read_utf8_file(_context_file_path(workspace_root(bot_id), session_key))
+
+
+def load_context_entries(bot_id: str | None, session_key: str) -> list[dict[str, Any]] | None:
+    """Parse the per-turn context JSONL into a list of dict records.
+
+    Returns ``None`` when the file does not exist; returns ``[]`` when the file
+    exists but contains no valid lines.  Malformed JSON lines are skipped so a
+    partial write never prevents the UI from loading older snapshots.
+    """
+    text = read_context_jsonl_raw(bot_id, session_key)
+    if text is None:
+        return None
+    entries: list[dict[str, Any]] = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(record, dict):
+            entries.append(record)
+    return entries
+
+
 def delete_session_files(bot_id: str | None, session_key: str) -> bool:
     """Delete session JSONL from workspace and legacy global dir.
 
@@ -182,6 +217,9 @@ def delete_session_files(bot_id: str | None, session_key: str) -> bool:
         tr_path = _transcript_file_path(workspace_root(bot_id), session_key)
         if tr_path.is_file():
             tr_path.unlink()
+        ctx_path = _context_file_path(workspace_root(bot_id), session_key)
+        if ctx_path.is_file():
+            ctx_path.unlink()
         obs_sess = (
             workspace_root(bot_id)
             / "observability"

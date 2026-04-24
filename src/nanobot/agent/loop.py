@@ -38,6 +38,7 @@ from nanobot.command import CommandContext, CommandRouter, register_builtin_comm
 from nanobot.config.schema import AgentDefaults
 from nanobot.observability.telemetry import get_trace_id
 from nanobot.providers.base import LLMProvider
+from nanobot.session.context_snapshot import SessionContextWriter
 from nanobot.session.manager import Session, SessionManager
 from nanobot.session.transcript import SessionTranscriptWriter
 from nanobot.utils.document import extract_documents
@@ -343,6 +344,15 @@ class AgentLoop:
                 max_tool_result_chars=self.max_tool_result_chars,
                 timezone=self.timezone,
             )
+        # Per-turn snapshot of the real assembled LLM context (system prompt +
+        # messages sent to the provider). Written to ``context/{key}.jsonl`` so
+        # the console can show exactly what the agent saw on every turn.
+        self._session_context_writer = SessionContextWriter(
+            workspace,
+            enabled=True,
+            timezone=self.timezone,
+        )
+        self._session_turn_counters: dict[str, int] = {}
         self.auto_compact = AutoCompact(
             sessions=self.sessions,
             consolidator=self.consolidator,
@@ -366,6 +376,41 @@ class AgentLoop:
     def session_transcript(self) -> SessionTranscriptWriter | None:
         """Optional append-only verbatim transcript writer (see persist_session_transcript)."""
         return getattr(self, "_session_transcript", None)
+
+    def _snapshot_turn_context(
+        self,
+        session_key: str | None,
+        messages: list[dict[str, Any]],
+        *,
+        channel: str | None,
+        chat_id: str | None,
+        source: str = "agent_turn",
+    ) -> None:
+        """Persist the latest assembled context for *session_key*.
+
+        The writer overwrites ``context/{key}.jsonl`` on every turn so the
+        on-disk file always reflects the most recent prompt sent to the LLM
+        without growing unbounded.  ``turn_index`` is kept as a best-effort
+        counter so the UI can still show how many turns have been recorded in
+        this process lifetime.  Failures are swallowed to avoid breaking the
+        agent turn on transient IO errors.
+        """
+        writer = getattr(self, "_session_context_writer", None)
+        if writer is None or not writer.enabled or not session_key or not messages:
+            return
+        counter = self._session_turn_counters.get(session_key, 0) + 1
+        self._session_turn_counters[session_key] = counter
+        try:
+            writer.write_snapshot(
+                session_key,
+                messages=messages,
+                channel=channel,
+                chat_id=chat_id,
+                turn_index=counter,
+                source=source,
+            )
+        except Exception:
+            logger.exception("Failed to write context snapshot for session {}", session_key)
 
     def _register_default_tools(self) -> None:
         """Register the default set of tools."""
@@ -931,6 +976,13 @@ class AgentLoop:
                 session_summary=pending,
                 current_role=current_role,
             )
+            self._snapshot_turn_context(
+                session.key,
+                messages,
+                channel=channel,
+                chat_id=chat_id,
+                source="system_turn",
+            )
             final_content, _, all_msgs, _, _ = await self._run_agent_loop(
                 messages, session=session, channel=channel, chat_id=chat_id,
                 message_id=msg.metadata.get("message_id"),
@@ -996,6 +1048,13 @@ class AgentLoop:
             media=msg.media if msg.media else None,
             channel=msg.channel,
             chat_id=msg.chat_id,
+        )
+        self._snapshot_turn_context(
+            session.key,
+            initial_messages,
+            channel=msg.channel,
+            chat_id=msg.chat_id,
+            source="agent_turn",
         )
 
         async def _publish(**meta: Any) -> None:

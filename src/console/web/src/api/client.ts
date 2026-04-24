@@ -289,6 +289,54 @@ export async function getSessionJsonlRaw(
   return fetchJson(appendBotQuery(base, botId));
 }
 
+/** One per-turn snapshot of the real assembled LLM context (see SessionContextWriter). */
+export interface SessionContextEntry {
+  session_key?: string | null;
+  bot_id?: string | null;
+  channel?: string | null;
+  chat_id?: string | null;
+  turn_index?: number | null;
+  source?: string | null;
+  timestamp?: string | null;
+  system_prompt?: string | null;
+  messages?: unknown[] | null;
+  message_count?: number | null;
+  context_text?: string | null;
+  [extra: string]: unknown;
+}
+
+export interface SessionContextPayload {
+  key: string;
+  latest: SessionContextEntry | null;
+  text: string;
+}
+
+/**
+ * Latest assembled-context snapshot stored at ``context/{key}.jsonl``.
+ *
+ * The file only exists after the first agent turn has completed, so a 404 is
+ * expected for fresh sessions.  We normalise that into an empty payload so
+ * callers can render an empty state instead of treating it as a query error.
+ */
+export async function getSessionContext(
+  key: string,
+  botId?: string | null,
+): Promise<SessionContextPayload> {
+  const url = appendBotQuery(
+    `${API_BASE}/sessions/${encodeURIComponent(key)}/context`,
+    botId,
+  );
+  try {
+    return await fetchJson<SessionContextPayload>(url);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.startsWith('404')) {
+      return { key, latest: null, text: '' };
+    }
+    throw err;
+  }
+}
+
 export async function createSession(key?: string, botId?: string | null): Promise<SessionInfo> {
   return fetchJson<SessionInfo>(`${API_BASE}/sessions${botQuery(botId)}`, {
     method: 'POST',
