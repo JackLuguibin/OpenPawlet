@@ -1,8 +1,37 @@
-"""Async message queue for decoupled channel-agent communication."""
+"""Async message queue abstraction for channel-agent decoupling.
+
+The in-process :class:`MessageBus` (backed by ``asyncio.Queue``) stays as
+the default; it is fast, zero-dependency, and preserves the original
+semantics that existing unit tests rely on.  The ZeroMQ-backed bus lives
+next to it (:class:`ZmqMessageBus`) so any call site that already talks
+to ``publish_inbound`` / ``consume_outbound`` / ``outbound.get_nowait``
+can be switched transparently at wiring time.
+"""
+
+from __future__ import annotations
 
 import asyncio
+from typing import Protocol
 
 from nanobot.bus.events import InboundMessage, OutboundMessage
+
+
+class MessageBusProtocol(Protocol):
+    """Duck-typed contract every bus implementation must satisfy."""
+
+    inbound: asyncio.Queue[InboundMessage]
+    outbound: asyncio.Queue[OutboundMessage]
+
+    async def publish_inbound(self, msg: InboundMessage) -> None: ...
+    async def consume_inbound(self) -> InboundMessage: ...
+    async def publish_outbound(self, msg: OutboundMessage) -> None: ...
+    async def consume_outbound(self) -> OutboundMessage: ...
+
+    @property
+    def inbound_size(self) -> int: ...
+
+    @property
+    def outbound_size(self) -> int: ...
 
 
 class MessageBus:

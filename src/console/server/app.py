@@ -19,6 +19,7 @@ from loguru import logger
 
 from console.server.config import ServerSettings, get_settings
 from console.server.models import ErrorDetail, ErrorResponse
+from console.server.queue_envelope import tag_inbound_text_frame
 from console.server.routers import v1
 
 _ERR_VALIDATION_CODE = "VALIDATION_ERROR"
@@ -184,7 +185,11 @@ async def _nanobot_ws_proxy(
                         text = frame.get("text")
                         data = frame.get("bytes")
                         if text is not None:
-                            await remote_ws.send(text)
+                            # Ensure inbound user frames carry a stable
+                            # message_id / dedupe_key so the Queue Manager
+                            # can drop replays across reconnects.
+                            tagged = tag_inbound_text_frame(text)
+                            await remote_ws.send(tagged)
                         elif data is not None:
                             await remote_ws.send(data)
                 except websockets.exceptions.ConnectionClosed as exc:
@@ -300,6 +305,117 @@ def _mount_nanobot_ws_proxy(app: FastAPI, gateway_host: str, gateway_port: int) 
     )
 
 
+async def _queues_ws_proxy(
+    websocket: WebSocket,
+    settings: ServerSettings,
+) -> None:
+    """Reverse-proxy the browser WS to the Queue Manager broker stream.
+
+    The Console server is the only place that knows the admin token;
+    the SPA therefore connects to ``/queues-ws`` (same origin) and this
+    function injects ``Authorization: Bearer <token>`` when talking to
+    the broker.
+    """
+    await websocket.accept()
+    host = settings.queue_manager_host
+    port = settings.queue_manager_admin_port
+    path = settings.queue_manager_ws_path or "/queues/stream"
+    target_url = f"ws://{host}:{port}{path}"
+    headers = []
+    if settings.queue_manager_admin_token:
+        headers.append(
+            ("Authorization", f"Bearer {settings.queue_manager_admin_token}")
+        )
+    client_addr = websocket.client
+    logger.debug(
+        "[queues-ws-proxy] open client={} → {}", client_addr, target_url
+    )
+    try:
+        async with websockets.connect(
+            target_url,
+            additional_headers=headers or None,
+        ) as remote_ws:
+
+            async def _c2r() -> None:
+                try:
+                    while True:
+                        frame = await websocket.receive()
+                        if frame.get("type") == "websocket.disconnect":
+                            break
+                        text = frame.get("text")
+                        data = frame.get("bytes")
+                        if text is not None:
+                            await remote_ws.send(text)
+                        elif data is not None:
+                            await remote_ws.send(data)
+                except websockets.exceptions.ConnectionClosed:
+                    pass
+                except Exception as exc:
+                    logger.warning("[queues-ws-proxy] c→r error: {}", exc)
+                finally:
+                    await remote_ws.close()
+
+            async def _r2c() -> None:
+                try:
+                    async for message in remote_ws:
+                        if isinstance(message, str):
+                            await websocket.send_text(message)
+                        else:
+                            await websocket.send_bytes(message)
+                except websockets.exceptions.ConnectionClosed:
+                    pass
+                except Exception as exc:
+                    logger.warning("[queues-ws-proxy] r→c error: {}", exc)
+                finally:
+                    try:
+                        await websocket.close()
+                    except Exception:
+                        pass
+
+            tasks = [asyncio.create_task(_c2r()), asyncio.create_task(_r2c())]
+            _, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            for task in pending:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                except Exception:
+                    pass
+    except OSError as exc:
+        logger.warning(
+            "[queues-ws-proxy] cannot reach broker {} ({}). "
+            "Is `open-pawlet-queue-manager` running?",
+            target_url,
+            exc,
+        )
+        try:
+            await websocket.close(code=1014)
+        except Exception:
+            pass
+    except Exception as exc:
+        logger.exception("[queues-ws-proxy] unexpected error: {}", exc)
+        try:
+            await websocket.close(code=1011)
+        except Exception:
+            pass
+
+
+def _mount_queues_ws_proxy(app: FastAPI, settings: ServerSettings) -> None:
+    """Register the ``/queues-ws`` WebSocket route on *app*."""
+
+    @app.websocket("/queues-ws")
+    async def queues_ws_route(websocket: WebSocket) -> None:
+        await _queues_ws_proxy(websocket, settings)
+
+    logger.info(
+        "[queues-ws-proxy] Proxying /queues-ws → ws://{}:{}{}",
+        settings.queue_manager_host,
+        settings.queue_manager_admin_port,
+        settings.queue_manager_ws_path or "/queues/stream",
+    )
+
+
 def create_app(
     settings: ServerSettings | None = None,
     *,
@@ -348,6 +464,7 @@ def create_app(
 
     # Register WS proxy before the SPA catch-all so the path isn't swallowed.
     _mount_nanobot_ws_proxy(app, settings.nanobot_gateway_host, settings.nanobot_gateway_port)
+    _mount_queues_ws_proxy(app, settings)
 
     spa_mounted = _mount_spa(app) if mount_spa else False
 

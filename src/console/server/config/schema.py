@@ -138,6 +138,28 @@ class ServerSettings(BaseSettings):
         description="Port of the nanobot gateway WebSocket server",
     )
 
+    queue_manager_host: str = Field(
+        default="127.0.0.1",
+        description="Hostname of the Queue Manager broker admin endpoint.",
+    )
+    queue_manager_admin_port: int = Field(
+        default=7184,
+        ge=1,
+        le=65535,
+        description="Port of the Queue Manager broker admin endpoint.",
+    )
+    queue_manager_admin_token: str = Field(
+        default="",
+        description=(
+            "Bearer token sent to the Queue Manager admin endpoint.  Leave "
+            "empty when the broker is loopback-only on this host."
+        ),
+    )
+    queue_manager_ws_path: str = Field(
+        default="/queues/stream",
+        description="WebSocket path on the Queue Manager broker for live tick updates.",
+    )
+
     # ---- Priority wiring ------------------------------------------------
     @classmethod
     def settings_customise_sources(

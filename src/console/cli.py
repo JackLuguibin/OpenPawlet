@@ -100,6 +100,47 @@ def _spawn_nanobot_gateway() -> subprocess.Popen[bytes]:
     return subprocess.Popen([nanobot_bin, "gateway"])
 
 
+def _queue_manager_executable() -> str | None:
+    """Locate the ``open-pawlet-queue-manager`` entry point, if installed."""
+    exe_name = (
+        "open-pawlet-queue-manager.exe"
+        if os.name == "nt"
+        else "open-pawlet-queue-manager"
+    )
+    sibling = Path(sys.executable).parent / exe_name
+    if sibling.is_file():
+        return str(sibling)
+    return shutil.which("open-pawlet-queue-manager")
+
+
+def _spawn_queue_manager() -> subprocess.Popen[bytes] | None:
+    """Spawn the Queue Manager broker subprocess when it is available.
+
+    Returns ``None`` when the entry point is missing or the user has
+    disabled the queue manager via ``QUEUE_MANAGER_ENABLED=false``.
+    """
+    if os.environ.get("QUEUE_MANAGER_ENABLED", "true").strip().lower() in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }:
+        logger.info(
+            "[queue-manager] Disabled via QUEUE_MANAGER_ENABLED; "
+            "nanobot gateway will use the in-process bus."
+        )
+        return None
+    qm_bin = _queue_manager_executable()
+    if qm_bin is None:
+        logger.warning(
+            "[queue-manager] 'open-pawlet-queue-manager' not found on PATH; "
+            "nanobot gateway will fall back to the in-process bus."
+        )
+        return None
+    logger.info("[queue-manager] Starting broker subprocess: {}", qm_bin)
+    return subprocess.Popen([qm_bin])
+
+
 def _terminate_subprocess(
     proc: subprocess.Popen[bytes] | None, *, timeout: float = 10.0
 ) -> None:
@@ -149,6 +190,17 @@ def _run_start(*, with_gateway: bool = True, strict_gateway: bool = False) -> No
     setup_console_runtime_file_logging(app_log_level=settings.log_level)
     app = create_app(settings, mount_spa=True)
 
+    queue_manager_proc: subprocess.Popen[bytes] | None = None
+    if with_gateway:
+        # Bring up the Queue Manager broker first so producers/consumers
+        # can connect right away during gateway startup.
+        queue_manager_proc = _spawn_queue_manager()
+        if queue_manager_proc is not None:
+            atexit.register(_terminate_subprocess, queue_manager_proc)
+            # Ensure the spawned gateway sees the queue manager env flag so
+            # it picks the ZeroMQ bus transparently.
+            os.environ.setdefault("QUEUE_MANAGER_ENABLED", "true")
+
     gateway_proc: subprocess.Popen[bytes] | None = None
     if with_gateway:
         try:
@@ -185,6 +237,7 @@ def _run_start(*, with_gateway: bool = True, strict_gateway: bool = False) -> No
         )
     finally:
         _terminate_subprocess(gateway_proc)
+        _terminate_subprocess(queue_manager_proc)
 
 
 def _run_gateway_only() -> None:

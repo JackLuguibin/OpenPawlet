@@ -23,6 +23,7 @@ license-files = [
 ]
 
 dependencies = [
+    "aiohttp>=3.9.0,<4.0.0",
     "anthropic>=0.45.0,<1.0.0",
     "chardet>=3.0.2,<6.0.0",
     "croniter>=6.0.0,<7.0.0",
@@ -52,6 +53,7 @@ dependencies = [
     "python-socks[asyncio]>=2.8.0,<3.0.0; sys_platform != 'win32'",
     "python-telegram-bot[socks]>=22.6,<23.0",
     "pyyaml>=6.0,<7.0.0",
+    "pyzmq>=26.0.0,<27.0.0",
     "qq-botpy>=1.2.0,<2.0.0",
     "questionary>=2.0.0,<3.0.0",
     "readability-lxml>=0.8.4,<1.0.0",
@@ -122,9 +124,10 @@ allow-direct-references = true
 console = "console.cli:main"
 open-pawlet = "console.cli:main"
 nanobot = "nanobot.cli.commands:app"
+open-pawlet-queue-manager = "queue_manager.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/console", "src/nanobot"]
+packages = ["src/console", "src/nanobot", "src/queue_manager"]
 exclude = [
     "/src/console/web/node_modules",
 ]

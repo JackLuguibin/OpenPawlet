@@ -1,10 +1,12 @@
 # Honcho: `honcho start` from repo root (venv activated).
 # Ctrl+C stops all processes.
 #
-# `console gateway` first runs `nanobot onboard` if ~/.nanobot/config.json is
-# missing, then execs `nanobot gateway` (same behaviour as
-# scripts/ensure-nanobot-onboard.sh + nanobot gateway, kept in Python so the
-# bootstrap logic lives in one place).
-gateway: console gateway
+# The `queue` process MUST come first - the gateway sees
+# QUEUE_MANAGER_ENABLED=true and connects to it on startup.  When
+# QUEUE_MANAGER_ENABLED is unset or set to false the gateway falls
+# back to an in-process bus (handy for local debugging without the
+# broker).
+queue: open-pawlet-queue-manager
+gateway: QUEUE_MANAGER_ENABLED=true console gateway
 server: console server
 web: console web dev

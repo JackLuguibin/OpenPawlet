@@ -21,6 +21,7 @@ from . import (
     mcp,
     memory,
     observability,
+    queues,
     runtime_logs,
     sessions,
     skills,
@@ -54,3 +55,4 @@ api_router.include_router(cron.router)
 api_router.include_router(control.router)
 api_router.include_router(workspace.router)
 api_router.include_router(activity.router)
+api_router.include_router(queues.router)

@@ -28,6 +28,7 @@ import {
   Heart,
   Activity,
   LineChart,
+  Cable,
 } from 'lucide-react';
 
 import WebSocketDebugPanel from './WebSocketDebugPanel';
@@ -47,6 +48,7 @@ const LOCK_PAGE_SCROLL_PATHS = new Set([
   '/workspace',
   '/agents',
   '/logs',
+  '/queues',
 ]);
 
 interface LayoutProps {
@@ -113,6 +115,7 @@ export default function Layout({ children }: LayoutProps) {
       {
         title: t('layout.sectionManagement'),
         items: [
+          { path: '/queues', label: t('layout.navQueues'), icon: Cable },
           { path: '/logs', label: t('layout.navLogs'), icon: FileText },
           { path: '/settings', label: t('layout.navSettings'), icon: Settings },
         ],

@@ -562,7 +562,8 @@ def serve(
     from loguru import logger
     from nanobot.agent.loop import AgentLoop
     from nanobot.api.server import create_app
-    from nanobot.bus.queue import MessageBus
+    from nanobot.bus.factory import build_message_bus
+    from nanobot.bus.zmq_bus import ZmqMessageBus
     from nanobot.session.manager import SessionManager
 
     if verbose:
@@ -576,7 +577,7 @@ def serve(
     port = port if port is not None else api_cfg.port
     timeout = timeout if timeout is not None else api_cfg.timeout
     sync_workspace_templates(runtime_config.workspace_path)
-    bus = MessageBus()
+    bus = build_message_bus(role="full")
     provider = _make_provider(runtime_config)
     session_manager = SessionManager(
         runtime_config.workspace_path,
@@ -623,10 +624,14 @@ def serve(
     api_app = create_app(agent_loop, model_name=model_name, request_timeout=timeout)
 
     async def on_startup(_app):
+        if isinstance(bus, ZmqMessageBus):
+            await bus.start()
         await agent_loop._connect_mcp()
 
     async def on_cleanup(_app):
         await agent_loop.close_mcp()
+        if isinstance(bus, ZmqMessageBus):
+            await bus.stop()
 
     api_app.on_startup.append(on_startup)
     api_app.on_cleanup.append(on_cleanup)
@@ -648,7 +653,8 @@ def gateway(
 ):
     """Start the nanobot gateway."""
     from nanobot.agent.loop import AgentLoop
-    from nanobot.bus.queue import MessageBus
+    from nanobot.bus.factory import build_message_bus
+    from nanobot.bus.zmq_bus import ZmqMessageBus
     from nanobot.channels.manager import ChannelManager
     from nanobot.cron.service import CronService
     from nanobot.cron.types import CronJob
@@ -669,7 +675,7 @@ def gateway(
 
     console.print(f"{__logo__} Starting nanobot gateway version {__version__} on port {port}...")
     sync_workspace_templates(config.workspace_path)
-    bus = MessageBus()
+    bus = build_message_bus(role="full")
     provider = _make_provider(config)
     session_manager = SessionManager(
         config.workspace_path,
@@ -924,6 +930,8 @@ def gateway(
     async def run():
         start_perf = time.perf_counter()
         try:
+            if isinstance(bus, ZmqMessageBus):
+                await bus.start()
             await cron.start()
             await heartbeat.start()
             await asyncio.gather(
@@ -944,6 +952,8 @@ def gateway(
             cron.stop()
             agent.stop()
             await channels.stop_all()
+            if isinstance(bus, ZmqMessageBus):
+                await bus.stop()
             # Flush all cached sessions to durable storage before exit.
             # This prevents data loss on filesystems with write-back
             # caching (rclone VFS, NFS, FUSE mounts, etc.).

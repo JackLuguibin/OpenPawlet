@@ -1027,3 +1027,95 @@ export async function broadcastAgentEvent(
     }
   );
 }
+
+// ====================
+// Queue Manager API
+// ====================
+
+export interface QueueTopologyEntry {
+  role: string;
+  bind: string;
+  connect_hint: string;
+}
+
+export interface QueueConnectionInfo {
+  socket: string;
+  peer: string;
+  since: number;
+  last_event: string;
+  last_event_at: number;
+  event_count: number;
+}
+
+export interface QueueSampleInfo {
+  at: number;
+  direction: string;
+  kind: string;
+  message_id: string;
+  session_key: string;
+  bytes: number;
+  trace_id: string;
+}
+
+export interface QueueSnapshot {
+  status: string;
+  version: string;
+  uptime_s: number;
+  settings: {
+    host: string;
+    health_host: string;
+    health_port: number;
+    sample_capacity: number;
+    idempotency_window_seconds: number;
+    admin_token_configured: boolean;
+  };
+  topology: {
+    ingress: QueueTopologyEntry;
+    worker: QueueTopologyEntry;
+    egress: QueueTopologyEntry;
+    delivery: QueueTopologyEntry;
+  };
+  metrics: Record<string, number>;
+  rates: Record<string, number>;
+  paused: { inbound: boolean; outbound: boolean };
+  dedupe: {
+    hits: number;
+    misses: number;
+    size: number;
+    persist_size: number;
+  };
+  connections: QueueConnectionInfo[];
+  samples: QueueSampleInfo[];
+}
+
+export async function getQueueSnapshot(): Promise<QueueSnapshot> {
+  return fetchJson<QueueSnapshot>(`${API_BASE}/queues/snapshot`);
+}
+
+export async function pauseQueue(
+  direction: 'inbound' | 'outbound' | 'both',
+  paused: boolean
+): Promise<{ paused: { inbound: boolean; outbound: boolean }; changed: string[] }> {
+  return fetchJson(`${API_BASE}/queues/pause`, {
+    method: 'POST',
+    body: JSON.stringify({ direction, paused }),
+  });
+}
+
+export async function replayQueueMessage(
+  messageId: string
+): Promise<{ message_id: string; direction: string }> {
+  return fetchJson(`${API_BASE}/queues/replay`, {
+    method: 'POST',
+    body: JSON.stringify({ message_id: messageId }),
+  });
+}
+
+export async function clearQueueDedupe(
+  scope: 'memory' | 'persist' | 'both'
+): Promise<{ scope: string; memory_cleared: number; persist_bytes_cleared: number }> {
+  return fetchJson(`${API_BASE}/queues/dedupe/clear`, {
+    method: 'POST',
+    body: JSON.stringify({ scope }),
+  });
+}

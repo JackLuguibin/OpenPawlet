@@ -77,6 +77,12 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (p) => p.replace(/^\/nanobot-ws/, '') || '/',
       },
+      // Queue Manager admin stream - proxied by Console (token injection).
+      '/queues-ws': {
+        target: `ws://${host}:${port}`,
+        ws: true,
+        changeOrigin: true,
+      },
     },
   },
 })
