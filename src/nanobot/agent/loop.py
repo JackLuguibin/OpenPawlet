@@ -73,6 +73,7 @@ class _LoopHook(AgentHook):
         channel: str = "cli",
         chat_id: str = "direct",
         message_id: str | None = None,
+        transcript_session_key: str | None = None,
     ) -> None:
         super().__init__(reraise=True)
         self._loop = agent_loop
@@ -84,6 +85,7 @@ class _LoopHook(AgentHook):
         self._chat_id = chat_id
         self._message_id = message_id
         self._stream_buf = ""
+        self._transcript_session_key = transcript_session_key
 
     def wants_streaming(self) -> bool:
         return self._on_stream is not None
@@ -123,24 +125,30 @@ class _LoopHook(AgentHook):
         for tc in context.tool_calls:
             args_str = json.dumps(tc.arguments, ensure_ascii=False)
             logger.info("Tool call: {}({})", tc.name, args_str[:200])
+        # Append the assistant-with-tool_calls message to transcript immediately
+        # so in-flight tool activity is visible before the turn completes.
+        self._flush_transcript_for_pending_assistant(context)
         self._loop._set_tool_context(self._channel, self._chat_id, self._message_id)
 
     async def after_iteration(self, context: AgentHookContext) -> None:
         tr, tc = context.tool_results, context.tool_calls
-        if self._on_tool_event and tr and len(tr) == len(tc):
+        if tr and len(tr) == len(tc):
             tail = context.messages[-len(tr) :]
             if all(m.get("role") == "tool" for m in tail):
-                trunc = self._loop._truncate_for_tool_payload
-                await self._on_tool_event(
-                    tool_results=[
-                        {
-                            "tool_call_id": m.get("tool_call_id"),
-                            "name": m.get("name"),
-                            "content": trunc(m.get("content")),
-                        }
-                        for m in tail
-                    ]
-                )
+                if self._on_tool_event:
+                    trunc = self._loop._truncate_for_tool_payload
+                    await self._on_tool_event(
+                        tool_results=[
+                            {
+                                "tool_call_id": m.get("tool_call_id"),
+                                "name": m.get("name"),
+                                "content": trunc(m.get("content")),
+                            }
+                            for m in tail
+                        ]
+                    )
+                # Flush completed tool result messages to transcript now.
+                self._flush_transcript_for_tool_results(tail)
         u = context.usage or {}
         logger.debug(
             "LLM usage: prompt={} completion={} cached={}",
@@ -148,6 +156,51 @@ class _LoopHook(AgentHook):
             u.get("completion_tokens", 0),
             u.get("cached_tokens", 0),
         )
+
+    def _flush_transcript_for_pending_assistant(self, context: AgentHookContext) -> None:
+        """Append the last assistant message (carrying tool_calls) to the transcript.
+
+        Marks the in-memory message with ``_transcript_written`` so ``_save_turn``
+        skips re-appending it at turn end.
+        """
+        tr = getattr(self._loop, "_session_transcript", None)
+        key = self._transcript_session_key
+        if tr is None or not tr.enabled or not key:
+            return
+        msgs = context.messages
+        if not msgs:
+            return
+        last = msgs[-1]
+        if not isinstance(last, dict):
+            return
+        if last.get("role") != "assistant":
+            return
+        if last.get("_transcript_written"):
+            return
+        try:
+            tr.append_raw_turn_message(key, last)
+        except Exception:
+            logger.exception("transcript append (assistant tool_calls) failed")
+            return
+        last["_transcript_written"] = True
+
+    def _flush_transcript_for_tool_results(self, tool_messages: list[dict[str, Any]]) -> None:
+        """Append completed tool-result messages to the transcript immediately."""
+        tr = getattr(self._loop, "_session_transcript", None)
+        key = self._transcript_session_key
+        if tr is None or not tr.enabled or not key:
+            return
+        for m in tool_messages:
+            if not isinstance(m, dict):
+                continue
+            if m.get("_transcript_written"):
+                continue
+            try:
+                tr.append_raw_turn_message(key, m)
+            except Exception:
+                logger.exception("transcript append (tool result) failed")
+                continue
+            m["_transcript_written"] = True
 
     def finalize_content(self, context: AgentHookContext, content: str | None) -> str | None:
         return self._loop._strip_think(content)
@@ -501,6 +554,7 @@ class AgentLoop:
             channel=channel,
             chat_id=chat_id,
             message_id=message_id,
+            transcript_session_key=session.key if session else None,
         )
         hook: AgentHook = (
             CompositeHook([loop_hook] + self._extra_hooks) if self._extra_hooks else loop_hook
@@ -1121,11 +1175,13 @@ class AgentLoop:
         """Save new-turn messages into session, truncating large tool results."""
         for m in messages[skip:]:
             entry = dict(m)
+            # Strip internal marker before persisting to session.messages.
+            entry.pop("_transcript_written", None)
             role, content = entry.get("role"), entry.get("content")
             if role == "assistant" and not content and not entry.get("tool_calls"):
                 continue  # skip empty assistant messages — they poison session context
             _tr = getattr(self, "_session_transcript", None)
-            if _tr and _tr.enabled:
+            if _tr and _tr.enabled and not m.get("_transcript_written"):
                 _tr.append_raw_turn_message(session.key, m)
             if role == "tool":
                 if isinstance(content, str) and len(content) > self.max_tool_result_chars:
@@ -1227,11 +1283,14 @@ class AgentLoop:
         restored_messages: list[dict[str, Any]] = []
         if isinstance(assistant_message, dict):
             restored = dict(assistant_message)
+            # Drop in-memory inflight marker before rehydrating into session.
+            restored.pop("_transcript_written", None)
             restored.setdefault("timestamp", timestamp(self.timezone))
             restored_messages.append(restored)
         for message in completed_tool_results:
             if isinstance(message, dict):
                 restored = dict(message)
+                restored.pop("_transcript_written", None)
                 restored.setdefault("timestamp", timestamp(self.timezone))
                 restored_messages.append(restored)
         for tool_call in pending_tool_calls:

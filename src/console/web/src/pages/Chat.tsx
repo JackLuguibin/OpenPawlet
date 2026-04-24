@@ -969,6 +969,8 @@ export default function Chat() {
   /** Coalesce high-frequency chat_token updates to one setState per animation frame */
   const streamTokenFlushRafRef = useRef<number | null>(null);
   const pendingStreamTokenDeltaRef = useRef("");
+  /** Throttle transcript refetch triggered by in-flight tool events. */
+  const transcriptSyncTimerRef = useRef<number | null>(null);
   /** 新会话首条消息：等待 nanobot 内置 websocket 通道连接后再发送 */
   const pendingNanobotOutboundRef = useRef<string | null>(null);
   /** Silent `/status` poll: ignore streamed UI, parse status payload only */
@@ -995,7 +997,35 @@ export default function Chat() {
     }
   }, []);
 
+  const cancelTranscriptSync = useCallback(() => {
+    if (transcriptSyncTimerRef.current !== null) {
+      window.clearTimeout(transcriptSyncTimerRef.current);
+      transcriptSyncTimerRef.current = null;
+    }
+  }, []);
+
   const activeSessionKey = paramSessionKey || currentSessionKey;
+
+  /**
+   * Throttled transcript refetch triggered by inflight tool events. Backend now
+   * appends tool_calls / tool results to the transcript immediately, so pulling
+   * `/sessions/:key/transcript` mid-turn surfaces them without waiting for
+   * `chat_done`. Coalesces bursts to at most one refetch per 1.5s.
+   */
+  const scheduleTranscriptSync = useCallback(() => {
+    if (!activeSessionKey) {
+      return;
+    }
+    if (transcriptSyncTimerRef.current !== null) {
+      return;
+    }
+    transcriptSyncTimerRef.current = window.setTimeout(() => {
+      transcriptSyncTimerRef.current = null;
+      queryClient.invalidateQueries({
+        queryKey: ["session", activeSessionKey, currentBotId],
+      });
+    }, 1500);
+  }, [activeSessionKey, currentBotId, queryClient]);
 
   useEffect(() => {
     contextSessionEpochRef.current += 1;
@@ -1844,6 +1874,7 @@ export default function Chat() {
         }
         if (hasEmbeddedTools) {
           const incoming = chunk.tool_calls ?? [];
+          scheduleTranscriptSync();
           if (isStreamingRef.current) {
             const merged = mergeStreamingToolCalls(
               streamingPayloadToolCallsRef.current,
@@ -1915,6 +1946,7 @@ export default function Chat() {
           );
           streamingPayloadToolCallsRef.current = merged;
           setStreamingPayloadToolCalls(merged);
+          scheduleTranscriptSync();
         }
         if (chunk.reasoning_content !== undefined) {
           streamingReasoningContentRef.current = chunk.reasoning_content;
@@ -2053,6 +2085,8 @@ export default function Chat() {
         };
         setMessages((prev) => [...prev, assistantMsg]);
         setToolCalls([]);
+        // Any throttled mid-turn transcript refresh is superseded by chat_done.
+        cancelTranscriptSync();
         // Scope to the active bot to match the canonical sessions query key
         // used elsewhere in the file (e.g. ["sessions", currentBotId]).
         queryClient.invalidateQueries({ queryKey: ["sessions", currentBotId] });
@@ -2084,6 +2118,8 @@ export default function Chat() {
       cancelStreamTokenFlush,
       completeSilentStatusJsonPoll,
       scheduleNanobotStatusJson,
+      scheduleTranscriptSync,
+      cancelTranscriptSync,
       useNanobotChannel,
     ],
   );
@@ -2093,6 +2129,11 @@ export default function Chat() {
     const unregister = registerChatHandler(handleStreamChunk);
     return unregister;
   }, [handleStreamChunk]);
+
+  // Clean up any pending transcript refetch timer on unmount / session change.
+  useEffect(() => {
+    return () => cancelTranscriptSync();
+  }, [cancelTranscriptSync]);
 
   // nanobot `ws` 频道：连接就绪后发送队列中的首条消息（新会话）
   useEffect(() => {
