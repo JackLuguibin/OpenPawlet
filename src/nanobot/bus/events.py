@@ -12,9 +12,11 @@ from datetime import datetime
 from typing import Any
 
 from nanobot.bus.envelope import (
+    TARGET_BROADCAST,
     build_dedupe_key,
     new_message_id,
     new_trace_id,
+    produced_at,
 )
 
 
@@ -80,3 +82,33 @@ class OutboundMessage:
                 chat_id=self.chat_id,
                 message_id=self.message_id,
             )
+
+
+@dataclass
+class AgentEvent:
+    """A pub/sub event flowing on the events channel of the message bus.
+
+    Agent events carry a ``topic`` (semantic label) and a ``target`` (the
+    wire-level ZMQ SUB prefix).  ``target`` is what decides who receives
+    the event - the broker performs no routing of its own; SUB sockets
+    filter messages by prefix.  Recognised ``target`` shapes:
+
+    - ``broadcast``             every subscriber receives it.
+    - ``agent:<agent_id>``      direct delivery to a single agent.
+    - ``topic:<topic>``         everyone subscribed to that topic.
+
+    The ``topic`` field is independent of ``target`` so the producer can
+    publish ``topic="cron.fired"`` as a broadcast while a specific agent
+    can publish ``topic="agent.direct"`` with ``target="agent:bob"``.
+    """
+
+    topic: str
+    payload: dict[str, Any] = field(default_factory=dict)
+    source_agent: str = "system"
+    target: str = TARGET_BROADCAST
+    # Envelope fields - excluded from equality so tests that compare
+    # AgentEvent objects do not need to pin auto-generated ids.
+    message_id: str = field(default_factory=new_message_id, compare=False)
+    trace_id: str = field(default_factory=new_trace_id, compare=False)
+    event_seq: int = field(default=0, compare=False)
+    produced_at: float = field(default_factory=produced_at, compare=False)

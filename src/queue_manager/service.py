@@ -41,7 +41,9 @@ from nanobot.bus.envelope import (
     KEY_KIND,
     KEY_MESSAGE_ID,
     KEY_SESSION_KEY,
+    KEY_TARGET,
     KEY_TRACE_ID,
+    TARGET_BROADCAST,
 )
 from queue_manager.config import QueueManagerSettings
 from queue_manager.idempotency import IdempotencyStore
@@ -89,6 +91,8 @@ class QueueManagerBroker:
         self._worker: Any | None = None
         self._egress: Any | None = None
         self._delivery: Any | None = None
+        self._events_ingress: Any | None = None  # PULL from producers
+        self._events_delivery: Any | None = None  # PUB to subscribers
         self._monitor_sockets: dict[str, Any] = {}
 
         self._idempotency = IdempotencyStore(
@@ -103,13 +107,15 @@ class QueueManagerBroker:
         self._admin_runner: Any | None = None  # aiohttp.web.AppRunner
         self._start_perf = 0.0
 
-        # Pause gates for the two pump directions.
+        # Pause gates for each pump direction.
         self._pause_gates: dict[str, asyncio.Event] = {
             "inbound": asyncio.Event(),
             "outbound": asyncio.Event(),
+            "events": asyncio.Event(),
         }
         self._pause_gates["inbound"].set()
         self._pause_gates["outbound"].set()
+        self._pause_gates["events"].set()
 
     # ---- lifecycle ------------------------------------------------------
     async def start(self) -> None:
@@ -124,13 +130,20 @@ class QueueManagerBroker:
         self._egress.bind(s.bind_egress_endpoint())
         self._delivery = self._context.socket(zmq.PUB)
         self._delivery.bind(s.bind_delivery_endpoint())
+        self._events_ingress = self._context.socket(zmq.PULL)
+        self._events_ingress.bind(s.bind_events_ingress_endpoint())
+        self._events_delivery = self._context.socket(zmq.PUB)
+        self._events_delivery.bind(s.bind_events_delivery_endpoint())
 
         logger.info(
-            "QueueManagerBroker bound: ingress={} worker={} egress={} delivery={}",
+            "QueueManagerBroker bound: ingress={} worker={} egress={} delivery={} "
+            "events_ingress={} events_delivery={}",
             s.bind_ingress_endpoint(),
             s.bind_worker_endpoint(),
             s.bind_egress_endpoint(),
             s.bind_delivery_endpoint(),
+            s.bind_events_ingress_endpoint(),
+            s.bind_events_delivery_endpoint(),
         )
 
         self._start_perf = time.perf_counter()
@@ -140,6 +153,9 @@ class QueueManagerBroker:
         )
         self._tasks.append(
             asyncio.create_task(self._pump("outbound"), name="qm-pump-outbound")
+        )
+        self._tasks.append(
+            asyncio.create_task(self._pump("events"), name="qm-pump-events")
         )
         self._install_socket_monitors()
         await self._start_admin_server()
@@ -166,7 +182,14 @@ class QueueManagerBroker:
             except Exception:  # pragma: no cover
                 pass
         self._monitor_sockets.clear()
-        for sock in (self._ingress, self._worker, self._egress, self._delivery):
+        for sock in (
+            self._ingress,
+            self._worker,
+            self._egress,
+            self._delivery,
+            self._events_ingress,
+            self._events_delivery,
+        ):
             if sock is not None:
                 try:
                     sock.close(linger=0)
@@ -176,6 +199,8 @@ class QueueManagerBroker:
         self._worker = None
         self._egress = None
         self._delivery = None
+        self._events_ingress = None
+        self._events_delivery = None
         try:
             self._context.term()
         except Exception:  # pragma: no cover - best effort
@@ -232,6 +257,16 @@ class QueueManagerBroker:
                 "bind": s.bind_delivery_endpoint(),
                 "connect_hint": s.delivery_endpoint(),
             },
+            "events_ingress": {
+                "role": "PULL",
+                "bind": s.bind_events_ingress_endpoint(),
+                "connect_hint": s.events_ingress_endpoint(),
+            },
+            "events_delivery": {
+                "role": "PUB",
+                "bind": s.bind_events_delivery_endpoint(),
+                "connect_hint": s.events_delivery_endpoint(),
+            },
         }
 
     def snapshot(self) -> dict[str, Any]:
@@ -258,9 +293,19 @@ class QueueManagerBroker:
         }
 
     def set_paused(self, direction: str, paused: bool) -> dict[str, Any]:
-        """Flip the pause flag for *direction* (``inbound`` / ``outbound`` / ``both``)."""
+        """Flip the pause flag for *direction*.
+
+        Accepted values: ``inbound`` / ``outbound`` / ``events`` /
+        ``both`` (inbound + outbound, kept for backward compatibility)
+        / ``all`` (every direction).
+        """
         changed: list[str] = []
-        targets = ["inbound", "outbound"] if direction == "both" else [direction]
+        if direction == "both":
+            targets = ["inbound", "outbound"]
+        elif direction == "all":
+            targets = ["inbound", "outbound", "events"]
+        else:
+            targets = [direction]
         for d in targets:
             if d not in self._pause_gates:
                 raise ValueError(f"unknown direction {d!r}")
@@ -291,6 +336,8 @@ class QueueManagerBroker:
             raise KeyError(message_id)
         if entry.direction == "inbound":
             outbox = self._worker
+        elif entry.direction == "events":
+            outbox = self._events_delivery
         else:
             outbox = self._delivery
         if outbox is None:
@@ -298,7 +345,16 @@ class QueueManagerBroker:
         # Bypass dedupe for the replay by dropping the cached key so the
         # subsequent publish does not re-enter it.
         self._idempotency.forget(message_id)
-        await outbox.send(entry.raw)
+        if entry.direction == "events":
+            # Events frames are multipart [target, payload] on the wire.
+            try:
+                envelope = json.loads(entry.raw.decode("utf-8"))
+            except Exception:
+                envelope = {}
+            target = str(envelope.get(KEY_TARGET, TARGET_BROADCAST) or TARGET_BROADCAST)
+            await outbox.send_multipart([target.encode("utf-8"), entry.raw])
+        else:
+            await outbox.send(entry.raw)
         self.state.incr("replayed", 1)
         self.state.incr(f"{entry.direction}_forwarded", 1)
         self.state.incr(f"{entry.direction}_bytes_total", entry.bytes_len)
@@ -306,10 +362,19 @@ class QueueManagerBroker:
 
     # ---- pumps ----------------------------------------------------------
     async def _pump(self, direction: str) -> None:
-        """Forward frames from ingress→worker or egress→delivery."""
+        """Forward frames for one direction.
+
+        - inbound:  ingress → worker (single-frame JSON)
+        - outbound: egress  → delivery (single-frame JSON)
+        - events:   events_ingress → events_delivery (multipart: [target, json])
+        """
+        is_events = direction == "events"
         if direction == "inbound":
             inbox = self._ingress
             outbox = self._worker
+        elif direction == "events":
+            inbox = self._events_ingress
+            outbox = self._events_delivery
         else:
             inbox = self._egress
             outbox = self._delivery
@@ -322,7 +387,26 @@ class QueueManagerBroker:
         try:
             while self._running:
                 await gate.wait()
-                data = await inbox.recv()
+                if is_events:
+                    frames = await inbox.recv_multipart()
+                    if len(frames) >= 2:
+                        target_bytes = frames[0]
+                        data = frames[1]
+                    else:
+                        # Backward-compatible single-frame path - fall
+                        # back to parsing the target out of the payload.
+                        data = frames[0]
+                        try:
+                            target_bytes = str(
+                                json.loads(data.decode("utf-8")).get(
+                                    KEY_TARGET, TARGET_BROADCAST
+                                )
+                            ).encode("utf-8")
+                        except Exception:
+                            target_bytes = TARGET_BROADCAST.encode("utf-8")
+                else:
+                    target_bytes = b""
+                    data = await inbox.recv()
                 if not gate.is_set():
                     # Paused while we were reading; drop this frame so the
                     # PULL queue does not balloon.  Admins can replay via
@@ -343,16 +427,23 @@ class QueueManagerBroker:
                         mid,
                     )
                     continue
-                await outbox.send(data)
+                if is_events:
+                    await outbox.send_multipart([target_bytes, data])
+                else:
+                    await outbox.send(data)
                 self.state.incr(forwarded_key, 1)
                 self.state.incr(bytes_key, len(data))
+                if is_events:
+                    session_key = target_bytes.decode("utf-8", errors="replace")
+                else:
+                    session_key = str(envelope.get(KEY_SESSION_KEY, ""))
                 self.state.record_sample(
                     SampleEntry(
                         at=time.time(),
                         direction=direction,
                         kind=str(envelope.get(KEY_KIND, "")),
                         message_id=mid,
-                        session_key=str(envelope.get(KEY_SESSION_KEY, "")),
+                        session_key=session_key,
                         bytes_len=len(data),
                         trace_id=str(envelope.get(KEY_TRACE_ID, "")),
                         raw=data,
@@ -372,6 +463,8 @@ class QueueManagerBroker:
             "worker": self._worker,
             "egress": self._egress,
             "delivery": self._delivery,
+            "events_ingress": self._events_ingress,
+            "events_delivery": self._events_delivery,
         }
         for name, sock in targets.items():
             if sock is None:

@@ -44,6 +44,11 @@ class QueueManagerSettings(BaseSettings):
     worker_port: int = Field(default=7181, ge=1, le=65535)
     egress_port: int = Field(default=7182, ge=1, le=65535)
     delivery_port: int = Field(default=7183, ge=1, le=65535)
+    # Events pub/sub channel: producers PUSH to events_ingress_port and
+    # every subscriber SUBSCRIBEs on events_delivery_port. Decoupled
+    # from inbound/outbound so it can evolve independently.
+    events_ingress_port: int = Field(default=7184, ge=1, le=65535)
+    events_delivery_port: int = Field(default=7185, ge=1, le=65535)
 
     idempotency_window_seconds: int = Field(
         default=900,
@@ -70,7 +75,7 @@ class QueueManagerSettings(BaseSettings):
         description="Bind host for the broker health / metrics HTTP endpoint.",
     )
     health_port: int = Field(
-        default=7184,
+        default=7186,
         ge=0,
         le=65535,
         description="Port for ``/health`` and ``/metrics``; set to 0 to disable.",
@@ -109,6 +114,12 @@ class QueueManagerSettings(BaseSettings):
     def delivery_endpoint(self) -> str:
         return f"tcp://{self.host}:{self.delivery_port}"
 
+    def events_ingress_endpoint(self) -> str:
+        return f"tcp://{self.host}:{self.events_ingress_port}"
+
+    def events_delivery_endpoint(self) -> str:
+        return f"tcp://{self.host}:{self.events_delivery_port}"
+
     def bind_ingress_endpoint(self) -> str:
         return f"tcp://*:{self.ingress_port}"
 
@@ -120,6 +131,12 @@ class QueueManagerSettings(BaseSettings):
 
     def bind_delivery_endpoint(self) -> str:
         return f"tcp://*:{self.delivery_port}"
+
+    def bind_events_ingress_endpoint(self) -> str:
+        return f"tcp://*:{self.events_ingress_port}"
+
+    def bind_events_delivery_endpoint(self) -> str:
+        return f"tcp://*:{self.events_delivery_port}"
 
 
 @lru_cache(maxsize=1)

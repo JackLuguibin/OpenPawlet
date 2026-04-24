@@ -7,7 +7,8 @@ from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
-from nanobot.bus.events import OutboundMessage
+from nanobot.bus.envelope import TARGET_BROADCAST
+from nanobot.bus.events import AgentEvent, OutboundMessage
 from nanobot.bus.queue import MessageBus
 from nanobot.channels.base import BaseChannel
 from nanobot.config.schema import Config
@@ -121,8 +122,41 @@ class ChannelManager:
         """Start a channel and log any exceptions."""
         try:
             await channel.start()
+            await self._publish_channel_event("channel.up", name, channel)
         except Exception as e:
             logger.error("Failed to start channel {}: {}", name, e)
+            await self._publish_channel_event("channel.down", name, channel, error=str(e))
+
+    async def _publish_channel_event(
+        self,
+        topic: str,
+        name: str,
+        channel: BaseChannel,
+        *,
+        error: str | None = None,
+    ) -> None:
+        """Broadcast a channel lifecycle event on the bus (best effort)."""
+        publisher = getattr(self.bus, "publish_event", None)
+        if publisher is None:
+            return
+        payload: dict[str, Any] = {
+            "channel": name,
+            "display_name": getattr(channel, "display_name", name),
+            "running": getattr(channel, "is_running", False),
+        }
+        if error:
+            payload["error"] = error
+        try:
+            await publisher(
+                AgentEvent(
+                    topic=topic,
+                    source_agent="system:channel-manager",
+                    target=TARGET_BROADCAST,
+                    payload=payload,
+                )
+            )
+        except Exception as exc:  # pragma: no cover - event channel is best-effort
+            logger.debug("channel event publish failed ({}): {}", topic, exc)
 
     async def start_all(self) -> None:
         """Start all channels and the outbound dispatcher."""
@@ -178,8 +212,12 @@ class ChannelManager:
             try:
                 await channel.stop()
                 logger.info("Stopped {} channel", name)
+                await self._publish_channel_event("channel.down", name, channel)
             except Exception as e:
                 logger.error("Error stopping {}: {}", name, e)
+                await self._publish_channel_event(
+                    "channel.down", name, channel, error=str(e)
+                )
 
     async def _dispatch_outbound(self) -> None:
         """Dispatch outbound messages to the appropriate channel."""

@@ -38,13 +38,23 @@ from nanobot.bus.envelope import (
     KEY_PAYLOAD,
     KEY_PRODUCED_AT,
     KEY_SESSION_KEY,
+    KEY_SOURCE_AGENT,
+    KEY_TARGET,
+    KEY_TOPIC,
     KEY_TRACE_ID,
     KEY_VERSION,
+    KIND_EVENT,
     KIND_INBOUND,
     KIND_OUTBOUND,
+    TARGET_AGENT_PREFIX,
+    TARGET_BROADCAST,
+    TARGET_TOPIC_PREFIX,
     produced_at,
+    target_for_agent,
+    target_for_topic,
 )
-from nanobot.bus.events import InboundMessage, OutboundMessage
+from nanobot.bus.events import AgentEvent, InboundMessage, OutboundMessage
+from nanobot.bus.queue import EventSubscription, _event_matches
 
 
 def _encode_inbound(msg: InboundMessage) -> bytes:
@@ -141,8 +151,68 @@ def _decode_outbound(data: bytes) -> OutboundMessage:
     )
 
 
+def _encode_event(ev: AgentEvent) -> bytes:
+    """Serialise an :class:`AgentEvent` into the wire envelope.
+
+    The frame is always JSON-encoded; the broker wraps it in a
+    multipart ZMQ message ``[target, envelope_json]`` so SUB sockets
+    can filter by prefix without parsing the payload.
+    """
+    envelope: dict[str, Any] = {
+        KEY_VERSION: ENVELOPE_VERSION,
+        KEY_KIND: KIND_EVENT,
+        KEY_MESSAGE_ID: ev.message_id,
+        KEY_TRACE_ID: ev.trace_id,
+        KEY_EVENT_SEQ: ev.event_seq,
+        KEY_PRODUCED_AT: ev.produced_at or produced_at(),
+        KEY_TOPIC: ev.topic,
+        KEY_SOURCE_AGENT: ev.source_agent,
+        KEY_TARGET: ev.target or TARGET_BROADCAST,
+        KEY_PAYLOAD: dict(ev.payload),
+    }
+    return json.dumps(envelope, ensure_ascii=False).encode("utf-8")
+
+
+def _decode_event(data: bytes) -> AgentEvent:
+    raw = json.loads(data.decode("utf-8"))
+    return AgentEvent(
+        topic=str(raw.get(KEY_TOPIC, "")),
+        payload=dict(raw.get(KEY_PAYLOAD, {}) or {}),
+        source_agent=str(raw.get(KEY_SOURCE_AGENT, "system")),
+        target=str(raw.get(KEY_TARGET, TARGET_BROADCAST) or TARGET_BROADCAST),
+        message_id=str(raw.get(KEY_MESSAGE_ID, "") or ""),
+        trace_id=str(raw.get(KEY_TRACE_ID, "") or ""),
+        event_seq=int(raw.get(KEY_EVENT_SEQ, 0) or 0),
+        produced_at=float(raw.get(KEY_PRODUCED_AT, 0.0) or 0.0),
+    )
+
+
+def event_zmq_subscriptions(
+    *,
+    agent_id: str,
+    topics: "list[str] | tuple[str, ...]" = (),
+    include_broadcast: bool = True,
+) -> list[str]:
+    """Return the ZMQ SUB prefixes required for the given subscription params.
+
+    Exposed as a helper so the subscribe_events implementation and tests
+    stay in lock-step with the broker's multipart frame layout.
+    """
+    prefixes: list[str] = [target_for_agent(agent_id)]
+    if include_broadcast:
+        prefixes.append(TARGET_BROADCAST)
+    for t in topics:
+        prefixes.append(target_for_topic(t))
+    return prefixes
+
+
 class ZmqBusEndpoints:
-    """Collection of ZeroMQ endpoints shared by producers and consumers."""
+    """Collection of ZeroMQ endpoints shared by producers and consumers.
+
+    The events channel is optional for backward compatibility - when
+    both ``events_ingress`` and ``events_delivery`` are empty the bus
+    silently disables the events path.
+    """
 
     def __init__(
         self,
@@ -151,11 +221,15 @@ class ZmqBusEndpoints:
         worker: str,
         egress: str,
         delivery: str,
+        events_ingress: str = "",
+        events_delivery: str = "",
     ) -> None:
         self.ingress = ingress
         self.worker = worker
         self.egress = egress
         self.delivery = delivery
+        self.events_ingress = events_ingress
+        self.events_delivery = events_delivery
 
     @classmethod
     def default_tcp(
@@ -169,7 +243,13 @@ class ZmqBusEndpoints:
             worker=f"tcp://{host}:{base_port + 1}",
             egress=f"tcp://{host}:{base_port + 2}",
             delivery=f"tcp://{host}:{base_port + 3}",
+            events_ingress=f"tcp://{host}:{base_port + 4}",
+            events_delivery=f"tcp://{host}:{base_port + 5}",
         )
+
+    @property
+    def has_events(self) -> bool:
+        return bool(self.events_ingress and self.events_delivery)
 
 
 class ZmqMessageBus:
@@ -187,6 +267,7 @@ class ZmqMessageBus:
         role: str = "full",  # full | producer | agent | dispatcher
         subscription: str = "",
         buffer_maxsize: int = 0,
+        agent_id: str = "",
     ) -> None:
         try:
             import zmq  # type: ignore
@@ -200,6 +281,7 @@ class ZmqMessageBus:
         self._endpoints = endpoints
         self._role = role
         self._subscription = subscription
+        self._agent_id = agent_id
 
         # Own Context per bus so multiple buses in different event
         # loops (integration tests, multiple workers) do not share an
@@ -209,11 +291,19 @@ class ZmqMessageBus:
         self._worker_sock: Any | None = None  # SUB from broker
         self._egress_sock: Any | None = None  # PUSH to broker
         self._delivery_sock: Any | None = None  # SUB from broker
+        self._events_push_sock: Any | None = None  # PUSH to broker (events ingress)
+        self._events_sub_sock: Any | None = None  # SUB from broker (events delivery)
 
         # Mirror queues keep the synchronous `outbound.get_nowait()` contract
         # that `ChannelManager._coalesce_stream_deltas` depends on.
         self.inbound: asyncio.Queue[InboundMessage] = asyncio.Queue(maxsize=buffer_maxsize)
         self.outbound: asyncio.Queue[OutboundMessage] = asyncio.Queue(maxsize=buffer_maxsize)
+
+        # Active SUB prefixes on the events socket, plus the set of
+        # local subscriptions that will receive fan-outs from the pump.
+        self._event_sub_prefixes: set[str] = set()
+        self._event_subs: list[EventSubscription] = []
+        self._event_subs_lock = asyncio.Lock()
 
         self._pump_tasks: list[asyncio.Task[None]] = []
         self._started = False
@@ -244,14 +334,40 @@ class ZmqMessageBus:
             self._pump_tasks.append(
                 asyncio.create_task(self._pump_outbound(), name="zmq-pump-outbound")
             )
+        # Connect the events sockets for any role that wants to talk
+        # pub/sub (producer & agent on ingress; agent & dispatcher on
+        # delivery).  Roles without events participation simply skip it.
+        if self._endpoints.has_events:
+            if self._role in {"full", "producer", "agent"}:
+                self._events_push_sock = self._context.socket(zmq.PUSH)
+                self._events_push_sock.connect(self._endpoints.events_ingress)
+            if self._role in {"full", "agent", "dispatcher"}:
+                self._events_sub_sock = self._context.socket(zmq.SUB)
+                self._events_sub_sock.connect(self._endpoints.events_delivery)
+                # Subscribe to this agent's direct inbox + broadcast by
+                # default.  Topic subscriptions are added dynamically via
+                # subscribe_events().
+                default_prefixes: set[str] = {TARGET_BROADCAST}
+                if self._agent_id:
+                    default_prefixes.add(target_for_agent(self._agent_id))
+                for prefix in default_prefixes:
+                    self._events_sub_sock.setsockopt_string(zmq.SUBSCRIBE, prefix)
+                    self._event_sub_prefixes.add(prefix)
+                self._pump_tasks.append(
+                    asyncio.create_task(self._pump_events(), name="zmq-pump-events")
+                )
         self._started = True
         logger.info(
-            "ZmqMessageBus started (role={}, ingress={}, worker={}, egress={}, delivery={})",
+            "ZmqMessageBus started (role={}, agent_id={}, ingress={}, worker={}, "
+            "egress={}, delivery={}, events_ingress={}, events_delivery={})",
             self._role,
+            self._agent_id or "-",
             self._endpoints.ingress,
             self._endpoints.worker,
             self._endpoints.egress,
             self._endpoints.delivery,
+            self._endpoints.events_ingress or "-",
+            self._endpoints.events_delivery or "-",
         )
 
     async def stop(self) -> None:
@@ -269,6 +385,8 @@ class ZmqMessageBus:
             self._worker_sock,
             self._egress_sock,
             self._delivery_sock,
+            self._events_push_sock,
+            self._events_sub_sock,
         ):
             if sock is not None:
                 try:
@@ -279,6 +397,10 @@ class ZmqMessageBus:
         self._worker_sock = None
         self._egress_sock = None
         self._delivery_sock = None
+        self._events_push_sock = None
+        self._events_sub_sock = None
+        self._event_sub_prefixes.clear()
+        self._event_subs.clear()
         self._started = False
         try:
             self._context.term()
@@ -318,6 +440,66 @@ class ZmqMessageBus:
     def outbound_size(self) -> int:
         return self.outbound.qsize()
 
+    # ---- events ---------------------------------------------------------
+    async def publish_event(self, ev: AgentEvent) -> None:
+        """PUSH an :class:`AgentEvent` to the broker's events ingress."""
+        if not self._started:
+            await self.start()
+        if self._events_push_sock is None:
+            raise RuntimeError(
+                "ZmqMessageBus role/endpoints cannot publish events "
+                "(events_ingress missing)"
+            )
+        target = (ev.target or TARGET_BROADCAST).encode("utf-8")
+        await self._events_push_sock.send_multipart([target, _encode_event(ev)])
+
+    def subscribe_events(
+        self,
+        *,
+        agent_id: str,
+        topics: "list[str] | tuple[str, ...]" = (),
+        include_broadcast: bool = True,
+        maxsize: int = 0,
+    ) -> EventSubscription:
+        """Register a new local event subscription.
+
+        The returned :class:`EventSubscription` receives events that
+        match its filter.  The call also makes sure the underlying SUB
+        socket is subscribed to the right ZMQ prefixes so the broker
+        actually forwards the frames to us.
+        """
+        if self._events_sub_sock is None:
+            raise RuntimeError(
+                "ZmqMessageBus role/endpoints cannot receive events "
+                "(events_delivery missing)"
+            )
+        zmq = self._zmq
+        requested = event_zmq_subscriptions(
+            agent_id=agent_id,
+            topics=tuple(topics),
+            include_broadcast=include_broadcast,
+        )
+        for prefix in requested:
+            if prefix not in self._event_sub_prefixes:
+                self._events_sub_sock.setsockopt_string(zmq.SUBSCRIBE, prefix)
+                self._event_sub_prefixes.add(prefix)
+        queue: asyncio.Queue[AgentEvent] = asyncio.Queue(maxsize=maxsize)
+        sub = EventSubscription(
+            queue,
+            detach=self._detach_subscription,
+            agent_id=agent_id,
+            topics=tuple(topics),
+            include_broadcast=include_broadcast,
+        )
+        self._event_subs.append(sub)
+        return sub
+
+    def _detach_subscription(self, sub: EventSubscription) -> None:
+        try:
+            self._event_subs.remove(sub)
+        except ValueError:
+            pass
+
     # ---- pumps ----------------------------------------------------------
     async def _pump_inbound(self) -> None:
         assert self._worker_sock is not None
@@ -350,3 +532,37 @@ class ZmqMessageBus:
             raise
         except Exception as exc:  # pragma: no cover
             logger.exception("ZmqMessageBus outbound pump crashed: {}", exc)
+
+    async def _pump_events(self) -> None:
+        """Fan out broker-delivered events to every matching local subscription."""
+        assert self._events_sub_sock is not None
+        try:
+            while True:
+                frames = await self._events_sub_sock.recv_multipart()
+                # Broker layout: [target, envelope_json].  Fall back to a
+                # single-frame format for safety during migrations.
+                if len(frames) >= 2:
+                    payload = frames[1]
+                else:
+                    payload = frames[0]
+                try:
+                    ev = _decode_event(payload)
+                except Exception as exc:
+                    logger.warning("ZmqMessageBus: dropped malformed event: {}", exc)
+                    continue
+                # Copy under the lock but fan out outside of it to avoid
+                # blocking new subscribers while we deliver.
+                async with self._event_subs_lock:
+                    subs = list(self._event_subs)
+                for sub in subs:
+                    if _event_matches(
+                        ev,
+                        agent_id=sub.agent_id,
+                        topics=sub.topics,
+                        include_broadcast=sub.include_broadcast,
+                    ):
+                        await sub._deliver(ev)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # pragma: no cover
+            logger.exception("ZmqMessageBus events pump crashed: {}", exc)

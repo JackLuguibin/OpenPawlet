@@ -822,6 +822,7 @@
     "subtitle": "查看 Broker 指标、Socket 拓扑与最近消息样本。",
     "inbound": "入站",
     "outbound": "出站",
+    "events": "事件",
     "wsOn": "WS 已连接",
     "wsOff": "WS 未连接",
     "streamOn": "实时推送",

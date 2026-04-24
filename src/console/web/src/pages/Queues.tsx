@@ -114,7 +114,7 @@ export default function Queues() {
       direction,
       paused,
     }: {
-      direction: 'inbound' | 'outbound' | 'both';
+      direction: 'inbound' | 'outbound' | 'events' | 'both' | 'all';
       paused: boolean;
     }) => api.pauseQueue(direction, paused),
     onSuccess: () => {
@@ -154,7 +154,7 @@ export default function Queues() {
   });
 
   const confirmPause = (
-    direction: 'inbound' | 'outbound' | 'both',
+    direction: 'inbound' | 'outbound' | 'events' | 'both' | 'all',
     paused: boolean,
   ) => {
     modalApi.confirm({
@@ -438,6 +438,29 @@ export default function Queues() {
                       </Button>
                     )}
                   </div>
+                  <div className="flex items-center justify-between gap-2 rounded-md border border-gray-200/80 bg-white px-3 py-2 dark:border-gray-600/50 dark:bg-gray-900/40">
+                    <Text strong className="shrink-0">
+                      {t('queues.events')}
+                    </Text>
+                    {merged.paused.events ? (
+                      <Button
+                        icon={<PlayCircle className="w-4 h-4" />}
+                        onClick={() => confirmPause('events', false)}
+                        size="small"
+                      >
+                        {t('queues.resume')}
+                      </Button>
+                    ) : (
+                      <Button
+                        danger
+                        icon={<PauseCircle className="w-4 h-4" />}
+                        onClick={() => confirmPause('events', true)}
+                        size="small"
+                      >
+                        {t('queues.pause')}
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </Card>
               <Card
@@ -543,11 +566,25 @@ export default function Queues() {
                     dataIndex: 'direction',
                     key: 'direction',
                     width: 100,
-                    render: (v: string) => (
-                      <Tag color={v === 'inbound' ? 'blue' : 'green'}>
-                        {v === 'inbound' ? t('queues.inbound') : t('queues.outbound')}
-                      </Tag>
-                    ),
+                    render: (v: string) => {
+                      const color =
+                        v === 'inbound'
+                          ? 'blue'
+                          : v === 'outbound'
+                            ? 'green'
+                            : v === 'events'
+                              ? 'purple'
+                              : 'default';
+                      const label =
+                        v === 'inbound'
+                          ? t('queues.inbound')
+                          : v === 'outbound'
+                            ? t('queues.outbound')
+                            : v === 'events'
+                              ? t('queues.events')
+                              : v;
+                      return <Tag color={color}>{label}</Tag>;
+                    },
                   },
                   {
                     title: 'kind',

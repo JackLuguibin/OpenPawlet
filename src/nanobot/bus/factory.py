@@ -32,6 +32,7 @@ def build_message_bus(
     role: str = "full",
     subscription: str = "",
     force_in_process: bool = False,
+    agent_id: str = "",
 ) -> MessageBusProtocol:
     """Return a bus instance chosen from environment configuration.
 
@@ -65,8 +66,15 @@ def build_message_bus(
             worker=f"tcp://{host}:{os.environ.get('QUEUE_MANAGER_WORKER_PORT', base_port + 1)}",
             egress=f"tcp://{host}:{os.environ.get('QUEUE_MANAGER_EGRESS_PORT', base_port + 2)}",
             delivery=f"tcp://{host}:{os.environ.get('QUEUE_MANAGER_DELIVERY_PORT', base_port + 3)}",
+            events_ingress=f"tcp://{host}:{os.environ.get('QUEUE_MANAGER_EVENTS_INGRESS_PORT', base_port + 4)}",
+            events_delivery=f"tcp://{host}:{os.environ.get('QUEUE_MANAGER_EVENTS_DELIVERY_PORT', base_port + 5)}",
         )
-        return ZmqMessageBus(endpoints, role=role, subscription=subscription)
+        return ZmqMessageBus(
+            endpoints,
+            role=role,
+            subscription=subscription,
+            agent_id=agent_id,
+        )
     except Exception as exc:  # pragma: no cover - surfaced only on import errors
         logger.warning(
             "Could not build ZmqMessageBus ({}); falling back to in-process.",

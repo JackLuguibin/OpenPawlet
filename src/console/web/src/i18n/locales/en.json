@@ -822,6 +822,7 @@
     "subtitle": "Live broker metrics, socket topology, and recent message samples.",
     "inbound": "Inbound",
     "outbound": "Outbound",
+    "events": "Events",
     "wsOn": "WS live",
     "wsOff": "WS offline",
     "streamOn": "Live",

@@ -204,6 +204,10 @@ class BrokerState:
             "outbound_dropped_duplicate": 0,
             "outbound_dropped_paused": 0,
             "outbound_bytes_total": 0,
+            "events_forwarded": 0,
+            "events_dropped_duplicate": 0,
+            "events_dropped_paused": 0,
+            "events_bytes_total": 0,
             "malformed_frames": 0,
             "replayed": 0,
             "dedupe_clears": 0,
@@ -213,10 +217,15 @@ class BrokerState:
             "inbound_dropped_duplicate": RateMeter(),
             "outbound_forwarded": RateMeter(),
             "outbound_dropped_duplicate": RateMeter(),
+            "events_forwarded": RateMeter(),
         }
         self.samples = SampleBuffer(capacity=sample_capacity)
         self.connections = ConnectionTable()
-        self.paused: dict[str, bool] = {"inbound": False, "outbound": False}
+        self.paused: dict[str, bool] = {
+            "inbound": False,
+            "outbound": False,
+            "events": False,
+        }
 
     # --- counters ----
     def incr(self, name: str, amount: int = 1) -> None:

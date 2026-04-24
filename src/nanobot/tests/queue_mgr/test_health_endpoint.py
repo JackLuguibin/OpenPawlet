@@ -35,21 +35,23 @@ async def test_health_endpoint_returns_metrics() -> None:
     from queue_manager.config import QueueManagerSettings
     from queue_manager.service import QueueManagerBroker
 
-    ports = [_free_port() for _ in range(5)]
+    ports = [_free_port() for _ in range(7)]
     settings = QueueManagerSettings(
         host="127.0.0.1",
         ingress_port=ports[0],
         worker_port=ports[1],
         egress_port=ports[2],
         delivery_port=ports[3],
+        events_ingress_port=ports[4],
+        events_delivery_port=ports[5],
         health_host="127.0.0.1",
-        health_port=ports[4],
+        health_port=ports[6],
     )
     broker = QueueManagerBroker(settings)
     await broker.start()
     try:
         async with aiohttp.ClientSession() as client:
-            async with client.get(f"http://127.0.0.1:{ports[4]}/health") as r:
+            async with client.get(f"http://127.0.0.1:{ports[6]}/health") as r:
                 assert r.status == 200
                 body = await r.json()
         assert body["status"] == "ok"

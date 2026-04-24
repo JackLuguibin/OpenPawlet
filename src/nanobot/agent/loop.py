@@ -23,6 +23,11 @@ from nanobot.agent.runner import _MAX_INJECTIONS_PER_TURN, AgentRunner, AgentRun
 from nanobot.agent.skills import BUILTIN_SKILLS_DIR
 from nanobot.agent.subagent import SubagentManager
 from nanobot.agent.tools.cron import CronTool
+from nanobot.agent.tools.events import (
+    PublishEventTool,
+    SendToAgentTool,
+    SubscribeEventTool,
+)
 from nanobot.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
 from nanobot.agent.tools.message import MessageTool
 from nanobot.agent.tools.notebook import NotebookEditTool
@@ -259,6 +264,13 @@ class AgentLoop:
         _tc = tools_config or ToolsConfig()
         defaults = AgentDefaults()
         self.bus = bus
+        # Stable agent identity for the events channel.  NANOBOT_AGENT_ID
+        # wins; otherwise we fall back to a host:pid tuple so multiple
+        # nanobot processes on the same box stay distinguishable.
+        self.agent_id = (
+            os.environ.get("NANOBOT_AGENT_ID", "").strip()
+            or f"main:{os.uname().nodename}:{os.getpid()}"
+        )
         self.channels_config = channels_config or ChannelsConfig()
         self._session_turn_lifecycle_channels = frozenset(
             self.channels_config.session_turn_lifecycle_channels
@@ -306,6 +318,7 @@ class AgentLoop:
             restrict_to_workspace=restrict_to_workspace,
             disabled_skills=disabled_skills,
             timezone=self.timezone,
+            parent_agent_id=self.agent_id,
         )
         self._unified_session = unified_session
         self._running = False
@@ -446,6 +459,22 @@ class AgentLoop:
             self.tools.register(WebFetchTool(proxy=self.web_config.proxy))
         self.tools.register(MessageTool(send_callback=self.bus.publish_outbound))
         self.tools.register(SpawnTool(manager=self.subagents))
+        # Events tools: agent-to-agent / pub-sub.  SubscribeEventTool
+        # forwards background events to the loop as InboundMessage so the
+        # agent can react on its next turn without blocking the current one.
+        self.tools.register(
+            PublishEventTool(bus=self.bus, default_source_agent=self.agent_id)
+        )
+        self.tools.register(
+            SendToAgentTool(bus=self.bus, default_source_agent=self.agent_id)
+        )
+        self.tools.register(
+            SubscribeEventTool(
+                bus=self.bus,
+                default_agent_id=self.agent_id,
+                inject_inbound=self.bus.publish_inbound,
+            )
+        )
         if self.cron_service:
             self.tools.register(
                 CronTool(self.cron_service, default_timezone=self.timezone or "UTC")
@@ -485,6 +514,18 @@ class AgentLoop:
                         tool.set_context(channel, chat_id, effective_key=effective_key)
                     else:
                         tool.set_context(channel, chat_id, *([message_id] if name == "message" else []))
+        # Event tools follow a different signature (agent_id-aware) so
+        # they get their own configuration pass.
+        for name in ("publish_event", "send_to_agent"):
+            if (tool := self.tools.get(name)) and hasattr(tool, "set_context"):
+                tool.set_context(source_agent=self.agent_id)
+        if (sub_tool := self.tools.get("subscribe_event")) and hasattr(sub_tool, "set_context"):
+            sub_tool.set_context(
+                agent_id=self.agent_id,
+                session_key=effective_key,
+                channel=channel,
+                chat_id=chat_id,
+            )
 
     @staticmethod
     def _strip_think(text: str | None) -> str | None:

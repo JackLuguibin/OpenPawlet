@@ -35,6 +35,7 @@ import uuid
 TOPIC_INBOUND = "inbound"
 TOPIC_OUTBOUND = "outbound"
 TOPIC_CONTROL = "control"
+TOPIC_EVENT = "event"
 
 # Envelope keys (stable wire names - do not rename without a migration).
 ENVELOPE_VERSION = 1
@@ -47,13 +48,38 @@ KEY_TRACE_ID = "trace_id"
 KEY_CHANNEL = "channel"
 KEY_PRODUCED_AT = "produced_at"
 KEY_ATTEMPT = "attempt"
-KEY_KIND = "kind"  # "inbound" or "outbound"
+KEY_KIND = "kind"  # "inbound" / "outbound" / "event"
 KEY_PAYLOAD = "payload"
 
-# Kinds - whether the enveloped payload is an InboundMessage or an
-# OutboundMessage.  Kept string so it survives JSON round-trips.
+# Event-specific envelope keys.  An agent event extends the same
+# envelope shape as InboundMessage/OutboundMessage, with three extra
+# top-level fields that identify the pub/sub coordinates.
+KEY_TOPIC = "topic"
+KEY_SOURCE_AGENT = "source_agent"
+KEY_TARGET = "target"
+
+# Kinds - whether the enveloped payload is an InboundMessage, an
+# OutboundMessage, or an AgentEvent.  Kept string so it survives JSON
+# round-trips.
 KIND_INBOUND = "inbound"
 KIND_OUTBOUND = "outbound"
+KIND_EVENT = "event"
+
+# Target prefixes used on the events channel.  SUB sockets subscribe to
+# these prefixes so the broker does not have to inspect the payload.
+TARGET_BROADCAST = "broadcast"
+TARGET_AGENT_PREFIX = "agent:"
+TARGET_TOPIC_PREFIX = "topic:"
+
+
+def target_for_agent(agent_id: str) -> str:
+    """Return the ZMQ SUB prefix string for addressing *agent_id* directly."""
+    return f"{TARGET_AGENT_PREFIX}{agent_id}"
+
+
+def target_for_topic(topic: str) -> str:
+    """Return the ZMQ SUB prefix string for subscribing to *topic*."""
+    return f"{TARGET_TOPIC_PREFIX}{topic}"
 
 
 def new_message_id() -> str:

@@ -143,10 +143,13 @@ class ServerSettings(BaseSettings):
         description="Hostname of the Queue Manager broker admin endpoint.",
     )
     queue_manager_admin_port: int = Field(
-        default=7184,
+        default=7186,
         ge=1,
         le=65535,
-        description="Port of the Queue Manager broker admin endpoint.",
+        description=(
+            "Port of the Queue Manager broker admin HTTP endpoint (same as "
+            "QUEUE_MANAGER_HEALTH_PORT; not the ZMQ events ingress on 7184)."
+        ),
     )
     queue_manager_admin_token: str = Field(
         default="",

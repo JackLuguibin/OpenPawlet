@@ -15,12 +15,18 @@ from nanobot.agent.hook import AgentHook, AgentHookContext
 from nanobot.utils.prompt_templates import render_template
 from nanobot.agent.runner import AgentRunSpec, AgentRunner
 from nanobot.agent.skills import BUILTIN_SKILLS_DIR
+from nanobot.agent.tools.events import (
+    PublishEventTool,
+    SendToAgentTool,
+    SubscribeEventTool,
+)
 from nanobot.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
 from nanobot.agent.tools.registry import ToolRegistry
 from nanobot.agent.tools.search import GlobTool, GrepTool
 from nanobot.agent.tools.shell import ExecTool
 from nanobot.agent.tools.web import WebFetchTool, WebSearchTool
-from nanobot.bus.events import InboundMessage
+from nanobot.bus.envelope import TARGET_BROADCAST, target_for_agent
+from nanobot.bus.events import AgentEvent, InboundMessage
 from nanobot.bus.queue import MessageBus
 from nanobot.config.schema import ExecToolConfig, WebToolsConfig
 from nanobot.providers.base import LLMProvider
@@ -83,11 +89,13 @@ class SubagentManager:
         restrict_to_workspace: bool = False,
         disabled_skills: list[str] | None = None,
         timezone: str | None = None,
+        parent_agent_id: str = "",
     ):
         self.provider = provider
         self.workspace = workspace
         self.bus = bus
         self.timezone = timezone
+        self.parent_agent_id = parent_agent_id
         self.model = model or provider.get_default_model()
         self.web_config = web_config or WebToolsConfig()
         self.max_tool_result_chars = max_tool_result_chars
@@ -178,6 +186,29 @@ class SubagentManager:
             if self.web_config.enable:
                 tools.register(WebSearchTool(config=self.web_config.search, proxy=self.web_config.proxy))
                 tools.register(WebFetchTool(proxy=self.web_config.proxy))
+            # Subagents get the event tools so they can talk back to
+            # the parent agent (via send_to_agent) or listen for
+            # system events; they still don't get message/spawn, matching
+            # the existing isolation policy.
+            subagent_id = f"sub:{task_id}"
+            tools.register(
+                PublishEventTool(bus=self.bus, default_source_agent=subagent_id)
+            )
+            tools.register(
+                SendToAgentTool(bus=self.bus, default_source_agent=subagent_id)
+            )
+            subscribe_tool = SubscribeEventTool(
+                bus=self.bus,
+                default_agent_id=subagent_id,
+                inject_inbound=self.bus.publish_inbound,
+            )
+            subscribe_tool.set_context(
+                agent_id=subagent_id,
+                session_key=origin.get("session_key"),
+                channel=origin["channel"],
+                chat_id=origin["chat_id"],
+            )
+            tools.register(subscribe_tool)
             system_prompt = self._build_subagent_prompt()
             runtime = ContextBuilder._build_runtime_context(
                 origin["channel"],
@@ -267,6 +298,29 @@ class SubagentManager:
         )
 
         await self.bus.publish_inbound(msg)
+        # Also fire a pub/sub event so other agents / dashboards can
+        # observe subagent completions without being the origin agent.
+        # The target is broadcast so the original parent agent receives
+        # it regardless of how the subagent was spawned.
+        try:
+            await self.bus.publish_event(
+                AgentEvent(
+                    topic="subagent.done",
+                    source_agent=f"sub:{task_id}",
+                    target=TARGET_BROADCAST,
+                    payload={
+                        "task_id": task_id,
+                        "label": label,
+                        "task": task,
+                        "status": status,
+                        "origin_channel": origin.get("channel"),
+                        "origin_chat_id": origin.get("chat_id"),
+                        "parent_agent_id": self.parent_agent_id or None,
+                    },
+                )
+            )
+        except Exception as exc:  # pragma: no cover - event channel is best-effort
+            logger.debug("subagent.done event publish failed: {}", exc)
         logger.debug("Subagent [{}] announced result to {}:{}", task_id, origin['channel'], origin['chat_id'])
 
     @staticmethod

@@ -720,6 +720,34 @@ def gateway(
     # Set cron callback (needs agent)
     async def on_cron_job(job: CronJob) -> str | None:
         """Execute a cron job through the agent."""
+        # Broadcast a cron.fired event before we run the job so any
+        # subscribed agent can react (e.g. monitor for overlapping runs
+        # or surface the schedule in a dashboard).  Best effort.
+        publisher = getattr(bus, "publish_event", None)
+        if publisher is not None:
+            from nanobot.bus.envelope import TARGET_BROADCAST
+            from nanobot.bus.events import AgentEvent
+
+            try:
+                await publisher(
+                    AgentEvent(
+                        topic="cron.fired",
+                        source_agent="system:cron",
+                        target=TARGET_BROADCAST,
+                        payload={
+                            "job_id": job.id,
+                            "name": job.name,
+                            "schedule_kind": job.schedule.kind,
+                            "deliver": job.payload.deliver,
+                            "channel": job.payload.channel,
+                            "chat_id": job.payload.to,
+                            "message": job.payload.message,
+                        },
+                    )
+                )
+            except Exception as exc:  # pragma: no cover - event channel is best-effort
+                logger.debug("cron.fired event publish failed: {}", exc)
+
         # Dream is an internal job — run directly, not through the agent loop.
         if job.name == "dream":
             try:

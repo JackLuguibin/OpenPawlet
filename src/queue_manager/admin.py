@@ -126,9 +126,9 @@ async def _pause(request: web.Request) -> web.Response:
     except Exception:
         return web.json_response({"error": "invalid JSON body"}, status=400)
     direction = str(body.get("direction", "")).strip().lower()
-    if direction not in {"inbound", "outbound", "both"}:
+    if direction not in {"inbound", "outbound", "events", "both", "all"}:
         return web.json_response(
-            {"error": "direction must be inbound|outbound|both"},
+            {"error": "direction must be inbound|outbound|events|both|all"},
             status=400,
         )
     paused = bool(body.get("paused", True))

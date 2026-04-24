@@ -52,7 +52,7 @@ async def test_snapshot_adds_bearer_when_token_configured(monkeypatch) -> None:
     settings = ServerSettings(
         queue_manager_admin_token="secret",
         queue_manager_host="127.0.0.1",
-        queue_manager_admin_port=7184,
+        queue_manager_admin_port=7186,
     )
     fake = _FakeClient(_FakeResponse(200, {"status": "ok"}))
     monkeypatch.setattr(httpx, "AsyncClient", lambda *a, **k: fake)

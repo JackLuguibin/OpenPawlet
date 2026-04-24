@@ -1074,10 +1074,12 @@ export interface QueueSnapshot {
     worker: QueueTopologyEntry;
     egress: QueueTopologyEntry;
     delivery: QueueTopologyEntry;
+    events_ingress?: QueueTopologyEntry;
+    events_delivery?: QueueTopologyEntry;
   };
   metrics: Record<string, number>;
   rates: Record<string, number>;
-  paused: { inbound: boolean; outbound: boolean };
+  paused: { inbound: boolean; outbound: boolean; events?: boolean };
   dedupe: {
     hits: number;
     misses: number;
@@ -1093,9 +1095,12 @@ export async function getQueueSnapshot(): Promise<QueueSnapshot> {
 }
 
 export async function pauseQueue(
-  direction: 'inbound' | 'outbound' | 'both',
+  direction: 'inbound' | 'outbound' | 'events' | 'both' | 'all',
   paused: boolean
-): Promise<{ paused: { inbound: boolean; outbound: boolean }; changed: string[] }> {
+): Promise<{
+  paused: { inbound: boolean; outbound: boolean; events?: boolean };
+  changed: string[];
+}> {
   return fetchJson(`${API_BASE}/queues/pause`, {
     method: 'POST',
     body: JSON.stringify({ direction, paused }),

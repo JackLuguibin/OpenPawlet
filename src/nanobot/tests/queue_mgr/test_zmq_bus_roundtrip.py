@@ -47,13 +47,15 @@ async def test_inbound_outbound_roundtrip_through_broker() -> None:
     from queue_manager.config import QueueManagerSettings
     from queue_manager.service import QueueManagerBroker
 
-    ports = [_free_port() for _ in range(4)]
+    ports = [_free_port() for _ in range(6)]
     settings = QueueManagerSettings(
         host="127.0.0.1",
         ingress_port=ports[0],
         worker_port=ports[1],
         egress_port=ports[2],
         delivery_port=ports[3],
+        events_ingress_port=ports[4],
+        events_delivery_port=ports[5],
         health_port=0,
         idempotency_window_seconds=60,
         idempotency_max_entries=1024,
@@ -121,13 +123,15 @@ async def test_full_role_bus_publishes_and_consumes_locally() -> None:
     from queue_manager.config import QueueManagerSettings
     from queue_manager.service import QueueManagerBroker
 
-    ports = [_free_port() for _ in range(4)]
+    ports = [_free_port() for _ in range(6)]
     settings = QueueManagerSettings(
         host="127.0.0.1",
         ingress_port=ports[0],
         worker_port=ports[1],
         egress_port=ports[2],
         delivery_port=ports[3],
+        events_ingress_port=ports[4],
+        events_delivery_port=ports[5],
         health_port=0,
     )
     broker = QueueManagerBroker(settings)

@@ -38,15 +38,17 @@ async def _build_broker(admin_token: str = ""):
     from queue_manager.config import QueueManagerSettings
     from queue_manager.service import QueueManagerBroker
 
-    ports = [_free_port() for _ in range(5)]
+    ports = [_free_port() for _ in range(7)]
     settings = QueueManagerSettings(
         host="127.0.0.1",
         ingress_port=ports[0],
         worker_port=ports[1],
         egress_port=ports[2],
         delivery_port=ports[3],
+        events_ingress_port=ports[4],
+        events_delivery_port=ports[5],
         health_host="127.0.0.1",
-        health_port=ports[4],
+        health_port=ports[6],
         admin_token=admin_token,
         idempotency_window_seconds=60,
         sample_capacity=20,
@@ -54,7 +56,7 @@ async def _build_broker(admin_token: str = ""):
     )
     broker = QueueManagerBroker(settings)
     await broker.start()
-    return broker, ports[4]
+    return broker, ports[6]
 
 
 @pytest.mark.asyncio
