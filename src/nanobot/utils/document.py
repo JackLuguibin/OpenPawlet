@@ -133,7 +133,9 @@ def _extract_docx(path: Path) -> str:
 def _extract_xlsx(path: Path) -> str:
     """Extract text from XLSX using openpyxl."""
     try:
-        with load_workbook(path, read_only=True, data_only=True) as wb:
+        # read_only Workbook in openpyxl 3.1+ is not a context manager; use close().
+        wb = load_workbook(path, read_only=True, data_only=True)
+        try:
             sheets: list[str] = []
             for sheet_name in wb.sheetnames:
                 ws = wb[sheet_name]
@@ -145,6 +147,8 @@ def _extract_xlsx(path: Path) -> str:
                 if rows:
                     sheets.append(f"--- Sheet: {sheet_name} ---\n" + "\n".join(rows))
             return _truncate("\n\n".join(sheets), _MAX_TEXT_LENGTH)
+        finally:
+            wb.close()
     except Exception as e:
         logger.error("Failed to extract XLSX {}: {}", path, e)
         return f"[error: failed to extract XLSX: {e!s}]"
