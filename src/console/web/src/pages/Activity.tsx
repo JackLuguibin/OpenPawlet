@@ -74,6 +74,9 @@ export default function Activity() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { currentBotId } = useAppStore();
+  // Subscribe only after the console WS is OPEN; otherwise the effect would
+  // no-op on mount and never rerun when the socket connects later.
+  const wsConnected = useAppStore((s) => s.wsConnected);
   const agentTz = useAgentTimeZone();
   const locale = i18n.language.startsWith('zh') ? 'zh-CN' : 'en-US';
   const [typeFilter, setTypeFilter] = useState<string>('');
@@ -164,14 +167,21 @@ export default function Activity() {
   });
 
   // Subscribe to the bot's activity room so live updates arrive via WebSocket.
+  // Depend on `wsConnected` so late-opening sockets still trigger (sub)scription.
   useEffect(() => {
+    if (!currentBotId) return;
+    if (!wsConnected) return;
     const ws = getWSRef()?.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    ws.send(JSON.stringify({ type: 'subscribe', room: `bot:${currentBotId}` }));
+    const room = `bot:${currentBotId}`;
+    ws.send(JSON.stringify({ type: 'subscribe', room }));
     return () => {
-      ws.send(JSON.stringify({ type: 'unsubscribe', room: `bot:${currentBotId}` }));
+      // Guard the socket may already be closing on unmount.
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'unsubscribe', room }));
+      }
     };
-  }, [currentBotId]);
+  }, [currentBotId, wsConnected]);
 
   const activityCounts = activities?.reduce(
     (acc, item) => {

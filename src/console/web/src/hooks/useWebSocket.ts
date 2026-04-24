@@ -5,8 +5,16 @@ import { useAppStore } from '../store';
 import type { StatusResponse, SessionInfo, WSMessage, ActivityItem } from '../api/types';
 import type { StreamChunk } from '../api/types';
 
+/**
+ * Origin of a chat stream chunk. `console` is the FastAPI `/ws` push (when
+ * `VITE_CONSOLE_WS_URL` is configured), `nanobot` is the built-in nanobot
+ * `/nanobot-ws` channel. Handlers can use this tag to dedupe when both
+ * transports are active (see Chat.tsx).
+ */
+export type ChatChunkSource = "console" | "nanobot";
+
 // Global chat message handler registry (used by Chat.tsx for WS streaming)
-type ChatMessageHandler = (chunk: StreamChunk) => void;
+type ChatMessageHandler = (chunk: StreamChunk, source: ChatChunkSource) => void;
 const _chatHandlers = new Set<ChatMessageHandler>();
 
 export function registerChatHandler(handler: ChatMessageHandler): () => void {
@@ -14,15 +22,18 @@ export function registerChatHandler(handler: ChatMessageHandler): () => void {
   return () => _chatHandlers.delete(handler);
 }
 
-function _dispatchChat(chunk: StreamChunk) {
+function _dispatchChat(chunk: StreamChunk, source: ChatChunkSource) {
   for (const h of _chatHandlers) {
-    try { h(chunk); } catch {}
+    try { h(chunk, source); } catch {}
   }
 }
 
 /** Dispatch a chat stream chunk (e.g. from nanobot `ws` channel WebSocket). */
-export function dispatchChatChunk(chunk: StreamChunk) {
-  _dispatchChat(chunk);
+export function dispatchChatChunk(
+  chunk: StreamChunk,
+  source: ChatChunkSource = "nanobot",
+) {
+  _dispatchChat(chunk, source);
 }
 
 // Expose wsRef so callers can send messages directly
@@ -113,7 +124,7 @@ export function useWebSocket() {
             'nanobot_status_json',
           ];
           if (chatTypes.includes(message.type)) {
-            _dispatchChat(message as StreamChunk);
+            _dispatchChat(message as StreamChunk, "console");
           }
 
           if (message.type === 'status_update' && message.data) {
@@ -168,6 +179,10 @@ export function useWebSocket() {
         setWSConnecting(false);
         setWSConnected(false);
         wsRef.current = null;
+        // Reset the "initial status" guard so the first `status_update` after
+        // reconnect triggers the same usage-history refresh as the first ever
+        // connection. Without this, a reconnect silently skips the refresh.
+        initialStatusReceivedRef.current = false;
 
         // Schedule reconnect
         if (reconnectTimeoutRef.current) {

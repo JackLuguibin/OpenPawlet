@@ -19,6 +19,7 @@ import {
   tryParseNanobotResumeChatId,
   useNanobotChannelWebSocket,
 } from "../hooks/useNanobotChannelWebSocket";
+import type { ChatChunkSource } from "../hooks/useWebSocket";
 import { registerChatHandler, getWSRef } from "../hooks/useWebSocket";
 import { useAgentTimeZone } from "../hooks/useAgentTimeZone";
 import { formatChatMessageTime } from "../utils/agentDatetime";
@@ -55,6 +56,7 @@ import { javascript } from "@codemirror/lang-javascript";
 import { EditorView } from "@codemirror/view";
 import { vscodeDark, vscodeLight } from "@uiw/codemirror-theme-vscode";
 import { normalizeToolCallsArray } from "../utils/toolCalls";
+import { extractNanobotStatusContext } from "../utils/nanobotStatusContext";
 import type { TextAreaRef } from "antd/es/input/TextArea";
 import Input from "antd/es/input";
 import { SubagentPanel, type SubagentTask } from "../components/SubagentPanel";
@@ -81,32 +83,6 @@ function extractFirstJsonObject(text: string): string | null {
       if (depth === 0) {
         return text.slice(start, i + 1);
       }
-    }
-  }
-  return null;
-}
-
-function extractNanobotStatusContext(
-  root: Record<string, unknown>,
-): Record<string, unknown> | null {
-  const direct = root.context;
-  if (direct !== undefined && typeof direct === "object" && direct !== null) {
-    return direct as Record<string, unknown>;
-  }
-  const wrapped = root.data;
-  if (
-    wrapped !== undefined &&
-    typeof wrapped === "object" &&
-    wrapped !== null &&
-    !Array.isArray(wrapped)
-  ) {
-    const nested = (wrapped as Record<string, unknown>).context;
-    if (
-      nested !== undefined &&
-      typeof nested === "object" &&
-      nested !== null
-    ) {
-      return nested as Record<string, unknown>;
     }
   }
   return null;
@@ -825,8 +801,17 @@ function MessageToolCallsBlock({
   );
 }
 
-/** Timestamp for ordering session rows (newer = larger). */
-function sessionInfoSortKeyMs(info: SessionInfo): number {
+/**
+ * Canonical "last activity" timestamp for a session (newer = larger).
+ * Prefers `updated_at` (when any message moved the row) and falls back to
+ * `created_at` so freshly created empty rows still compare deterministically.
+ *
+ * This is the single source of truth for "which session is newest" across
+ * the chat page (sidebar highlight/scroll, bare-route bootstrap, delete
+ * fallback, 404 recovery). Keeping one rule avoids the UI picking row A in
+ * the sidebar while navigation / fallback jumps to row B.
+ */
+function sessionInfoLastActiveMs(info: SessionInfo): number {
   const raw = info.updated_at ?? info.created_at;
   if (!raw) {
     return 0;
@@ -835,26 +820,16 @@ function sessionInfoSortKeyMs(info: SessionInfo): number {
   return Number.isNaN(parsed) ? 0 : parsed;
 }
 
-/** Prefer created_at for “newest created”; fallback updated_at. */
-function sessionInfoCreatedSortKeyMs(info: SessionInfo): number {
-  const raw = info.created_at ?? info.updated_at;
-  if (!raw) {
-    return 0;
-  }
-  const parsed = Date.parse(raw);
-  return Number.isNaN(parsed) ? 0 : parsed;
-}
-
-/** Pick the session row with the largest created_at (newest created). */
-function pickNewestCreatedSessionKey(rows: SessionInfo[]): string | null {
+/** Pick the session row with the newest last-activity timestamp (see `sessionInfoLastActiveMs`). */
+function pickLatestActiveSessionKey(rows: SessionInfo[]): string | null {
   if (rows.length === 0) {
     return null;
   }
   let best = rows[0];
-  let bestMs = sessionInfoCreatedSortKeyMs(best);
+  let bestMs = sessionInfoLastActiveMs(best);
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i];
-    const ms = sessionInfoCreatedSortKeyMs(row);
+    const ms = sessionInfoLastActiveMs(row);
     if (ms >= bestMs) {
       bestMs = ms;
       best = row;
@@ -1123,7 +1098,7 @@ export default function Chat() {
     }
     const storedKey = stored?.trim() ?? "";
     const keys = new Set(list.map((row) => row.key));
-    const fallback = pickNewestCreatedSessionKey(list);
+    const fallback = pickLatestActiveSessionKey(list);
     if (!fallback) {
       return;
     }
@@ -1301,24 +1276,11 @@ export default function Chat() {
     [scheduleNanobotStatusJson],
   );
 
-  /** Prefer `updated_at`, then `created_at`, for “latest” row in the sessions sidebar. */
-  const latestSessionKeyForSidebar = useMemo(() => {
-    const rows = sessions ?? [];
-    if (rows.length === 0) {
-      return null;
-    }
-    let best = rows[0];
-    let bestMs = sessionInfoSortKeyMs(best);
-    for (let i = 1; i < rows.length; i++) {
-      const row = rows[i];
-      const ms = sessionInfoSortKeyMs(row);
-      if (ms >= bestMs) {
-        bestMs = ms;
-        best = row;
-      }
-    }
-    return best.key;
-  }, [sessions]);
+  /** Sidebar's "latest" row uses the same rule as navigation/delete fallbacks. */
+  const latestSessionKeyForSidebar = useMemo(
+    () => pickLatestActiveSessionKey(sessions ?? []),
+    [sessions],
+  );
 
   const sessionSidebarRowRefs = useRef<Map<string, HTMLDivElement | null>>(
     new Map(),
@@ -1398,7 +1360,7 @@ export default function Chat() {
             currentBotId,
           ]) ?? [];
         const remaining = list.filter((row) => row.key !== key);
-        const nextKey = pickNewestCreatedSessionKey(remaining);
+        const nextKey = pickLatestActiveSessionKey(remaining);
 
         queryClient.setQueryData<SessionInfo[]>(
           ["sessions", currentBotId],
@@ -1473,7 +1435,7 @@ export default function Chat() {
             currentBotId,
           ]) ?? [];
         const remaining = list.filter((row) => !keySet.has(row.key));
-        const nextKey = pickNewestCreatedSessionKey(remaining);
+        const nextKey = pickLatestActiveSessionKey(remaining);
 
         queryClient.setQueryData<SessionInfo[]>(
           ["sessions", currentBotId],
@@ -1631,7 +1593,7 @@ export default function Chat() {
       return;
     }
 
-    const newestKey = pickNewestCreatedSessionKey(list);
+    const newestKey = pickLatestActiveSessionKey(list);
     if (!newestKey) {
       return;
     }
@@ -1777,7 +1739,17 @@ export default function Chat() {
   ]);
 
   const handleStreamChunk = useCallback(
-    (chunk: StreamChunk) => {
+    (chunk: StreamChunk, source: ChatChunkSource) => {
+      // When both transports are configured, bind this page to a single
+      // source to prevent duplicate tokens / `chat_done` events from
+      // console `/ws` and nanobot `/nanobot-ws` being merged into one stream.
+      if (useNanobotChannel) {
+        if (source !== "nanobot") {
+          return;
+        }
+      } else if (source !== "console") {
+        return;
+      }
       if (silentStatusJsonRef.current) {
         if (chunk.type === "session_key") {
           return;
@@ -2081,7 +2053,9 @@ export default function Chat() {
         };
         setMessages((prev) => [...prev, assistantMsg]);
         setToolCalls([]);
-        queryClient.invalidateQueries({ queryKey: ["sessions"] });
+        // Scope to the active bot to match the canonical sessions query key
+        // used elsewhere in the file (e.g. ["sessions", currentBotId]).
+        queryClient.invalidateQueries({ queryKey: ["sessions", currentBotId] });
         // Update the session cache so sessionData stays in sync with the latest session.
         // Functional form reads current cache at call time, avoiding stale closure values.
         queryClient.setQueryData(

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import type { StreamChunk } from "../api/types";
 import { useAppStore } from "../store";
 import i18n from "../i18n";
+import { outboundDataHasStatusContext } from "../utils/nanobotStatusContext";
 import {
   mergeToolCallsWithResults,
   normalizeToolCallsArray,
@@ -54,30 +55,6 @@ export interface NanobotNativeWsFrame {
   reasoning_content?: string;
   /** OutboundMessage.data — may carry status/command JSON (see `outboundDataHasStatusContext`). */
   data?: unknown;
-}
-
-/**
- * Same shape checks as Chat `extractNanobotStatusContext` — outbound `message.data`
- * may use `context` or nested `data.context`.
- */
-function outboundDataHasStatusContext(root: Record<string, unknown>): boolean {
-  const direct = root.context;
-  if (direct !== undefined && typeof direct === "object" && direct !== null) {
-    return true;
-  }
-  const wrapped = root.data;
-  if (
-    wrapped !== undefined &&
-    typeof wrapped === "object" &&
-    wrapped !== null &&
-    !Array.isArray(wrapped)
-  ) {
-    const nested = (wrapped as Record<string, unknown>).context;
-    if (nested !== undefined && typeof nested === "object" && nested !== null) {
-      return true;
-    }
-  }
-  return false;
 }
 
 function optionalToolFrameFields(
@@ -547,7 +524,7 @@ export function useNanobotChannelWebSocket(options: {
             }
             const chunk = mapNativeFrameToStreamChunk(data);
             if (chunk) {
-              dispatchChatChunk(chunk);
+              dispatchChatChunk(chunk, "nanobot");
             }
           } catch (e) {
             console.error("[nanobot-ws] parse error", e);
