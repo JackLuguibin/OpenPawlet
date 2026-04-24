@@ -11,7 +11,6 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import i18n from "../i18n";
-import { Markdown } from "../components/Markdown";
 import { useAppStore } from "../store";
 import {
   disconnectNanobotChannelWebSocket,
@@ -43,7 +42,6 @@ import {
   MessageSquare,
   Sparkles,
   Square,
-  User,
   Wand2,
   Wrench,
   Info,
@@ -60,6 +58,25 @@ import { extractNanobotStatusContext } from "../utils/nanobotStatusContext";
 import type { TextAreaRef } from "antd/es/input/TextArea";
 import Input from "antd/es/input";
 import { SubagentPanel, type SubagentTask } from "../components/SubagentPanel";
+import { MessageRow } from "./chat/MessageRow";
+import { VirtualizedMessageList } from "./chat/VirtualizedMessageList";
+import { useVirtualListHandle } from "./chat/useVirtualListHandle";
+
+/**
+ * Pagination window size for lazy-loaded chat history.
+ *
+ * The first request asks the backend `/transcript` endpoint for the most
+ * recent `CHAT_HISTORY_PAGE_SIZE` messages; scrolling to the top fetches the
+ * previous page. Keep this modest so the first render of a long conversation
+ * stays fast; users scrolling up pay a single round-trip for older context.
+ */
+const CHAT_HISTORY_PAGE_SIZE = 80;
+
+/** Pixel distance from the container's top that triggers a prev-page fetch. */
+const CHAT_HISTORY_TOP_TRIGGER_PX = 120;
+
+/** Near-bottom threshold (mirrors the pre-virtualization scroll sticky rule). */
+const CHAT_NEAR_BOTTOM_PX = 100;
 
 /** nanobot `/status` (or legacy JSON) → `context` slice (silent poll after each turn). */
 interface NanobotContextUsage {
@@ -964,6 +981,24 @@ export default function Chat() {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   /** When false, new tokens must not force scroll (user scrolled up to read). */
   const messagesStickToBottomRef = useRef(true);
+  /** Imperative handle into the virtualized message list (scroll helpers). */
+  const [virtualListHandleRef, setVirtualListHandle] = useVirtualListHandle();
+  /** Tracks unseen new-message count while the user is scrolled away from the bottom. */
+  const [unreadBelowCount, setUnreadBelowCount] = useState(0);
+  /** Drives the "jump to bottom" button visibility; updated from scroll events. */
+  const [showJumpToBottom, setShowJumpToBottom] = useState(false);
+  /**
+   * Absolute index (into the full transcript) of the oldest message currently
+   * loaded in `messages`. `null` when pagination metadata is unavailable
+   * (transcript endpoint returned the legacy full-history shape).
+   */
+  const [historyOldestOffset, setHistoryOldestOffset] = useState<number | null>(
+    null,
+  );
+  const [historyHasMore, setHistoryHasMore] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  /** Prevent concurrent prev-page requests for the same scroll event burst. */
+  const loadingOlderRef = useRef(false);
   const inputRef = useRef<TextAreaRef>(null);
   const streamingContentRef = useRef("");
   /** Coalesce high-frequency chat_token updates to one setState per animation frame */
@@ -1558,7 +1593,15 @@ export default function Chat() {
   const { data: sessionData, isError: sessionQueryError, error: sessionQueryErrorObj } =
     useQuery({
       queryKey: ["session", activeSessionKey, currentBotId],
-      queryFn: () => api.getSessionTranscript(activeSessionKey!, currentBotId),
+      /**
+       * Fetch only the tail page on first load so very long conversations do
+       * not bottleneck on a single mega-response; older history is paged in
+       * lazily when the user scrolls up (see `loadOlderHistoryPage`).
+       */
+      queryFn: () =>
+        api.getSessionTranscript(activeSessionKey!, currentBotId, {
+          limit: CHAT_HISTORY_PAGE_SIZE,
+        }),
       enabled: shouldFetchSessionJsonl && !sessionJsonlFetchSuppressedForDeletedRoute,
       retry: false,
     });
@@ -1664,33 +1707,72 @@ export default function Chat() {
     prevParamSessionKeyForMessagesRef.current = paramSessionKey;
   }, [paramSessionKey]);
 
+  /**
+   * Build a stable id for a transcript row.
+   *
+   * Previously ids were `msg-{idx}-{Date.now()}`, which meant every replay of
+   * the sync effect produced new keys; that broke the virtualized list's
+   * height cache and forced React to reconcile every historical row even when
+   * no data changed. Keying by absolute transcript offset + role + timestamp
+   * keeps ids stable across refetches while still differentiating adjacent
+   * rows that share an offset slot (e.g. tool replies that reuse a ts).
+   */
+  const buildStableMessageId = useCallback(
+    (msg: Message, absoluteIndex: number): string => {
+      const ts = msg.timestamp ?? msg.created_at ?? "";
+      const role = msg.role ?? "x";
+      const toolCallId = msg.tool_call_id ?? "";
+      return `m:${absoluteIndex}:${role}:${toolCallId}:${ts}`;
+    },
+    [],
+  );
+
   useEffect(() => {
-    if (sessionData?.messages && !isStreaming) {
-      const serverMessages = sessionData.messages as Message[];
+    if (!sessionData?.messages) {
+      if (!activeSessionKey) {
+        setShowSuggestions(true);
+      }
+      return;
+    }
+
+    const serverMessages = sessionData.messages as Message[];
+    // Pagination metadata drives the "load older" control. `offset` is absent
+    // in the legacy full-history shape; fall back to 0 so prev-page fetches
+    // are disabled (nothing to page before an un-paged response).
+    const nextOldestOffset =
+      typeof sessionData.offset === "number" ? sessionData.offset : 0;
+    const nextHasMore = Boolean(sessionData.has_more);
+
+    if (!isStreaming) {
       setMessages((prev) => {
-        // If local has more messages (e.g. assistant msg just added in chat_done), don't overwrite with old sessionData
+        // If local state already has more messages than the server tail page
+        // (e.g. we just appended an assistant bubble on chat_done), don't
+        // overwrite with the older paged snapshot.
         if (prev.length > serverMessages.length) return prev;
         return serverMessages.map((msg, idx) => ({
           ...msg,
-          id: `msg-${idx}-${Date.now()}`,
+          id: buildStableMessageId(msg, nextOldestOffset + idx),
         }));
       });
+      setHistoryOldestOffset(nextOldestOffset);
+      setHistoryHasMore(nextHasMore);
       setShowSuggestions(serverMessages.length === 0);
-    } else if (sessionData?.messages && isStreaming) {
-      // Stream just started and session/transcript fetch returned messages (user turn already persisted).
-      // Load those messages so the user message appears immediately.
-      const serverMessages = sessionData.messages as Message[];
-      setMessages((prev) => {
-        if (prev.length > 0) return prev;
-        return serverMessages.map((msg, idx) => ({
-          ...msg,
-          id: `msg-${idx}-${Date.now()}`,
-        }));
-      });
-    } else if (!activeSessionKey) {
-      setShowSuggestions(true);
+      return;
     }
-  }, [sessionData, activeSessionKey, isStreaming]);
+
+    // Stream just started and session/transcript fetch returned messages
+    // (user turn already persisted on the server). Load them so the user
+    // message appears immediately.
+    setMessages((prev) => {
+      if (prev.length > 0) return prev;
+      return serverMessages.map((msg, idx) => ({
+        ...msg,
+        id: buildStableMessageId(msg, nextOldestOffset + idx),
+      }));
+    });
+    setHistoryOldestOffset(nextOldestOffset);
+    setHistoryHasMore(nextHasMore);
+  }, [sessionData, activeSessionKey, isStreaming, buildStableMessageId]);
 
   // Keep sidebar message_count in sync with GET /sessions/:key/transcript without refetching the full list.
   const sessionMessageCount = sessionData?.message_count;
@@ -1731,35 +1813,187 @@ export default function Chat() {
     );
   }, [messages]);
 
-  const updateMessagesStickToBottomFromScroll = useCallback(() => {
-    const el = messagesContainerRef.current;
-    if (!el) return;
-    const thresholdPx = 100;
-    const distFromBottom =
-      el.scrollHeight - el.scrollTop - el.clientHeight;
-    messagesStickToBottomRef.current = distFromBottom <= thresholdPx;
-  }, []);
+  /**
+   * Try to load the previous history page when the user scrolls near the top.
+   *
+   * Anchor restoration: we capture the current (scrollHeight - scrollTop)
+   * delta before the pending page is appended; after React commits the new
+   * rows we add the growth back so the viewport appears frozen in place
+   * rather than jumping up to the new top.
+   */
+  const loadOlderHistoryPage = useCallback(async () => {
+    if (loadingOlderRef.current) return;
+    if (!historyHasMore) return;
+    if (!activeSessionKey) return;
+    if (historyOldestOffset === null || historyOldestOffset <= 0) return;
 
-  // 仅有一条已落库消息且非流式时顶对齐，避免首条用户消息被「跟到底」滚没；流式时只有用户一条在 messages 里、助手在下方气泡，禁止每 token 执行 scrollTop=0（否则无法上下滚动）
-  useEffect(() => {
-    const container = messagesContainerRef.current;
-    const endEl = messagesEndRef.current;
-    if (!container) return;
-    if (displayMessages.length <= 1 && !isStreaming) {
-      container.scrollTop = 0;
-      messagesStickToBottomRef.current = true;
-      return;
+    loadingOlderRef.current = true;
+    setLoadingOlder(true);
+
+    // Find the scroll parent the virtual list mounted; it owns the scroll
+    // offset we need to restore after prepending rows.
+    const scroller = document.querySelector<HTMLDivElement>(
+      '[data-testid="chat-virtual-scroll"]',
+    );
+    const prevScrollHeight = scroller?.scrollHeight ?? 0;
+    const prevScrollTop = scroller?.scrollTop ?? 0;
+
+    try {
+      const page = await api.getSessionTranscript(
+        activeSessionKey,
+        currentBotId,
+        {
+          limit: CHAT_HISTORY_PAGE_SIZE,
+          beforeIndex: historyOldestOffset,
+        },
+      );
+      const older = (page.messages ?? []) as Message[];
+      const newOldestOffset =
+        typeof page.offset === "number" ? page.offset : 0;
+      const nextHasMore = Boolean(page.has_more);
+
+      if (older.length > 0) {
+        setMessages((prev) => {
+          const prepended: Message[] = older.map((msg, idx) => ({
+            ...msg,
+            id: buildStableMessageId(msg, newOldestOffset + idx),
+          }));
+          return [...prepended, ...prev];
+        });
+      }
+      setHistoryOldestOffset(newOldestOffset);
+      setHistoryHasMore(nextHasMore);
+
+      // Restore scroll position after layout settles. Using requestAnimation-
+      // Frame twice ensures measurement + paint have both flushed so the
+      // growth we add is the final value.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (!scroller) return;
+          const growth = scroller.scrollHeight - prevScrollHeight;
+          if (growth > 0) {
+            scroller.scrollTop = prevScrollTop + growth;
+          }
+        });
+      });
+    } catch (err) {
+      addToast({
+        type: "error",
+        message:
+          err instanceof Error
+            ? `${t("chat.loadOlderFailed")}: ${err.message}`
+            : t("chat.loadOlderFailed"),
+      });
+    } finally {
+      loadingOlderRef.current = false;
+      setLoadingOlder(false);
     }
-    if (!messagesStickToBottomRef.current) {
-      return;
-    }
-    // Smooth scroll on every token update queues many animations and feels sluggish
-    endEl?.scrollIntoView({
-      behavior: isStreaming ? "auto" : "smooth",
-      block: "end",
-    });
   }, [
+    historyHasMore,
+    historyOldestOffset,
+    activeSessionKey,
+    currentBotId,
+    buildStableMessageId,
+    addToast,
+    t,
+  ]);
+
+  /**
+   * Poll the virtual list scroll offset on every scroll event:
+   * - keeps `messagesStickToBottomRef` accurate so new tokens only auto-scroll
+   *   when the user is actively reading the tail;
+   * - drives the "jump to latest" pill;
+   * - triggers prev-page lazy loads when the viewport nears the top.
+   */
+  const handleVirtualScroll = useCallback(() => {
+    const handle = virtualListHandleRef.current;
+    if (!handle) return;
+    const distBottom = handle.distanceFromBottom();
+    const nearBottom = distBottom <= CHAT_NEAR_BOTTOM_PX;
+    messagesStickToBottomRef.current = nearBottom;
+    setShowJumpToBottom(!nearBottom);
+    if (nearBottom) {
+      setUnreadBelowCount(0);
+    }
+
+    const scroller = document.querySelector<HTMLDivElement>(
+      '[data-testid="chat-virtual-scroll"]',
+    );
+    if (
+      scroller &&
+      scroller.scrollTop <= CHAT_HISTORY_TOP_TRIGGER_PX &&
+      historyHasMore &&
+      !loadingOlderRef.current
+    ) {
+      void loadOlderHistoryPage();
+    }
+  }, [virtualListHandleRef, historyHasMore, loadOlderHistoryPage]);
+
+  // Attach scroll listener to the virtualization scroll parent.
+  useEffect(() => {
+    const attach = () => {
+      const scroller = document.querySelector<HTMLDivElement>(
+        '[data-testid="chat-virtual-scroll"]',
+      );
+      if (!scroller) return null;
+      scroller.addEventListener("scroll", handleVirtualScroll, { passive: true });
+      return scroller;
+    };
+    // React commits before we can find the node; wait one frame.
+    let scrollerEl: HTMLDivElement | null = null;
+    const raf = requestAnimationFrame(() => {
+      scrollerEl = attach();
+    });
+    return () => {
+      cancelAnimationFrame(raf);
+      if (scrollerEl) {
+        scrollerEl.removeEventListener("scroll", handleVirtualScroll);
+      }
+    };
+  }, [handleVirtualScroll, activeSessionKey]);
+
+  /**
+   * Auto-follow only when the user is near the bottom. We additionally count
+   * unread assistant bubbles while the user is reading older history so the
+   * "jump to latest" pill can surface a helpful hint.
+   */
+  useEffect(() => {
+    const handle = virtualListHandleRef.current;
+    if (!handle) return;
+    if (displayMessages.length <= 1 && !isStreaming) {
+      handle.scrollToBottom(false);
+      messagesStickToBottomRef.current = true;
+      setShowJumpToBottom(false);
+      setUnreadBelowCount(0);
+      return;
+    }
+    if (messagesStickToBottomRef.current) {
+      handle.scrollToBottom(false);
+    } else {
+      // User scrolled up; bump the unread counter whenever a new message is
+      // appended (either assistant finalization or streaming start).
+      setUnreadBelowCount((n) => n + 1);
+    }
+  }, [
+    virtualListHandleRef,
     displayMessages.length,
+    isStreaming,
+  ]);
+
+  /**
+   * During streaming we only want to follow the tail; we intentionally do
+   * NOT bump the unread counter on every token, and we skip the scroll when
+   * the user is away from the bottom. Split out from the length effect so
+   * the high-frequency `streamingContent` / tool progress updates don't
+   * trigger the length-based "unread" bump.
+   */
+  useEffect(() => {
+    const handle = virtualListHandleRef.current;
+    if (!handle) return;
+    if (!messagesStickToBottomRef.current) return;
+    handle.scrollToBottom(false);
+  }, [
+    virtualListHandleRef,
     streamingContent,
     streamingToolProgress.length,
     streamingChannelNotices.length,
@@ -1767,6 +2001,15 @@ export default function Chat() {
     streamingReasoningContent,
     isStreaming,
   ]);
+
+  const jumpToBottom = useCallback(() => {
+    const handle = virtualListHandleRef.current;
+    if (!handle) return;
+    messagesStickToBottomRef.current = true;
+    setUnreadBelowCount(0);
+    setShowJumpToBottom(false);
+    handle.scrollToBottom(true);
+  }, [virtualListHandleRef]);
 
   const handleStreamChunk = useCallback(
     (chunk: StreamChunk, source: ChatChunkSource) => {
@@ -2661,12 +2904,11 @@ export default function Chat() {
           </div>
 
           {/* Messages / Hero */}
-          <div
-            ref={messagesContainerRef}
-            onScroll={updateMessagesStickToBottomFromScroll}
-            className="flex-1 min-h-0 overflow-y-auto no-scrollbar px-4 md:px-6 py-2 md:py-3"
-          >
-            {displayMessages.length === 0 && showSuggestions ? (
+          {displayMessages.length === 0 && showSuggestions ? (
+            <div
+              ref={messagesContainerRef}
+              className="flex-1 min-h-0 overflow-y-auto no-scrollbar px-4 md:px-6 py-2 md:py-3"
+            >
               <div className="min-h-full flex flex-col items-center justify-start pt-2 md:pt-4 text-center text-gray-600 dark:text-gray-300">
                 <div className="w-20 h-20 rounded-md bg-gradient-to-br from-primary-100 to-blue-100 dark:from-primary-900/30 dark:to-blue-900/20 flex items-center justify-center mb-6 shadow-xl shadow-primary-500/10">
                   <Bot className="w-10 h-10 text-primary-600" />
@@ -2698,241 +2940,239 @@ export default function Chat() {
                   ))}
                 </div>
               </div>
-            ) : (
-              <div className="space-y-4 w-full min-w-0 max-w-3xl mx-auto">
-                {displayMessages.map((msg) => (
-                  <div
-                    key={msg.id}
-                    className={`flex gap-3 w-full min-w-0 overflow-visible ${msg.role === "user" ? "flex-row-reverse" : ""}`}
-                  >
-                    <div
-                      className={`w-10 h-10 min-w-[2.5rem] min-h-[2.5rem] rounded-md flex items-center justify-center flex-shrink-0 overflow-visible p-1.5 box-border ${
-                        msg.role === "user"
-                          ? "bg-sky-500 dark:bg-sky-600 text-white shadow-md shadow-sky-500/20"
-                          : "bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-600"
-                      }`}
-                    >
-                      {msg.role === "user" ? (
-                        <User
-                          className="w-5 h-5 min-w-5 min-h-5 text-white flex-shrink-0"
-                          strokeWidth={2}
-                        />
-                      ) : (
-                        <Bot className="w-5 h-5 text-gray-600 dark:text-gray-300" />
-                      )}
-                    </div>
-                    <div
-                      className={`relative rounded-md px-5 py-4 ${
-                        msg.role === "user"
-                          ? "shrink-0 w-fit max-w-[min(100%,85%)] min-w-[8rem] bg-sky-50 dark:bg-sky-950/45 text-slate-800 dark:text-slate-100 border border-sky-200/90 dark:border-sky-800/55 shadow-sm rounded-br-sm"
-                          : "flex-1 min-w-0 mr-[calc(2.5rem+0.75rem)] bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm rounded-bl-sm"
-                      }`}
-                    >
-                      {msg.role === "assistant" && msg.reasoning_content ? (
-                        <MessageThinkingBlock text={msg.reasoning_content} />
+            </div>
+          ) : (
+            <div className="relative flex-1 min-h-0 flex flex-col">
+              <VirtualizedMessageList
+                items={displayMessages}
+                getKey={(msg) => msg.id}
+                registerHandle={setVirtualListHandle}
+                header={
+                  historyHasMore || loadingOlder ? (
+                    <div className="flex items-center justify-center py-2 text-xs text-gray-500 dark:text-gray-400">
+                      {loadingOlder ? (
+                        <span className="inline-flex items-center gap-2">
+                          <LoadingOutlined />
+                          {t("chat.loadingOlder")}
+                        </span>
+                      ) : historyHasMore ? (
+                        <button
+                          type="button"
+                          onClick={() => void loadOlderHistoryPage()}
+                          className="inline-flex items-center gap-2 rounded-full px-3 py-1 bg-gray-100 dark:bg-gray-700/60 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors"
+                        >
+                          {t("chat.loadingOlder")}
+                        </button>
                       ) : null}
-                      {msg.role === "assistant" ? (
+                    </div>
+                  ) : null
+                }
+                renderItem={(msg) => {
+                  const extraAbove =
+                    msg.role === "assistant" ? (
+                      <>
+                        {msg.reasoning_content ? (
+                          <MessageThinkingBlock text={msg.reasoning_content} />
+                        ) : null}
                         <MessageToolCallsBlock
                           noTopMargin={!msg.reasoning_content}
                           tool_calls={msg.tool_calls}
                         />
-                      ) : null}
-                      <div
-                        className={`prose prose-sm max-w-none ${
-                          msg.role === "user"
-                            ? "prose-slate dark:prose-invert"
-                            : "dark:prose-invert"
-                        } ${
-                          msg.role === "assistant" &&
-                          (msg.reasoning_content ||
-                            (msg.tool_calls?.length ?? 0) > 0)
-                            ? "mt-3 pt-3 border-t border-gray-100 dark:border-gray-700"
-                            : ""
-                        }`}
-                      >
-                        <Markdown>{msg.content}</Markdown>
-                      </div>
-                      {(msg.created_at ?? msg.timestamp) && (
-                        <div
-                          className={`mt-2 text-xs ${
-                            msg.role === "user"
-                              ? "text-slate-500 dark:text-slate-400"
-                              : "text-gray-400 dark:text-gray-500"
-                          }`}
-                        >
-                          {formatMessageTime(msg.created_at ?? msg.timestamp)}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-
-                {/* Streaming content */}
-                {showStreamingAssistantBubble && (
-                    <>
-                      <div className="flex gap-3 w-full min-w-0">
-                        <div className="w-10 h-10 rounded-md bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-600 flex items-center justify-center shrink-0">
-                          <Bot className="w-5 h-5 text-gray-600 dark:text-gray-300" />
-                        </div>
-                        <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-md px-5 py-4 shadow-sm min-w-0 flex-1 max-w-full mr-[calc(2.5rem+0.75rem)]">
-                          {streamingChannelNotices.length > 0 ? (
-                            <div className="space-y-2 mb-3 pb-3 border-b border-amber-200/70 dark:border-amber-700/50">
-                              <div className="flex items-center gap-2 pl-0.5">
-                                <Info
-                                  className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0"
-                                  strokeWidth={2}
-                                  aria-hidden
-                                />
-                                <span className="text-[11px] font-semibold uppercase tracking-wider text-amber-700/90 dark:text-amber-400/90">
-                                  {t("chat.statusLabel")}
-                                </span>
-                              </div>
-                              {streamingChannelNotices.map((line, idx) => (
-                                <p
-                                  key={`${idx}-${line.slice(0, 48)}`}
-                                  className="text-[12px] sm:text-[13px] leading-snug text-amber-950 dark:text-amber-100/95 m-0"
-                                >
-                                  {line}
-                                </p>
-                              ))}
-                            </div>
-                          ) : null}
-                          {streamingReasoningContent.length > 0 ? (
-                            <MessageThinkingBlock
-                              text={streamingReasoningContent}
-                            />
-                          ) : null}
-                          {streamingPayloadToolCalls.length > 0 ? (
-                            <div
-                              className={
-                                streamingReasoningContent.length > 0 ||
-                                streamingChannelNotices.length > 0
-                                  ? "mt-3 pt-3 border-t border-gray-100 dark:border-gray-700"
-                                  : ""
-                              }
-                            >
-                              <MessageToolCallsBlock
-                                noTopMargin
-                                tool_calls={streamingPayloadToolCalls}
-                              />
-                            </div>
-                          ) : null}
-                          {streamingContent ? (
-                            <div
-                              className={`text-[15px] leading-relaxed text-gray-900 dark:text-gray-100 whitespace-pre-wrap break-words ${
-                                streamingReasoningContent.length > 0 ||
-                                streamingPayloadToolCalls.length > 0 ||
-                                streamingChannelNotices.length > 0
-                                  ? "mt-3 pt-3 border-t border-gray-100 dark:border-gray-700"
-                                  : ""
-                              }`}
-                            >
-                              {streamingContent}
-                            </div>
-                          ) : null}
-                          {streamingToolProgress.length > 0 ? (
-                            <div
-                              className={
-                                streamingContent ||
-                                streamingPayloadToolCalls.length > 0 ||
-                                streamingReasoningContent.length > 0 ||
-                                streamingChannelNotices.length > 0
-                                  ? "mt-3 pt-3 border-t border-gray-100 dark:border-gray-700 space-y-2"
-                                  : "space-y-2"
-                              }
-                            >
-                              <div className="flex items-center gap-2 pl-0.5">
-                                <Wrench
-                                  className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500 shrink-0"
-                                  strokeWidth={2}
-                                  aria-hidden
-                                />
-                                <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                                  {t("chat.toolCalls")}
-                                </span>
-                              </div>
-                              {streamingToolProgress.map((hint, idx) => (
-                                <pre
-                                  key={`${idx}-${hint.slice(0, 24)}`}
-                                  className="text-[11px] sm:text-xs leading-relaxed font-mono text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-950/80 rounded-md px-3 py-2.5 whitespace-pre-wrap break-all m-0 overflow-x-auto ring-1 ring-inset ring-slate-200/60 dark:ring-slate-700/50 border-0"
-                                >
-                                  {formatToolHintMultiline(hint)}
-                                </pre>
-                              ))}
-                            </div>
-                          ) : null}
-                          {streamingContent.trim().length > 0 ? (
-                            <span
-                              className="mt-3 inline-flex items-center gap-1 text-primary-500"
-                              aria-hidden
-                            >
-                              <span className="inline-block w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
-                              <span className="inline-block w-1.5 h-1.5 rounded-full bg-current animate-pulse [animation-delay:150ms]" />
-                              <span className="inline-block w-1.5 h-1.5 rounded-full bg-current animate-pulse [animation-delay:300ms]" />
-                            </span>
-                          ) : (
-                            <LoadingOutlined className="mt-2 text-primary-500" />
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Tool calls */}
-                      {toolCalls.length > 0 && (
+                      </>
+                    ) : null;
+                  const ts = msg.created_at ?? msg.timestamp;
+                  return (
+                    <MessageRow
+                      msg={msg}
+                      extraAbove={extraAbove}
+                      formattedTime={ts ? formatMessageTime(ts) : null}
+                    />
+                  );
+                }}
+                footer={
+                  <>
+                    {showStreamingAssistantBubble && (
+                      <>
                         <div className="flex gap-3 w-full min-w-0">
-                          <div
-                            className="w-10 min-w-[2.5rem] shrink-0"
-                            aria-hidden
-                          />
-                          <div className="flex-1 min-w-0 space-y-2 mr-[calc(2.5rem+0.75rem)]">
-                          {toolCalls.map((tc) => (
-                            <div
-                              key={tc.id}
-                              className={`rounded-md p-4 border ${
-                                tc.status === "running"
-                                  ? "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800"
-                                  : tc.status === "success"
-                                    ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800"
-                                    : "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"
-                              }`}
-                            >
-                              <div className="flex items-center gap-2 mb-2">
-                                {tc.status === "running" ? (
-                                  <LoadingOutlined className="text-blue-500" />
-                                ) : tc.status === "success" ? (
-                                  <CheckOutlined className="text-green-500" />
-                                ) : (
-                                  <CloseOutlined className="text-red-500" />
-                                )}
-                                <span className="font-medium text-sm">
-                                  {tc.name}
-                                </span>
-                                <Tag color={toolCallTagColor(tc.status)}>
-                                  {trackedToolStatusLabel(tc.status)}
-                                </Tag>
+                          <div className="w-10 h-10 rounded-md bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-600 flex items-center justify-center shrink-0">
+                            <Bot className="w-5 h-5 text-gray-600 dark:text-gray-300" />
+                          </div>
+                          <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-md px-5 py-4 shadow-sm min-w-0 flex-1 max-w-full mr-[calc(2.5rem+0.75rem)]">
+                            {streamingChannelNotices.length > 0 ? (
+                              <div className="space-y-2 mb-3 pb-3 border-b border-amber-200/70 dark:border-amber-700/50">
+                                <div className="flex items-center gap-2 pl-0.5">
+                                  <Info
+                                    className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0"
+                                    strokeWidth={2}
+                                    aria-hidden
+                                  />
+                                  <span className="text-[11px] font-semibold uppercase tracking-wider text-amber-700/90 dark:text-amber-400/90">
+                                    {t("chat.statusLabel")}
+                                  </span>
+                                </div>
+                                {streamingChannelNotices.map((line, idx) => (
+                                  <p
+                                    key={`${idx}-${line.slice(0, 48)}`}
+                                    className="text-[12px] sm:text-[13px] leading-snug text-amber-950 dark:text-amber-100/95 m-0"
+                                  >
+                                    {line}
+                                  </p>
+                                ))}
                               </div>
-                              {tc.args && (
-                                <pre className="text-xs bg-gray-900 text-gray-100 p-2 rounded-md overflow-x-auto">
-                                  {tc.args}
-                                </pre>
-                              )}
-                              {tc.result && (
-                                <pre className="text-xs mt-2 bg-gray-900 text-gray-100 p-2 rounded-md overflow-x-auto max-h-32">
-                                  {tc.result.slice(0, 500)}
-                                  {tc.result.length > 500 && "..."}
-                                </pre>
-                              )}
-                            </div>
-                          ))}
+                            ) : null}
+                            {streamingReasoningContent.length > 0 ? (
+                              <MessageThinkingBlock
+                                text={streamingReasoningContent}
+                              />
+                            ) : null}
+                            {streamingPayloadToolCalls.length > 0 ? (
+                              <div
+                                className={
+                                  streamingReasoningContent.length > 0 ||
+                                  streamingChannelNotices.length > 0
+                                    ? "mt-3 pt-3 border-t border-gray-100 dark:border-gray-700"
+                                    : ""
+                                }
+                              >
+                                <MessageToolCallsBlock
+                                  noTopMargin
+                                  tool_calls={streamingPayloadToolCalls}
+                                />
+                              </div>
+                            ) : null}
+                            {streamingContent ? (
+                              <div
+                                className={`text-[15px] leading-relaxed text-gray-900 dark:text-gray-100 whitespace-pre-wrap break-words ${
+                                  streamingReasoningContent.length > 0 ||
+                                  streamingPayloadToolCalls.length > 0 ||
+                                  streamingChannelNotices.length > 0
+                                    ? "mt-3 pt-3 border-t border-gray-100 dark:border-gray-700"
+                                    : ""
+                                }`}
+                              >
+                                {streamingContent}
+                              </div>
+                            ) : null}
+                            {streamingToolProgress.length > 0 ? (
+                              <div
+                                className={
+                                  streamingContent ||
+                                  streamingPayloadToolCalls.length > 0 ||
+                                  streamingReasoningContent.length > 0 ||
+                                  streamingChannelNotices.length > 0
+                                    ? "mt-3 pt-3 border-t border-gray-100 dark:border-gray-700 space-y-2"
+                                    : "space-y-2"
+                                }
+                              >
+                                <div className="flex items-center gap-2 pl-0.5">
+                                  <Wrench
+                                    className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500 shrink-0"
+                                    strokeWidth={2}
+                                    aria-hidden
+                                  />
+                                  <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                                    {t("chat.toolCalls")}
+                                  </span>
+                                </div>
+                                {streamingToolProgress.map((hint, idx) => (
+                                  <pre
+                                    key={`${idx}-${hint.slice(0, 24)}`}
+                                    className="text-[11px] sm:text-xs leading-relaxed font-mono text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-950/80 rounded-md px-3 py-2.5 whitespace-pre-wrap break-all m-0 overflow-x-auto ring-1 ring-inset ring-slate-200/60 dark:ring-slate-700/50 border-0"
+                                  >
+                                    {formatToolHintMultiline(hint)}
+                                  </pre>
+                                ))}
+                              </div>
+                            ) : null}
+                            {streamingContent.trim().length > 0 ? (
+                              <span
+                                className="mt-3 inline-flex items-center gap-1 text-primary-500"
+                                aria-hidden
+                              >
+                                <span className="inline-block w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
+                                <span className="inline-block w-1.5 h-1.5 rounded-full bg-current animate-pulse [animation-delay:150ms]" />
+                                <span className="inline-block w-1.5 h-1.5 rounded-full bg-current animate-pulse [animation-delay:300ms]" />
+                              </span>
+                            ) : (
+                              <LoadingOutlined className="mt-2 text-primary-500" />
+                            )}
                           </div>
                         </div>
-                      )}
-                    </>
-                  )}
 
-                <div ref={messagesEndRef} />
-              </div>
-            )}
-          </div>
+                        {toolCalls.length > 0 && (
+                          <div className="flex gap-3 w-full min-w-0 mt-4">
+                            <div
+                              className="w-10 min-w-[2.5rem] shrink-0"
+                              aria-hidden
+                            />
+                            <div className="flex-1 min-w-0 space-y-2 mr-[calc(2.5rem+0.75rem)]">
+                              {toolCalls.map((tc) => (
+                                <div
+                                  key={tc.id}
+                                  className={`rounded-md p-4 border ${
+                                    tc.status === "running"
+                                      ? "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800"
+                                      : tc.status === "success"
+                                        ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800"
+                                        : "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2 mb-2">
+                                    {tc.status === "running" ? (
+                                      <LoadingOutlined className="text-blue-500" />
+                                    ) : tc.status === "success" ? (
+                                      <CheckOutlined className="text-green-500" />
+                                    ) : (
+                                      <CloseOutlined className="text-red-500" />
+                                    )}
+                                    <span className="font-medium text-sm">
+                                      {tc.name}
+                                    </span>
+                                    <Tag color={toolCallTagColor(tc.status)}>
+                                      {trackedToolStatusLabel(tc.status)}
+                                    </Tag>
+                                  </div>
+                                  {tc.args && (
+                                    <pre className="text-xs bg-gray-900 text-gray-100 p-2 rounded-md overflow-x-auto">
+                                      {tc.args}
+                                    </pre>
+                                  )}
+                                  {tc.result && (
+                                    <pre className="text-xs mt-2 bg-gray-900 text-gray-100 p-2 rounded-md overflow-x-auto max-h-32">
+                                      {tc.result.slice(0, 500)}
+                                      {tc.result.length > 500 && "..."}
+                                    </pre>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
+                    <div ref={messagesEndRef} />
+                  </>
+                }
+              />
+
+              {showJumpToBottom ? (
+                <button
+                  type="button"
+                  onClick={jumpToBottom}
+                  className="absolute bottom-4 right-4 md:right-6 z-10 inline-flex items-center gap-1.5 rounded-full bg-primary-500 hover:bg-primary-600 text-white text-xs px-3 py-1.5 shadow-lg shadow-primary-500/30 transition-colors"
+                  aria-label={t("chat.jumpToBottom")}
+                  title={t("chat.jumpToBottom")}
+                >
+                  <ChevronRight className="w-3.5 h-3.5 rotate-90" aria-hidden />
+                  <span>
+                    {unreadBelowCount > 0
+                      ? t("chat.jumpToBottomNewMessages")
+                      : t("chat.jumpToBottom")}
+                  </span>
+                </button>
+              ) : null}
+            </div>
+          )}
 
           {/* Input */}
           <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl pb-safe">

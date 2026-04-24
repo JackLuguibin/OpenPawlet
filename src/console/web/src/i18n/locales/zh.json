@@ -137,7 +137,11 @@
     "toastWsNotReady": "nanobot WebSocket 未连接，请确认 nanobot 已启动且 ws 频道已启用",
     "toastWsNotConnected": "WebSocket 未连接",
     "toastStopped": "已停止生成",
-    "nanobotWsDuplicateTab": "此 chat_id 已在其他标签页或窗口连接；本页连接已关闭且不会自动重连，请刷新或关闭重复页面。"
+    "nanobotWsDuplicateTab": "此 chat_id 已在其他标签页或窗口连接；本页连接已关闭且不会自动重连，请刷新或关闭重复页面。",
+    "jumpToBottom": "跳到最新",
+    "jumpToBottomNewMessages": "有新消息 · 跳到最新",
+    "loadingOlder": "加载历史消息…",
+    "loadOlderFailed": "加载历史失败"
   },
   "dashboard": {
     "title": "概览",

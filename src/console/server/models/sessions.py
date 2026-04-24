@@ -40,13 +40,28 @@ class SessionDetail(SessionInfo):
 
 
 class SessionMessagesPayload(BaseModel):
-    """GET /sessions/{key} when ``detail`` is false (legacy shape)."""
+    """GET /sessions/{key} when ``detail`` is false (legacy shape).
+
+    Extended with pagination metadata for ``/transcript`` lazy loading:
+
+    - ``offset`` is the absolute index (0-based) of the first returned message
+      within the full transcript.
+    - ``total`` is the total number of messages in the transcript (or ``None``
+      when pagination was not applied / unknown).
+    - ``has_more`` indicates whether older messages exist before ``offset``.
+
+    All three fields default to ``None`` / ``False`` so legacy clients that
+    request the full history continue to see the same shape.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     key: str
     messages: list[Any]
     message_count: int
+    offset: int | None = None
+    total: int | None = None
+    has_more: bool = False
 
 
 class SessionJsonlRawPayload(BaseModel):

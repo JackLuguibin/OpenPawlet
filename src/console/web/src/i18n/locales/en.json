@@ -137,7 +137,11 @@
     "toastWsNotReady": "Nanobot WebSocket is not connected. Ensure nanobot is running and the ws channel is enabled.",
     "toastWsNotConnected": "WebSocket not connected",
     "toastStopped": "Generation stopped",
-    "nanobotWsDuplicateTab": "This chat_id is connected in another tab or window; this page was closed and will not auto-reconnect. Refresh or close duplicate pages."
+    "nanobotWsDuplicateTab": "This chat_id is connected in another tab or window; this page was closed and will not auto-reconnect. Refresh or close duplicate pages.",
+    "jumpToBottom": "Jump to latest",
+    "jumpToBottomNewMessages": "New messages · jump to latest",
+    "loadingOlder": "Loading older messages…",
+    "loadOlderFailed": "Failed to load older messages"
   },
   "dashboard": {
     "title": "Dashboard",

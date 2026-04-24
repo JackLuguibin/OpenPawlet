@@ -110,6 +110,32 @@ async def delete_sessions_batch(
     return DataResponse(data=BatchDeleteResponse(deleted=deleted, failed=failed))
 
 
+def _paginate_transcript_window(
+    messages: list,
+    limit: int | None,
+    before_index: int | None,
+) -> tuple[list, int, int, bool]:
+    """Return ``(window, offset, total, has_more)`` for a transcript slice.
+
+    - ``limit``/``before_index`` are optional; when neither is provided the
+      full list is returned and ``has_more`` is ``False`` (legacy shape).
+    - ``before_index`` is the absolute index reported by a previous response
+      (i.e. the caller's current oldest ``offset``); the returned window is
+      the ``limit`` messages immediately preceding that index.
+    - Without ``before_index`` the newest ``limit`` messages are returned.
+    """
+    total = len(messages)
+    if limit is None and before_index is None:
+        return messages, 0, total, False
+
+    end = total if before_index is None else max(0, min(before_index, total))
+    if limit is None or limit <= 0:
+        return messages[:end], 0, total, False
+
+    start = max(0, end - limit)
+    return messages[start:end], start, total, start > 0
+
+
 @router.get(
     "/sessions/{session_key}/transcript",
     response_model=DataResponse[SessionMessagesPayload],
@@ -117,30 +143,43 @@ async def delete_sessions_batch(
 async def get_session_transcript(
     session_key: str,
     bot_id: str | None = Query(default=None, alias="bot_id"),
+    limit: int | None = Query(default=None, ge=1, le=5000),
+    before_index: int | None = Query(
+        default=None, alias="before_index", ge=0,
+    ),
 ) -> DataResponse[SessionMessagesPayload]:
     """Load chat history from append-only transcript JSONL (full verbatim log).
 
     Falls back to ``sessions/*.jsonl`` when no transcript file exists (older runs
     without ``persist_session_transcript``).
+
+    When ``limit`` is supplied, the most recent ``limit`` messages are returned
+    (or, if ``before_index`` is also provided, the ``limit`` messages ending
+    immediately before that absolute index). The response carries the absolute
+    ``offset`` of the first returned message along with the transcript ``total``
+    and a ``has_more`` flag so the client can lazily page older history. When
+    neither parameter is provided the full transcript is returned (legacy
+    behaviour) and pagination fields are omitted / ``False``.
     """
     tmsgs = load_transcript_messages(bot_id, session_key)
-    if tmsgs is not None:
-        return DataResponse(
-            data=SessionMessagesPayload(
-                key=session_key,
-                messages=tmsgs,
-                message_count=len(tmsgs),
-            )
-        )
-    session = load_session(bot_id, session_key)
-    if session is None:
-        raise HTTPException(status_code=404, detail="Session not found")
-    messages = session.messages
+    if tmsgs is None:
+        session = load_session(bot_id, session_key)
+        if session is None:
+            raise HTTPException(status_code=404, detail="Session not found")
+        tmsgs = session.messages
+
+    window, offset, total, has_more = _paginate_transcript_window(
+        tmsgs, limit, before_index,
+    )
+    paginated = limit is not None or before_index is not None
     return DataResponse(
         data=SessionMessagesPayload(
             key=session_key,
-            messages=messages,
-            message_count=len(messages),
+            messages=window,
+            message_count=len(window),
+            offset=offset if paginated else None,
+            total=total if paginated else None,
+            has_more=has_more,
         )
     )
 

@@ -236,15 +236,44 @@ export async function getSession(key: string, botId?: string | null): Promise<{
   return fetchJson(appendBotQuery(`${API_BASE}/sessions/${encodeURIComponent(key)}`, botId));
 }
 
-/** Chat history for refresh: prefers append-only transcript JSONL when present. */
-export async function getSessionTranscript(key: string, botId?: string | null): Promise<{
+/**
+ * Chat history for refresh: prefers append-only transcript JSONL when present.
+ *
+ * Pass ``limit`` to fetch only the most recent N messages (or, with
+ * ``beforeIndex``, the N messages ending just before that absolute index) for
+ * lazy history loading. Without either parameter the backend returns the full
+ * transcript (legacy shape).
+ *
+ * The response carries pagination metadata (``offset`` / ``total`` /
+ * ``has_more``) only when paginated; otherwise those fields are undefined /
+ * ``false`` and callers can keep treating the payload as the full history.
+ */
+export async function getSessionTranscript(
+  key: string,
+  botId?: string | null,
+  options?: { limit?: number; beforeIndex?: number },
+): Promise<{
   key: string;
   messages: unknown[];
   message_count: number;
+  offset?: number | null;
+  total?: number | null;
+  has_more?: boolean;
 }> {
-  return fetchJson(
-    appendBotQuery(`${API_BASE}/sessions/${encodeURIComponent(key)}/transcript`, botId)
-  );
+  let url = `${API_BASE}/sessions/${encodeURIComponent(key)}/transcript`;
+  url = appendBotQuery(url, botId);
+  const params = new URLSearchParams();
+  if (options?.limit !== undefined) {
+    params.set('limit', String(options.limit));
+  }
+  if (options?.beforeIndex !== undefined) {
+    params.set('before_index', String(options.beforeIndex));
+  }
+  const qs = params.toString();
+  if (qs) {
+    url += url.includes('?') ? `&${qs}` : `?${qs}`;
+  }
+  return fetchJson(url);
 }
 
 /** Verbatim on-disk JSONL (session store or append-only transcript) for debugging. */
