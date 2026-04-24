@@ -86,6 +86,28 @@ honcho start
 
 `Procfile` 中默认包含：`nanobot gateway`、`console server`、`console web dev`。
 
+**生产单命令**（API 与 SPA 同一端口，并自动派生 nanobot gateway）：
+
+```bash
+npm --prefix src/console/web run build
+open-pawlet start   # 默认监听 0.0.0.0:8000，访问 http://localhost:8000
+```
+
+`open-pawlet start` 会启动 FastAPI 服务，并从 `src/console/web/dist` 挂载已构建的
+SPA，使前端页面和 `/api/v1/*` 共用同一端口与来源；**同时以子进程方式拉起
+`nanobot gateway`**，控制台无需额外命令即可通过 WebSocket 与 nanobot 协同。
+首次运行若缺少 `~/.nanobot/config.json` 会自动执行 `nanobot onboard` 完成初始化，
+按 Ctrl+C 可一并停止两个进程。
+
+如果网关已由外部进程管理（honcho、systemd、docker-compose 等），可附加
+`--no-gateway` 参数只启动 API + SPA：
+
+```bash
+open-pawlet start --no-gateway
+```
+
+前端有更新时先执行 `npm run build`（或 `console web build`）再启动即可。
+
 ## 版本历史（时间线）
 
 以下列出 PyPI 包 `open-pawlet` 的主要版本节点（与仓库根目录 `pyproject.toml` 中 `[project] version` 一致）。本控制台面向 **nanobot** 技术栈；内嵌 **nanobot** 源码位于 `src/nanobot`，随安装一并提供。**自上而下由新到旧**（越靠下越早）。发布新版本时请将对应条目补充到时间线**顶部**。

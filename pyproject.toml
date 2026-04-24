@@ -120,6 +120,7 @@ allow-direct-references = true
 
 [project.scripts]
 console = "console.cli:main"
+open-pawlet = "console.cli:main"
 nanobot = "nanobot.cli.commands:app"
 
 [tool.hatch.build.targets.wheel]

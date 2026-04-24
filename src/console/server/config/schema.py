@@ -46,6 +46,16 @@ class ServerSettings(BaseSettings):
     docs_url: str = Field(default="/docs", description="OpenAPI docs path")
     redoc_url: str = Field(default="/redoc", description="ReDoc UI path")
     openapi_url: str = Field(default="/openapi.json", description="OpenAPI schema path")
+    nanobot_gateway_host: str = Field(
+        default="localhost",
+        description="Hostname of the nanobot gateway WebSocket server",
+    )
+    nanobot_gateway_port: int = Field(
+        default=8765,
+        ge=1,
+        le=65535,
+        description="Port of the nanobot gateway WebSocket server",
+    )
 
     @property
     def effective_workers(self) -> int:

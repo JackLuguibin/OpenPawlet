@@ -106,6 +106,24 @@ honcho start
 
 The default `Procfile` runs: `nanobot gateway`, `console server`, and `console web dev`.
 
+**Single-command production** (API + SPA on one port, nanobot gateway spawned automatically):
+
+```bash
+npm --prefix src/console/web run build
+open-pawlet start   # binds 0.0.0.0:8000 by default; open http://localhost:8000
+```
+
+`open-pawlet start` runs the FastAPI server, mounts the prebuilt SPA from
+`src/console/web/dist` (so the UI and `/api/v1/*` share a single origin and
+port), **and spawns `nanobot gateway` as a child process** so the console can
+immediately talk to nanobot over WebSocket. On first launch it also runs
+`nanobot onboard` if `~/.nanobot/config.json` is missing. Pressing Ctrl+C
+stops both processes together.
+
+Pass `--no-gateway` when the gateway is managed externally (honcho, systemd,
+docker-compose, …) and you only want the API + SPA in this command. Run
+`npm run build` (or `console web build`) whenever the frontend changes.
+
 ## Version history (timeline)
 
 
