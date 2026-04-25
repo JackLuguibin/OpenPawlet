@@ -1,92 +1,35 @@
-"""Factory that picks the right :class:`MessageBus` implementation at boot.
+"""Bus factory.
 
-Two knobs control the selection:
-
-``QUEUE_MANAGER_ENABLED``  master switch, defaults to ``true``.  Disable
-    it to keep the original in-process ``MessageBus`` behaviour during
-    rollouts or on development boxes without a running broker.
-``QUEUE_MANAGER_HOST`` / ``QUEUE_MANAGER_*_PORT``  ZeroMQ endpoints for
-    the broker.  The defaults match the broker's own defaults so a
-    ``honcho start`` works out of the box.
+Historically this module would dispatch between an in-process
+:class:`~nanobot.bus.queue.MessageBus` and a ZeroMQ-backed broker based
+on the ``QUEUE_MANAGER_ENABLED`` environment flag.  In the consolidated
+single-process layout the broker is gone and the in-process bus is the
+only supported option, so this module now collapses to a thin shim that
+preserves the legacy signature while ignoring the deprecated knobs.
 """
 
 from __future__ import annotations
 
-import os
-
-from loguru import logger
+from typing import Any
 
 from nanobot.bus import queue as _bus_queue
 from nanobot.bus.queue import MessageBusProtocol
-from nanobot.bus.zmq_bus import ZmqBusEndpoints, ZmqMessageBus
-
-
-def _flag(value: str | None, default: bool) -> bool:
-    if value is None:
-        return default
-    return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def build_message_bus(
     *,
-    role: str = "full",
-    subscription: str = "",
-    force_in_process: bool = False,
-    agent_id: str = "",
-    agent_name: str = "",
+    role: str = "full",  # noqa: ARG001 - kept for backwards compatibility
+    subscription: str = "",  # noqa: ARG001
+    force_in_process: bool = False,  # noqa: ARG001
+    agent_id: str = "",  # noqa: ARG001
+    agent_name: str = "",  # noqa: ARG001
+    **_legacy: Any,
 ) -> MessageBusProtocol:
-    """Return a bus instance chosen from environment configuration.
+    """Return the in-process :class:`MessageBus` instance.
 
-    The in-process :class:`MessageBus` is the default so that unit
-    tests and ad-hoc scripts keep working without a broker.  Production
-    deployments opt into the ZeroMQ path by setting
-    ``QUEUE_MANAGER_ENABLED=true`` - the ``open-pawlet start`` CLI and
-    the Procfile both do this automatically.
-
-    Args:
-        role: ZmqMessageBus role (``full`` / ``producer`` / ``agent`` /
-            ``dispatcher``).  Ignored when falling back to in-process.
-        subscription: Optional ZeroMQ subscription prefix.  Usually
-            empty so every consumer receives every frame.
-        force_in_process: If True, skip the queue manager even when it
-            is enabled.  Handy for CLI helpers that never talk to the
-            broker (``nanobot agent -m "..."``).
-        agent_name: Optional display name for this bus identity (also read
-            from ``NANOBOT_AGENT_NAME`` when empty). Logged and attached to
-            event subscriptions for discovery.
+    All keyword arguments are accepted for backwards compatibility but
+    are intentionally ignored: the consolidated console always shares a
+    single in-process bus across producers and consumers.
     """
-    # Resolve ``MessageBus`` lazily via the module so monkeypatching
-    # ``nanobot.bus.queue.MessageBus`` in tests keeps working.
     message_bus_cls = _bus_queue.MessageBus
-    if force_in_process:
-        return message_bus_cls()
-    if not agent_id:
-        agent_id = os.environ.get("NANOBOT_AGENT_ID", "").strip()
-    if not str(agent_name or "").strip():
-        agent_name = os.environ.get("NANOBOT_AGENT_NAME", "").strip()
-    if not _flag(os.environ.get("QUEUE_MANAGER_ENABLED"), default=False):
-        return message_bus_cls()
-    try:
-        host = os.environ.get("QUEUE_MANAGER_HOST", "127.0.0.1")
-        base_port = int(os.environ.get("QUEUE_MANAGER_INGRESS_PORT", "7180"))
-        endpoints = ZmqBusEndpoints(
-            ingress=f"tcp://{host}:{base_port}",
-            worker=f"tcp://{host}:{os.environ.get('QUEUE_MANAGER_WORKER_PORT', base_port + 1)}",
-            egress=f"tcp://{host}:{os.environ.get('QUEUE_MANAGER_EGRESS_PORT', base_port + 2)}",
-            delivery=f"tcp://{host}:{os.environ.get('QUEUE_MANAGER_DELIVERY_PORT', base_port + 3)}",
-            events_ingress=f"tcp://{host}:{os.environ.get('QUEUE_MANAGER_EVENTS_INGRESS_PORT', base_port + 4)}",
-            events_delivery=f"tcp://{host}:{os.environ.get('QUEUE_MANAGER_EVENTS_DELIVERY_PORT', base_port + 5)}",
-        )
-        return ZmqMessageBus(
-            endpoints,
-            role=role,
-            subscription=subscription,
-            agent_id=agent_id,
-            agent_name=agent_name,
-        )
-    except Exception as exc:  # pragma: no cover - surfaced only on import errors
-        logger.warning(
-            "Could not build ZmqMessageBus ({}); falling back to in-process.",
-            exc,
-        )
-        return message_bus_cls()
+    return message_bus_cls()

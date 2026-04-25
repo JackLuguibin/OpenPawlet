@@ -7,6 +7,7 @@ import dataclasses
 import json
 import os
 import re
+import socket
 import time
 import uuid
 from collections.abc import Awaitable, Callable
@@ -71,6 +72,14 @@ _TEAM_SESSION_KEY_RE = re.compile(r"^console:team_[^_]+_room_[^_]+_agent_.+$")
 _TEAM_SESSION_KEY_WITH_AGENT_RE = re.compile(
     r"^console:team_[^_]+_room_[^_]+_agent_(?P<agent_id>.+?)(?:_run_[^_]+)?$"
 )
+
+
+def _safe_nodename() -> str:
+    """Return a cross-platform node name for synthetic agent IDs."""
+    try:
+        return socket.gethostname() or "unknown-host"
+    except Exception:
+        return "unknown-host"
 
 
 class _LoopHook(AgentHook):
@@ -283,7 +292,7 @@ class AgentLoop:
         else:
             self.agent_id = (
                 os.environ.get("NANOBOT_AGENT_ID", "").strip()
-                or f"main:{os.uname().nodename}:{os.getpid()}"
+                or f"main:{_safe_nodename()}:{os.getpid()}"
             )
         if agent_name is not None and str(agent_name).strip():
             self.agent_name = str(agent_name).strip()

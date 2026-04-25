@@ -128,39 +128,20 @@ class ServerSettings(BaseSettings):
         description="OpenAPI schema path; set to empty string to disable.",
     )
     nanobot_gateway_host: str = Field(
-        default="localhost",
-        description="Hostname of the nanobot gateway WebSocket server",
+        default="127.0.0.1",
+        description=(
+            "Loopback host on which the in-process WebSocketChannel listens; "
+            "the FastAPI app reverse-proxies /nanobot-ws/* to it."
+        ),
     )
     nanobot_gateway_port: int = Field(
         default=8765,
         ge=1,
         le=65535,
-        description="Port of the nanobot gateway WebSocket server",
-    )
-
-    queue_manager_host: str = Field(
-        default="127.0.0.1",
-        description="Hostname of the Queue Manager broker admin endpoint.",
-    )
-    queue_manager_admin_port: int = Field(
-        default=7186,
-        ge=1,
-        le=65535,
         description=(
-            "Port of the Queue Manager broker admin HTTP endpoint (same as "
-            "QUEUE_MANAGER_HEALTH_PORT; not the ZMQ events ingress on 7184)."
+            "Loopback port on which the in-process WebSocketChannel listens. "
+            "Only the console FastAPI server needs to reach it."
         ),
-    )
-    queue_manager_admin_token: str = Field(
-        default="",
-        description=(
-            "Bearer token sent to the Queue Manager admin endpoint.  Leave "
-            "empty when the broker is loopback-only on this host."
-        ),
-    )
-    queue_manager_ws_path: str = Field(
-        default="/queues/stream",
-        description="WebSocket path on the Queue Manager broker for live tick updates.",
     )
 
     # ---- Priority wiring ------------------------------------------------

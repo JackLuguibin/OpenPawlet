@@ -6,25 +6,16 @@ import base64
 from io import BytesIO
 from unittest.mock import AsyncMock, MagicMock
 
+import httpx
 import pytest
-import pytest_asyncio
 
 from nanobot.api.server import (
-    _FileSizeExceeded,
+    _FileSizeExceededError,
     _parse_json_content,
     _save_base64_data_url,
     create_app,
 )
 from nanobot.utils.document import extract_documents
-
-try:
-    from aiohttp.test_utils import TestClient, TestServer
-
-    HAS_AIOHTTP = True
-except ImportError:
-    HAS_AIOHTTP = False
-
-pytest_plugins = ("pytest_asyncio",)
 
 
 def _make_mock_agent(response_text: str = "mock response") -> MagicMock:
@@ -44,22 +35,6 @@ def mock_agent():
 def app(mock_agent):
     return create_app(mock_agent, model_name="test-model", request_timeout=10.0)
 
-
-@pytest_asyncio.fixture
-async def aiohttp_client():
-    clients: list[TestClient] = []
-
-    async def _make_client(app):
-        client = TestClient(TestServer(app))
-        await client.start_server()
-        clients.append(client)
-        return client
-
-    try:
-        yield _make_client
-    finally:
-        for client in clients:
-            await client.close()
 
 
 # ---------------------------------------------------------------------------
@@ -96,7 +71,7 @@ def test_save_base64_data_url_rejects_oversized_payload(tmp_path) -> None:
     large_payload = base64.b64encode(b"x" * (11 * 1024 * 1024)).decode()
     data_url = f"data:image/png;base64,{large_payload}"
 
-    with pytest.raises(_FileSizeExceeded, match="10MB limit"):
+    with pytest.raises(_FileSizeExceededError, match="10MB limit"):
         _save_base64_data_url(data_url, tmp_path)
 
 
@@ -172,7 +147,7 @@ def test_parse_json_content_rejects_oversized_base64_file(tmp_path) -> None:
     os.chdir(tmp_path)
 
     try:
-        with pytest.raises(_FileSizeExceeded, match="10MB limit"):
+        with pytest.raises(_FileSizeExceededError, match="10MB limit"):
             _parse_json_content(body)
     finally:
         os.chdir(original_cwd)
@@ -182,9 +157,8 @@ def test_parse_json_content_rejects_oversized_base64_file(tmp_path) -> None:
 # Multipart upload tests
 # ---------------------------------------------------------------------------
 
-@pytest.mark.skipif(not HAS_AIOHTTP, reason="aiohttp not installed")
 @pytest.mark.asyncio
-async def test_multipart_upload_saves_file(aiohttp_client, mock_agent, tmp_path) -> None:
+async def test_multipart_upload_saves_file(mock_agent, tmp_path) -> None:
     """Multipart upload saves file to media dir and passes path to process_direct."""
     import os
     original_cwd = os.getcwd()
@@ -192,16 +166,14 @@ async def test_multipart_upload_saves_file(aiohttp_client, mock_agent, tmp_path)
 
     try:
         app = create_app(mock_agent, model_name="m")
-        client = await aiohttp_client(app)
-
-        file_data = b"test file content"
-        data = BytesIO(file_data)
-
-        resp = await client.post(
-            "/v1/chat/completions",
-            data={"message": "analyze this", "files": data},
-        )
-        assert resp.status == 200
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+        ) as client:
+            file_data = b"test file content"
+            files = {"files": ("upload.bin", file_data, "application/octet-stream")}
+            data = {"message": "analyze this"}
+            resp = await client.post("/v1/chat/completions", data=data, files=files)
+        assert resp.status_code == 200
         call_kwargs = mock_agent.process_direct.call_args.kwargs
         assert call_kwargs["content"] == "analyze this"
         assert len(call_kwargs.get("media") or []) == 1
@@ -209,9 +181,8 @@ async def test_multipart_upload_saves_file(aiohttp_client, mock_agent, tmp_path)
         os.chdir(original_cwd)
 
 
-@pytest.mark.skipif(not HAS_AIOHTTP, reason="aiohttp not installed")
 @pytest.mark.asyncio
-async def test_multipart_multiple_files(aiohttp_client, mock_agent, tmp_path) -> None:
+async def test_multipart_multiple_files(mock_agent, tmp_path) -> None:
     """Multipart upload with multiple files saves all and passes paths."""
     import os
     original_cwd = os.getcwd()
@@ -219,25 +190,21 @@ async def test_multipart_multiple_files(aiohttp_client, mock_agent, tmp_path) ->
 
     try:
         app = create_app(mock_agent, model_name="m")
-        client = await aiohttp_client(app)
-
-        # Note: aiohttp test client has limited multipart support
-        # This test verifies the basic flow
-        file_data = b"test content"
-        data = BytesIO(file_data)
-
-        resp = await client.post(
-            "/v1/chat/completions",
-            data={"message": "analyze", "files": data},
-        )
-        assert resp.status == 200
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+        ) as client:
+            files = [
+                ("files", ("a.txt", b"aaa", "text/plain")),
+                ("files", ("b.txt", b"bbb", "text/plain")),
+            ]
+            resp = await client.post("/v1/chat/completions", data={"message": "analyze"}, files=files)
+        assert resp.status_code == 200
     finally:
         os.chdir(original_cwd)
 
 
-@pytest.mark.skipif(not HAS_AIOHTTP, reason="aiohttp not installed")
 @pytest.mark.asyncio
-async def test_multipart_file_size_limit(aiohttp_client, mock_agent, tmp_path) -> None:
+async def test_multipart_file_size_limit(mock_agent, tmp_path) -> None:
     """File exceeding MAX_FILE_SIZE returns 413."""
     import os
     original_cwd = os.getcwd()
@@ -245,24 +212,22 @@ async def test_multipart_file_size_limit(aiohttp_client, mock_agent, tmp_path) -
 
     try:
         app = create_app(mock_agent, model_name="m")
-        client = await aiohttp_client(app)
-
-        # Create a file larger than 10MB
-        large_data = b"x" * (11 * 1024 * 1024)
-        data = BytesIO(large_data)
-
-        resp = await client.post(
-            "/v1/chat/completions",
-            data={"message": "analyze", "files": data},
-        )
-        assert resp.status == 413
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+        ) as client:
+            large_data = b"x" * (11 * 1024 * 1024)
+            resp = await client.post(
+                "/v1/chat/completions",
+                data={"message": "analyze"},
+                files={"files": ("big.bin", large_data, "application/octet-stream")},
+            )
+        assert resp.status_code == 413
     finally:
         os.chdir(original_cwd)
 
 
-@pytest.mark.skipif(not HAS_AIOHTTP, reason="aiohttp not installed")
 @pytest.mark.asyncio
-async def test_multipart_defaults_text_when_missing(aiohttp_client, mock_agent, tmp_path) -> None:
+async def test_multipart_defaults_text_when_missing(mock_agent, tmp_path) -> None:
     """Multipart without message field uses default text."""
     import os
     original_cwd = os.getcwd()
@@ -270,25 +235,22 @@ async def test_multipart_defaults_text_when_missing(aiohttp_client, mock_agent, 
 
     try:
         app = create_app(mock_agent, model_name="m")
-        client = await aiohttp_client(app)
-
-        file_data = b"content"
-        data = BytesIO(file_data)
-
-        resp = await client.post(
-            "/v1/chat/completions",
-            data={"files": data},
-        )
-        assert resp.status == 200
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+        ) as client:
+            resp = await client.post(
+                "/v1/chat/completions",
+                files={"files": ("f.bin", b"content", "application/octet-stream")},
+            )
+        assert resp.status_code == 200
         call_kwargs = mock_agent.process_direct.call_args.kwargs
         assert call_kwargs["content"] == "请分析上传的文件"
     finally:
         os.chdir(original_cwd)
 
 
-@pytest.mark.skipif(not HAS_AIOHTTP, reason="aiohttp not installed")
 @pytest.mark.asyncio
-async def test_multipart_with_session_id(aiohttp_client, mock_agent, tmp_path) -> None:
+async def test_multipart_with_session_id(mock_agent, tmp_path) -> None:
     """Multipart upload with session_id uses custom session key."""
     import os
     original_cwd = os.getcwd()
@@ -296,16 +258,15 @@ async def test_multipart_with_session_id(aiohttp_client, mock_agent, tmp_path) -
 
     try:
         app = create_app(mock_agent, model_name="m")
-        client = await aiohttp_client(app)
-
-        file_data = b"content"
-        data = BytesIO(file_data)
-
-        resp = await client.post(
-            "/v1/chat/completions",
-            data={"message": "hello", "session_id": "my-session", "files": data},
-        )
-        assert resp.status == 200
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+        ) as client:
+            resp = await client.post(
+                "/v1/chat/completions",
+                data={"message": "hello", "session_id": "my-session"},
+                files={"files": ("f.bin", b"content", "application/octet-stream")},
+            )
+        assert resp.status_code == 200
         call_kwargs = mock_agent.process_direct.call_args.kwargs
         assert call_kwargs["session_key"] == "api:my-session"
     finally:
@@ -316,27 +277,27 @@ async def test_multipart_with_session_id(aiohttp_client, mock_agent, tmp_path) -
 # Backward compatibility tests
 # ---------------------------------------------------------------------------
 
-@pytest.mark.skipif(not HAS_AIOHTTP, reason="aiohttp not installed")
 @pytest.mark.asyncio
-async def test_plain_text_backward_compat(aiohttp_client, mock_agent) -> None:
+async def test_plain_text_backward_compat(mock_agent) -> None:
     """Plain text JSON request (no media) works as before."""
     app = create_app(mock_agent, model_name="m")
-    client = await aiohttp_client(app)
-    resp = await client.post(
-        "/v1/chat/completions",
-        json={"messages": [{"role": "user", "content": "hello world"}]},
-    )
-    assert resp.status == 200
-    body = await resp.json()
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        resp = await client.post(
+            "/v1/chat/completions",
+            json={"messages": [{"role": "user", "content": "hello world"}]},
+        )
+    assert resp.status_code == 200
+    body = resp.json()
     assert body["choices"][0]["message"]["content"] == "mock response"
     call_kwargs = mock_agent.process_direct.call_args.kwargs
     assert call_kwargs["content"] == "hello world"
     assert call_kwargs.get("media") is None
 
 
-@pytest.mark.skipif(not HAS_AIOHTTP, reason="aiohttp not installed")
 @pytest.mark.asyncio
-async def test_json_base64_image_upload(aiohttp_client, mock_agent, tmp_path) -> None:
+async def test_json_base64_image_upload(mock_agent, tmp_path) -> None:
     """JSON request with base64 data URL saves file and passes path."""
     import os
     original_cwd = os.getcwd()
@@ -344,26 +305,25 @@ async def test_json_base64_image_upload(aiohttp_client, mock_agent, tmp_path) ->
 
     try:
         app = create_app(mock_agent, model_name="m")
-        client = await aiohttp_client(app)
-
-        # Use valid base64 for a tiny PNG (1x1 transparent pixel)
-        tiny_png_b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg=="
-
-        resp = await client.post(
-            "/v1/chat/completions",
-            json={
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": "what is this"},
-                            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{tiny_png_b64}"}},
-                        ],
-                    }
-                ]
-            },
-        )
-        assert resp.status == 200
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+        ) as client:
+            tiny_png_b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg=="
+            resp = await client.post(
+                "/v1/chat/completions",
+                json={
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": "what is this"},
+                                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{tiny_png_b64}"}},
+                            ],
+                        }
+                    ]
+                },
+            )
+        assert resp.status_code == 200
         call_kwargs = mock_agent.process_direct.call_args.kwargs
         assert call_kwargs["content"] == "what is this"
         assert len(call_kwargs.get("media", [])) == 1
@@ -459,9 +419,8 @@ def test_extract_documents_does_not_read_full_file_for_mime(tmp_path) -> None:
 # DOCX upload test — API saves file, loop layer extracts text
 # ---------------------------------------------------------------------------
 
-@pytest.mark.skipif(not HAS_AIOHTTP, reason="aiohttp not installed")
 @pytest.mark.asyncio
-async def test_docx_upload_passes_media_path(aiohttp_client, tmp_path) -> None:
+async def test_docx_upload_passes_media_path(tmp_path) -> None:
     """Uploaded DOCX is saved to disk and its path passed as media.
     (Text extraction happens later in AgentLoop._process_message.)"""
     agent = _make_mock_agent("report summary")
@@ -471,22 +430,27 @@ async def test_docx_upload_passes_media_path(aiohttp_client, tmp_path) -> None:
 
     try:
         app = create_app(agent, model_name="m")
-        client = await aiohttp_client(app)
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+        ) as client:
+            from docx import Document
+            doc = Document()
+            doc.add_paragraph("Total revenue: $5,000,000")
+            buf = BytesIO()
+            doc.save(buf)
 
-        from docx import Document
-        doc = Document()
-        doc.add_paragraph("Total revenue: $5,000,000")
-        buf = BytesIO()
-        doc.save(buf)
-
-        import aiohttp
-        data = aiohttp.FormData()
-        data.add_field("message", "summarize the report")
-        data.add_field("files", buf.getvalue(), filename="report.docx",
-                       content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-
-        resp = await client.post("/v1/chat/completions", data=data)
-        assert resp.status == 200
+            resp = await client.post(
+                "/v1/chat/completions",
+                data={"message": "summarize the report"},
+                files={
+                    "files": (
+                        "report.docx",
+                        buf.getvalue(),
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    )
+                },
+            )
+        assert resp.status_code == 200
         call_kwargs = agent.process_direct.call_args.kwargs
         assert call_kwargs["content"] == "summarize the report"
         media = call_kwargs.get("media", [])

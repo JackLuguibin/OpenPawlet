@@ -1,8 +1,18 @@
-"""FastAPI application factory and lifecycle management."""
+"""FastAPI application factory and lifecycle management.
+
+This module is the single entry point for the consolidated OpenPawlet
+console.  In addition to the historical REST API + SPA hosting it now
+also owns the embedded nanobot runtime (agent loop, channels, cron,
+heartbeat) via :mod:`nanobot.runtime.embedded`, the OpenAI-compatible
+``/v1/*`` surface and the ``/queues/*`` admin endpoints.  External
+clients therefore only ever need to talk to one HTTP port.
+"""
 
 from __future__ import annotations
 
 import asyncio
+import os
+import time
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -19,7 +29,9 @@ from loguru import logger
 
 from console.server.config import ServerSettings, get_settings
 from console.server.models import ErrorDetail, ErrorResponse
+from console.server.openai_api import install_openai_routes
 from console.server.queue_envelope import tag_inbound_text_frame
+from console.server.queues_router import install_queues_routes
 from console.server.routers import v1
 
 _ERR_VALIDATION_CODE = "VALIDATION_ERROR"
@@ -28,18 +40,66 @@ _ERR_INTERNAL_CODE = "INTERNAL_ERROR"
 _ERR_INTERNAL_MSG = "An unexpected error occurred"
 
 
+def _embedded_disabled() -> bool:
+    """Return True when the embedded nanobot runtime should not be started.
+
+    Tests use this escape hatch to mount the FastAPI app without paying
+    the cost of constructing the full agent + channels graph.
+    """
+    return os.environ.get("OPENPAWLET_DISABLE_EMBEDDED", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Log startup and shutdown; bind/version come from settings."""
+    """Bring the embedded nanobot runtime up alongside the HTTP server."""
     settings: ServerSettings = app.state.settings
     logger.info(
-        "Starting OpenPawlet console server {version} — listening on {host}:{port}",
+        "Starting OpenPawlet console server {version} - listening on {host}:{port}",
         version=settings.version,
         host=settings.host,
         port=settings.port,
     )
-    yield
-    logger.info("Shutting down OpenPawlet console server")
+    app.state.started_at_perf = time.perf_counter()
+
+    embedded = None
+    if not _embedded_disabled():
+        try:
+            from nanobot.runtime.embedded import EmbeddedNanobot
+
+            embedded = EmbeddedNanobot.from_environment()
+        except Exception:  # noqa: BLE001 - degraded mode keeps the UI usable
+            logger.exception(
+                "Failed to construct embedded nanobot runtime; "
+                "console will start in degraded mode"
+            )
+        else:
+            try:
+                await embedded.start()
+                app.state.embedded = embedded
+                app.state.agent_loop = embedded.agent
+                app.state.message_bus = embedded.message_bus
+                app.state.session_manager = embedded.session_manager
+                app.state.model_name = embedded.agent.model
+            except Exception:  # noqa: BLE001 - keep API alive even if runtime fails
+                logger.exception(
+                    "Embedded nanobot runtime failed to start; degraded mode"
+                )
+                embedded = None
+
+    try:
+        yield
+    finally:
+        if embedded is not None:
+            try:
+                await embedded.stop()
+            except Exception:  # pragma: no cover - best effort shutdown
+                logger.exception("Embedded nanobot runtime shutdown failed")
+        logger.info("Shutting down OpenPawlet console server")
 
 
 def _error_json(
@@ -109,8 +169,6 @@ def _mount_spa(app: FastAPI) -> bool:
             name="spa-assets",
         )
 
-    # SPA fallback: serve any top-level static asset if it exists, otherwise
-    # return index.html so client-side routing works on deep links.
     @app.get("/{full_path:path}", include_in_schema=False)
     async def spa_fallback(full_path: str) -> FileResponse:
         if full_path:
@@ -142,12 +200,11 @@ async def _nanobot_ws_proxy(
     gateway_host: str,
     gateway_port: int,
 ) -> None:
-    """Bidirectionally proxy a WebSocket connection to the nanobot gateway.
+    """Bidirectionally proxy a WebSocket connection to the in-process nanobot WS channel.
 
-    Strips the ``/nanobot-ws`` prefix and forwards all frames (text + binary)
-    to ``ws://<gateway_host>:<gateway_port>/<rest_path>?<query>``.
-    This mirrors what Vite's dev-server proxy does so the built SPA works the
-    same way as the Vite dev mode without any frontend changes.
+    The embedded ``WebSocketChannel`` listens on a loopback port inside
+    the same process and event loop, so this is a same-origin hop rather
+    than a cross-process round trip.
     """
     await websocket.accept()
 
@@ -156,13 +213,11 @@ async def _nanobot_ws_proxy(
     target_path = f"/{rest_path}" if rest_path else "/"
     target_url = f"ws://{gateway_host}:{gateway_port}{target_path}"
     if query_string:
-        # Intentionally not logging the query string: it can carry client
-        # identifiers or bot-internal state (e.g. ?client_id=...&auth=...).
         target_url = f"{target_url}?{query_string}"
 
     client_addr = websocket.client
     logger.debug(
-        "[nanobot-ws-proxy] open client={} → {}:{}{}",
+        "[nanobot-ws-proxy] open client={} -> {}:{}{}",
         client_addr,
         gateway_host,
         gateway_port,
@@ -177,34 +232,19 @@ async def _nanobot_ws_proxy(
                     while True:
                         frame = await websocket.receive()
                         if frame.get("type") == "websocket.disconnect":
-                            logger.debug(
-                                "[nanobot-ws-proxy] client {} closed the connection",
-                                client_addr,
-                            )
                             break
                         text = frame.get("text")
                         data = frame.get("bytes")
                         if text is not None:
-                            # Ensure inbound user frames carry a stable
-                            # message_id / dedupe_key so the Queue Manager
-                            # can drop replays across reconnects.
                             tagged = tag_inbound_text_frame(text)
                             await remote_ws.send(tagged)
                         elif data is not None:
                             await remote_ws.send(data)
-                except websockets.exceptions.ConnectionClosed as exc:
-                    logger.debug(
-                        "[nanobot-ws-proxy] upstream closed while reading from client "
-                        "{}: {}",
-                        client_addr,
-                        _ws_close_label(exc),
-                    )
-                except Exception as exc:
-                    # Log but swallow: the outer task will close both sides.
+                except websockets.exceptions.ConnectionClosed:
+                    pass
+                except Exception as exc:  # noqa: BLE001 - close both sides
                     logger.warning(
-                        "[nanobot-ws-proxy] client→gateway error (client={}): {}",
-                        client_addr,
-                        exc,
+                        "[nanobot-ws-proxy] client->gateway error: {}", exc
                     )
                 finally:
                     await remote_ws.close()
@@ -216,163 +256,22 @@ async def _nanobot_ws_proxy(
                             await websocket.send_text(message)
                         else:
                             await websocket.send_bytes(message)
-                except websockets.exceptions.ConnectionClosed as exc:
-                    logger.debug(
-                        "[nanobot-ws-proxy] gateway closed (client={}): {}",
-                        client_addr,
-                        _ws_close_label(exc),
-                    )
-                except Exception as exc:
+                except websockets.exceptions.ConnectionClosed:
+                    pass
+                except Exception as exc:  # noqa: BLE001
                     logger.warning(
-                        "[nanobot-ws-proxy] gateway→client error (client={}): {}",
-                        client_addr,
-                        exc,
+                        "[nanobot-ws-proxy] gateway->client error: {}", exc
                     )
                 finally:
                     try:
                         await websocket.close()
-                    except Exception as close_exc:
-                        logger.debug(
-                            "[nanobot-ws-proxy] client close failed (client={}): {}",
-                            client_addr,
-                            close_exc,
-                        )
+                    except Exception:  # pragma: no cover
+                        pass
 
             tasks = [
                 asyncio.create_task(_client_to_remote()),
                 asyncio.create_task(_remote_to_client()),
             ]
-            done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-            for task in pending:
-                task.cancel()
-                try:
-                    await task
-                except asyncio.CancelledError:
-                    pass
-                except Exception as exc:  # noqa: BLE001 - already shutting down
-                    logger.debug(
-                        "[nanobot-ws-proxy] pending task ended with {} (client={})",
-                        exc,
-                        client_addr,
-                    )
-
-    except OSError as exc:
-        logger.warning(
-            "[nanobot-ws-proxy] cannot reach gateway at ws://{}:{}{} "
-            "(client={}): {}. Is `nanobot gateway` running?",
-            gateway_host,
-            gateway_port,
-            target_path,
-            client_addr,
-            exc,
-        )
-        try:
-            await websocket.close(code=1014)
-        except Exception as close_exc:
-            logger.debug(
-                "[nanobot-ws-proxy] client close after OSError failed: {}",
-                close_exc,
-            )
-    except Exception as exc:
-        logger.exception(
-            "[nanobot-ws-proxy] unexpected proxy error (client={}, target={}:{}{}): {}",
-            client_addr,
-            gateway_host,
-            gateway_port,
-            target_path,
-            exc,
-        )
-        try:
-            await websocket.close(code=1011)
-        except Exception as close_exc:
-            logger.debug(
-                "[nanobot-ws-proxy] client close after error failed: {}",
-                close_exc,
-            )
-
-
-def _mount_nanobot_ws_proxy(app: FastAPI, gateway_host: str, gateway_port: int) -> None:
-    """Register the ``/nanobot-ws/`` WebSocket reverse-proxy route on *app*."""
-
-    @app.websocket("/nanobot-ws/{rest_path:path}")
-    async def nanobot_ws_proxy_route(websocket: WebSocket, rest_path: str) -> None:
-        await _nanobot_ws_proxy(websocket, rest_path, gateway_host, gateway_port)
-
-    logger.info(
-        "[nanobot-ws-proxy] Proxying /nanobot-ws/* → ws://{}:{}",
-        gateway_host,
-        gateway_port,
-    )
-
-
-async def _queues_ws_proxy(
-    websocket: WebSocket,
-    settings: ServerSettings,
-) -> None:
-    """Reverse-proxy the browser WS to the Queue Manager broker stream.
-
-    The Console server is the only place that knows the admin token;
-    the SPA therefore connects to ``/queues-ws`` (same origin) and this
-    function injects ``Authorization: Bearer <token>`` when talking to
-    the broker.
-    """
-    await websocket.accept()
-    host = settings.queue_manager_host
-    port = settings.queue_manager_admin_port
-    path = settings.queue_manager_ws_path or "/queues/stream"
-    target_url = f"ws://{host}:{port}{path}"
-    headers = []
-    if settings.queue_manager_admin_token:
-        headers.append(
-            ("Authorization", f"Bearer {settings.queue_manager_admin_token}")
-        )
-    client_addr = websocket.client
-    logger.debug(
-        "[queues-ws-proxy] open client={} → {}", client_addr, target_url
-    )
-    try:
-        async with websockets.connect(
-            target_url,
-            additional_headers=headers or None,
-        ) as remote_ws:
-
-            async def _c2r() -> None:
-                try:
-                    while True:
-                        frame = await websocket.receive()
-                        if frame.get("type") == "websocket.disconnect":
-                            break
-                        text = frame.get("text")
-                        data = frame.get("bytes")
-                        if text is not None:
-                            await remote_ws.send(text)
-                        elif data is not None:
-                            await remote_ws.send(data)
-                except websockets.exceptions.ConnectionClosed:
-                    pass
-                except Exception as exc:
-                    logger.warning("[queues-ws-proxy] c→r error: {}", exc)
-                finally:
-                    await remote_ws.close()
-
-            async def _r2c() -> None:
-                try:
-                    async for message in remote_ws:
-                        if isinstance(message, str):
-                            await websocket.send_text(message)
-                        else:
-                            await websocket.send_bytes(message)
-                except websockets.exceptions.ConnectionClosed:
-                    pass
-                except Exception as exc:
-                    logger.warning("[queues-ws-proxy] r→c error: {}", exc)
-                finally:
-                    try:
-                        await websocket.close()
-                    except Exception:
-                        pass
-
-            tasks = [asyncio.create_task(_c2r()), asyncio.create_task(_r2c())]
             _, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
             for task in pending:
                 task.cancel()
@@ -380,39 +279,44 @@ async def _queues_ws_proxy(
                     await task
                 except asyncio.CancelledError:
                     pass
-                except Exception:
+                except Exception:  # pragma: no cover
                     pass
+
     except OSError as exc:
         logger.warning(
-            "[queues-ws-proxy] cannot reach broker {} ({}). "
-            "Is `open-pawlet-queue-manager` running?",
-            target_url,
+            "[nanobot-ws-proxy] cannot reach embedded gateway at ws://{}:{}{}: {}",
+            gateway_host,
+            gateway_port,
+            target_path,
             exc,
         )
         try:
             await websocket.close(code=1014)
-        except Exception:
+        except Exception:  # pragma: no cover
             pass
-    except Exception as exc:
-        logger.exception("[queues-ws-proxy] unexpected error: {}", exc)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception(
+            "[nanobot-ws-proxy] unexpected proxy error: {}", exc
+        )
         try:
             await websocket.close(code=1011)
-        except Exception:
+        except Exception:  # pragma: no cover
             pass
 
 
-def _mount_queues_ws_proxy(app: FastAPI, settings: ServerSettings) -> None:
-    """Register the ``/queues-ws`` WebSocket route on *app*."""
+def _mount_nanobot_ws_proxy(
+    app: FastAPI, gateway_host: str, gateway_port: int
+) -> None:
+    """Register the ``/nanobot-ws/`` WebSocket reverse-proxy route on *app*."""
 
-    @app.websocket("/queues-ws")
-    async def queues_ws_route(websocket: WebSocket) -> None:
-        await _queues_ws_proxy(websocket, settings)
+    @app.websocket("/nanobot-ws/{rest_path:path}")
+    async def nanobot_ws_proxy_route(websocket: WebSocket, rest_path: str) -> None:
+        await _nanobot_ws_proxy(websocket, rest_path, gateway_host, gateway_port)
 
     logger.info(
-        "[queues-ws-proxy] Proxying /queues-ws → ws://{}:{}{}",
-        settings.queue_manager_host,
-        settings.queue_manager_admin_port,
-        settings.queue_manager_ws_path or "/queues/stream",
+        "[nanobot-ws-proxy] Proxying /nanobot-ws/* -> ws://{}:{} (in-process loopback)",
+        gateway_host,
+        gateway_port,
     )
 
 
@@ -428,10 +332,6 @@ def create_app(
             singleton from ``get_settings()`` is used.
         mount_spa: When True, serve the prebuilt SPA from
             ``src/console/web/dist`` and skip the JSON service-info root.
-
-    Returns:
-        A ready-to-mount FastAPI app. Pass it to an ASGI server such as
-        uvicorn (see ``console.cli.main``) or hypercorn.
     """
     if settings is None:
         settings = get_settings()
@@ -446,6 +346,7 @@ def create_app(
         openapi_url=settings.effective_openapi_url,
     )
     app.state.settings = settings
+    app.state.started_at_perf = time.perf_counter()
 
     _wildcard_cors = any(o.strip() == "*" for o in settings.cors_origins)
     allow_credentials = settings.cors_allow_credentials and not _wildcard_cors
@@ -458,13 +359,19 @@ def create_app(
     )
 
     app.include_router(v1.api_router, prefix=settings.api_prefix)
+    install_openai_routes(app, model_name="nanobot")
+    install_queues_routes(app)
 
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
     app.add_exception_handler(Exception, unhandled_exception_handler)
 
     # Register WS proxy before the SPA catch-all so the path isn't swallowed.
-    _mount_nanobot_ws_proxy(app, settings.nanobot_gateway_host, settings.nanobot_gateway_port)
-    _mount_queues_ws_proxy(app, settings)
+    # The "gateway" now lives in the same process via EmbeddedNanobot, but the
+    # underlying WebSocketChannel still binds a loopback port for protocol
+    # fidelity, so we proxy same-origin to it.
+    _mount_nanobot_ws_proxy(
+        app, settings.nanobot_gateway_host, settings.nanobot_gateway_port
+    )
 
     spa_mounted = _mount_spa(app) if mount_spa else False
 

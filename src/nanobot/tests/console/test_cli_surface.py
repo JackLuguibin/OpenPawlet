@@ -30,19 +30,21 @@ def test_help_lists_all_commands(capsys: pytest.CaptureFixture[str]) -> None:
         _call_with_args(["--help"])
     assert exc.value.code == 0
     out = capsys.readouterr().out
-    for command in ("server", "start", "gateway", "init-config", "web"):
+    for command in ("server", "start", "init-config", "web"):
         assert command in out, f"missing {command!r} in --help output"
 
 
-def test_start_help_documents_gateway_flags(
+def test_start_help_documents_no_spa_flag(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     with pytest.raises(SystemExit) as exc:
         _call_with_args(["start", "--help"])
     assert exc.value.code == 0
     out = capsys.readouterr().out
-    assert "--no-gateway" in out
-    assert "--strict-gateway" in out
+    assert "--no-spa" in out
+    # Legacy gateway flags must be gone in the unified single-process layout.
+    assert "--no-gateway" not in out
+    assert "--strict-gateway" not in out
 
 
 def test_init_config_writes_default_file(

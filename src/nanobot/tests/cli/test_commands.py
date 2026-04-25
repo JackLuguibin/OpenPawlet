@@ -16,6 +16,20 @@ from nanobot.cron.types import CronJob, CronPayload
 from nanobot.providers.openai_codex_provider import _strip_model_prefix
 from nanobot.providers.registry import find_by_name
 
+# The legacy ``nanobot gateway`` and ``nanobot serve`` subcommands have been
+# removed: both responsibilities now live inside the unified ``console start``
+# entrypoint via :class:`nanobot.runtime.embedded.EmbeddedNanobot`.  Tests that
+# specifically exercised those subcommands are skipped at the module level so
+# the rest of the suite (config, providers, onboarding, agent, cron) keeps
+# running.  Coverage for the embedded runtime lives in
+# ``src/nanobot/tests/console/test_unified_app.py``.
+_SKIP_LEGACY_CLI = pytest.mark.skip(
+    reason=(
+        "legacy 'nanobot gateway' / 'nanobot serve' subcommands removed in "
+        "the unified single-process console layout"
+    )
+)
+
 runner = CliRunner()
 
 
@@ -194,7 +208,7 @@ def test_onboard_wizard_preserves_explicit_config_in_next_steps(tmp_path, monkey
     compact_output = stripped_output.replace("\n", "")
     resolved_config = str(config_path.resolve())
     assert f'nanobot agent -m "Hello!" --config {resolved_config}' in compact_output
-    assert f"nanobot gateway --config {resolved_config}" in compact_output
+    assert "console start" in compact_output
 
 
 def test_config_matches_github_copilot_codex_with_hyphen_prefix():
@@ -854,6 +868,7 @@ def _patch_serve_runtime(monkeypatch, config: Config, seen: dict[str, object]) -
     monkeypatch.setattr("aiohttp.web.run_app", _fake_run_app)
 
 
+@_SKIP_LEGACY_CLI
 def test_gateway_uses_workspace_from_config_by_default(monkeypatch, tmp_path: Path) -> None:
     config_file = _write_instance_config(tmp_path)
     config = Config()
@@ -875,6 +890,7 @@ def test_gateway_uses_workspace_from_config_by_default(monkeypatch, tmp_path: Pa
     assert seen["workspace"] == Path(config.agents.defaults.workspace)
 
 
+@_SKIP_LEGACY_CLI
 def test_gateway_workspace_option_overrides_config(monkeypatch, tmp_path: Path) -> None:
     config_file = _write_instance_config(tmp_path)
     config = Config()
@@ -899,6 +915,7 @@ def test_gateway_workspace_option_overrides_config(monkeypatch, tmp_path: Path) 
     assert config.workspace_path == override
 
 
+@_SKIP_LEGACY_CLI
 def test_gateway_uses_workspace_directory_for_cron_store(monkeypatch, tmp_path: Path) -> None:
     config_file = _write_instance_config(tmp_path)
     config = Config()
@@ -924,6 +941,7 @@ def test_gateway_uses_workspace_directory_for_cron_store(monkeypatch, tmp_path: 
     assert seen["cron_store"] == config.workspace_path / "cron" / "jobs.json"
 
 
+@_SKIP_LEGACY_CLI
 def test_gateway_cron_evaluator_receives_scheduled_reminder_context(
     monkeypatch, tmp_path: Path
 ) -> None:
@@ -1034,6 +1052,7 @@ def test_gateway_cron_evaluator_receives_scheduled_reminder_context(
     )
 
 
+@_SKIP_LEGACY_CLI
 def test_gateway_cron_job_suppresses_intermediate_progress(
     monkeypatch, tmp_path: Path
 ) -> None:
@@ -1126,6 +1145,7 @@ def test_gateway_cron_job_suppresses_intermediate_progress(
     bus.publish_outbound.assert_not_awaited()
 
 
+@_SKIP_LEGACY_CLI
 def test_gateway_workspace_override_does_not_migrate_legacy_cron(
     monkeypatch, tmp_path: Path
 ) -> None:
@@ -1164,6 +1184,7 @@ def test_gateway_workspace_override_does_not_migrate_legacy_cron(
     assert not (override / "cron" / "jobs.json").exists()
 
 
+@_SKIP_LEGACY_CLI
 def test_gateway_custom_config_workspace_does_not_migrate_legacy_cron(
     monkeypatch, tmp_path: Path
 ) -> None:
@@ -1241,6 +1262,7 @@ def test_migrate_cron_store_skips_when_workspace_file_exists(tmp_path: Path) -> 
     assert workspace_cron.read_text() == '{"new": true}'
 
 
+@_SKIP_LEGACY_CLI
 def test_gateway_uses_configured_port_when_cli_flag_is_missing(monkeypatch, tmp_path: Path) -> None:
     config_file = _write_instance_config(tmp_path)
     config = Config()
@@ -1258,6 +1280,7 @@ def test_gateway_uses_configured_port_when_cli_flag_is_missing(monkeypatch, tmp_
     assert "port 18791" in result.stdout
 
 
+@_SKIP_LEGACY_CLI
 def test_gateway_cli_port_overrides_configured_port(monkeypatch, tmp_path: Path) -> None:
     config_file = _write_instance_config(tmp_path)
     config = Config()
@@ -1275,6 +1298,7 @@ def test_gateway_cli_port_overrides_configured_port(monkeypatch, tmp_path: Path)
     assert "port 18792" in result.stdout
 
 
+@_SKIP_LEGACY_CLI
 def test_gateway_health_endpoint_binds_and_serves_expected_responses(
     monkeypatch, tmp_path: Path
 ) -> None:
@@ -1444,6 +1468,7 @@ def test_gateway_health_endpoint_binds_and_serves_expected_responses(
     assert missing_response.endswith("\r\n\r\nNot Found")
 
 
+@_SKIP_LEGACY_CLI
 def test_serve_uses_api_config_defaults_and_workspace_override(
     monkeypatch, tmp_path: Path
 ) -> None:
@@ -1470,6 +1495,7 @@ def test_serve_uses_api_config_defaults_and_workspace_override(
     assert seen["request_timeout"] == 45.0
 
 
+@_SKIP_LEGACY_CLI
 def test_serve_cli_options_override_api_config(monkeypatch, tmp_path: Path) -> None:
     config_file = _write_instance_config(tmp_path)
     config = Config()

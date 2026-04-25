@@ -1,11 +1,9 @@
 """Async message queue abstraction for channel-agent decoupling.
 
-The in-process :class:`MessageBus` (backed by ``asyncio.Queue``) stays as
-the default; it is fast, zero-dependency, and preserves the original
-semantics that existing unit tests rely on.  The ZeroMQ-backed bus lives
-next to it (:class:`ZmqMessageBus`) so any call site that already talks
-to ``publish_inbound`` / ``consume_outbound`` / ``outbound.get_nowait``
-can be switched transparently at wiring time.
+The in-process :class:`MessageBus` (backed by ``asyncio.Queue``) is the
+only supported implementation in the consolidated single-process layout.
+It is fast, zero-dependency, and preserves the original semantics that
+existing unit tests rely on.
 """
 
 from __future__ import annotations
