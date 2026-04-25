@@ -54,7 +54,7 @@ from nanobot.bus.envelope import (
     target_for_topic,
 )
 from nanobot.bus.events import AgentEvent, InboundMessage, OutboundMessage
-from nanobot.bus.queue import EventSubscription, _event_matches
+from nanobot.bus.queue import EventSubscription, RequestReplyMixin, _event_matches
 
 
 def _encode_inbound(msg: InboundMessage) -> bytes:
@@ -252,7 +252,7 @@ class ZmqBusEndpoints:
         return bool(self.events_ingress and self.events_delivery)
 
 
-class ZmqMessageBus:
+class ZmqMessageBus(RequestReplyMixin):
     """ZeroMQ-backed bus with the :class:`MessageBus` surface.
 
     The class is role-aware: producers/consumers only connect the
@@ -268,6 +268,7 @@ class ZmqMessageBus:
         subscription: str = "",
         buffer_maxsize: int = 0,
         agent_id: str = "",
+        agent_name: str = "",
     ) -> None:
         try:
             import zmq  # type: ignore
@@ -282,6 +283,7 @@ class ZmqMessageBus:
         self._role = role
         self._subscription = subscription
         self._agent_id = agent_id
+        self._agent_name = str(agent_name or "").strip()
 
         # Own Context per bus so multiple buses in different event
         # loops (integration tests, multiple workers) do not share an
@@ -304,6 +306,13 @@ class ZmqMessageBus:
         self._event_sub_prefixes: set[str] = set()
         self._event_subs: list[EventSubscription] = []
         self._event_subs_lock = asyncio.Lock()
+        # Local mailbox fallback for direct events when no local subscriber
+        # is active. This preserves offline delivery for in-process users
+        # of this bus instance.
+        self._direct_mailbox: dict[str, dict[str, AgentEvent]] = {}
+        self._direct_mailbox_lock = asyncio.Lock()
+        self._request_waiters: dict[str, asyncio.Future[AgentEvent]] = {}
+        self._request_waiters_lock = asyncio.Lock()
 
         self._pump_tasks: list[asyncio.Task[None]] = []
         self._started = False
@@ -358,10 +367,11 @@ class ZmqMessageBus:
                 )
         self._started = True
         logger.info(
-            "ZmqMessageBus started (role={}, agent_id={}, ingress={}, worker={}, "
+            "ZmqMessageBus started (role={}, agent_id={}, agent_name={}, ingress={}, worker={}, "
             "egress={}, delivery={}, events_ingress={}, events_delivery={})",
             self._role,
             self._agent_id or "-",
+            self._agent_name or "-",
             self._endpoints.ingress,
             self._endpoints.worker,
             self._endpoints.egress,
@@ -457,6 +467,7 @@ class ZmqMessageBus:
         self,
         *,
         agent_id: str,
+        agent_name: str = "",
         topics: "list[str] | tuple[str, ...]" = (),
         include_broadcast: bool = True,
         maxsize: int = 0,
@@ -484,10 +495,15 @@ class ZmqMessageBus:
                 self._events_sub_sock.setsockopt_string(zmq.SUBSCRIBE, prefix)
                 self._event_sub_prefixes.add(prefix)
         queue: asyncio.Queue[AgentEvent] = asyncio.Queue(maxsize=maxsize)
+        aid = (agent_id or "").strip()
+        an = str(agent_name or "").strip()
+        if not an and aid and aid == (self._agent_id or "").strip():
+            an = self._agent_name
         sub = EventSubscription(
             queue,
             detach=self._detach_subscription,
             agent_id=agent_id,
+            agent_name=an,
             topics=tuple(topics),
             include_broadcast=include_broadcast,
         )
@@ -499,6 +515,89 @@ class ZmqMessageBus:
             self._event_subs.remove(sub)
         except ValueError:
             pass
+
+    async def list_pending_direct_events(self, *, agent_id: str) -> list[AgentEvent]:
+        aid = str(agent_id).strip()
+        if not aid:
+            return []
+        async with self._direct_mailbox_lock:
+            bucket = self._direct_mailbox.get(aid, {})
+            return sorted(
+                bucket.values(),
+                key=lambda ev: (float(getattr(ev, "produced_at", 0.0) or 0.0), ev.message_id),
+            )
+
+    async def ack_pending_direct_event(self, *, agent_id: str, message_id: str) -> bool:
+        aid = str(agent_id).strip()
+        mid = str(message_id).strip()
+        if not aid or not mid:
+            return False
+        async with self._direct_mailbox_lock:
+            bucket = self._direct_mailbox.get(aid)
+            if not bucket:
+                return False
+            removed = bucket.pop(mid, None)
+            if not bucket:
+                self._direct_mailbox.pop(aid, None)
+        if removed is not None:
+            logger.info(
+                "acked_direct_message target_agent_id={} message_id={}",
+                aid,
+                mid,
+            )
+            return True
+        return False
+
+    async def list_event_subscribers(
+        self,
+        *,
+        topic: str | None = None,
+    ) -> list[dict[str, object]]:
+        """Return active subscribers visible to this bus process."""
+        qtopic = str(topic or "").strip()
+        async with self._event_subs_lock:
+            subs = list(self._event_subs)
+        aggregated: dict[str, dict[str, object]] = {}
+        for sub in subs:
+            if qtopic and not any(
+                qtopic == t or qtopic.startswith(t + ".") or t == "" for t in sub.topics
+            ):
+                continue
+            row = aggregated.setdefault(
+                sub.agent_id,
+                {
+                    "agent_id": sub.agent_id,
+                    "agent_name": "",
+                    "topics": set(),
+                    "include_broadcast": False,
+                    "subscription_count": 0,
+                },
+            )
+            an = str(sub.agent_name or "").strip()
+            if an and not str(row.get("agent_name", "") or "").strip():
+                row["agent_name"] = an
+            topics_set = row["topics"]
+            assert isinstance(topics_set, set)
+            topics_set.update(sub.topics)
+            row["include_broadcast"] = bool(row["include_broadcast"]) or bool(
+                sub.include_broadcast
+            )
+            row["subscription_count"] = int(row["subscription_count"]) + 1
+        rows: list[dict[str, object]] = []
+        for aid in sorted(aggregated):
+            row = aggregated[aid]
+            topics_set = row["topics"]
+            assert isinstance(topics_set, set)
+            rows.append(
+                {
+                    "agent_id": aid,
+                    "agent_name": str(row.get("agent_name", "") or ""),
+                    "topics": sorted(str(t) for t in topics_set),
+                    "include_broadcast": bool(row["include_broadcast"]),
+                    "subscription_count": int(row["subscription_count"]),
+                }
+            )
+        return rows
 
     # ---- pumps ----------------------------------------------------------
     async def _pump_inbound(self) -> None:
@@ -550,10 +649,13 @@ class ZmqMessageBus:
                 except Exception as exc:
                     logger.warning("ZmqMessageBus: dropped malformed event: {}", exc)
                     continue
+                if await self._try_fulfill_request_reply(ev):
+                    continue
                 # Copy under the lock but fan out outside of it to avoid
                 # blocking new subscribers while we deliver.
                 async with self._event_subs_lock:
                     subs = list(self._event_subs)
+                delivered = False
                 for sub in subs:
                     if _event_matches(
                         ev,
@@ -562,6 +664,20 @@ class ZmqMessageBus:
                         include_broadcast=sub.include_broadcast,
                     ):
                         await sub._deliver(ev)
+                        delivered = True
+                target = (ev.target or "").strip()
+                if target.startswith(TARGET_AGENT_PREFIX) and not delivered:
+                    aid = target[len(TARGET_AGENT_PREFIX) :].strip()
+                    if aid:
+                        async with self._direct_mailbox_lock:
+                            bucket = self._direct_mailbox.setdefault(aid, {})
+                            if ev.message_id not in bucket:
+                                bucket[ev.message_id] = ev
+                        logger.info(
+                            "queued_direct_message target_agent_id={} message_id={}",
+                            aid,
+                            ev.message_id,
+                        )
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # pragma: no cover

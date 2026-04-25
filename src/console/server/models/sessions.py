@@ -31,6 +31,9 @@ class SessionInfo(BaseModel):
     last_message: str | None = None
     created_at: str | None = None
     updated_at: str | None = None
+    team_id: str | None = None
+    room_id: str | None = None
+    agent_id: str | None = None
 
 
 class SessionDetail(SessionInfo):
@@ -119,6 +122,10 @@ class CreateSessionBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     key: str | None = None
+    team_id: str | None = None
+    room_id: str | None = None
+    agent_id: str | None = None
+    ephemeral_session: bool | None = None
 
 
 class BatchDeleteBody(BaseModel):

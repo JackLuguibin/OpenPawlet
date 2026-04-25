@@ -17,6 +17,8 @@ const McpAndSkills = lazy(() => import('./pages/McpAndSkills'));
 const Settings = lazy(() => import('./pages/Settings'));
 const Logs = lazy(() => import('./pages/Logs'));
 const Agents = lazy(() => import('./pages/Agents'));
+const Teams = lazy(() => import('./pages/Teams'));
+const TeamDetail = lazy(() => import('./pages/TeamDetail'));
 const Memory = lazy(() => import('./pages/Memory'));
 const Cron = lazy(() => import('./pages/Cron'));
 const Health = lazy(() => import('./pages/Health'));
@@ -59,6 +61,8 @@ function AppRoutes() {
             <Route path="/workspace" element={<Workspace />} />
             <Route path="/mcp" element={<McpAndSkills />} />
             <Route path="/agents" element={<Agents />} />
+            <Route path="/teams" element={<Teams />} />
+            <Route path="/teams/:teamId" element={<TeamDetail />} />
             <Route path="/skills" element={<Navigate to="/mcp" replace />} />
             <Route path="/memory" element={<Memory />} />
             <Route

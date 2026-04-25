@@ -16,6 +16,7 @@ export interface Agent {
   collaborators: string[];
   enabled: boolean;
   created_at: string;
+  team_ids?: string[];
 }
 
 export interface AgentCreateRequest {

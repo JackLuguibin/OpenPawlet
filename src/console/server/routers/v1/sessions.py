@@ -3,11 +3,20 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+import re
 from typing import Literal
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Query
 
+from console.server.bot_workspace import (
+    iso_now,
+    load_json_file,
+    new_id,
+    save_active_team_gateway,
+    save_json_file,
+    teams_state_path,
+)
 from console.server.models import (
     BatchDeleteBody,
     BatchDeleteFailure,
@@ -33,6 +42,7 @@ from console.server.session_store import (
     read_transcript_jsonl_raw,
     save_empty_session,
 )
+from nanobot.utils.team_gateway_runtime import team_member_session_key
 
 router = APIRouter(tags=["Sessions"])
 
@@ -45,6 +55,9 @@ _READ_JSONL_RAW: dict[
 }
 
 _PREVIEW_LIMIT = 8
+_TEAM_SESSION_RE = re.compile(
+    r"^console:team_(?P<team_id>[^_]+)_room_(?P<room_id>[^_]+)_agent_(?P<agent_id>.+?)(?:_run_[^_]+)?$"
+)
 
 
 def _iso(dt: object | None) -> str | None:
@@ -60,13 +73,23 @@ def _iso(dt: object | None) -> str | None:
 def _row_to_session_info(row: dict[str, object]) -> SessionInfo:
     ca = row.get("created_at")
     ua = row.get("updated_at")
+    key = str(row["key"])
+    team_id = room_id = agent_id = None
+    match = _TEAM_SESSION_RE.match(key)
+    if match:
+        team_id = match.group("team_id")
+        room_id = match.group("room_id")
+        agent_id = match.group("agent_id")
     return SessionInfo(
-        key=str(row["key"]),
+        key=key,
         title=None,
         message_count=int(row["message_count"]),
         last_message=None,
         created_at=str(ca) if ca is not None else None,
         updated_at=str(ua) if ua is not None else None,
+        team_id=team_id,
+        room_id=room_id,
+        agent_id=agent_id,
     )
 
 
@@ -93,6 +116,79 @@ def _preview_message_from_raw(raw: dict[str, object]) -> Message | None:
         timestamp=timestamp,
         source=source,
     )
+
+
+def _team_member_ephemeral_enabled(
+    bot_id: str | None,
+    team_id: str,
+    agent_id: str,
+) -> bool:
+    if not bot_id:
+        return False
+    raw = load_json_file(teams_state_path(bot_id), None)
+    if not isinstance(raw, dict):
+        return False
+    teams = raw.get("teams")
+    if not isinstance(teams, list):
+        return False
+    row = next(
+        (
+            item
+            for item in teams
+            if isinstance(item, dict) and str(item.get("id", "")).strip() == team_id
+        ),
+        None,
+    )
+    if not isinstance(row, dict):
+        return False
+    flags = row.get("member_ephemeral")
+    if not isinstance(flags, dict):
+        return False
+    return bool(flags.get(agent_id))
+
+
+def _rotate_team_room_for_deleted_team_session(
+    bot_id: str | None,
+    session_key: str,
+) -> None:
+    """Create a fresh room and move active gateway before deleting a team session."""
+    if not bot_id:
+        return
+    match = _TEAM_SESSION_RE.match(session_key)
+    if not match:
+        return
+    team_id = match.group("team_id")
+    room_id = match.group("room_id")
+    path = teams_state_path(bot_id)
+    raw = load_json_file(path, None)
+    if not isinstance(raw, dict):
+        return
+    teams = raw.get("teams")
+    rooms = raw.get("rooms")
+    if not isinstance(teams, list) or not isinstance(rooms, list):
+        return
+    if not any(
+        isinstance(item, dict) and str(item.get("id", "")).strip() == team_id
+        for item in teams
+    ):
+        return
+    if not any(
+        isinstance(item, dict)
+        and str(item.get("team_id", "")).strip() == team_id
+        and str(item.get("id", "")).strip() == room_id
+        for item in rooms
+    ):
+        return
+    next_room_id = new_id("room-")
+    rooms.append(
+        {
+            "id": next_room_id,
+            "team_id": team_id,
+            "created_at": iso_now(),
+        }
+    )
+    save_json_file(path, {**raw, "teams": teams, "rooms": rooms})
+    save_active_team_gateway(bot_id, team_id, next_room_id)
 
 
 @router.delete("/sessions/batch", response_model=DataResponse[BatchDeleteResponse])
@@ -265,8 +361,28 @@ async def create_session(
 ) -> DataResponse[SessionInfo]:
     """Create an empty session file (or return existing if already present)."""
     raw = (body.key or "").strip()
-    key = raw or str(uuid4())
+    tid = (body.team_id or "").strip()
+    rid = (body.room_id or "").strip()
+    aid = (body.agent_id or "").strip()
+    ephemeral = bool(body.ephemeral_session or False)
+    if tid and rid and aid and body.ephemeral_session is None:
+        ephemeral = _team_member_ephemeral_enabled(bot_id, tid, aid)
+    if raw:
+        key = raw
+    elif tid and rid and aid:
+        if ephemeral:
+            key = team_member_session_key(tid, rid, aid, nonce=str(uuid4()))
+        else:
+            key = team_member_session_key(tid, rid, aid)
+    else:
+        key = str(uuid4())
     session = save_empty_session(bot_id, key)
+    team_id = room_id = agent_id = None
+    match = _TEAM_SESSION_RE.match(key)
+    if match:
+        team_id = match.group("team_id")
+        room_id = match.group("room_id")
+        agent_id = match.group("agent_id")
     return DataResponse(
         data=SessionInfo(
             key=key,
@@ -275,6 +391,9 @@ async def create_session(
             last_message=None,
             created_at=_iso(session.created_at),
             updated_at=_iso(session.updated_at),
+            team_id=team_id,
+            room_id=room_id,
+            agent_id=agent_id,
         )
     )
 
@@ -327,6 +446,9 @@ async def delete_session(
     bot_id: str | None = Query(default=None, alias="bot_id"),
 ) -> DataResponse[OkBody]:
     """Delete a session JSONL file."""
+    if load_session(bot_id, session_key) is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    _rotate_team_room_for_deleted_team_session(bot_id, session_key)
     if not delete_session_files(bot_id, session_key):
         raise HTTPException(status_code=404, detail="Session not found")
     return DataResponse(data=OkBody())

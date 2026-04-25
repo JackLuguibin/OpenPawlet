@@ -6,6 +6,7 @@ import asyncio
 import dataclasses
 import json
 import os
+import re
 import time
 import uuid
 from collections.abc import Awaitable, Callable
@@ -24,8 +25,11 @@ from nanobot.agent.skills import BUILTIN_SKILLS_DIR
 from nanobot.agent.subagent import SubagentManager
 from nanobot.agent.tools.cron import CronTool
 from nanobot.agent.tools.events import (
+    ListEventSubscribersTool,
     PublishEventTool,
+    ReplyToAgentRequestTool,
     SendToAgentTool,
+    SendToAgentWaitReplyTool,
     SubscribeEventTool,
 )
 from nanobot.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
@@ -40,7 +44,7 @@ from nanobot.agent.tools.web import WebFetchTool, WebSearchTool
 from nanobot.bus.events import InboundMessage, OutboundMessage
 from nanobot.bus.queue import MessageBus
 from nanobot.command import CommandContext, CommandRouter, register_builtin_commands
-from nanobot.config.schema import AgentDefaults
+from nanobot.config.schema import AgentDefaults, Config
 from nanobot.observability.telemetry import get_trace_id
 from nanobot.providers.base import LLMProvider
 from nanobot.session.context_snapshot import SessionContextWriter
@@ -63,6 +67,10 @@ if TYPE_CHECKING:
 
 
 UNIFIED_SESSION_KEY = "unified:default"
+_TEAM_SESSION_KEY_RE = re.compile(r"^console:team_[^_]+_room_[^_]+_agent_.+$")
+_TEAM_SESSION_KEY_WITH_AGENT_RE = re.compile(
+    r"^console:team_[^_]+_room_[^_]+_agent_(?P<agent_id>.+?)(?:_run_[^_]+)?$"
+)
 
 
 class _LoopHook(AgentHook):
@@ -250,9 +258,13 @@ class AgentLoop:
         hooks: list[AgentHook] | None = None,
         unified_session: bool = False,
         disabled_skills: list[str] | None = None,
+        console_system_prompt: str | None = None,
         tools_config: ToolsConfig | None = None,
         persist_session_transcript: bool = False,
         transcript_include_full_tool_results: bool = False,
+        agent_id: str | None = None,
+        agent_name: str | None = None,
+        runtime_config: Config | None = None,
     ):
         from nanobot.config.schema import (
             ChannelsConfig,
@@ -264,13 +276,25 @@ class AgentLoop:
         _tc = tools_config or ToolsConfig()
         defaults = AgentDefaults()
         self.bus = bus
-        # Stable agent identity for the events channel.  NANOBOT_AGENT_ID
-        # wins; otherwise we fall back to a host:pid tuple so multiple
-        # nanobot processes on the same box stay distinguishable.
-        self.agent_id = (
-            os.environ.get("NANOBOT_AGENT_ID", "").strip()
-            or f"main:{os.uname().nodename}:{os.getpid()}"
-        )
+        # Stable agent identity for the events channel.  Explicit *agent_id*
+        # (in-process team members) wins; else NANOBOT_AGENT_ID; else main:.
+        if agent_id is not None and str(agent_id).strip():
+            self.agent_id = str(agent_id).strip()
+        else:
+            self.agent_id = (
+                os.environ.get("NANOBOT_AGENT_ID", "").strip()
+                or f"main:{os.uname().nodename}:{os.getpid()}"
+            )
+        if agent_name is not None and str(agent_name).strip():
+            self.agent_name = str(agent_name).strip()
+        else:
+            self.agent_name = os.environ.get("NANOBOT_AGENT_NAME", "").strip()
+        if not self.agent_name:
+            _aid0 = (self.agent_id or "").strip()
+            if _aid0 and not _aid0.startswith("main:"):
+                from nanobot.utils.console_agents import console_agent_display_name
+
+                self.agent_name = console_agent_display_name(workspace, _aid0)
         self.channels_config = channels_config or ChannelsConfig()
         self._session_turn_lifecycle_channels = frozenset(
             self.channels_config.session_turn_lifecycle_channels
@@ -302,7 +326,15 @@ class AgentLoop:
         self._extra_hooks: list[AgentHook] = hooks or []
 
         self.timezone = timezone
-        self.context = ContextBuilder(workspace, timezone=self.timezone, disabled_skills=disabled_skills)
+        _extra_sys: list[str] | None = None
+        if console_system_prompt and str(console_system_prompt).strip():
+            _extra_sys = [f"# Console agent instructions\n\n{str(console_system_prompt).strip()}"]
+        self.context = ContextBuilder(
+            workspace,
+            timezone=self.timezone,
+            disabled_skills=disabled_skills,
+            extra_system_sections=_extra_sys,
+        )
         self.sessions = session_manager or SessionManager(workspace, timezone=self.timezone)
         self.sessions.configure_timezone(self.timezone)
         self.tools = ToolRegistry()
@@ -384,6 +416,81 @@ class AgentLoop:
         self._current_iteration: int = 0
         self.commands = CommandRouter()
         register_builtin_commands(self.commands)
+        # console:team_* session keys -> in-process member AgentLoop (gateway only)
+        self.team_session_dispatch: dict[str, AgentLoop] | None = None
+        # Hot-reload console team/agent JSON without process restart (gateway only).
+        self._runtime_config = runtime_config
+        self._identity_state_max_mtime: float = -1.0
+        if self._runtime_config is not None:
+            self._identity_state_max_mtime = self._compute_identity_sources_mtime()
+
+    def _logical_agent_id_for_console_row(self) -> str | None:
+        """Same resolution as gateway startup: env NANOBOT_AGENT_ID, else non-synthetic agent_id."""
+        env_aid = os.environ.get("NANOBOT_AGENT_ID", "").strip()
+        if env_aid:
+            return env_aid
+        aid = (self.agent_id or "").strip()
+        if aid.startswith("main:"):
+            return None
+        return aid or None
+
+    def _compute_identity_sources_mtime(self) -> float:
+        """Max mtime of files that feed :func:`resolve_gateway_identity_overrides`."""
+        w = self.workspace
+        t = 0.0
+        nc = w / ".nanobot_console"
+        for name in ("teams.json", "active_team_gateway.json"):
+            f = nc / name
+            if f.is_file():
+                try:
+                    t = max(t, f.stat().st_mtime)
+                except OSError:
+                    pass
+        aid = self._logical_agent_id_for_console_row()
+        if aid:
+            one = w / "agents" / f"{aid}.json"
+            if one.is_file():
+                try:
+                    t = max(t, one.stat().st_mtime)
+                except OSError:
+                    pass
+            else:
+                legacy = nc / "agents.json"
+                if legacy.is_file():
+                    try:
+                        t = max(t, legacy.stat().st_mtime)
+                    except OSError:
+                        pass
+        return t
+
+    def _maybe_refresh_gateway_identity(self) -> None:
+        """Re-read console team/agent JSON when files change (gateway with ``runtime_config``)."""
+        if self._runtime_config is None:
+            return
+        cur = self._compute_identity_sources_mtime()
+        if cur <= self._identity_state_max_mtime:
+            return
+        self._identity_state_max_mtime = cur
+        from nanobot.utils.console_agents import resolve_gateway_identity_overrides
+        from nanobot.utils.team_gateway_runtime import resolve_gateway_team_context
+
+        tid, _, _ = resolve_gateway_team_context(self.workspace)
+        _m, ds, prompt = resolve_gateway_identity_overrides(
+            self._runtime_config,
+            self.workspace,
+            logical_agent_id=self._logical_agent_id_for_console_row(),
+            team_id=tid,
+        )
+        _ = _m  # model is resolved at process start; hot path updates skills + prompt only
+        _extra: list[str] = []
+        if prompt and str(prompt).strip():
+            _extra = [f"# Console agent instructions\n\n{str(prompt).strip()}"]
+        self.context.apply_skills_and_extra_prompt(
+            disabled_skills=ds,
+            extra_system_sections=_extra,
+        )
+        self.subagents.disabled_skills = set(ds or [])
+        self.consolidator._build_messages = self.context.build_messages
 
     @property
     def session_transcript(self) -> SessionTranscriptWriter | None:
@@ -469,12 +576,20 @@ class AgentLoop:
             SendToAgentTool(bus=self.bus, default_source_agent=self.agent_id)
         )
         self.tools.register(
+            SendToAgentWaitReplyTool(bus=self.bus, default_source_agent=self.agent_id)
+        )
+        self.tools.register(
+            ReplyToAgentRequestTool(bus=self.bus, default_source_agent=self.agent_id)
+        )
+        self.tools.register(
             SubscribeEventTool(
                 bus=self.bus,
                 default_agent_id=self.agent_id,
+                default_agent_name=self.agent_name,
                 inject_inbound=self.bus.publish_inbound,
             )
         )
+        self.tools.register(ListEventSubscribersTool(bus=self.bus))
         if self.cron_service:
             self.tools.register(
                 CronTool(self.cron_service, default_timezone=self.timezone or "UTC")
@@ -516,9 +631,17 @@ class AgentLoop:
                         tool.set_context(channel, chat_id, *([message_id] if name == "message" else []))
         # Event tools follow a different signature (agent_id-aware) so
         # they get their own configuration pass.
-        for name in ("publish_event", "send_to_agent"):
+        for name in (
+            "publish_event",
+            "send_to_agent",
+            "send_to_agent_wait_reply",
+            "reply_to_agent_request",
+        ):
             if (tool := self.tools.get(name)) and hasattr(tool, "set_context"):
-                tool.set_context(source_agent=self.agent_id)
+                tool.set_context(
+                    source_agent=self.agent_id,
+                    source_session_key=effective_key,
+                )
         if (sub_tool := self.tools.get("subscribe_event")) and hasattr(sub_tool, "set_context"):
             sub_tool.set_context(
                 agent_id=self.agent_id,
@@ -742,10 +865,80 @@ class AgentLoop:
             logger.error("LLM returned error: {}", (result.final_content or "")[:200])
         return result.final_content, result.tools_used, result.messages, result.stop_reason, result.had_injections
 
+    async def _install_team_event_tap(self) -> None:
+        """If ``NANOBOT_TEAM_SESSION_KEY`` is set, install background bus subscription."""
+        if os.environ.get("NANOBOT_TEAM_IN_PROCESS", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }:
+            return
+        key = os.environ.get("NANOBOT_TEAM_SESSION_KEY", "").strip()
+        if not key:
+            return
+        if os.environ.get("NANOBOT_TEAM_EVENT_SUBSCRIBE", "1").strip().lower() in {
+            "0",
+            "false",
+            "no",
+            "off",
+        }:
+            return
+        sub = self.tools.get("subscribe_event")
+        if not isinstance(sub, SubscribeEventTool):
+            return
+        before, _, after = key.partition(":")
+        channel = before if after else "console"
+        chat_id = after if after else key
+        sub.set_context(
+            agent_id=self.agent_id,
+            session_key=key,
+            channel=channel,
+            chat_id=chat_id,
+        )
+        for name in (
+            "publish_event",
+            "send_to_agent",
+            "send_to_agent_wait_reply",
+            "reply_to_agent_request",
+        ):
+            t = self.tools.get(name)
+            if t is not None and hasattr(t, "set_context"):
+                t.set_context(
+                    source_agent=self.agent_id,
+                    source_session_key=key,
+                )
+        try:
+            out = await sub.execute(topics=[])
+            logger.info("Team session subscribe_event: {}", (out or "")[:300])
+        except Exception:
+            logger.exception("Team session subscribe_event failed")
+
+    def _dispatch_target_for_message(self, msg: InboundMessage) -> tuple[AgentLoop, str]:
+        """Return (loop, effective_session_key) for routing inbound user traffic."""
+        eff = self._effective_session_key(msg)
+        td = self.team_session_dispatch
+        if td:
+            member = td.get(eff)
+            if member is not None:
+                return member, member._effective_session_key(msg)
+            # Reconciliation lag can briefly leave a brand-new room session key
+            # out of dispatch map. Fall back to member loop by agent_id.
+            match = _TEAM_SESSION_KEY_WITH_AGENT_RE.match(eff)
+            if match:
+                agent_id = match.group("agent_id")
+                for loop in set(td.values()):
+                    if (loop.agent_id or "").strip() == agent_id:
+                        return loop, loop._effective_session_key(msg)
+        if _TEAM_SESSION_KEY_RE.match(eff):
+            logger.warning("team session key not registered in dispatch map: {}", eff)
+        return self, eff
+
     async def run(self) -> None:
         """Run the agent loop, dispatching messages as tasks to stay responsive to /stop."""
         self._running = True
         await self._connect_mcp()
+        await self._install_team_event_tap()
         logger.info("Agent loop started")
 
         while self._running:
@@ -768,23 +961,23 @@ class AgentLoop:
                 continue
 
             raw = msg.content.strip()
-            if self.commands.is_priority(raw):
-                await self._dispatch_command_inline(
-                    msg, msg.session_key, raw,
-                    self.commands.dispatch_priority,
+            target, effective_key = self._dispatch_target_for_message(msg)
+            if target.commands.is_priority(raw):
+                await target._dispatch_command_inline(
+                    msg, effective_key, raw,
+                    target.commands.dispatch_priority,
                 )
                 continue
-            effective_key = self._effective_session_key(msg)
             # If this session already has an active pending queue (i.e. a task
             # is processing this session), route the message there for mid-turn
             # injection instead of creating a competing task.
-            if effective_key in self._pending_queues:
+            if effective_key in target._pending_queues:
                 # Non-priority commands must not be queued for injection;
                 # dispatch them directly (same pattern as priority commands).
-                if self.commands.is_dispatchable_command(raw):
-                    await self._dispatch_command_inline(
+                if target.commands.is_dispatchable_command(raw):
+                    await target._dispatch_command_inline(
                         msg, effective_key, raw,
-                        self.commands.dispatch,
+                        target.commands.dispatch,
                     )
                     continue
                 pending_msg = msg
@@ -794,7 +987,7 @@ class AgentLoop:
                         session_key_override=effective_key,
                     )
                 try:
-                    self._pending_queues[effective_key].put_nowait(pending_msg)
+                    target._pending_queues[effective_key].put_nowait(pending_msg)
                 except asyncio.QueueFull:
                     logger.warning(
                         "Pending queue full for session {}, falling back to queued task",
@@ -808,12 +1001,12 @@ class AgentLoop:
                     continue
             # Compute the effective session key before dispatching
             # This ensures /stop command can find tasks correctly when unified session is enabled
-            task = asyncio.create_task(self._dispatch(msg))
-            self._active_tasks.setdefault(effective_key, []).append(task)
+            task = asyncio.create_task(target._dispatch(msg))
+            target._active_tasks.setdefault(effective_key, []).append(task)
             task.add_done_callback(
-                lambda t, k=effective_key: self._active_tasks.get(k, [])
-                and self._active_tasks[k].remove(t)
-                if t in self._active_tasks.get(k, [])
+                lambda t, k=effective_key, tgt=target: tgt._active_tasks.get(k, [])
+                and tgt._active_tasks[k].remove(t)
+                if t in tgt._active_tasks.get(k, [])
                 else None
             )
 
@@ -976,6 +1169,7 @@ class AgentLoop:
         pending_queue: asyncio.Queue | None = None,
     ) -> OutboundMessage | None:
         """Process a single inbound message and return the response."""
+        self._maybe_refresh_gateway_identity()
         # System messages: parse origin from chat_id ("channel:chat_id")
         if msg.channel == "system":
             channel, chat_id = (

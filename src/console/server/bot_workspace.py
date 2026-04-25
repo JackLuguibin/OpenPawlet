@@ -22,6 +22,9 @@ _CONSOLE_DIR = ".nanobot_console"
 _RUNTIME_STATE_FILE = "runtime_state.json"
 _MEMORY_DIR = "memory"
 _AGENTS_FILE = "agents.json"
+# Per-agent OpenPawlet console configs (under workspace root, e.g. ``agents/agent-abc.json``).
+_AGENTS_DIR = "agents"
+_TEAMS_FILE = "teams.json"
 _TOOL_LOGS_FILE = "tool_logs.json"
 _PROFILE_FILES: dict[str, str] = {
     "soul": "SOUL.md",
@@ -183,8 +186,70 @@ def read_memory_text(bot_id: str | None, kind: str) -> str:
 
 
 def agents_state_path(bot_id: str | None) -> Path:
-    """JSON file backing multi-agent records and categories."""
+    """JSON file for custom categories, overrides, and legacy migration marker.
+
+    Per-agent records live under :func:`workspace_agents_dir` as ``<id>.json``.
+    """
     return console_state_dir(bot_id) / _AGENTS_FILE
+
+
+def workspace_agents_dir(bot_id: str | None) -> Path:
+    """``<workspace>/agents/`` (per-agent ``.json`` files)."""
+    d = workspace_root(bot_id) / _AGENTS_DIR
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def assert_safe_agent_id(agent_id: str) -> str:
+    """Reject path traversal; ``agent_id`` must be a single path segment."""
+    s = (agent_id or "").strip()
+    if not s or s != Path(s).name or ".." in s:
+        raise HTTPException(status_code=400, detail="Invalid agent id")
+    return s
+
+
+def agent_workspace_json_path(bot_id: str | None, agent_id: str) -> Path:
+    """``<workspace>/agents/<agent_id>.json``."""
+    aid = assert_safe_agent_id(agent_id)
+    return workspace_agents_dir(bot_id) / f"{aid}.json"
+
+
+def teams_state_path(bot_id: str | None) -> Path:
+    """JSON file backing team records and team rooms."""
+    return console_state_dir(bot_id) / _TEAMS_FILE
+
+
+def save_active_team_gateway(bot_id: str | None, team_id: str, room_id: str) -> None:
+    """Persist which team+room the nanobot gateway should bind on next startup."""
+    from nanobot.utils.team_gateway_runtime import active_team_gateway_path
+
+    tid = (team_id or "").strip()
+    rid = (room_id or "").strip()
+    if not tid or not rid:
+        return
+    path = active_team_gateway_path(workspace_root(bot_id))
+    save_json_file(
+        path,
+        {"team_id": tid, "room_id": rid, "updated_at": iso_now()},
+    )
+
+
+def clear_active_team_gateway_for_team(bot_id: str | None, team_id: str) -> None:
+    """Remove gateway pointer when it references the deleted team."""
+    from nanobot.utils.team_gateway_runtime import active_team_gateway_path
+
+    tid = (team_id or "").strip()
+    if not tid:
+        return
+    path = active_team_gateway_path(workspace_root(bot_id))
+    if not path.is_file():
+        return
+    data = load_json_file(path, {})
+    if isinstance(data, dict) and str(data.get("team_id", "")).strip() == tid:
+        try:
+            path.unlink(missing_ok=True)
+        except OSError as exc:
+            logger.warning("[workspace] unlink active_team_gateway failed {}: {}", path, exc)
 
 
 def tool_logs_path(bot_id: str | None) -> Path:

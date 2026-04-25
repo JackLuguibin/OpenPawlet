@@ -71,6 +71,18 @@ TARGET_BROADCAST = "broadcast"
 TARGET_AGENT_PREFIX = "agent:"
 TARGET_TOPIC_PREFIX = "topic:"
 
+# Request/reply on the events channel (see :func:`build_request_reply_event`).
+# Reply events use ``topic=TOPIC_AGENT_REQUEST_REPLY`` and
+# ``payload[KEY_CORRELATION_ID]`` to match a pending :meth:`MessageBus.request_event`.
+TOPIC_AGENT_REQUEST_REPLY = "agent.request.reply"
+KEY_CORRELATION_ID = "correlation_id"
+KEY_REPLY_ERROR = "error"
+KEY_TARGET_SESSION_KEY = "target_session_key"
+KEY_SOURCE_SESSION_KEY = "source_session_key"
+# Set to True on ``agent.direct`` from the ``send_to_agent_wait_reply`` tool so
+# the receiver knows a matching ``agent.request.reply`` is required.
+KEY_EXPECTS_REPLY = "expects_reply"
+
 
 def target_for_agent(agent_id: str) -> str:
     """Return the ZMQ SUB prefix string for addressing *agent_id* directly."""

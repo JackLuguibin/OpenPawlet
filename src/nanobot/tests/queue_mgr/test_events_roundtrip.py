@@ -112,3 +112,88 @@ async def test_broadcast_event_roundtrip_through_broker() -> None:
         await bob.stop()
         await producer.stop()
         await broker.stop()
+
+
+@pytest.mark.asyncio
+async def test_request_reply_event_roundtrip_through_broker() -> None:
+    from nanobot.bus.envelope import KEY_CORRELATION_ID, target_for_agent
+    from nanobot.bus.events import AgentEvent, build_request_reply_event
+    from nanobot.bus.zmq_bus import ZmqBusEndpoints, ZmqMessageBus
+    from queue_manager.config import QueueManagerSettings
+    from queue_manager.service import QueueManagerBroker
+
+    ports = [_free_port() for _ in range(6)]
+    settings = QueueManagerSettings(
+        host="127.0.0.1",
+        ingress_port=ports[0],
+        worker_port=ports[1],
+        egress_port=ports[2],
+        delivery_port=ports[3],
+        events_ingress_port=ports[4],
+        events_delivery_port=ports[5],
+        health_port=0,
+        idempotency_window_seconds=60,
+    )
+    broker = QueueManagerBroker(settings)
+    await broker.start()
+
+    endpoints = ZmqBusEndpoints(
+        ingress=settings.ingress_endpoint(),
+        worker=settings.worker_endpoint(),
+        egress=settings.egress_endpoint(),
+        delivery=settings.delivery_endpoint(),
+        events_ingress=settings.events_ingress_endpoint(),
+        events_delivery=settings.events_delivery_endpoint(),
+    )
+    alice = ZmqMessageBus(endpoints, role="agent", agent_id="alice")
+    bob = ZmqMessageBus(endpoints, role="agent", agent_id="bob")
+
+    try:
+        await alice.start()
+        await bob.start()
+        await asyncio.sleep(0.3)
+
+        sub_bob = bob.subscribe_events(agent_id="bob")
+        cid = "m-broker-rr-1"
+        req = AgentEvent(
+            topic="agent.direct",
+            payload={
+                "content": "ping",
+                "message_id": cid,
+                KEY_CORRELATION_ID: cid,
+                "sender_agent_id": "alice",
+                "created_at": 0.0,
+            },
+            source_agent="alice",
+            target=target_for_agent("bob"),
+            message_id=cid,
+        )
+        wait = asyncio.create_task(
+            alice.request_event(
+                req,
+                correlation_id=cid,
+                timeout_s=3.0,
+                max_retries=0,
+                base_backoff_s=0,
+            )
+        )
+        ev_in = await asyncio.wait_for(sub_bob.get(), timeout=3.0)
+        pl = ev_in.payload or {}
+        r = build_request_reply_event(
+            correlation_id=str(
+                pl.get(KEY_CORRELATION_ID) or pl.get("message_id")
+            ),
+            to_agent_id="alice",
+            content="pong",
+            source_agent="bob",
+        )
+        await bob.publish_event(r)
+        got, attempts, status = await wait
+        assert status == "ok"
+        assert attempts == 1
+        assert (got.payload or {}).get("content") == "pong"
+        sub_bob.close()
+    finally:
+        await alice.stop()
+        await bob.stop()
+        await broker.stop()

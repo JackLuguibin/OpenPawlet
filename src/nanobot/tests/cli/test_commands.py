@@ -927,6 +927,7 @@ def test_gateway_uses_workspace_directory_for_cron_store(monkeypatch, tmp_path: 
 def test_gateway_cron_evaluator_receives_scheduled_reminder_context(
     monkeypatch, tmp_path: Path
 ) -> None:
+    monkeypatch.setenv("QUEUE_MANAGER_ENABLED", "false")
     config_file = tmp_path / "instance" / "config.json"
     config_file.parent.mkdir(parents=True)
     config_file.write_text("{}")
@@ -1039,6 +1040,7 @@ def test_gateway_cron_job_suppresses_intermediate_progress(
     """Cron jobs must pass on_progress=_silent to process_direct so that
     tool hints and streaming deltas are never leaked to the user channel
     before evaluate_response decides whether to deliver."""
+    monkeypatch.setenv("QUEUE_MANAGER_ENABLED", "false")
     config_file = tmp_path / "instance" / "config.json"
     config_file.parent.mkdir(parents=True)
     config_file.write_text("{}")
@@ -1276,8 +1278,20 @@ def test_gateway_cli_port_overrides_configured_port(monkeypatch, tmp_path: Path)
 def test_gateway_health_endpoint_binds_and_serves_expected_responses(
     monkeypatch, tmp_path: Path
 ) -> None:
+    for _k in (
+        "NANOBOT_TEAM_ID",
+        "NANOBOT_TEAM_ROOM_ID",
+        "NANOBOT_TEAM_MEMBER_IDS",
+        "NANOBOT_TEAM_IN_PROCESS",
+    ):
+        monkeypatch.delenv(_k, raising=False)
     config_file = _write_instance_config(tmp_path)
     config = Config()
+    # Isolate workspace so we do not infer NANOBOT_AGENT_ID from the developer's
+    # ~/.nanobot/workspace or trigger team run_team_member_event_loop in tests.
+    _gw_ws = tmp_path / "health-gateway-ws"
+    _gw_ws.mkdir(parents=True, exist_ok=True)
+    config.agents.defaults.workspace = str(_gw_ws)
     config.gateway.port = 18791
     captured: dict[str, object] = {}
 
@@ -1294,8 +1308,9 @@ def test_gateway_health_endpoint_binds_and_serves_expected_responses(
             return 0
 
     class _FakeAgentLoop:
-        def __init__(self, **_kwargs) -> None:
+        def __init__(self, **kwargs) -> None:
             self.model = "test-model"
+            self.agent_id = (kwargs.get("agent_id") or "fake-primary")  # run_team_member_event_loop
             self.dream = _FakeDream()
             self.sessions = _FakeSessionManager()
 

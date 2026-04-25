@@ -16,8 +16,11 @@ from nanobot.utils.prompt_templates import render_template
 from nanobot.agent.runner import AgentRunSpec, AgentRunner
 from nanobot.agent.skills import BUILTIN_SKILLS_DIR
 from nanobot.agent.tools.events import (
+    ListEventSubscribersTool,
     PublishEventTool,
+    ReplyToAgentRequestTool,
     SendToAgentTool,
+    SendToAgentWaitReplyTool,
     SubscribeEventTool,
 )
 from nanobot.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
@@ -197,6 +200,10 @@ class SubagentManager:
             tools.register(
                 SendToAgentTool(bus=self.bus, default_source_agent=subagent_id)
             )
+            tools.register(
+                SendToAgentWaitReplyTool(bus=self.bus, default_source_agent=subagent_id)
+            )
+            tools.register(ReplyToAgentRequestTool(bus=self.bus, default_source_agent=subagent_id))
             subscribe_tool = SubscribeEventTool(
                 bus=self.bus,
                 default_agent_id=subagent_id,
@@ -209,6 +216,7 @@ class SubagentManager:
                 chat_id=origin["chat_id"],
             )
             tools.register(subscribe_tool)
+            tools.register(ListEventSubscribersTool(bus=self.bus))
             system_prompt = self._build_subagent_prompt()
             runtime = ContextBuilder._build_runtime_context(
                 origin["channel"],

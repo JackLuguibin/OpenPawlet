@@ -7,16 +7,24 @@ They keep sensible defaults so in-process call sites that predate the
 unified queue continue to work without modification.
 """
 
+import json
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
 from nanobot.bus.envelope import (
+    KEY_CORRELATION_ID,
+    KEY_EXPECTS_REPLY,
+    KEY_REPLY_ERROR,
+    KEY_SOURCE_SESSION_KEY,
+    KEY_TARGET_SESSION_KEY,
     TARGET_BROADCAST,
     build_dedupe_key,
     new_message_id,
     new_trace_id,
     produced_at,
+    target_for_agent,
+    TOPIC_AGENT_REQUEST_REPLY,
 )
 
 
@@ -100,6 +108,13 @@ class AgentEvent:
     The ``topic`` field is independent of ``target`` so the producer can
     publish ``topic="cron.fired"`` as a broadcast while a specific agent
     can publish ``topic="agent.direct"`` with ``target="agent:bob"``.
+
+    **Request/reply:** use :func:`build_request_reply_event` to acknowledge or
+    respond to a direct message: ``payload`` must include the
+    request's ``correlation_id`` (same value as the ``message_id`` / correlation
+    field from the original ``agent.direct`` event).  If the sender used
+    ``send_to_agent_wait_reply``, the direct payload also includes
+    ``expects_reply: true`` so the peer knows to answer with ``agent.request.reply``.
     """
 
     topic: str
@@ -112,3 +127,77 @@ class AgentEvent:
     trace_id: str = field(default_factory=new_trace_id, compare=False)
     event_seq: int = field(default=0, compare=False)
     produced_at: float = field(default_factory=produced_at, compare=False)
+
+
+def build_request_reply_event(
+    *,
+    correlation_id: str,
+    to_agent_id: str,
+    content: str = "",
+    source_agent: str = "system",
+    error: str | None = None,
+    metadata: dict[str, Any] | None = None,
+    source_session_key: str | None = None,
+    target_session_key: str | None = None,
+) -> AgentEvent:
+    """Build an ``agent.request.reply`` event for :meth:`MessageBus.request_event` matching."""
+    _cid = str(correlation_id).strip()
+    payload: dict[str, Any] = {
+        KEY_CORRELATION_ID: _cid,
+        "content": str(content) if content is not None else "",
+        "sender_agent_id": str(source_agent),
+    }
+    if error is not None and str(error).strip():
+        payload[KEY_REPLY_ERROR] = str(error)
+    source_session = str(source_session_key or "").strip()
+    if source_session:
+        payload[KEY_SOURCE_SESSION_KEY] = source_session
+    target_session = str(target_session_key or "").strip()
+    if target_session:
+        payload[KEY_TARGET_SESSION_KEY] = target_session
+    if metadata:
+        payload["metadata"] = dict(metadata)
+    return AgentEvent(
+        topic=TOPIC_AGENT_REQUEST_REPLY,
+        payload=payload,
+        source_agent=str(source_agent),
+        target=target_for_agent(str(to_agent_id).strip()),
+    )
+
+
+def should_handle_direct_for_session(ev: AgentEvent, session_key: str | None) -> bool:
+    """Return True when *ev* should be consumed by this session loop.
+
+    Direct agent messages are consumed at agent scope (``agent:<id>`` target).
+    Session hints in payload are best-effort metadata and must not block
+    delivery, otherwise request/reply can deadlock after session/room rotation.
+    """
+    _ = session_key
+    return True
+
+
+def render_agent_event_for_llm(
+    ev: AgentEvent, *, max_body_chars: int | None = None
+) -> str:
+    """Format *ev* as system-visible text for agent loops (subscribe / team)."""
+    try:
+        body = json.dumps(ev.payload, ensure_ascii=False, indent=2)
+    except Exception:
+        body = str(ev.payload)
+    if max_body_chars is not None and len(body) > max_body_chars:
+        body = body[:max_body_chars] + "\n…(truncated)"
+    pl = ev.payload if isinstance(ev.payload, dict) else None
+    head = f"[event] topic={ev.topic} from={ev.source_agent} target={ev.target}\n"
+    if ev.topic == "agent.direct" and pl and pl.get(KEY_EXPECTS_REPLY):
+        cid = pl.get(KEY_CORRELATION_ID) or pl.get("message_id")
+        if cid:
+            sa = pl.get("sender_agent_id", "")
+            to_hint = repr(sa) if sa else "sender_agent_id from the payload"
+            head += (
+                f"[REPLY REQUIRED] The other agent is blocked on send_to_agent_wait_reply. "
+                f"You MUST call reply_to_agent_request(to_agent_id={to_hint}, "
+                f"correlation_id={cid!r}, content=<answer>). "
+                f"Or publish_event(topic={TOPIC_AGENT_REQUEST_REPLY!r}, target=…, "
+                f"payload with {KEY_CORRELATION_ID!r}={cid!r}).\n"
+            )
+    return head + body

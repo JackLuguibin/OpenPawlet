@@ -593,6 +593,10 @@ export function useNanobotChannelWebSocket(options: {
       const body: Record<string, unknown> = {
         content: payload.content,
       };
+      const routeSk = canonicalFromRouteRef.current;
+      if (routeSk && routeSk.startsWith("console:")) {
+        body.session_key = routeSk;
+      }
       if (payload.botId) {
         body.metadata = {
           bot_id: payload.botId,

@@ -37,11 +37,13 @@ import {
   Bot,
   Check,
   CheckCircle2,
+  ChevronDown,
   ChevronRight,
   Copy,
   MessageSquare,
   Sparkles,
   Square,
+  Users,
   Wand2,
   Wrench,
   Info,
@@ -929,6 +931,10 @@ export default function Chat() {
   const [sessionsSidebarOpen, setSessionsSidebarOpen] = useState(false);
   const [sessionsSidebarCollapsed, setSessionsSidebarCollapsed] =
     useState(false);
+  const [sessionTreeExpanded, setSessionTreeExpanded] = useState({
+    main: true,
+    teams: false,
+  });
   const [batchSelectedKeys, setBatchSelectedKeys] = useState<Set<string>>(
     () => new Set(),
   );
@@ -1349,6 +1355,13 @@ export default function Chat() {
     () => pickLatestActiveSessionKey(sessions ?? []),
     [sessions],
   );
+  const groupedSessions = useMemo(() => {
+    const list = sessions ?? [];
+    return {
+      main: list.filter((sessionRow) => !sessionRow.team_id),
+      teams: list.filter((sessionRow) => Boolean(sessionRow.team_id)),
+    };
+  }, [sessions]);
 
   const sessionSidebarRowRefs = useRef<Map<string, HTMLDivElement | null>>(
     new Map(),
@@ -2836,79 +2849,143 @@ export default function Chat() {
               {t("chat.sessionsEmpty")}
             </p>
           ) : null}
-          {sessions?.map((session) => (
-            <div
-              key={session.key}
-              ref={(el) => {
-                if (el) {
-                  sessionSidebarRowRefs.current.set(session.key, el);
-                } else {
-                  sessionSidebarRowRefs.current.delete(session.key);
-                }
-              }}
-              className={`flex items-stretch gap-2 rounded-md transition-all ${
-                activeSessionKey === session.key
-                  ? "bg-gradient-to-r from-primary-50 to-blue-50 dark:from-primary-900/30 dark:to-blue-900/20 text-primary-700 dark:text-primary-300"
-                  : "hover:bg-gray-100 dark:hover:bg-gray-700/50"
-              }`}
-            >
-              <div className="flex items-center justify-center shrink-0 pl-3 pr-0.5 py-3">
-                <Checkbox
-                  checked={batchSelectedKeys.has(session.key)}
-                  onClick={(e) => e.stopPropagation()}
-                  onChange={(e) => {
-                    e.stopPropagation();
-                    const checked = e.target.checked;
-                    setBatchSelectedKeys((prev) => {
-                      const next = new Set(prev);
-                      if (checked) {
-                        next.add(session.key);
-                      } else {
-                        next.delete(session.key);
-                      }
-                      return next;
-                    });
-                  }}
-                />
-              </div>
-              <button
-                type="button"
-                onClick={() => handleSelectSession(session.key)}
-                className="flex-1 min-w-0 text-left py-3.5 pr-2 rounded-l-lg"
-              >
-                <span className="text-sm font-medium truncate block leading-snug">
-                  {session.title || session.key}
-                </span>
-                <span className="text-xs text-gray-500 mt-1.5 block leading-relaxed">
-                  {t("chat.messageCount", { count: session.message_count })}
-                </span>
-                {session.created_at && (
-                  <span className="text-xs text-gray-400 dark:text-gray-500 mt-1 block leading-relaxed">
-                    {formatMessageTime(session.created_at)}
-                  </span>
-                )}
-              </button>
-              <Popconfirm
-                title={t("chat.deleteSessionTitle")}
-                description={t("chat.deleteSessionDesc", {
-                  name: session.title || session.key,
-                })}
-                onConfirm={() => deleteSessionMutation.mutate(session.key)}
-                okText={t("common.delete")}
-                cancelText={t("common.cancel")}
-                okButtonProps={{ danger: true }}
-              >
+          {(
+            [
+              {
+                key: "main" as const,
+                label: t("chat.mainAgentSessions"),
+                rows: groupedSessions.main,
+              },
+              {
+                key: "teams" as const,
+                label: t("chat.teamSessions"),
+                rows: groupedSessions.teams,
+              },
+            ] as const
+          ).map((group) => {
+            if (!group.rows.length) {
+              return null;
+            }
+            const expanded = sessionTreeExpanded[group.key];
+            return (
+              <div key={group.key} className="space-y-2">
                 <button
                   type="button"
-                  onClick={(e) => e.stopPropagation()}
-                  title={t("chat.deleteSession")}
-                  className="self-center shrink-0 w-9 h-9 mr-2 my-2 flex items-center justify-center rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 dark:text-gray-500 dark:hover:text-red-400 dark:hover:bg-red-500/10 transition-colors duration-150"
+                  onClick={() =>
+                    setSessionTreeExpanded((prev) => ({
+                      ...prev,
+                      [group.key]: !prev[group.key],
+                    }))
+                  }
+                  className="w-full flex items-center justify-between px-2 py-1.5 rounded-md bg-gray-100/80 dark:bg-gray-700/40 hover:bg-gray-100 dark:hover:bg-gray-700/60 text-gray-700 dark:text-gray-200 transition-colors"
                 >
-                  <DeleteOutlined className="text-base" />
+                  <span className="inline-flex items-center gap-2 min-w-0">
+                    {expanded ? (
+                      <ChevronDown className="w-3.5 h-3.5 shrink-0 text-gray-500 dark:text-gray-300" />
+                    ) : (
+                      <ChevronRight className="w-3.5 h-3.5 shrink-0 text-gray-500 dark:text-gray-300" />
+                    )}
+                    <span className="text-xs font-semibold uppercase tracking-wide">
+                      {group.label}
+                    </span>
+                  </span>
+                  <span className="text-[11px] text-gray-500 dark:text-gray-400 tabular-nums">
+                    {group.rows.length}
+                  </span>
                 </button>
-              </Popconfirm>
-            </div>
-          ))}
+                {expanded ? (
+                  <div className="space-y-2 pl-3 border-l border-gray-200/80 dark:border-gray-700/80">
+                    {group.rows.map((session) => (
+                      <div
+                        key={session.key}
+                        ref={(el) => {
+                          if (el) {
+                            sessionSidebarRowRefs.current.set(session.key, el);
+                          } else {
+                            sessionSidebarRowRefs.current.delete(session.key);
+                          }
+                        }}
+                        className={`flex items-stretch gap-2 rounded-md transition-all ${
+                          activeSessionKey === session.key
+                            ? "bg-gradient-to-r from-primary-50 to-blue-50 dark:from-primary-900/30 dark:to-blue-900/20 text-primary-700 dark:text-primary-300"
+                            : "hover:bg-gray-100 dark:hover:bg-gray-700/50"
+                        }`}
+                      >
+                        <div className="flex items-center justify-center shrink-0 pl-3 pr-0.5 py-3">
+                          <Checkbox
+                            checked={batchSelectedKeys.has(session.key)}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              const checked = e.target.checked;
+                              setBatchSelectedKeys((prev) => {
+                                const next = new Set(prev);
+                                if (checked) {
+                                  next.add(session.key);
+                                } else {
+                                  next.delete(session.key);
+                                }
+                                return next;
+                              });
+                            }}
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleSelectSession(session.key)}
+                          className="flex-1 min-w-0 text-left py-3.5 pr-2 rounded-l-lg"
+                        >
+                          <span className="flex items-center gap-1.5 min-w-0">
+                            {session.team_id ? (
+                              <Users
+                                className="w-3.5 h-3.5 shrink-0 text-blue-500 dark:text-blue-400"
+                                aria-label="team session"
+                              />
+                            ) : (
+                              <Bot
+                                className="w-3.5 h-3.5 shrink-0 text-violet-500 dark:text-violet-400"
+                                aria-label="agent session"
+                              />
+                            )}
+                            <span className="text-sm font-medium truncate block leading-snug min-w-0">
+                              {session.title || session.key}
+                            </span>
+                          </span>
+                          <span className="text-xs text-gray-500 mt-1.5 block leading-relaxed">
+                            {t("chat.messageCount", { count: session.message_count })}
+                          </span>
+                          {session.created_at && (
+                            <span className="text-xs text-gray-400 dark:text-gray-500 mt-1 block leading-relaxed">
+                              {formatMessageTime(session.created_at)}
+                            </span>
+                          )}
+                        </button>
+                        <Popconfirm
+                          title={t("chat.deleteSessionTitle")}
+                          description={t("chat.deleteSessionDesc", {
+                            name: session.title || session.key,
+                          })}
+                          onConfirm={() => deleteSessionMutation.mutate(session.key)}
+                          okText={t("common.delete")}
+                          cancelText={t("common.cancel")}
+                          okButtonProps={{ danger: true }}
+                        >
+                          <button
+                            type="button"
+                            onClick={(e) => e.stopPropagation()}
+                            title={t("chat.deleteSession")}
+                            className="self-center shrink-0 w-9 h-9 mr-2 my-2 flex items-center justify-center rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 dark:text-gray-500 dark:hover:text-red-400 dark:hover:bg-red-500/10 transition-colors duration-150"
+                          >
+                            <DeleteOutlined className="text-base" />
+                          </button>
+                        </Popconfirm>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
         </div>
       </div>
 

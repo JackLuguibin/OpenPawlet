@@ -85,6 +85,8 @@ If two connections use the same `chat_id`, the newer connection **replaces** the
 
 All frames are JSON text. Each message has an `event` field.
 
+Note: agent-to-agent bus events (`agent.direct` / `agent.request.reply`) support optional `target_session_key` and `source_session_key` payload fields for multi-session routing; this is internal to the event bus and separate from WebSocket `chat_id`.
+
 ### Server → Client
 
 **`ready`** — sent immediately after connection is established:

@@ -35,7 +35,7 @@ import { PageLayout } from '../components/PageLayout';
 import * as api from '../api/client';
 import { useAgentTimeZone } from '../hooks/useAgentTimeZone';
 import { formatAgentDateISO } from '../utils/agentDatetime';
-import type { Agent, AgentCreateRequest } from '../api/types_agents';
+import type { Agent, AgentCreateRequest, AgentUpdateRequest } from '../api/types_agents';
 
 const { TextArea } = Input;
 
@@ -46,8 +46,19 @@ const BUILTIN_CATEGORY_META: readonly { key: string; color: string }[] = [
   { key: 'content', color: '#ff7875' },
   { key: 'office', color: '#faad14' },
 ] as const;
+const TOPIC_RECOMMENDATIONS = ['agent.direct', 'system', 'task'] as const;
+const TOPIC_MAX_COUNT = 20;
+const TOPIC_MAX_LENGTH = 64;
+const TOPIC_PATTERN = /^[a-z0-9._-]{1,64}$/;
 
 type CategoryDef = { key: string; label: string; color: string };
+type TopicNormalizeResult = {
+  topics: string[];
+  invalidFormat: string[];
+  tooLong: string[];
+  dedupedCount: number;
+  overflowed: boolean;
+};
 
 function findCategoryConfig(key: string, builtin: CategoryDef[], custom: CategoryDef[]): CategoryDef {
   const built = builtin.find((c) => c.key === key);
@@ -78,6 +89,41 @@ function resolveAgentCategory(agent: Agent, overrides: Record<string, string>): 
   return getAgentCategory(agent);
 }
 
+function normalizeTopics(rawTopics: string[]): TopicNormalizeResult {
+  const seen = new Set<string>();
+  const topics: string[] = [];
+  const invalidFormat: string[] = [];
+  const tooLong: string[] = [];
+  let dedupedCount = 0;
+  let overflowed = false;
+
+  for (const raw of rawTopics) {
+    const topic = String(raw || '').trim().toLowerCase();
+    if (!topic) continue;
+
+    if (topic.length > TOPIC_MAX_LENGTH) {
+      tooLong.push(topic);
+      continue;
+    }
+    if (!TOPIC_PATTERN.test(topic)) {
+      invalidFormat.push(topic);
+      continue;
+    }
+    if (seen.has(topic)) {
+      dedupedCount += 1;
+      continue;
+    }
+    if (topics.length >= TOPIC_MAX_COUNT) {
+      overflowed = true;
+      continue;
+    }
+    seen.add(topic);
+    topics.push(topic);
+  }
+
+  return { topics, invalidFormat, tooLong, dedupedCount, overflowed };
+}
+
 export default function Agents() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -91,6 +137,15 @@ export default function Agents() {
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [addCategoryModalOpen, setAddCategoryModalOpen] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
+  const [topicIssues, setTopicIssues] = useState<{
+    invalidFormat: string[];
+    tooLong: string[];
+    overflowed: boolean;
+  }>({
+    invalidFormat: [],
+    tooLong: [],
+    overflowed: false,
+  });
   const [createFormCategory, setCreateFormCategory] = useState('general');
   const [editFormCategory, setEditFormCategory] = useState('general');
   const [formData, setFormData] = useState<AgentCreateRequest>({
@@ -179,11 +234,19 @@ export default function Agents() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: AgentCreateRequest & { displayCategory?: string }) =>
-      api.createAgent(currentBotId!, data),
+    mutationFn: async (input: { payload: AgentCreateRequest; displayCategory: string }) => {
+      const agent = await api.createAgent(currentBotId!, input.payload);
+      await api.setCategoryOverride(
+        currentBotId!,
+        agent.id,
+        input.displayCategory
+      );
+      return agent;
+    },
     onSuccess: (agent) => {
       queryClient.invalidateQueries({ queryKey: ['agents', currentBotId] });
       queryClient.invalidateQueries({ queryKey: ['agents-status', currentBotId] });
+      queryClient.invalidateQueries({ queryKey: ['agent-category-overrides', currentBotId] });
       addToast({ type: 'success', message: t('agents.created', { name: agent.name }) });
       setCreateModalOpen(false);
       resetForm();
@@ -194,16 +257,26 @@ export default function Agents() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({
-      agentId,
-      data,
-    }: {
+    mutationFn: async (input: {
       agentId: string;
-      data: Partial<Agent>;
-      displayCategory?: string;
-    }) => api.updateAgent(currentBotId!, agentId, data),
+      data: AgentUpdateRequest;
+      displayCategory: string;
+    }) => {
+      const agent = await api.updateAgent(
+        currentBotId!,
+        input.agentId,
+        input.data
+      );
+      await api.setCategoryOverride(
+        currentBotId!,
+        input.agentId,
+        input.displayCategory
+      );
+      return agent;
+    },
     onSuccess: (agent) => {
       queryClient.invalidateQueries({ queryKey: ['agents', currentBotId] });
+      queryClient.invalidateQueries({ queryKey: ['agent-category-overrides', currentBotId] });
       addToast({ type: 'success', message: t('agents.updated', { name: agent.name }) });
       setEditModalOpen(false);
       setSelectedAgent(null);
@@ -250,11 +323,85 @@ export default function Agents() {
       enabled: true,
     });
     setCreateFormCategory('general');
+    setTopicIssues({
+      invalidFormat: [],
+      tooLong: [],
+      overflowed: false,
+    });
+  };
+
+  const applyTopics = (rawTopics: string[]) => {
+    const normalized = normalizeTopics(rawTopics);
+    setFormData((prev) => ({ ...prev, topics: normalized.topics }));
+    setTopicIssues({
+      invalidFormat: normalized.invalidFormat,
+      tooLong: normalized.tooLong,
+      overflowed: normalized.overflowed,
+    });
+    return normalized;
+  };
+
+  const getTopicValidationMessage = () => {
+    if (topicIssues.tooLong.length > 0) return t('agents.topicTooLong');
+    if (topicIssues.invalidFormat.length > 0) return t('agents.topicInvalidFormat');
+    if (topicIssues.overflowed) return t('agents.topicLimitExceeded', { max: TOPIC_MAX_COUNT });
+    return null;
+  };
+
+  const topicHelpMessage = getTopicValidationMessage();
+  const topicsExtraNode = (
+    <div className="space-y-1.5">
+      <div>{t('agents.topicsExtra')}</div>
+      <div className="text-xs text-gray-500 dark:text-gray-400">
+        {t('agents.topicNamingRule')}
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-xs text-gray-500 dark:text-gray-400">{t('agents.topicRecommended')}:</span>
+        {TOPIC_RECOMMENDATIONS.map((topic) => {
+          const selected = (formData.topics || []).includes(topic);
+          return (
+            <Button
+              key={topic}
+              size="small"
+              type={selected ? 'primary' : 'default'}
+              onClick={() => applyTopics([...(formData.topics || []), topic])}
+            >
+              {topic}
+            </Button>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  const validateTopicsBeforeSubmit = (): string[] | null => {
+    const normalized = normalizeTopics(formData.topics || []);
+    setTopicIssues({
+      invalidFormat: normalized.invalidFormat,
+      tooLong: normalized.tooLong,
+      overflowed: normalized.overflowed,
+    });
+    setFormData((prev) => ({ ...prev, topics: normalized.topics }));
+
+    if (
+      normalized.invalidFormat.length > 0 ||
+      normalized.tooLong.length > 0 ||
+      normalized.overflowed
+    ) {
+      addToast({ type: 'error', message: t('agents.topicValidationFailed') });
+      return null;
+    }
+    return normalized.topics;
   };
 
   const handleCreate = () => {
     if (formData.name.trim()) {
-      createMutation.mutate({ ...formData, displayCategory: createFormCategory });
+      const topics = validateTopicsBeforeSubmit();
+      if (!topics) return;
+      createMutation.mutate({
+        payload: { ...formData, topics },
+        displayCategory: createFormCategory,
+      });
     }
   };
 
@@ -281,14 +428,21 @@ export default function Agents() {
       collaborators: agent.collaborators,
       enabled: agent.enabled,
     });
+    setTopicIssues({
+      invalidFormat: [],
+      tooLong: [],
+      overflowed: false,
+    });
     setEditModalOpen(true);
   };
 
   const handleUpdate = () => {
     if (selectedAgent && formData.name.trim()) {
+      const topics = validateTopicsBeforeSubmit();
+      if (!topics) return;
       updateMutation.mutate({
         agentId: selectedAgent.id,
-        data: formData,
+        data: { ...formData, topics },
         displayCategory: editFormCategory,
       });
     }
@@ -391,73 +545,85 @@ export default function Agents() {
 
   return (
     <PageLayout>
-      {/* Header */}
-      <div className="flex shrink-0 items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-            {t('agents.title')}
-          </h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1.5 hidden sm:block">
-            {t('agents.subtitle')}
-          </p>
+      {/* Header + toolbar */}
+      <div className="shrink-0 rounded-xl border border-gray-200/80 bg-white/90 p-4 shadow-sm dark:border-gray-700/70 dark:bg-gray-800/60">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight text-gray-900 dark:text-gray-100">
+              {t('agents.title')}
+            </h1>
+            <p className="mt-1.5 text-sm text-gray-500 dark:text-gray-400 hidden sm:block">
+              {t('agents.subtitle')}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex items-center rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700 dark:border-blue-900/60 dark:bg-blue-900/20 dark:text-blue-300">
+              {filteredAgents.length} / {agents.length}
+            </div>
+            {selectedAgents.size > 0 && (
+              <div className="inline-flex items-center rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-900/20 dark:text-emerald-300">
+                {selectedAgents.size}
+              </div>
+            )}
+          </div>
         </div>
-        <Space align="center" size="middle">
-          <Button
-            icon={<ReloadOutlined />}
-            onClick={() => refetch()}
-            className="border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500"
-          >
-            <span className="hidden sm:inline">{t('common.refresh')}</span>
-          </Button>
-          <Button
-            icon={<UploadOutlined />}
-            onClick={() => setImportModalOpen(true)}
-            className="border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500"
-          >
-            <span className="hidden sm:inline">{t('agents.import')}</span>
-          </Button>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => {
-              resetForm();
-              setCreateModalOpen(true);
-            }}
-            className="shadow-md shadow-blue-500/25"
-          >
-            <span className="hidden sm:inline">{t('agents.newAgent')}</span>
-          </Button>
-        </Space>
-      </div>
-
-      {/* Category Filter */}
-      <div className="flex shrink-0 flex-wrap items-center gap-2.5">
-        {allCategoryTabs.map((cat) => (
-          <button
-            key={cat.key}
-            onClick={() => setSelectedCategory(cat.key)}
-            className={`
-              px-5 py-2 rounded-full text-sm font-medium transition-all duration-200
-              ${
-                selectedCategory === cat.key
-                  ? 'bg-blue-500 text-white shadow-md shadow-blue-500/30'
-                  : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600 hover:shadow-sm'
-              }
-            `}
-          >
-            {cat.label}
-          </button>
-        ))}
-        <button
-          type="button"
-          onClick={() => {
-            setNewCategoryName('');
-            setAddCategoryModalOpen(true);
-          }}
-          className="px-5 py-2 rounded-full text-sm font-medium border border-dashed border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-gray-400 dark:hover:border-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-all"
-        >
-          {t('agents.addCategory')}
-        </button>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2.5">
+          <div className="flex flex-wrap items-center gap-2">
+            {allCategoryTabs.map((cat) => (
+              <button
+                key={cat.key}
+                onClick={() => setSelectedCategory(cat.key)}
+                className={`
+                  rounded-full border px-4 py-1.5 text-sm font-medium transition-all duration-200
+                  ${
+                    selectedCategory === cat.key
+                      ? 'border-blue-500 bg-blue-500 text-white shadow-md shadow-blue-500/25'
+                      : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-gray-600'
+                  }
+                `}
+              >
+                {cat.label}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => {
+                setNewCategoryName('');
+                setAddCategoryModalOpen(true);
+              }}
+              className="rounded-full border border-dashed border-gray-300 px-4 py-1.5 text-sm font-medium text-gray-500 transition-all hover:border-gray-400 hover:bg-gray-50 hover:text-gray-700 dark:border-gray-600 dark:text-gray-400 dark:hover:border-gray-500 dark:hover:bg-gray-800/60 dark:hover:text-gray-300"
+            >
+              {t('agents.addCategory')}
+            </button>
+          </div>
+          <Space align="center" size="small">
+            <Button
+              icon={<ReloadOutlined />}
+              onClick={() => refetch()}
+              className="border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500"
+            >
+              <span className="hidden sm:inline">{t('common.refresh')}</span>
+            </Button>
+            <Button
+              icon={<UploadOutlined />}
+              onClick={() => setImportModalOpen(true)}
+              className="border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500"
+            >
+              <span className="hidden sm:inline">{t('agents.import')}</span>
+            </Button>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => {
+                resetForm();
+                setCreateModalOpen(true);
+              }}
+              className="shadow-md shadow-blue-500/25"
+            >
+              <span className="hidden sm:inline">{t('agents.newAgent')}</span>
+            </Button>
+          </Space>
+        </div>
       </div>
 
       {/* Content */}
@@ -479,7 +645,7 @@ export default function Agents() {
           />
         </div>
       ) : (
-        <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+        <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
           {filteredAgents.map((agent) => {
             const category = resolveAgentCategory(agent, categoryOverrides);
             const categoryConfig = findCategoryConfig(category, builtinCategories, customCategories);
@@ -488,64 +654,83 @@ export default function Agents() {
             return (
               <Card
                 key={agent.id}
-                className="rounded-md border border-gray-200/80 dark:border-gray-700/60 bg-white dark:bg-gray-800/40 shadow-sm hover:shadow-lg transition-all duration-300 relative overflow-hidden group"
+                className="group relative overflow-hidden rounded-2xl border border-gray-200/80 bg-white shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl dark:border-gray-700/60 dark:bg-gray-800/60"
                 styles={{ body: { padding: 0 } }}
                 hoverable
               >
-                {/* Accent bar — content starts below via padding-top */}
                 <div
-                  className="absolute top-0 left-0 right-0 h-1.5 z-[1]"
+                  className="absolute inset-x-0 top-0 h-[74px] opacity-90"
+                  style={{
+                    background: `linear-gradient(135deg, ${categoryConfig.color}26 0%, ${categoryConfig.color}0f 50%, transparent 100%)`,
+                  }}
+                />
+                <div
+                  className="absolute left-0 right-0 top-0 h-1.5 z-[1]"
                   style={{ backgroundColor: categoryConfig.color }}
                 />
 
-                <div className="relative z-0 px-3.5 pb-3 pt-3.5">
-                  {/* Header: checkbox + icon + title/tags (flow layout, no overlap) */}
-                  <div className="flex items-start gap-2.5 mb-2">
+                <div className="relative z-0 flex min-h-[220px] flex-col p-3.5">
+                  <div className="mb-3 flex items-start justify-between gap-2">
+                    <div className="flex min-w-0 items-start gap-2.5">
+                      <div
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/70 shadow-sm transition-transform group-hover:scale-105 dark:border-gray-700/60"
+                        style={{ backgroundColor: `${categoryConfig.color}1f` }}
+                      >
+                        <Bot className="h-[18px] w-[18px]" style={{ color: categoryConfig.color }} />
+                      </div>
+                      <div className="min-w-0 pt-0.5">
+                        <h3 className="line-clamp-1 break-words text-[15px] font-semibold leading-snug text-gray-900 dark:text-gray-100">
+                          {agent.name}
+                        </h3>
+                        <p className="mt-0.5 text-[11px] leading-none text-gray-400 dark:text-gray-500">
+                          ID: {agent.id.slice(0, 8)}
+                        </p>
+                      </div>
+                    </div>
                     <Checkbox
                       checked={isSelected}
                       onChange={() => handleToggleSelect(agent.id)}
                       onClick={(e) => e.stopPropagation()}
-                      className="mt-1 shrink-0"
+                      className="mt-0.5 shrink-0"
                     />
-                    <div
-                      className="w-9 h-9 rounded-md flex items-center justify-center shrink-0 transition-transform group-hover:scale-105"
-                      style={{ backgroundColor: `${categoryConfig.color}15` }}
+                  </div>
+
+                  <div className="mb-2 flex flex-wrap items-center gap-1.5">
+                    <Tag
+                      className="!m-0 rounded-full border-0 px-2 py-0.5 text-[11px] leading-none"
+                      style={{
+                        backgroundColor: `${categoryConfig.color}20`,
+                        color: categoryConfig.color,
+                      }}
                     >
-                      <Bot className="w-[18px] h-[18px]" style={{ color: categoryConfig.color }} />
-                    </div>
-                    <div className="flex-1 min-w-0 space-y-1.5">
-                      <h3 className="font-medium text-gray-900 dark:text-gray-100 text-sm leading-snug line-clamp-2 break-words">
-                        {agent.name}
-                      </h3>
-                      <div className="flex flex-wrap items-center gap-1">
-                        <Tag
-                          className="text-xs !m-0 border-0 px-1.5 py-0.5 rounded leading-none"
-                          style={{
-                            backgroundColor: `${categoryConfig.color}20`,
-                            color: categoryConfig.color,
-                          }}
-                        >
-                          {categoryConfig.label}
-                        </Tag>
-                        {agent.enabled && (
-                          <Tag
-                            className="text-xs !m-0 border-0 px-1.5 py-0.5 rounded leading-none dark:!bg-[#2a1f4a] dark:!text-[#b37feb]"
-                            style={{ backgroundColor: '#f0f0ff', color: '#722ed1' }}
-                          >
-                            {t('agents.tagSys')}
-                          </Tag>
-                        )}
-                      </div>
-                      {agent.description && (
-                        <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 leading-snug pt-0.5">
-                          {agent.description}
-                        </p>
-                      )}
-                    </div>
+                      {categoryConfig.label}
+                    </Tag>
+                    {agent.enabled && (
+                      <Tag
+                        className="!m-0 rounded-full border-0 bg-violet-50 px-2 py-0.5 text-[11px] leading-none text-violet-600 dark:!bg-violet-900/30 dark:!text-violet-300"
+                      >
+                        {t('agents.tagSys')}
+                      </Tag>
+                    )}
+                    {(agent.team_ids || []).map((tid) => (
+                      <Tag
+                        key={`${agent.id}-${tid}`}
+                        className="!m-0 rounded-full border-0 bg-purple-50 px-2 py-0.5 text-[11px] leading-none text-purple-600 dark:!bg-purple-900/30 dark:!text-purple-300"
+                      >
+                        team:{tid}
+                      </Tag>
+                    ))}
+                  </div>
+
+                  <div className="rounded-lg border border-gray-100 bg-white/75 px-2.5 py-2 dark:border-gray-700/70 dark:bg-gray-800/60">
+                    <p className="min-h-[34px] text-xs leading-snug text-gray-500 line-clamp-2 dark:text-gray-400">
+                      {agent.description || t('agents.descriptionPlaceholder')}
+                    </p>
                   </div>
 
                   {/* Action buttons */}
-                  <div className="flex items-center justify-end gap-0.5 pt-2.5 mt-0.5 border-t border-gray-100 dark:border-gray-700">
+                  <div className="mt-auto pt-3">
+                    <div className="flex items-center justify-end gap-1 rounded-lg border border-gray-100 bg-gray-50/80 px-1.5 py-1 dark:border-gray-700/70 dark:bg-gray-900/30">
                     <Tooltip title={t('agents.tooltipEdit')}>
                       <Button
                         type="text"
@@ -555,7 +740,7 @@ export default function Agents() {
                           e.stopPropagation();
                           handleEdit(agent);
                         }}
-                        className="text-gray-500 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 !px-1"
+                        className="rounded-md text-gray-500 hover:bg-blue-50 hover:text-blue-500 dark:text-gray-400 dark:hover:bg-blue-900/20 dark:hover:text-blue-400 !px-1.5"
                       />
                     </Tooltip>
                     <Tooltip title={t('common.export')}>
@@ -577,7 +762,7 @@ export default function Agents() {
                           URL.revokeObjectURL(url);
                           addToast({ type: 'success', message: t('agents.exportOk') });
                         }}
-                        className="text-gray-500 dark:text-gray-400 hover:text-green-500 dark:hover:text-green-400 !px-1"
+                        className="rounded-md text-gray-500 hover:bg-emerald-50 hover:text-emerald-500 dark:text-gray-400 dark:hover:bg-emerald-900/20 dark:hover:text-emerald-400 !px-1.5"
                       />
                     </Tooltip>
                     <Popconfirm
@@ -597,10 +782,11 @@ export default function Agents() {
                           size="small"
                           icon={<EyeInvisibleOutlined />}
                           onClick={(e) => e.stopPropagation()}
-                          className="text-gray-500 dark:text-gray-400 hover:text-orange-500 dark:hover:text-orange-400 !px-1"
+                          className="rounded-md text-gray-500 hover:bg-orange-50 hover:text-orange-500 dark:text-gray-400 dark:hover:bg-orange-900/20 dark:hover:text-orange-400 !px-1.5"
                         />
                       </Tooltip>
                     </Popconfirm>
+                    </div>
                   </div>
                 </div>
               </Card>
@@ -613,7 +799,7 @@ export default function Agents() {
       {/* Batch Actions */}
       {selectedAgents.size > 0 && (
         <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-10">
-          <Card className="shadow-xl border border-gray-200 dark:border-gray-700 rounded-md">
+          <Card className="rounded-xl border border-gray-200/90 bg-white/95 shadow-xl backdrop-blur dark:border-gray-700 dark:bg-gray-800/90">
             <Space size="middle">
                 <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
                   {t('agents.batchSelected', { count: selectedAgents.size })}
@@ -784,14 +970,17 @@ export default function Agents() {
           </Form.Item>
           <Form.Item
             label={t('agents.topics')}
-            extra={t('agents.topicsExtra')}
+            extra={topicsExtraNode}
+            validateStatus={topicHelpMessage ? 'error' : undefined}
+            help={topicHelpMessage || undefined}
           >
             <Select
               mode="tags"
               placeholder={t('agents.topicsPlaceholder')}
               value={formData.topics || []}
-              onChange={(v) => setFormData({ ...formData, topics: v || [] })}
+              onChange={(v) => applyTopics(v || [])}
               tokenSeparators={[',']}
+              options={TOPIC_RECOMMENDATIONS.map((topic) => ({ value: topic, label: topic }))}
               className="w-full"
             />
           </Form.Item>
@@ -928,14 +1117,17 @@ export default function Agents() {
           </Form.Item>
           <Form.Item
             label={t('agents.topics')}
-            extra={t('agents.topicsExtra')}
+            extra={topicsExtraNode}
+            validateStatus={topicHelpMessage ? 'error' : undefined}
+            help={topicHelpMessage || undefined}
           >
             <Select
               mode="tags"
               placeholder={t('agents.topicsPlaceholder')}
               value={formData.topics || []}
-              onChange={(v) => setFormData({ ...formData, topics: v || [] })}
+              onChange={(v) => applyTopics(v || [])}
               tokenSeparators={[',']}
+              options={TOPIC_RECOMMENDATIONS.map((topic) => ({ value: topic, label: topic }))}
               className="w-full"
             />
           </Form.Item>

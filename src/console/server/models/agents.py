@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class Agent(BaseModel):
@@ -23,6 +23,7 @@ class Agent(BaseModel):
     collaborators: list[str]
     enabled: bool
     created_at: str
+    team_ids: list[str] = Field(default_factory=list)
 
 
 class AgentCreateRequest(BaseModel):

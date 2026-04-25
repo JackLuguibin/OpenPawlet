@@ -33,6 +33,7 @@ def build_message_bus(
     subscription: str = "",
     force_in_process: bool = False,
     agent_id: str = "",
+    agent_name: str = "",
 ) -> MessageBusProtocol:
     """Return a bus instance chosen from environment configuration.
 
@@ -50,12 +51,19 @@ def build_message_bus(
         force_in_process: If True, skip the queue manager even when it
             is enabled.  Handy for CLI helpers that never talk to the
             broker (``nanobot agent -m "..."``).
+        agent_name: Optional display name for this bus identity (also read
+            from ``NANOBOT_AGENT_NAME`` when empty). Logged and attached to
+            event subscriptions for discovery.
     """
     # Resolve ``MessageBus`` lazily via the module so monkeypatching
     # ``nanobot.bus.queue.MessageBus`` in tests keeps working.
     message_bus_cls = _bus_queue.MessageBus
     if force_in_process:
         return message_bus_cls()
+    if not agent_id:
+        agent_id = os.environ.get("NANOBOT_AGENT_ID", "").strip()
+    if not str(agent_name or "").strip():
+        agent_name = os.environ.get("NANOBOT_AGENT_NAME", "").strip()
     if not _flag(os.environ.get("QUEUE_MANAGER_ENABLED"), default=False):
         return message_bus_cls()
     try:
@@ -74,6 +82,7 @@ def build_message_bus(
             role=role,
             subscription=subscription,
             agent_id=agent_id,
+            agent_name=agent_name,
         )
     except Exception as exc:  # pragma: no cover - surfaced only on import errors
         logger.warning(

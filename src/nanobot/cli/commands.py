@@ -9,6 +9,7 @@ import sys
 from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
+from collections import defaultdict
 
 # Force UTF-8 encoding for Windows console
 if sys.platform == "win32":
@@ -577,7 +578,13 @@ def serve(
     port = port if port is not None else api_cfg.port
     timeout = timeout if timeout is not None else api_cfg.timeout
     sync_workspace_templates(runtime_config.workspace_path)
-    bus = build_message_bus(role="full")
+    from nanobot.utils.console_agents import console_agent_display_name
+
+    _bus_aid = os.environ.get("NANOBOT_AGENT_ID", "").strip()
+    _bus_an = os.environ.get("NANOBOT_AGENT_NAME", "").strip()
+    if _bus_aid and not _bus_an:
+        _bus_an = console_agent_display_name(runtime_config.workspace_path, _bus_aid)
+    bus = build_message_bus(role="full", agent_id=_bus_aid, agent_name=_bus_an)
     provider = _make_provider(runtime_config)
     session_manager = SessionManager(
         runtime_config.workspace_path,
@@ -675,7 +682,23 @@ def gateway(
 
     console.print(f"{__logo__} Starting nanobot gateway version {__version__} on port {port}...")
     sync_workspace_templates(config.workspace_path)
-    bus = build_message_bus(role="full")
+    os.environ.setdefault("QUEUE_MANAGER_ENABLED", "true")
+    from nanobot.utils.team_gateway_runtime import resolve_effective_gateway_agent_id
+    if not os.environ.get("NANOBOT_AGENT_ID", "").strip():
+        _inf_aid = resolve_effective_gateway_agent_id(config.workspace_path)
+        if _inf_aid:
+            os.environ["NANOBOT_AGENT_ID"] = _inf_aid
+            console.print(
+                "[green]✓[/green] Inferred NANOBOT_AGENT_ID from workspace: "
+                f"{_inf_aid} (needed for team agent.direct routing)"
+            )
+    from nanobot.utils.console_agents import console_agent_display_name
+
+    _bus_aid = os.environ.get("NANOBOT_AGENT_ID", "").strip()
+    _bus_an = os.environ.get("NANOBOT_AGENT_NAME", "").strip()
+    if _bus_aid and not _bus_an:
+        _bus_an = console_agent_display_name(config.workspace_path, _bus_aid)
+    bus = build_message_bus(role="full", agent_id=_bus_aid, agent_name=_bus_an)
     provider = _make_provider(config)
     session_manager = SessionManager(
         config.workspace_path,
@@ -690,12 +713,51 @@ def gateway(
     cron_store_path = config.workspace_path / "cron" / "jobs.json"
     cron = CronService(cron_store_path)
 
+    from nanobot.utils.console_agents import resolve_gateway_identity_overrides
+    from nanobot.utils.team_gateway_runtime import (
+        load_all_team_member_bindings,
+        resolve_gateway_team_context,
+        team_member_session_key,
+    )
+
+    _env_team_id, _env_room_id, _all_team_member_ids = resolve_gateway_team_context(
+        config.workspace_path
+    )
+    _primary_aid = os.environ.get("NANOBOT_AGENT_ID", "").strip()
+    _team_member_ids = _all_team_member_ids
+    if _primary_aid:
+        _team_member_ids = [m for m in _all_team_member_ids if m != _primary_aid]
+    if _env_team_id and _env_room_id and _team_member_ids:
+        os.environ["NANOBOT_TEAM_IN_PROCESS"] = "1"
+        console.print(
+            f"[green]✓[/green] In-process team: {len(_team_member_ids)} member loop(s) "
+            f"(team={_env_team_id} room={_env_room_id})"
+        )
+    elif _env_team_id and _env_room_id and not _team_member_ids:
+        console.print(
+            "[yellow]Warning:[/yellow] team/room resolved but no member_agent_ids; "
+            "skipping member loops"
+        )
+
+    sub_ev = getattr(bus, "subscribe_events", None)
+    if load_all_team_member_bindings(config.workspace_path) and sub_ev is None:
+        console.print(
+            "[red]Error:[/red] team runtime requires a message bus with subscribe_events "
+            "(enable queue manager / ZMQ events path)"
+        )
+        raise typer.Exit(1)
+
+    _aid = os.environ.get("NANOBOT_AGENT_ID", "").strip() or None
+    _gw_model, _gw_disabled, _gw_console_prompt = resolve_gateway_identity_overrides(
+        config, config.workspace_path, logical_agent_id=_aid, team_id=_env_team_id or None
+    )
+
     # Create agent with cron service
     agent = AgentLoop(
         bus=bus,
         provider=provider,
         workspace=config.workspace_path,
-        model=config.agents.defaults.model,
+        model=_gw_model,
         max_iterations=config.agents.defaults.max_tool_iterations,
         context_window_tokens=config.agents.defaults.context_window_tokens,
         web_config=config.tools.web,
@@ -710,12 +772,83 @@ def gateway(
         channels_config=config.channels,
         timezone=config.agents.defaults.timezone,
         unified_session=config.agents.defaults.unified_session,
-        disabled_skills=config.agents.defaults.disabled_skills,
+        disabled_skills=_gw_disabled,
+        console_system_prompt=_gw_console_prompt,
         session_ttl_minutes=config.agents.defaults.session_ttl_minutes,
         tools_config=config.tools,
         persist_session_transcript=config.agents.defaults.persist_session_transcript,
         transcript_include_full_tool_results=config.agents.defaults.transcript_include_full_tool_results,
+        runtime_config=config,
     )
+
+    team_loops_by_agent: dict[str, AgentLoop] = {}
+    team_tasks_by_agent: dict[str, asyncio.Task[None]] = {}
+    team_bindings_by_session: dict[str, tuple[str, str, str, str]] = {}
+    team_primary_session_by_agent: dict[str, str] = {}
+    primary_team_event_task: asyncio.Task[None] | None = None
+
+    def _build_member_loop(mid: str, team_id_hint: str | None) -> AgentLoop:
+        _m_model, _m_ds, _m_prompt = resolve_gateway_identity_overrides(
+            config, config.workspace_path, logical_agent_id=mid, team_id=team_id_hint
+        )
+        _mem_provider = _make_provider(config)
+        return AgentLoop(
+            bus=bus,
+            provider=_mem_provider,
+            workspace=config.workspace_path,
+            model=_m_model,
+            max_iterations=config.agents.defaults.max_tool_iterations,
+            context_window_tokens=config.agents.defaults.context_window_tokens,
+            web_config=config.tools.web,
+            context_block_limit=config.agents.defaults.context_block_limit,
+            max_tool_result_chars=config.agents.defaults.max_tool_result_chars,
+            provider_retry_mode=config.agents.defaults.provider_retry_mode,
+            exec_config=config.tools.exec,
+            cron_service=None,
+            restrict_to_workspace=config.tools.restrict_to_workspace,
+            session_manager=session_manager,
+            mcp_servers=config.tools.mcp_servers,
+            channels_config=config.channels,
+            timezone=config.agents.defaults.timezone,
+            unified_session=False,
+            disabled_skills=_m_ds,
+            console_system_prompt=_m_prompt,
+            session_ttl_minutes=config.agents.defaults.session_ttl_minutes,
+            tools_config=config.tools,
+            persist_session_transcript=config.agents.defaults.persist_session_transcript,
+            transcript_include_full_tool_results=config.agents.defaults.transcript_include_full_tool_results,
+            agent_id=mid,
+            runtime_config=config,
+        )
+
+    def _rebuild_dispatch() -> None:
+        dispatch: dict[str, AgentLoop] = {}
+        for sk, (_tid, _rid, aid, _full_sk) in team_bindings_by_session.items():
+            loop = team_loops_by_agent.get(aid)
+            if loop is not None:
+                dispatch[sk] = loop
+        agent.team_session_dispatch = dispatch or None
+
+    def _sync_bindings_from_workspace() -> None:
+        all_bindings = load_all_team_member_bindings(config.workspace_path)
+        if _primary_aid:
+            all_bindings = [b for b in all_bindings if b[2] != _primary_aid]
+        by_session = {b[3]: b for b in all_bindings}
+        team_bindings_by_session.clear()
+        team_bindings_by_session.update(by_session)
+        grouped: dict[str, list[str]] = defaultdict(list)
+        for _tid, _rid, aid, sk in all_bindings:
+            grouped[aid].append(sk)
+        team_primary_session_by_agent.clear()
+        for aid, keys in grouped.items():
+            team_primary_session_by_agent[aid] = sorted(keys)[0]
+        _rebuild_dispatch()
+
+    _sync_bindings_from_workspace()
+    for aid, first_sk in team_primary_session_by_agent.items():
+        binding = team_bindings_by_session.get(first_sk)
+        team_id_hint = binding[0] if binding else None
+        team_loops_by_agent[aid] = _build_member_loop(aid, team_id_hint)
 
     # Set cron callback (needs agent)
     async def on_cron_job(job: CronJob) -> str | None:
@@ -956,7 +1089,87 @@ def gateway(
     console.print(f"[green]✓[/green] Dream: {dream_cfg.describe_schedule()}")
 
     async def run():
+        from nanobot.agent.team_serve import run_team_member_event_loop
+
         start_perf = time.perf_counter()
+        async def _ensure_team_runtime() -> None:
+            nonlocal primary_team_event_task
+            # Reconcile team member runtime from teams.json on each interval.
+            _sync_bindings_from_workspace()
+            desired = set(team_primary_session_by_agent.keys())
+            existing = set(team_loops_by_agent.keys())
+
+            for aid in sorted(desired - existing):
+                sk = team_primary_session_by_agent.get(aid)
+                binding = team_bindings_by_session.get(sk) if sk else None
+                team_id_hint = binding[0] if binding else None
+                loop = _build_member_loop(aid, team_id_hint)
+                team_loops_by_agent[aid] = loop
+
+            for aid in sorted(existing - desired):
+                task = team_tasks_by_agent.pop(aid, None)
+                if task is not None:
+                    task.cancel()
+                    await asyncio.gather(task, return_exceptions=True)
+                loop = team_loops_by_agent.pop(aid, None)
+                if loop is not None:
+                    await loop.close_mcp()
+
+            for aid in sorted(desired):
+                if aid in team_tasks_by_agent and not team_tasks_by_agent[aid].done():
+                    continue
+                loop = team_loops_by_agent.get(aid)
+                session_key = team_primary_session_by_agent.get(aid)
+                if loop is None or not session_key:
+                    continue
+                team_tasks_by_agent[aid] = asyncio.create_task(
+                    run_team_member_event_loop(bus, loop, session_key=session_key),
+                    name=f"team-member-{aid}",
+                )
+            _rebuild_dispatch()
+
+            # Primary gateway loop also needs agent.direct delivery; member-only
+            # run_team_member_event_loop skipped it, and _install_team_event_tap
+            # is disabled when NANOBOT_TEAM_IN_PROCESS is set.
+            sub_api = getattr(bus, "subscribe_events", None)
+            want_primary_direct = (
+                bool(_primary_aid)
+                and bool(_env_team_id)
+                and bool(_env_room_id)
+                and callable(sub_api)
+            )
+            if want_primary_direct:
+                if primary_team_event_task is None or primary_team_event_task.done():
+                    psk = team_member_session_key(_env_team_id, _env_room_id, _primary_aid)
+                    primary_team_event_task = asyncio.create_task(
+                        run_team_member_event_loop(bus, agent, session_key=psk),
+                        name=f"team-primary-{_primary_aid}",
+                    )
+            else:
+                if primary_team_event_task is not None and not primary_team_event_task.done():
+                    primary_team_event_task.cancel()
+                    try:
+                        await primary_team_event_task
+                    except asyncio.CancelledError:
+                        pass
+                    except Exception:
+                        logger.exception("primary team direct loop cancel")
+                primary_team_event_task = None
+
+        async def _team_runtime_reconciler() -> None:
+            while True:
+                try:
+                    await _ensure_team_runtime()
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    logger.exception("team runtime reconcile failed")
+                await asyncio.sleep(2.0)
+
+        await _ensure_team_runtime()
+        reconciler_task = asyncio.create_task(
+            _team_runtime_reconciler(), name="team-runtime-reconciler"
+        )
         try:
             if isinstance(bus, ZmqMessageBus):
                 await bus.start()
@@ -966,6 +1179,7 @@ def gateway(
                 agent.run(),
                 channels.start_all(),
                 _health_server(config.gateway.host, port, start_perf),
+                reconciler_task,
             )
         except KeyboardInterrupt:
             console.print("\nShutting down...")
@@ -975,6 +1189,17 @@ def gateway(
             console.print("\n[red]Error: Gateway crashed unexpectedly[/red]")
             console.print(traceback.format_exc())
         finally:
+            reconciler_task.cancel()
+            await asyncio.gather(reconciler_task, return_exceptions=True)
+            for tt in list(team_tasks_by_agent.values()):
+                tt.cancel()
+            if team_tasks_by_agent:
+                await asyncio.gather(*team_tasks_by_agent.values(), return_exceptions=True)
+            if primary_team_event_task is not None and not primary_team_event_task.done():
+                primary_team_event_task.cancel()
+                await asyncio.gather(primary_team_event_task, return_exceptions=True)
+            for mloop in list(team_loops_by_agent.values()):
+                await mloop.close_mcp()
             await agent.close_mcp()
             heartbeat.stop()
             cron.stop()

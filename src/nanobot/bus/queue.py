@@ -11,9 +11,19 @@ can be switched transparently at wiring time.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 from collections.abc import Iterable
-from typing import Protocol
+from typing import Any, Protocol
 
+from loguru import logger
+
+from nanobot.bus.envelope import (
+    KEY_CORRELATION_ID,
+    TARGET_AGENT_PREFIX,
+    TOPIC_AGENT_REQUEST_REPLY,
+    new_message_id,
+    produced_at,
+)
 from nanobot.bus.events import AgentEvent, InboundMessage, OutboundMessage
 
 
@@ -41,10 +51,31 @@ class MessageBusProtocol(Protocol):
         self,
         *,
         agent_id: str,
+        agent_name: str = "",
         topics: Iterable[str] = (),
         include_broadcast: bool = True,
         maxsize: int = 0,
     ) -> "EventSubscription": ...
+
+    async def list_pending_direct_events(self, *, agent_id: str) -> list[AgentEvent]: ...
+
+    async def ack_pending_direct_event(self, *, agent_id: str, message_id: str) -> bool: ...
+
+    async def list_event_subscribers(
+        self,
+        *,
+        topic: str | None = None,
+    ) -> list[dict[str, object]]: ...
+
+    async def request_event(
+        self,
+        request_ev: AgentEvent,
+        *,
+        correlation_id: str,
+        timeout_s: float,
+        max_retries: int,
+        base_backoff_s: float,
+    ) -> tuple[AgentEvent | None, int, str]: ...
 
 
 class EventSubscription:
@@ -62,12 +93,14 @@ class EventSubscription:
         detach: "callable[[EventSubscription], None] | None" = None,
         *,
         agent_id: str,
+        agent_name: str = "",
         topics: tuple[str, ...],
         include_broadcast: bool,
     ) -> None:
         self._queue = queue
         self._detach = detach
         self.agent_id = agent_id
+        self.agent_name = str(agent_name or "").strip()
         self.topics = topics
         self.include_broadcast = include_broadcast
         self._closed = False
@@ -152,7 +185,111 @@ def _event_matches(
     return include_broadcast
 
 
-class MessageBus:
+class RequestReplyMixin:
+    """In-process + ZMQ: shared :meth:`request_event` and reply fulfillment."""
+
+    _request_waiters: dict[str, asyncio.Future[AgentEvent]]
+    _request_waiters_lock: asyncio.Lock
+
+    async def _try_fulfill_request_reply(self, ev: AgentEvent) -> bool:
+        """If *ev* is a reply and matches a waiter, complete it and skip pub/sub delivery."""
+        if (ev.topic or "") != TOPIC_AGENT_REQUEST_REPLY:
+            return False
+        payload = ev.payload or {}
+        cid = str(
+            payload.get(KEY_CORRELATION_ID) or payload.get("correlation_id") or ""
+        ).strip()
+        if not cid:
+            return False
+        async with self._request_waiters_lock:
+            fut = self._request_waiters.pop(cid, None)
+        if fut is None:
+            return False
+        if fut.done():
+            return True
+        try:
+            fut.set_result(ev)
+        except asyncio.InvalidStateError:
+            pass
+        return True
+
+    async def request_event(
+        self,
+        request_ev: AgentEvent,
+        *,
+        correlation_id: str,
+        timeout_s: float,
+        max_retries: int,
+        base_backoff_s: float,
+    ) -> tuple[AgentEvent | None, int, str]:
+        """Send *request_ev* and wait for :data:`TOPIC_AGENT_REQUEST_REPLY` with matching correlation.
+
+        Retries re-publish a fresh *message_id* while keeping the same
+        *correlation_id* in the payload. *max_retries* is the number of
+        additional attempts after the first.
+        """
+        cid = str(correlation_id).strip()
+        if not cid:
+            return (None, 0, "error:empty_correlation_id")
+        n_extra = max(0, int(max_retries))
+        attempts_cap = 1 + n_extra
+        for attempt in range(attempts_cap):
+            fut: asyncio.Future[AgentEvent] = asyncio.get_running_loop().create_future()
+            async with self._request_waiters_lock:
+                self._request_waiters[cid] = fut
+            if attempt == 0:
+                req = request_ev
+            else:
+                new_mid = new_message_id()
+                pl: dict[str, Any] = dict(request_ev.payload or {})
+                pl["message_id"] = new_mid
+                pl[KEY_CORRELATION_ID] = cid
+                req = dataclasses.replace(
+                    request_ev,
+                    message_id=new_mid,
+                    produced_at=produced_at(),
+                    payload=pl,
+                )
+            try:
+                await self.publish_event(req)
+            except Exception as exc:  # pragma: no cover - bus-specific
+                async with self._request_waiters_lock:
+                    if self._request_waiters.get(cid) is fut:
+                        self._request_waiters.pop(cid, None)
+                if not fut.done():
+                    try:
+                        fut.set_exception(exc)
+                    except (asyncio.InvalidStateError, RuntimeError):
+                        pass
+                return (None, attempt + 1, f"error:{exc!s}")
+            try:
+                reply = await asyncio.wait_for(fut, timeout=float(timeout_s))
+                return (reply, attempt + 1, "ok")
+            except TimeoutError:
+                async with self._request_waiters_lock:
+                    if self._request_waiters.get(cid) is fut:
+                        self._request_waiters.pop(cid, None)
+                if not fut.done():
+                    fut.cancel()
+            except (
+                Exception
+            ) as exc:  # pragma: no cover - defensive, invalid wait state
+                async with self._request_waiters_lock:
+                    if self._request_waiters.get(cid) is fut:
+                        self._request_waiters.pop(cid, None)
+                if not fut.done():
+                    try:
+                        fut.set_exception(exc)
+                    except (asyncio.InvalidStateError, RuntimeError):
+                        pass
+                return (None, attempt + 1, f"error:{exc!s}")
+            if attempt >= n_extra:
+                return (None, attempts_cap, "timeout")
+            await asyncio.sleep(float(base_backoff_s) * (2**attempt))
+        return (None, attempts_cap, "timeout")
+
+
+class MessageBus(RequestReplyMixin):
     """
     Async message bus that decouples chat channels from the agent core.
 
@@ -165,6 +302,20 @@ class MessageBus:
         self.outbound: asyncio.Queue[OutboundMessage] = asyncio.Queue()
         self._event_subs: list[EventSubscription] = []
         self._event_subs_lock = asyncio.Lock()
+        # Durable-ish direct mailbox for offline agents.
+        # Keyed by target agent_id -> message_id -> AgentEvent.
+        self._direct_mailbox: dict[str, dict[str, AgentEvent]] = {}
+        self._direct_mailbox_lock = asyncio.Lock()
+        self._request_waiters: dict[str, asyncio.Future[AgentEvent]] = {}
+        self._request_waiters_lock = asyncio.Lock()
+
+    @staticmethod
+    def _target_agent_id(ev: AgentEvent) -> str | None:
+        target = (ev.target or "").strip()
+        if not target.startswith(TARGET_AGENT_PREFIX):
+            return None
+        agent_id = target[len(TARGET_AGENT_PREFIX) :].strip()
+        return agent_id or None
 
     async def publish_inbound(self, msg: InboundMessage) -> None:
         """Publish a message from a channel to the agent."""
@@ -194,11 +345,18 @@ class MessageBus:
 
     # ---- events surface --------------------------------------------------
     async def publish_event(self, ev: AgentEvent) -> None:
+        """Publish an event: fulfill a pending :meth:`request_event` or fan out."""
+        if await self._try_fulfill_request_reply(ev):
+            return
+        await self._fan_out_event(ev)
+
+    async def _fan_out_event(self, ev: AgentEvent) -> None:
         """Fan out *ev* to every matching local subscriber (at-most-once)."""
         # Copy under the lock so publish is concurrency-safe with
         # subscribe/unsubscribe without holding the lock across deliveries.
         async with self._event_subs_lock:
             subs = list(self._event_subs)
+        delivered = False
         for sub in subs:
             if _event_matches(
                 ev,
@@ -207,11 +365,26 @@ class MessageBus:
                 include_broadcast=sub.include_broadcast,
             ):
                 await sub._deliver(ev)
+                delivered = True
+        # If a direct message had no active subscriber, keep it in mailbox
+        # so a future subscriber can replay and ack it.
+        target_agent_id = self._target_agent_id(ev)
+        if target_agent_id and not delivered:
+            async with self._direct_mailbox_lock:
+                bucket = self._direct_mailbox.setdefault(target_agent_id, {})
+                if ev.message_id not in bucket:
+                    bucket[ev.message_id] = ev
+            logger.info(
+                "queued_direct_message target_agent_id={} message_id={}",
+                target_agent_id,
+                ev.message_id,
+            )
 
     def subscribe_events(
         self,
         *,
         agent_id: str,
+        agent_name: str = "",
         topics: Iterable[str] = (),
         include_broadcast: bool = True,
         maxsize: int = 0,
@@ -222,6 +395,7 @@ class MessageBus:
             queue,
             detach=self._detach_subscription,
             agent_id=agent_id,
+            agent_name=agent_name,
             topics=tuple(topics),
             include_broadcast=include_broadcast,
         )
@@ -233,3 +407,88 @@ class MessageBus:
             self._event_subs.remove(sub)
         except ValueError:
             pass
+
+    async def list_pending_direct_events(self, *, agent_id: str) -> list[AgentEvent]:
+        """Return pending direct events for *agent_id* (oldest first)."""
+        aid = str(agent_id).strip()
+        if not aid:
+            return []
+        async with self._direct_mailbox_lock:
+            bucket = self._direct_mailbox.get(aid, {})
+            return sorted(
+                bucket.values(),
+                key=lambda ev: (float(getattr(ev, "produced_at", 0.0) or 0.0), ev.message_id),
+            )
+
+    async def ack_pending_direct_event(self, *, agent_id: str, message_id: str) -> bool:
+        """Ack one pending direct event and delete it from mailbox."""
+        aid = str(agent_id).strip()
+        mid = str(message_id).strip()
+        if not aid or not mid:
+            return False
+        async with self._direct_mailbox_lock:
+            bucket = self._direct_mailbox.get(aid)
+            if not bucket:
+                return False
+            removed = bucket.pop(mid, None)
+            if not bucket:
+                self._direct_mailbox.pop(aid, None)
+        if removed is not None:
+            logger.info(
+                "acked_direct_message target_agent_id={} message_id={}",
+                aid,
+                mid,
+            )
+            return True
+        return False
+
+    async def list_event_subscribers(
+        self,
+        *,
+        topic: str | None = None,
+    ) -> list[dict[str, object]]:
+        """Return active local event subscribers, optionally filtered by topic."""
+        qtopic = str(topic or "").strip()
+        async with self._event_subs_lock:
+            subs = list(self._event_subs)
+        aggregated: dict[str, dict[str, object]] = {}
+        for sub in subs:
+            if qtopic and not any(
+                qtopic == t or qtopic.startswith(t + ".") or t == "" for t in sub.topics
+            ):
+                continue
+            row = aggregated.setdefault(
+                sub.agent_id,
+                {
+                    "agent_id": sub.agent_id,
+                    "agent_name": "",
+                    "topics": set(),
+                    "include_broadcast": False,
+                    "subscription_count": 0,
+                },
+            )
+            an = str(sub.agent_name or "").strip()
+            if an and not str(row.get("agent_name", "") or "").strip():
+                row["agent_name"] = an
+            topics_set = row["topics"]
+            assert isinstance(topics_set, set)
+            topics_set.update(sub.topics)
+            row["include_broadcast"] = bool(row["include_broadcast"]) or bool(
+                sub.include_broadcast
+            )
+            row["subscription_count"] = int(row["subscription_count"]) + 1
+        rows: list[dict[str, object]] = []
+        for aid in sorted(aggregated):
+            row = aggregated[aid]
+            topics_set = row["topics"]
+            assert isinstance(topics_set, set)
+            rows.append(
+                {
+                    "agent_id": aid,
+                    "agent_name": str(row.get("agent_name", "") or ""),
+                    "topics": sorted(str(t) for t in topics_set),
+                    "include_broadcast": bool(row["include_broadcast"]),
+                    "subscription_count": int(row["subscription_count"]),
+                }
+            )
+        return rows

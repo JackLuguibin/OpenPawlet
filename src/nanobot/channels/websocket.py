@@ -220,6 +220,51 @@ def _parse_inbound_payload(raw: str) -> str | None:
     return text
 
 
+def _validated_ws_session_override(raw: Any) -> str | None:
+    """Return a safe session_key_override string for console-scoped keys, or None."""
+    if raw is None:
+        return None
+    if not isinstance(raw, str):
+        return None
+    s = raw.strip()
+    if not s:
+        return None
+    if _API_KEY_RE.match(s) is None:
+        logger.warning("websocket: rejected session_key override (invalid pattern)")
+        return None
+    return s
+
+
+def _parse_legacy_json_inbound(raw: str) -> tuple[str | None, str | None]:
+    """Parse legacy JSON body; return ``(content, session_key_override)``."""
+    text = raw.strip()
+    if not text:
+        return None, None
+    if not text.startswith("{"):
+        c = _parse_inbound_payload(raw)
+        return (c, None)
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        c = _parse_inbound_payload(raw)
+        return (c, None)
+    if not isinstance(data, dict):
+        return (None, None)
+    content: str | None = None
+    for key in ("content", "text", "message"):
+        value = data.get(key)
+        if isinstance(value, str) and value.strip():
+            content = value
+            break
+    if content is None:
+        return (None, None)
+    sk_raw = data.get("session_key")
+    if sk_raw is None:
+        sk_raw = data.get("console_session_key")
+    override = _validated_ws_session_override(sk_raw)
+    return (content, override)
+
+
 # Accept UUIDs and short scoped keys like "unified:default". Keeps the capability
 # namespace small enough to rule out path traversal / quote injection tricks.
 _CHAT_ID_RE = re.compile(r"^[A-Za-z0-9_:-]{1,64}$")
@@ -768,14 +813,16 @@ class WebSocketChannel(BaseChannel):
                     await self._dispatch_envelope(connection, client_id, envelope)
                     continue
 
-                content = _parse_inbound_payload(raw)
+                content, sk_override = _parse_legacy_json_inbound(raw)
                 if content is None:
                     continue
+                meta: dict[str, Any] = {"remote": getattr(connection, "remote_address", None)}
                 await self._handle_message(
                     sender_id=client_id,
                     chat_id=default_chat_id,
                     content=content,
-                    metadata={"remote": getattr(connection, "remote_address", None)},
+                    metadata=meta,
+                    session_key=sk_override,
                 )
         except Exception as e:
             logger.debug("websocket connection ended: {}", e)
@@ -814,11 +861,16 @@ class WebSocketChannel(BaseChannel):
                 return
             # Auto-attach on first use so clients can one-shot without a separate attach.
             self._attach(connection, cid)
+            sk_override = _validated_ws_session_override(
+                envelope.get("session_key") or envelope.get("console_session_key")
+            )
+            meta_msg: dict[str, Any] = {"remote": getattr(connection, "remote_address", None)}
             await self._handle_message(
                 sender_id=client_id,
                 chat_id=cid,
                 content=content,
-                metadata={"remote": getattr(connection, "remote_address", None)},
+                metadata=meta_msg,
+                session_key=sk_override,
             )
             return
         await self._send_event(connection, "error", detail=f"unknown type: {t!r}")

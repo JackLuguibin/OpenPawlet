@@ -337,10 +337,25 @@ export async function getSessionContext(
   }
 }
 
-export async function createSession(key?: string, botId?: string | null): Promise<SessionInfo> {
+export async function createSession(
+  keyOrOptions?:
+    | string
+    | {
+        key?: string;
+        team_id?: string;
+        room_id?: string;
+        agent_id?: string;
+        ephemeral_session?: boolean;
+      },
+  botId?: string | null
+): Promise<SessionInfo> {
+  const payload =
+    typeof keyOrOptions === 'string' || keyOrOptions === undefined
+      ? { key: keyOrOptions }
+      : keyOrOptions;
   return fetchJson<SessionInfo>(`${API_BASE}/sessions${botQuery(botId)}`, {
     method: 'POST',
-    body: JSON.stringify({ key }),
+    body: JSON.stringify(payload),
   });
 }
 
@@ -925,6 +940,126 @@ export async function getAgentStatus(botId: string, agentId: string): Promise<im
 export async function getAgentsSystemStatus(botId: string): Promise<import('./types_agents').AgentsSystemStatus> {
   return fetchJson<import('./types_agents').AgentsSystemStatus>(
     `${API_BASE}/bots/${encodeURIComponent(botId)}/agents/system-status/status`
+  );
+}
+
+// ====================
+// Teams API
+// ====================
+
+export async function listTeams(botId: string): Promise<import('./types_teams').Team[]> {
+  return fetchJson<import('./types_teams').Team[]>(
+    `${API_BASE}/bots/${encodeURIComponent(botId)}/teams`
+  );
+}
+
+export async function createTeam(
+  botId: string,
+  data: import('./types_teams').TeamCreateRequest
+): Promise<import('./types_teams').Team> {
+  return fetchJson<import('./types_teams').Team>(`${API_BASE}/bots/${encodeURIComponent(botId)}/teams`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getTeam(botId: string, teamId: string): Promise<import('./types_teams').Team> {
+  return fetchJson<import('./types_teams').Team>(
+    `${API_BASE}/bots/${encodeURIComponent(botId)}/teams/${encodeURIComponent(teamId)}`
+  );
+}
+
+export async function updateTeam(
+  botId: string,
+  teamId: string,
+  data: import('./types_teams').TeamUpdateRequest
+): Promise<import('./types_teams').Team> {
+  return fetchJson<import('./types_teams').Team>(
+    `${API_BASE}/bots/${encodeURIComponent(botId)}/teams/${encodeURIComponent(teamId)}`,
+    {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }
+  );
+}
+
+export async function deleteTeam(botId: string, teamId: string): Promise<{ status: string }> {
+  return fetchJson<{ status: string }>(
+    `${API_BASE}/bots/${encodeURIComponent(botId)}/teams/${encodeURIComponent(teamId)}`,
+    { method: 'DELETE' }
+  );
+}
+
+export async function addTeamMember(botId: string, teamId: string, agentId: string): Promise<import('./types_teams').Team> {
+  return fetchJson<import('./types_teams').Team>(
+    `${API_BASE}/bots/${encodeURIComponent(botId)}/teams/${encodeURIComponent(teamId)}/members`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ agent_id: agentId }),
+    }
+  );
+}
+
+export async function removeTeamMember(
+  botId: string,
+  teamId: string,
+  agentId: string
+): Promise<import('./types_teams').Team> {
+  return fetchJson<import('./types_teams').Team>(
+    `${API_BASE}/bots/${encodeURIComponent(botId)}/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(agentId)}`,
+    { method: 'DELETE' }
+  );
+}
+
+export async function updateTeamMember(
+  botId: string,
+  teamId: string,
+  agentId: string,
+  data: { ephemeral_session?: boolean }
+): Promise<import('./types_teams').Team> {
+  return fetchJson<import('./types_teams').Team>(
+    `${API_BASE}/bots/${encodeURIComponent(botId)}/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(agentId)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }
+  );
+}
+
+export async function createTeamRoom(
+  botId: string,
+  teamId: string
+): Promise<import('./types_teams').TeamRoomCreateResponse> {
+  return fetchJson<import('./types_teams').TeamRoomCreateResponse>(
+    `${API_BASE}/bots/${encodeURIComponent(botId)}/teams/${encodeURIComponent(teamId)}/rooms`,
+    { method: 'POST' }
+  );
+}
+
+export async function listTeamRooms(botId: string, teamId: string): Promise<import('./types_teams').TeamRoom[]> {
+  return fetchJson<import('./types_teams').TeamRoom[]>(
+    `${API_BASE}/bots/${encodeURIComponent(botId)}/teams/${encodeURIComponent(teamId)}/rooms`
+  );
+}
+
+export async function deleteTeamRoom(
+  botId: string,
+  teamId: string,
+  roomId: string
+): Promise<import('./types_teams').TeamRoomDeleteResponse> {
+  return fetchJson<import('./types_teams').TeamRoomDeleteResponse>(
+    `${API_BASE}/bots/${encodeURIComponent(botId)}/teams/${encodeURIComponent(teamId)}/rooms/${encodeURIComponent(roomId)}`,
+    { method: 'DELETE' }
+  );
+}
+
+export async function getTeamRoomTranscript(
+  botId: string,
+  teamId: string,
+  roomId: string
+): Promise<import('./types_teams').TeamTranscriptResponse> {
+  return fetchJson<import('./types_teams').TeamTranscriptResponse>(
+    `${API_BASE}/bots/${encodeURIComponent(botId)}/teams/${encodeURIComponent(teamId)}/rooms/${encodeURIComponent(roomId)}/transcript`
   );
 }
 

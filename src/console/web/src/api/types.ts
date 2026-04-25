@@ -55,6 +55,9 @@ export interface SessionInfo {
   last_message?: string;
   created_at?: string;
   updated_at?: string;
+  team_id?: string | null;
+  room_id?: string | null;
+  agent_id?: string | null;
 }
 
 export interface ChannelStatus {

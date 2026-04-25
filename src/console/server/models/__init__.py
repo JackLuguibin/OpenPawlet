@@ -77,6 +77,18 @@ from console.server.models.skills import (
     SkillInfo,
 )
 from console.server.models.status import StatusResponse
+from console.server.models.teams import (
+    AddTeamMemberBody,
+    MergedTranscriptEntry,
+    Team,
+    TeamCreateRequest,
+    TeamRoomDeleteResponse,
+    TeamRoom,
+    TeamRoomCreateResponse,
+    TeamTranscriptResponse,
+    TeamUpdateRequest,
+    UpdateTeamMemberBody,
+)
 from console.server.models.tools import ToolCallLog
 from console.server.models.usage import UsageHistoryItem
 from console.server.models.workspace import (
@@ -157,6 +169,16 @@ __all__ = [
     "SkillCreateBody",
     "SkillInfo",
     "StatusResponse",
+    "Team",
+    "TeamCreateRequest",
+    "TeamUpdateRequest",
+    "AddTeamMemberBody",
+    "UpdateTeamMemberBody",
+    "TeamRoom",
+    "TeamRoomCreateResponse",
+    "TeamRoomDeleteResponse",
+    "MergedTranscriptEntry",
+    "TeamTranscriptResponse",
     "ToolCall",
     "ToolCallLog",
     "UsageHistoryItem",

@@ -21,11 +21,34 @@ class ContextBuilder:
     _MAX_RECENT_HISTORY = 50
     _RUNTIME_CONTEXT_END = "[/Runtime Context]"
 
-    def __init__(self, workspace: Path, timezone: str | None = None, disabled_skills: list[str] | None = None):
+    def __init__(
+        self,
+        workspace: Path,
+        timezone: str | None = None,
+        disabled_skills: list[str] | None = None,
+        extra_system_sections: list[str] | None = None,
+    ):
         self.workspace = workspace
         self.timezone = timezone
         self.memory = MemoryStore(workspace, timezone=timezone)
         self.skills = SkillsLoader(workspace, disabled_skills=set(disabled_skills) if disabled_skills else None)
+        self._extra_system_sections = [s for s in (extra_system_sections or []) if s and str(s).strip()]
+
+    def apply_skills_and_extra_prompt(
+        self,
+        *,
+        disabled_skills: list[str] | None,
+        extra_system_sections: list[str] | None,
+    ) -> None:
+        """Hot-reload skill allowlist and console extra sections (same MemoryStore instance)."""
+        self.skills = SkillsLoader(
+            self.workspace,
+            disabled_skills=set(disabled_skills) if disabled_skills else None,
+        )
+        if extra_system_sections is not None:
+            self._extra_system_sections = [
+                s for s in extra_system_sections if s and str(s).strip()
+            ]
 
     def build_system_prompt(
         self,
@@ -34,6 +57,8 @@ class ContextBuilder:
     ) -> str:
         """Build the system prompt from identity, bootstrap files, memory, and skills."""
         parts = [self._get_identity(channel=channel)]
+        for extra in self._extra_system_sections:
+            parts.append(str(extra).strip())
 
         bootstrap = self._load_bootstrap_files()
         if bootstrap:

@@ -120,6 +120,9 @@ export default function Sessions() {
       const search = searchQuery.toLowerCase();
       return (
         session.key.toLowerCase().includes(search) ||
+        (session.team_id?.toLowerCase().includes(search) ?? false) ||
+        (session.room_id?.toLowerCase().includes(search) ?? false) ||
+        (session.agent_id?.toLowerCase().includes(search) ?? false) ||
         (session.title?.toLowerCase().includes(search) ?? false) ||
         (session.last_message?.toLowerCase().includes(search) ?? false)
       );
@@ -230,6 +233,11 @@ export default function Sessions() {
                   className="m-0 shrink-0 border-0 font-medium"
                 >
                   {channel}
+                </Tag>
+              ) : null}
+              {session.team_id ? (
+                <Tag color="purple" className="m-0 shrink-0 border-0 font-medium">
+                  team:{session.team_id}
                 </Tag>
               ) : null}
               <Tooltip title={session.key}>

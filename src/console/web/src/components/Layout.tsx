@@ -23,6 +23,7 @@ import {
   Moon,
   Monitor,
   Users,
+  UsersRound,
   Brain,
   Clock,
   Heart,
@@ -47,6 +48,7 @@ const LOCK_PAGE_SCROLL_PATHS = new Set([
   '/memory',
   '/workspace',
   '/agents',
+  '/teams',
   '/logs',
   '/queues',
 ]);
@@ -109,6 +111,7 @@ export default function Layout({ children }: LayoutProps) {
           { path: '/memory', label: t('layout.navMemoryAndProfile'), icon: Brain },
           { path: '/workspace', label: t('layout.navWorkspace'), icon: FolderOpen },
           { path: '/agents', label: t('layout.navAgents'), icon: Users },
+          { path: '/teams', label: t('layout.navTeams'), icon: UsersRound },
           { path: '/observability', label: t('layout.navObservability'), icon: LineChart },
         ],
       },
@@ -369,7 +372,9 @@ export default function Layout({ children }: LayoutProps) {
 
         <div
           className={`flex-1 min-h-0 flex flex-col ${
-            location.pathname.startsWith('/chat') || LOCK_PAGE_SCROLL_PATHS.has(location.pathname)
+            location.pathname.startsWith('/chat') ||
+            location.pathname.startsWith('/teams/') ||
+            LOCK_PAGE_SCROLL_PATHS.has(location.pathname)
               ? 'overflow-hidden'
               : 'overflow-y-auto'
           }`}

@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import argparse
 import atexit
+import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -240,6 +242,71 @@ def _run_start(*, with_gateway: bool = True, strict_gateway: bool = False) -> No
         _terminate_subprocess(queue_manager_proc)
 
 
+def _run_team_spawns(args: argparse.Namespace) -> None:
+    """Print env for a single gateway that runs in-process team member :class:`AgentLoop` s."""
+    from nanobot.config.loader import load_config, resolve_config_env_vars, set_config_path
+    from pathlib import Path as _P
+
+    cfg_path = _P(args.config).expanduser().resolve() if args.config else None
+    if cfg_path is not None:
+        if not cfg_path.is_file():
+            raise SystemExit(f"Config not found: {cfg_path}")
+        set_config_path(cfg_path)
+    config = resolve_config_env_vars(load_config(cfg_path))
+    ws = config.workspace_path
+    tfile = ws / ".nanobot_console" / "teams.json"
+    if not tfile.is_file():
+        raise SystemExit(
+            f"No teams state at {tfile}. Create a team in the console Teams page first."
+        )
+    try:
+        raw = json.loads(tfile.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"Invalid teams.json: {exc}") from exc
+    teams = raw.get("teams") if isinstance(raw, dict) else None
+    if not isinstance(teams, list):
+        raise SystemExit("Invalid teams.json: missing teams[]")
+    team = next(
+        (t for t in teams if isinstance(t, dict) and t.get("id") == args.team_id),
+        None,
+    )
+    if team is None:
+        raise SystemExit(f"Unknown team id: {args.team_id!r}")
+    members = team.get("member_agent_ids")
+    if not isinstance(members, list) or not members:
+        raise SystemExit("Team has no members.")
+    member_ids = [str(x) for x in members if str(x).strip()]
+
+    rooms = raw.get("rooms") if isinstance(raw, dict) else None
+    if not isinstance(rooms, list) or not any(
+        isinstance(r, dict) and r.get("id") == args.room_id and r.get("team_id") == args.team_id
+        for r in rooms
+    ):
+        raise SystemExit(
+            f"Room {args.room_id!r} not found for this team. Create one via the Teams API or UI."
+        )
+
+    mcsv = ",".join(member_ids)
+    out_path = ws / ".nanobot_console" / f"team_env_{args.team_id}_{args.room_id}.sh"
+    script = f"""# Single gateway: honcho / `open-pawlet start` / `nanobot gateway` with:
+export QUEUE_MANAGER_ENABLED=true
+export NANOBOT_TEAM_ID={shlex.quote(args.team_id)}
+export NANOBOT_TEAM_ROOM_ID={shlex.quote(args.room_id)}
+# Optional: override member list (default = all members in teams.json)
+export NANOBOT_TEAM_MEMBER_IDS={shlex.quote(mcsv)}
+# Leave NANOBOT_AGENT_ID unset, or set to an id not in the team list, to avoid duplicate loops.
+"""
+    try:
+        out_path.write_text(script, encoding="utf-8")
+    except OSError as exc:
+        logger.warning("Could not write {}: {}", out_path, exc)
+    print(script)
+    print(
+        f"\nTip: re-run the gateway (e.g. restart honcho) after exporting the variables above. "
+        f"Saved: {out_path}"
+    )
+
+
 def _run_gateway_only() -> None:
     """Bootstrap ``~/.nanobot/config.json`` then exec ``nanobot gateway``.
 
@@ -304,6 +371,22 @@ def main() -> None:
         ),
     )
 
+    team_run = subparsers.add_parser(
+        "team-run",
+        help=(
+            "Print environment variables to run a single nanobot gateway with in-process team "
+            "member loops (same process as honcho gateway). Team data lives in .nanobot_console/teams.json."
+        ),
+    )
+    team_run.add_argument("--team-id", required=True, help="Team id from the console Teams UI.")
+    team_run.add_argument("--room-id", required=True, help="Room id (from POST .../teams/{id}/rooms).")
+    team_run.add_argument(
+        "-c",
+        "--config",
+        default=None,
+        help="Nanobot config.json path (defaults like other commands).",
+    )
+
     init_parser = subparsers.add_parser(
         "init-config",
         help="Write a default nanobot_web.json next to the nanobot config.",
@@ -338,6 +421,8 @@ def main() -> None:
         )
     elif args.command == "gateway":
         _run_gateway_only()
+    elif args.command == "team-run":
+        _run_team_spawns(args)
     elif args.command == "init-config":
         _run_init_config(force=bool(args.force))
     elif args.command == "web":

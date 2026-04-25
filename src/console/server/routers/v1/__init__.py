@@ -26,6 +26,7 @@ from . import (
     sessions,
     skills,
     status,
+    teams,
     tools,
     usage,
     workspace,
@@ -37,6 +38,7 @@ api_router.include_router(health_audit.router)
 api_router.include_router(observability.router)
 api_router.include_router(bots.router)
 api_router.include_router(agents.router)
+api_router.include_router(teams.router)
 api_router.include_router(status.router)
 api_router.include_router(usage.router)
 api_router.include_router(channels.router)

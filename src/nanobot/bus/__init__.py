@@ -1,8 +1,8 @@
 """Message bus module for decoupled channel-agent communication."""
 
-from nanobot.bus.events import AgentEvent, InboundMessage, OutboundMessage
+from nanobot.bus.events import AgentEvent, InboundMessage, OutboundMessage, build_request_reply_event
 from nanobot.bus.factory import build_message_bus
-from nanobot.bus.queue import EventSubscription, MessageBus, MessageBusProtocol
+from nanobot.bus.queue import EventSubscription, MessageBus, MessageBusProtocol, RequestReplyMixin
 from nanobot.bus.zmq_bus import ZmqBusEndpoints, ZmqMessageBus
 
 __all__ = [
@@ -12,7 +12,9 @@ __all__ = [
     "MessageBus",
     "MessageBusProtocol",
     "OutboundMessage",
+    "RequestReplyMixin",
     "ZmqBusEndpoints",
     "ZmqMessageBus",
     "build_message_bus",
+    "build_request_reply_event",
 ]

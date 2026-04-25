@@ -39,6 +39,10 @@ class Session:
     metadata: dict[str, Any] = field(default_factory=dict)
     last_consolidated: int = 0  # Number of messages already consolidated to files
     agent_timezone: str | None = field(default=None, compare=False, repr=False)
+    # True when this object reflects state that was read from disk or has been save()d once.
+    # Used to drop stale in-process cache when another process removes the session file
+    # without discarding in-memory sessions that have never been persisted yet.
+    _disk_anchored: bool = field(default=False, compare=False, repr=False)
 
     def __post_init__(self) -> None:
         n = local_now(self.agent_timezone)
@@ -178,10 +182,24 @@ class SessionManager:
         Returns:
             The session.
         """
+        primary = self._get_session_path(key)
+        legacy = self._get_legacy_session_path(key)
         if key in self._cache:
-            sess = self._cache[key]
-            sess.agent_timezone = self._timezone
-            return sess
+            if primary.is_file():
+                sess = self._cache[key]
+                sess.agent_timezone = self._timezone
+                return sess
+            if legacy.is_file():
+                # Legacy migration in _load() needs a clean cache.
+                self.invalidate(key)
+            elif self._cache[key]._disk_anchored:
+                # File removed externally (e.g. console API); drop stale in-memory state.
+                self.invalidate(key)
+            else:
+                # In-memory only: not yet on disk, keep the cached session.
+                sess = self._cache[key]
+                sess.agent_timezone = self._timezone
+                return sess
 
         session = self._load(key)
         if session is None:
@@ -252,12 +270,14 @@ class SessionManager:
                 metadata=metadata,
                 last_consolidated=last_consolidated,
                 agent_timezone=self._timezone,
+                _disk_anchored=True,
             )
         except Exception as e:
             logger.warning("Failed to load session {}: {}", key, e)
             repaired = self._repair(key)
             if repaired is not None:
                 logger.info("Recovered session {} from corrupt file ({} messages)", key, len(repaired.messages))
+                repaired._disk_anchored = True
             return repaired
 
     def _repair(self, key: str) -> Session | None:
@@ -321,6 +341,7 @@ class SessionManager:
                 metadata=metadata,
                 last_consolidated=last_consolidated,
                 agent_timezone=self._timezone,
+                _disk_anchored=True,
             )
         except Exception as e:
             logger.warning("Repair failed for session {}: {}", key, e)
@@ -348,6 +369,13 @@ class SessionManager:
         """
         path = self._get_session_path(session.key)
         tmp_path = path.with_suffix(".jsonl.tmp")
+        legacy_path = self._get_legacy_session_path(session.key)
+
+        # If a previously persisted session is externally deleted (console API / another process),
+        # do not allow stale in-memory history to recreate the deleted transcript on the next save.
+        if session._disk_anchored and (not path.is_file()) and (not legacy_path.is_file()):
+            session.clear()
+            session.metadata = {}
 
         try:
             with open(tmp_path, "w", encoding="utf-8") as f:
@@ -367,6 +395,7 @@ class SessionManager:
                     os.fsync(f.fileno())
 
             os.replace(tmp_path, path)
+            session._disk_anchored = True
 
             if fsync:
                 # fsync the directory so the rename is durable.
