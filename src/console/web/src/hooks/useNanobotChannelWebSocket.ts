@@ -79,7 +79,25 @@ function optionalToolFrameFields(
  * `stream_end` = one streaming segment/frame finished (`stream_frame_end`).
  * `message` = non-final channel text (retries, status); show until `chat_end`.
  * `chat_end` = full assistant turn finished (`chat_done`); optional `text` for final body.
+ *
+ * Every frame for one user turn carries the same server-issued
+ * `reply_group_id` (see `WebSocketChannel._attach_reply_group_id`); we copy
+ * it through so the chat UI can group multi-iteration replies into one bubble.
  */
+function _withReplyGroupId(
+  chunk: StreamChunk | null,
+  data: Record<string, unknown>,
+): StreamChunk | null {
+  if (!chunk) {
+    return null;
+  }
+  const rg = data.reply_group_id;
+  if (typeof rg === "string" && rg) {
+    chunk.reply_group_id = rg;
+  }
+  return chunk;
+}
+
 function mapNativeFrameToStreamChunk(
   data: Record<string, unknown>,
 ): StreamChunk | null {
@@ -522,7 +540,10 @@ export function useNanobotChannelWebSocket(options: {
               );
               return;
             }
-            const chunk = mapNativeFrameToStreamChunk(data);
+            const chunk = _withReplyGroupId(
+              mapNativeFrameToStreamChunk(data),
+              data,
+            );
             if (chunk) {
               dispatchChatChunk(chunk, "nanobot");
             }

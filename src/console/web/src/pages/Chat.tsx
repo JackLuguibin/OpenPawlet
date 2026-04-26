@@ -385,6 +385,14 @@ interface Message {
   tool_calls?: ToolCall[];
   /** 发起工具调用前的推理说明 */
   reasoning_content?: string;
+  /** Anthropic extended thinking blocks persisted in transcript JSONL. */
+  thinking_blocks?: Array<Record<string, unknown>>;
+  /**
+   * UUID identifying the entire assistant reply for this user turn.
+   * Comes from the server (transcript JSONL or WS frame). When absent we
+   * fall back to a deterministic client-side hash; see `groupAssistantReplies`.
+   */
+  reply_group_id?: string;
 }
 
 /** Console WebSocket 的 tool_call / tool_result 追踪用（与帧内嵌 tool_calls 分列） */
@@ -670,6 +678,199 @@ function mergeToolResultsIntoAssistantMessages(messages: Message[]): Message[] {
   return out;
 }
 
+function extractReasoningFromThinkingBlocks(
+  thinkingBlocks: unknown,
+): string | undefined {
+  if (!Array.isArray(thinkingBlocks) || thinkingBlocks.length === 0) {
+    return undefined;
+  }
+  const parts: string[] = [];
+  for (const row of thinkingBlocks) {
+    if (!row || typeof row !== "object" || Array.isArray(row)) {
+      continue;
+    }
+    const block = row as Record<string, unknown>;
+    for (const key of ["thinking", "text", "content"] as const) {
+      const value = block[key];
+      if (typeof value === "string" && value.trim()) {
+        parts.push(value.trim());
+        break;
+      }
+    }
+  }
+  if (parts.length === 0) {
+    return undefined;
+  }
+  return parts.join("\n\n");
+}
+
+function normalizeMessageForChatRender(msg: Message): Message {
+  const normalizedToolCalls = normalizeToolCallsArray(
+    msg.tool_calls as unknown,
+  );
+  const normalizedReasoning =
+    typeof msg.reasoning_content === "string" && msg.reasoning_content.trim()
+      ? msg.reasoning_content
+      : extractReasoningFromThinkingBlocks(msg.thinking_blocks);
+  const normalizedSource =
+    msg.source ??
+    (msg.role === "user"
+      ? "user"
+      : msg.role === "assistant"
+        ? "main_agent"
+        : undefined);
+  return {
+    ...msg,
+    content: typeof msg.content === "string" ? msg.content : String(msg.content ?? ""),
+    source: normalizedSource,
+    ...(normalizedToolCalls.length > 0 ? { tool_calls: normalizedToolCalls } : {}),
+    ...(normalizedReasoning ? { reasoning_content: normalizedReasoning } : {}),
+  };
+}
+
+function appendReplySection(base: string, incoming: string): string {
+  const left = base.trim();
+  const right = incoming.trim();
+  if (!right) {
+    return base;
+  }
+  if (!left) {
+    return incoming;
+  }
+  if (left === right || left.endsWith(right)) {
+    return base;
+  }
+  return `${base}\n\n${incoming}`;
+}
+
+/**
+ * Hash a string into a deterministic UUID-shaped identifier (8-4-4-4-12 hex).
+ *
+ * We use a hand-rolled FNV-1a + xorshift mixer instead of crypto.subtle so the
+ * function stays synchronous and works under React render. Collisions are
+ * astronomically unlikely for the input space (anchor + role + ts + content
+ * head) and the result is purely client-side, so it does not need to match
+ * RFC 4122 cryptographically — the goal is a stable React key + group id.
+ */
+function hashStringToUuid(input: string): string {
+  let h1 = 0x811c9dc5 ^ input.length;
+  let h2 = 0xdeadbeef ^ input.length;
+  for (let i = 0; i < input.length; i++) {
+    const code = input.charCodeAt(i);
+    h1 = Math.imul(h1 ^ code, 0x01000193);
+    h2 = Math.imul(h2 ^ code, 0x85ebca6b);
+  }
+  h1 = (h1 ^ (h1 >>> 16)) >>> 0;
+  h2 = (h2 ^ (h2 >>> 13)) >>> 0;
+  const a = h1.toString(16).padStart(8, "0");
+  const b = (h2 & 0xffff).toString(16).padStart(4, "0");
+  const c = ((h2 >>> 16) & 0x0fff | 0x4000).toString(16).padStart(4, "0");
+  const d = ((h1 ^ h2) & 0x3fff | 0x8000).toString(16).padStart(4, "0");
+  const eRaw = ((Math.imul(h1, 0x9e3779b9) ^ h2) >>> 0).toString(16);
+  const e = (eRaw + h2.toString(16)).slice(0, 12).padStart(12, "0");
+  return `${a}-${b}-${c}-${d}-${e}`;
+}
+
+/**
+ * Build a stable group UUID for one assistant reply.
+ *
+ * Anchor priority:
+ *
+ * 1. The first assistant message's id (already stable across renders, see
+ *    `buildStableMessageId` for transcript rows and the `msg-${ts}` ids for
+ *    streamed bubbles).
+ * 2. Timestamp + role + content head as a fallback when ids are missing
+ *    (defensive — should not happen in practice).
+ *
+ * The same anchor produces the same UUID on transcript replay and WS streaming,
+ * which is what keeps the rendered "group" stable across the two transports.
+ */
+function buildReplyGroupUuid(anchor: Message): string {
+  const seedParts = [
+    anchor.id || "",
+    anchor.role,
+    anchor.created_at || anchor.timestamp || "",
+    (anchor.content || "").slice(0, 64),
+  ];
+  return hashStringToUuid(seedParts.join("|"));
+}
+
+/**
+ * Fold adjacent assistant chunks (tool-planning + final answer, etc.) into one
+ * visual group so transcript replay matches WS live rendering.
+ *
+ * Each group carries:
+ * - `reply_group_id`: stable UUID derived from the first chunk in the group;
+ *   used for analytics, observability cross-links, and as the React key prefix
+ *   so re-renders during streaming do not remount the bubble.
+ * - `id`: `grp-${uuid}` so the virtualized list keeps a unique row key even
+ *   when two adjacent groups share their first chunk's content head.
+ */
+function resolveAssistantGroupId(msg: Message): string {
+  if (typeof msg.reply_group_id === "string" && msg.reply_group_id.trim()) {
+    return msg.reply_group_id;
+  }
+  return buildReplyGroupUuid(msg);
+}
+
+function groupAssistantReplies(messages: Message[]): Message[] {
+  const out: Message[] = [];
+  let activeGroup: Message | null = null;
+
+  const flushGroup = () => {
+    if (!activeGroup) {
+      return;
+    }
+    out.push(activeGroup);
+    activeGroup = null;
+  };
+
+  for (const raw of messages) {
+    const msg = normalizeMessageForChatRender(raw);
+    if (msg.role !== "assistant") {
+      flushGroup();
+      out.push(msg);
+      continue;
+    }
+    const incomingGroupId = resolveAssistantGroupId(msg);
+    if (
+      activeGroup &&
+      activeGroup.reply_group_id &&
+      activeGroup.reply_group_id !== incomingGroupId
+    ) {
+      // Server-issued reply_group_id changed — start a new group even though
+      // both messages are assistant role (e.g. two distinct turns persisted
+      // back-to-back without an intervening user row).
+      flushGroup();
+    }
+    if (!activeGroup) {
+      activeGroup = {
+        ...msg,
+        id: `grp-${incomingGroupId}`,
+        reply_group_id: incomingGroupId,
+      };
+      continue;
+    }
+    activeGroup = {
+      ...activeGroup,
+      content: appendReplySection(activeGroup.content, msg.content),
+      tool_calls: mergeStreamingToolCalls(
+        activeGroup.tool_calls ?? [],
+        msg.tool_calls ?? [],
+      ),
+      reasoning_content: appendReplySection(
+        activeGroup.reasoning_content ?? "",
+        msg.reasoning_content ?? "",
+      ),
+      created_at: msg.created_at ?? activeGroup.created_at,
+      timestamp: msg.timestamp ?? activeGroup.timestamp,
+    };
+  }
+
+  flushGroup();
+  return out;
+}
+
 function MessageThinkingBlock({ text }: { text: string }) {
   const { t } = useTranslation();
   const trimmed = text.trim();
@@ -948,6 +1149,13 @@ export default function Chat() {
     useState<string>("");
   const streamingPayloadToolCallsRef = useRef<ToolCall[]>([]);
   const streamingReasoningContentRef = useRef<string>("");
+  /**
+   * Server-issued reply_group_id observed on the current streaming turn.
+   * The runtime stamps this UUID on every WS frame for one Agent reply, so
+   * we keep the first non-empty value seen and apply it to the assistant
+   * bubble we materialize on chat_done. Reset on chat_done / new turn.
+   */
+  const streamingReplyGroupIdRef = useRef<string | null>(null);
   /** 流式过程中后端单独下发的工具调用摘要（与正文 Markdown 分离） */
   const [streamingToolProgress, setStreamingToolProgress] = useState<string[]>(
     [],
@@ -1950,9 +2158,11 @@ export default function Chat() {
    */
   const displayMessages = useMemo(() => {
     const merged = mergeToolResultsIntoAssistantMessages(messages);
-    return merged.filter(
+    const normalized = merged.map((m) => normalizeMessageForChatRender(m));
+    const visible = normalized.filter(
       (m) => m.source !== "sub_agent" && m.source !== "tool_call",
     );
+    return groupAssistantReplies(visible);
   }, [messages]);
 
   /**
@@ -2164,6 +2374,16 @@ export default function Chat() {
         }
       } else if (source !== "console") {
         return;
+      }
+      // Lock the streaming bubble's reply_group_id to the first server-issued
+      // value observed in this turn. The runtime stamps the same UUID onto
+      // every frame, so we don't need to update it on later frames.
+      if (
+        chunk.reply_group_id &&
+        typeof chunk.reply_group_id === "string" &&
+        !streamingReplyGroupIdRef.current
+      ) {
+        streamingReplyGroupIdRef.current = chunk.reply_group_id;
       }
       if (silentStatusJsonRef.current) {
         if (chunk.type === "session_key") {
@@ -2411,6 +2631,9 @@ export default function Chat() {
             ...(chunk.reasoning_content
               ? { reasoning_content: chunk.reasoning_content }
               : {}),
+            ...(chunk.reply_group_id
+              ? { reply_group_id: chunk.reply_group_id }
+              : {}),
           },
         ]);
       } else if (chunk.type === "subagent_done" && chunk.subagent_id) {
@@ -2481,7 +2704,13 @@ export default function Chat() {
           ...(mergedReasoning !== undefined && mergedReasoning.length > 0
             ? { reasoning_content: mergedReasoning }
             : {}),
+          ...(chunk.reply_group_id
+            ? { reply_group_id: chunk.reply_group_id }
+            : streamingReplyGroupIdRef.current
+              ? { reply_group_id: streamingReplyGroupIdRef.current }
+              : {}),
         };
+        streamingReplyGroupIdRef.current = null;
         setMessages((prev) => [...prev, assistantMsg]);
         setToolCalls([]);
         // Any throttled mid-turn transcript refresh is superseded by chat_done.
@@ -2609,6 +2838,7 @@ export default function Chat() {
     setStreamingReasoningContent("");
     streamingPayloadToolCallsRef.current = [];
     streamingReasoningContentRef.current = "";
+    streamingReplyGroupIdRef.current = null;
 
     if (useNanobotChannel) {
       if (!activeSessionKey) {
@@ -2692,6 +2922,7 @@ export default function Chat() {
     setStreamingReasoningContent("");
     streamingPayloadToolCallsRef.current = [];
     streamingReasoningContentRef.current = "";
+    streamingReplyGroupIdRef.current = null;
     addToast({ type: "info", message: t("chat.toastStopped") });
   };
 

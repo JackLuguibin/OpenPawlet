@@ -324,6 +324,88 @@ async def test_send_includes_reasoning_content_on_message_event() -> None:
 
 
 @pytest.mark.asyncio
+async def test_send_attaches_reply_group_id_on_message_and_chat_lifecycle() -> None:
+    """Outbound metadata.reply_group_id propagates onto every wire frame."""
+    bus = MagicMock()
+    channel = WebSocketChannel({"enabled": True, "allowFrom": ["*"]}, bus)
+    mock_ws = AsyncMock()
+    channel._attach(mock_ws, "chat-1")
+    rg_id = "11111111-2222-3333-4444-555555555555"
+
+    msg = OutboundMessage(
+        channel="websocket",
+        chat_id="chat-1",
+        content="hello",
+        metadata={"reply_group_id": rg_id},
+    )
+    await channel.send(msg)
+    payload = json.loads(mock_ws.send.call_args[0][0])
+    assert payload["event"] == "message"
+    assert payload["reply_group_id"] == rg_id
+
+    mock_ws.send.reset_mock()
+    await channel.send(
+        OutboundMessage(
+            channel="websocket",
+            chat_id="chat-1",
+            content="",
+            metadata={"_session_turn_event": "start", "reply_group_id": rg_id},
+        )
+    )
+    lifecycle = json.loads(mock_ws.send.call_args[0][0])
+    assert lifecycle["event"] == "chat_start"
+    assert lifecycle["reply_group_id"] == rg_id
+
+    mock_ws.send.reset_mock()
+    await channel.send(
+        OutboundMessage(
+            channel="websocket",
+            chat_id="chat-1",
+            content="",
+            metadata={
+                "_tool_event": True,
+                "tool_calls": [{"id": "tc1", "name": "fs.read"}],
+                "reply_group_id": rg_id,
+            },
+        )
+    )
+    tool_payload = json.loads(mock_ws.send.call_args[0][0])
+    assert tool_payload["event"] == "tool_event"
+    assert tool_payload["reply_group_id"] == rg_id
+
+
+@pytest.mark.asyncio
+async def test_send_delta_attaches_reply_group_id_on_delta_and_stream_end() -> None:
+    """Streaming delta + stream_end frames carry the same reply_group_id."""
+    bus = MagicMock()
+    channel = WebSocketChannel(
+        {"enabled": True, "allowFrom": ["*"], "streaming": True, "deltaChunkChars": 0},
+        bus,
+    )
+    mock_ws = AsyncMock()
+    channel._attach(mock_ws, "chat-1")
+    rg_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+
+    meta: dict[str, Any] = {
+        "_stream_delta": True,
+        "_stream_id": "s1",
+        "reply_group_id": rg_id,
+    }
+    await channel.send_delta("chat-1", "hi", meta)
+    await channel.send_delta(
+        "chat-1",
+        "",
+        {**meta, "_stream_delta": False, "_stream_end": True},
+    )
+
+    sent = [json.loads(c.args[0]) for c in mock_ws.send.call_args_list]
+    delta = next(p for p in sent if p["event"] == "delta")
+    end = next(p for p in sent if p["event"] == "stream_end")
+    assert delta["reply_group_id"] == rg_id
+    assert end["reply_group_id"] == rg_id
+
+
+@pytest.mark.asyncio
 async def test_send_reasoning_only_emits_reasoning_event() -> None:
     bus = MagicMock()
     channel = WebSocketChannel({"enabled": True, "allowFrom": ["*"]}, bus)

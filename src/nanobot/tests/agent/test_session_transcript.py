@@ -30,6 +30,27 @@ def _transcript_path(workspace: Path, session_key: str) -> Path:
     return workspace / "transcripts" / f"{safe_key}.jsonl"
 
 
+def test_transcript_record_preserves_reply_group_id(tmp_path: Path) -> None:
+    """`raw_turn_message_to_record` keeps reply_group_id so the UI can group replies."""
+    w = SessionTranscriptWriter(
+        tmp_path,
+        enabled=True,
+        include_full_tool_results=True,
+        max_tool_result_chars=16_000,
+    )
+    record = w.raw_turn_message_to_record(
+        {
+            "role": "assistant",
+            "content": "answer",
+            "reply_group_id": "11111111-2222-3333-4444-555555555555",
+            "tool_calls": [
+                {"id": "tc1", "type": "function", "function": {"name": "x", "arguments": "{}"}}
+            ],
+        }
+    )
+    assert record["reply_group_id"] == "11111111-2222-3333-4444-555555555555"
+
+
 def test_save_turn_full_tool_in_transcript_session_truncated(tmp_path: Path) -> None:
     long_tool = "x" * 100
     loop = AgentLoop(

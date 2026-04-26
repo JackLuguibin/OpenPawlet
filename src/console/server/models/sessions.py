@@ -18,6 +18,11 @@ class Message(BaseModel):
     tool_name: str | None = None
     timestamp: str | None = None
     source: str | None = None
+    # UUID identifying the entire assistant reply for one user turn. Persisted
+    # by ``SessionTranscriptWriter`` and stamped on every WebSocket frame so
+    # the UI can group multi-iteration replies into one bubble in both live
+    # streaming and transcript replay.
+    reply_group_id: str | None = None
 
 
 class SessionInfo(BaseModel):

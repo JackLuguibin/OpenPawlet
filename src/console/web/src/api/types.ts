@@ -11,6 +11,12 @@ export interface Message {
   timestamp?: string;
   /** 区分用户/主Agent/子Agent/工具调用；缺失时按 role 推断（兼容旧数据） */
   source?: MessageSource;
+  /**
+   * UUID identifying the entire assistant reply for one user turn.
+   * Stamped by the agent runtime on every transcript line and WebSocket frame
+   * so the UI can group multi-iteration replies into one bubble.
+   */
+  reply_group_id?: string;
 }
 
 export interface ChatRequest {
@@ -303,6 +309,12 @@ export interface StreamChunk {
   task?: string;
   result?: string;
   status?: 'ok' | 'error';
+  /**
+   * UUID identifying the entire assistant reply for one user turn (server-issued).
+   * Present on every nanobot WebSocket frame for the turn so the chat UI can
+   * group streamed deltas / tool events / final answer into one bubble.
+   */
+  reply_group_id?: string;
 }
 
 // Batch operations

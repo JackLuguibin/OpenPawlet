@@ -45,7 +45,14 @@ class SessionTranscriptWriter:
         """Build a storable record from an agent-loop message (before session truncation)."""
         role = m.get("role")
         entry: dict[str, Any] = {"role": role, "content": m.get("content")}
-        for key in ("tool_calls", "tool_call_id", "name", "reasoning_content", "thinking_blocks"):
+        for key in (
+            "tool_calls",
+            "tool_call_id",
+            "name",
+            "reasoning_content",
+            "thinking_blocks",
+            "reply_group_id",
+        ):
             if key in m:
                 entry[key] = m[key]
         if m.get("timestamp"):

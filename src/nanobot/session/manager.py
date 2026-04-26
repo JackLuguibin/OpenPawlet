@@ -88,6 +88,11 @@ class Session:
         out: list[dict[str, Any]] = []
         for message in sliced:
             entry: dict[str, Any] = {"role": message["role"], "content": message.get("content", "")}
+            # NOTE: ``reply_group_id`` is intentionally excluded — it is a
+            # UI-only marker (UUID for one Agent reply turn) we persist in
+            # ``session.messages`` and transcript JSONL, but it must not leak
+            # into the LLM request payload (some providers reject unknown
+            # message keys; see test_next_turn_after_llm_error_keeps_turn_boundary).
             for key in ("tool_calls", "tool_call_id", "name", "reasoning_content"):
                 if key in message:
                     entry[key] = message[key]

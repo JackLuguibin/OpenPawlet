@@ -111,6 +111,8 @@ def _preview_message_from_raw(raw: dict[str, object]) -> Message | None:
     timestamp = str(ts) if ts is not None else None
     src = raw.get("source")
     source = str(src) if src is not None else None
+    rg = raw.get("reply_group_id")
+    reply_group_id = str(rg) if isinstance(rg, str) and rg else None
     return Message(
         role=role,
         content=content,
@@ -118,6 +120,7 @@ def _preview_message_from_raw(raw: dict[str, object]) -> Message | None:
         tool_name=None,
         timestamp=timestamp,
         source=source,
+        reply_group_id=reply_group_id,
     )
 
 

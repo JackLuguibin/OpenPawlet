@@ -897,6 +897,19 @@ class WebSocketChannel(BaseChannel):
             logger.error("websocket{}send failed: {}", label, e)
             raise
 
+    @staticmethod
+    def _attach_reply_group_id(payload: dict[str, Any], metadata: dict[str, Any]) -> None:
+        """Copy ``reply_group_id`` from outbound metadata into the wire frame.
+
+        The id originates from ``AgentLoop._dispatch`` and identifies the
+        entire assistant reply for one user turn (UUID4). Stamping every WS
+        frame lets the UI group multi-iteration replies into one bubble in
+        live mode, matching the same id persisted on transcript JSONL lines.
+        """
+        rg = metadata.get("reply_group_id")
+        if isinstance(rg, str) and rg:
+            payload["reply_group_id"] = rg
+
     async def send(self, msg: OutboundMessage) -> None:
         # Snapshot the subscriber set so ConnectionClosed cleanups mid-iteration are safe.
         conns = list(self._subs.get(msg.chat_id, ()))
@@ -908,6 +921,7 @@ class WebSocketChannel(BaseChannel):
             rc = metadata.get("reasoning_content")
             if isinstance(rc, str) and rc:
                 payload = {"event": "reasoning", "chat_id": msg.chat_id, "text": rc}
+                self._attach_reply_group_id(payload, metadata)
                 raw = json.dumps(payload, ensure_ascii=False)
                 for connection in conns:
                     await self._safe_send_to(connection, raw, label=" reasoning ")
@@ -918,6 +932,7 @@ class WebSocketChannel(BaseChannel):
                 "event": "chat_start" if turn_phase == "start" else "chat_end",
                 "chat_id": msg.chat_id,
             }
+            self._attach_reply_group_id(payload, metadata)
             raw = json.dumps(payload, ensure_ascii=False)
             for connection in conns:
                 await self._safe_send_to(connection, raw, label=" turn ")
@@ -944,6 +959,7 @@ class WebSocketChannel(BaseChannel):
             rc = metadata.get("reasoning_content")
             if isinstance(rc, str) and rc:
                 payload["reasoning_content"] = rc
+        self._attach_reply_group_id(payload, metadata)
         raw = json.dumps(payload, ensure_ascii=False)
         for connection in conns:
             await self._safe_send_to(connection, raw, label=" ")
@@ -957,6 +973,7 @@ class WebSocketChannel(BaseChannel):
         body: dict[str, Any] = {"event": "delta", "chat_id": chat_id, "text": text}
         if meta.get("_stream_id") is not None:
             body["stream_id"] = meta["_stream_id"]
+        self._attach_reply_group_id(body, meta)
         raw = json.dumps(body, ensure_ascii=False)
         for connection in list(self._subs.get(chat_id, ())):
             await self._safe_send_to(connection, raw, label=" stream ")
@@ -988,6 +1005,7 @@ class WebSocketChannel(BaseChannel):
             body_end: dict[str, Any] = {"event": "stream_end", "chat_id": chat_id}
             if meta.get("_stream_id") is not None:
                 body_end["stream_id"] = meta["_stream_id"]
+            self._attach_reply_group_id(body_end, meta)
             raw = json.dumps(body_end, ensure_ascii=False)
             for connection in list(self._subs.get(chat_id, ())):
                 await self._safe_send_to(connection, raw, label=" stream ")

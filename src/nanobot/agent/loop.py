@@ -105,6 +105,7 @@ class _LoopHook(AgentHook):
         chat_id: str = "direct",
         message_id: str | None = None,
         transcript_session_key: str | None = None,
+        reply_group_id: str | None = None,
     ) -> None:
         super().__init__(reraise=True)
         self._loop = agent_loop
@@ -117,6 +118,12 @@ class _LoopHook(AgentHook):
         self._message_id = message_id
         self._stream_buf = ""
         self._transcript_session_key = transcript_session_key
+        # UUID identifying the entire assistant reply for this user turn.
+        # Stamped onto every transcript line (assistant tool_calls + tool
+        # results + final assistant) so the UI can group multi-iteration
+        # replies into one bubble in transcript replay, matching the live
+        # WebSocket stream which carries the same id on each frame.
+        self._reply_group_id = reply_group_id
 
     def wants_streaming(self) -> bool:
         return self._on_stream is not None
@@ -208,6 +215,14 @@ class _LoopHook(AgentHook):
             u.get("cached_tokens", 0),
         )
 
+    def _stamp_reply_group_id(self, message: dict[str, Any]) -> None:
+        """Tag *message* with the current turn's ``reply_group_id`` if missing."""
+        if not self._reply_group_id:
+            return
+        if message.get("reply_group_id"):
+            return
+        message["reply_group_id"] = self._reply_group_id
+
     def _flush_transcript_for_pending_assistant(self, context: AgentHookContext) -> None:
         """Append the last assistant message (carrying tool_calls) to the transcript.
 
@@ -228,6 +243,7 @@ class _LoopHook(AgentHook):
             return
         if last.get("_transcript_written"):
             return
+        self._stamp_reply_group_id(last)
         try:
             tr.append_raw_turn_message(key, last)
         except Exception:
@@ -246,6 +262,7 @@ class _LoopHook(AgentHook):
                 continue
             if m.get("_transcript_written"):
                 continue
+            self._stamp_reply_group_id(m)
             try:
                 tr.append_raw_turn_message(key, m)
             except Exception:
@@ -856,6 +873,7 @@ class AgentLoop:
         chat_id: str = "direct",
         message_id: str | None = None,
         pending_queue: asyncio.Queue | None = None,
+        reply_group_id: str | None = None,
     ) -> tuple[str | None, list[str], list[dict], str, bool]:
         """Run the agent iteration loop.
 
@@ -877,6 +895,7 @@ class AgentLoop:
             chat_id=chat_id,
             message_id=message_id,
             transcript_session_key=session.key if session else None,
+            reply_group_id=reply_group_id,
         )
         hook: AgentHook = (
             CompositeHook([loop_hook] + self._extra_hooks) if self._extra_hooks else loop_hook
@@ -1168,6 +1187,19 @@ class AgentLoop:
             async with lock, gate:
                 turn_lifecycle = msg.channel in self._session_turn_lifecycle_channels
                 turn_id = str(uuid.uuid4())
+                # ``reply_group_id`` is the canonical UUID used to group the
+                # entire assistant reply for one user turn. It is stamped onto
+                # every WebSocket frame and transcript line emitted during the
+                # turn so the UI can render multi-iteration replies as one
+                # bubble both live and on transcript replay.
+                reply_group_id = turn_id
+                inbound_meta = dict(msg.metadata or {})
+                if not inbound_meta.get("reply_group_id"):
+                    inbound_meta["reply_group_id"] = reply_group_id
+                else:
+                    reply_group_id = str(inbound_meta["reply_group_id"])
+                if inbound_meta != (msg.metadata or {}):
+                    msg = dataclasses.replace(msg, metadata=inbound_meta)
                 t0 = time.perf_counter()
                 outcome = "ok"
                 with logger.contextualize(
@@ -1242,11 +1274,15 @@ class AgentLoop:
                     except Exception:
                         outcome = "error"
                         logger.exception("Error processing message for session {}", session_key)
+                        # Carry msg.metadata (including reply_group_id) so the
+                        # client can group the error frame with the in-flight reply.
+                        err_meta = dict(msg.metadata or {})
                         await self.bus.publish_outbound(
                             OutboundMessage(
                                 channel=msg.channel,
                                 chat_id=msg.chat_id,
                                 content="Sorry, I encountered an error.",
+                                metadata=err_meta,
                             )
                         )
                     finally:
@@ -1302,6 +1338,32 @@ class AgentLoop:
         self._running = False
         logger.info("Agent loop stopping")
 
+    @staticmethod
+    def _resolve_reply_group_id(msg: InboundMessage) -> str:
+        """Resolve (or create) ``reply_group_id`` for *msg* metadata in-place.
+
+        ``_dispatch`` already injects the id; direct callers (``process_direct``
+        / system turns) reach this codepath without going through dispatch, so
+        we mint a UUID on demand and persist it back into the metadata so all
+        downstream publishers carry the same value.
+        """
+        meta = dict(msg.metadata or {})
+        existing = meta.get("reply_group_id")
+        if isinstance(existing, str) and existing.strip():
+            return existing
+        new_id = str(uuid.uuid4())
+        meta["reply_group_id"] = new_id
+        # ``InboundMessage`` is a dataclass so mutating metadata in place is
+        # acceptable; callers may also dataclasses.replace to refresh.
+        try:
+            msg.metadata.clear()
+            msg.metadata.update(meta)
+        except Exception:
+            # Best-effort: if metadata is immutable, the caller is expected to
+            # propagate ``new_id`` explicitly via ``_run_agent_loop``.
+            pass
+        return new_id
+
     async def _process_message(
         self,
         msg: InboundMessage,
@@ -1313,6 +1375,7 @@ class AgentLoop:
     ) -> OutboundMessage | None:
         """Process a single inbound message and return the response."""
         self._maybe_refresh_gateway_identity()
+        reply_group_id = self._resolve_reply_group_id(msg)
         # System messages: parse origin from chat_id ("channel:chat_id")
         if msg.channel == "system":
             channel, chat_id = (
@@ -1368,8 +1431,11 @@ class AgentLoop:
                 chat_id=chat_id,
                 message_id=msg.metadata.get("message_id"),
                 pending_queue=pending_queue,
+                reply_group_id=reply_group_id,
             )
-            self._save_turn(session, all_msgs, 1 + len(history))
+            self._save_turn(
+                session, all_msgs, 1 + len(history), reply_group_id=reply_group_id
+            )
             self._clear_runtime_checkpoint(session)
             self.sessions.save(session)
             self._schedule_background(self.consolidator.maybe_consolidate_by_tokens(session))
@@ -1379,6 +1445,11 @@ class AgentLoop:
             meta_sys: dict[str, Any] = {}
             if turn_reasoning and self._should_attach_reasoning_to_outbound():
                 meta_sys["reasoning_content"] = turn_reasoning
+            # Carry the turn UUID to the final outbound so any channel that
+            # listens to the system turn (e.g. WS reasoning frame) can group
+            # this reply with the rest of the live stream.
+            if reply_group_id:
+                meta_sys["reply_group_id"] = reply_group_id
             sys_options = (
                 ask_user_options_from_messages(all_msgs) if stop_reason == "ask_user" else []
             )
@@ -1497,7 +1568,7 @@ class AgentLoop:
             and isinstance(msg.content, str)
             and msg.content.strip()
         ):
-            session.add_message("user", msg.content)
+            session.add_message("user", msg.content, reply_group_id=reply_group_id)
             self._mark_pending_user_turn(session)
             _tr = getattr(self, "_session_transcript", None)
             if _tr and _tr.enabled:
@@ -1540,6 +1611,7 @@ class AgentLoop:
             chat_id=msg.chat_id,
             message_id=msg.metadata.get("message_id"),
             pending_queue=pending_queue,
+            reply_group_id=reply_group_id,
         )
 
         if final_content is None or not final_content.strip():
@@ -1547,7 +1619,9 @@ class AgentLoop:
 
         # Skip the already-persisted user message when saving the turn
         save_skip = 1 + len(history) + (1 if user_persisted_early else 0)
-        self._save_turn(session, all_msgs, save_skip)
+        self._save_turn(
+            session, all_msgs, save_skip, reply_group_id=reply_group_id
+        )
         self._clear_pending_user_turn(session)
         self._clear_runtime_checkpoint(session)
         self.sessions.save(session)
@@ -1661,9 +1735,26 @@ class AgentLoop:
 
         return filtered
 
-    def _save_turn(self, session: Session, messages: list[dict], skip: int) -> None:
-        """Save new-turn messages into session, truncating large tool results."""
+    def _save_turn(
+        self,
+        session: Session,
+        messages: list[dict],
+        skip: int,
+        *,
+        reply_group_id: str | None = None,
+    ) -> None:
+        """Save new-turn messages into session, truncating large tool results.
+
+        Stamps ``reply_group_id`` onto every assistant / tool / user line that
+        does not already carry one before it lands in ``session.messages`` or
+        the transcript JSONL.  This is the safety net for messages that did
+        not flow through ``_LoopHook`` (final assistant after iteration ended,
+        runner-injected tool error placeholders, system / process_direct
+        turns, etc.) so the UI can group every line into the correct reply.
+        """
         for m in messages[skip:]:
+            if reply_group_id and isinstance(m, dict) and not m.get("reply_group_id"):
+                m["reply_group_id"] = reply_group_id
             entry = dict(m)
             # Strip internal marker before persisting to session.messages.
             entry.pop("_transcript_written", None)
@@ -1720,19 +1811,24 @@ class AgentLoop:
         """
         if not msg.content:
             return False
-        task_id = msg.metadata.get("subagent_task_id") if isinstance(msg.metadata, dict) else None
+        meta = msg.metadata if isinstance(msg.metadata, dict) else {}
+        task_id = meta.get("subagent_task_id")
         if task_id and any(
             m.get("injected_event") == "subagent_result" and m.get("subagent_task_id") == task_id
             for m in session.messages
         ):
             return False
-        session.add_message(
-            "assistant",
-            msg.content,
-            sender_id=msg.sender_id,
-            injected_event="subagent_result",
-            subagent_task_id=task_id,
-        )
+        # Stamp the parent turn's reply_group_id so the subagent answer is
+        # grouped with the rest of the assistant reply in transcript replay.
+        rg = meta.get("reply_group_id") if isinstance(meta, dict) else None
+        extra: dict[str, Any] = {
+            "sender_id": msg.sender_id,
+            "injected_event": "subagent_result",
+            "subagent_task_id": task_id,
+        }
+        if isinstance(rg, str) and rg:
+            extra["reply_group_id"] = rg
+        session.add_message("assistant", msg.content, **extra)
         return True
 
     def _set_runtime_checkpoint(self, session: Session, payload: dict[str, Any]) -> None:
