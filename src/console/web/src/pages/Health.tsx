@@ -7,12 +7,10 @@ import {
   Tag,
   Spin,
   Alert,
-  Button,
   Typography,
-  Empty,
 } from 'antd';
-import { CheckCircleOutlined, ExclamationCircleOutlined, InfoCircleOutlined } from '@ant-design/icons';
-import { ArrowRight, Heart, LineChart, RefreshCw } from 'lucide-react';
+import { ExclamationCircleOutlined, InfoCircleOutlined } from '@ant-design/icons';
+import { ArrowRight, Heart, LineChart } from 'lucide-react';
 import * as api from '../api/client';
 import { formatQueryError } from '../utils/errors';
 import { useAppStore } from '../store';
@@ -42,7 +40,7 @@ export default function Health({ embedded = false }: { embedded?: boolean } = {}
   const { t } = useTranslation();
   const { currentBotId } = useAppStore();
 
-  const { data, isLoading, error, refetch } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: ['health-audit', currentBotId],
     queryFn: () => api.getHealthAudit(currentBotId),
   });
@@ -51,7 +49,6 @@ export default function Health({ embedded = false }: { embedded?: boolean } = {}
     data: obsData,
     isLoading: obsLoading,
     error: obsError,
-    refetch: refetchObs,
   } = useQuery({
     queryKey: ['observability', currentBotId],
     queryFn: () => api.getObservability(currentBotId),
@@ -91,17 +88,6 @@ export default function Health({ embedded = false }: { embedded?: boolean } = {}
             <p className="mt-1 max-w-2xl text-sm text-gray-500 dark:text-gray-400">{t('health.subtitle')}</p>
           </div>
         </div>
-        <Button
-          className="shrink-0"
-          type="default"
-          icon={<RefreshCw className="h-4 w-4" />}
-          onClick={() => {
-            void refetch();
-            void refetchObs();
-          }}
-        >
-          {t('common.refresh')}
-        </Button>
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto pt-1">
@@ -115,12 +101,10 @@ export default function Health({ embedded = false }: { embedded?: boolean } = {}
           />
         )}
         <Card
-          title={t('health.observabilityTitle')}
           size="small"
           loading={obsLoading}
           className="shrink-0 overflow-hidden shadow-sm dark:border-gray-700"
         >
-          <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">{t('health.observabilitySubtitle')}</p>
           {obsData && (
             <div className="flex flex-col gap-5">
               <div className="grid gap-4 md:grid-cols-2">
@@ -188,16 +172,7 @@ export default function Health({ embedded = false }: { embedded?: boolean } = {}
           )}
         </Card>
 
-        {issues.length === 0 ? (
-          <Card className="flex min-h-0 flex-1 flex-col overflow-hidden shadow-sm dark:border-gray-700 [&_.ant-card-body]:flex [&_.ant-card-body]:min-h-0 [&_.ant-card-body]:flex-1 [&_.ant-card-body]:flex-col [&_.ant-card-body]:items-center [&_.ant-card-body]:justify-center">
-            <Empty
-              image={<CheckCircleOutlined style={{ fontSize: 64, color: '#22c55e' }} />}
-              description={
-                <span className="text-base text-gray-600 dark:text-gray-300">{t('health.allGood')}</span>
-              }
-            />
-          </Card>
-        ) : (
+        {issues.length > 0 && (
           <>
             <Card size="small" className="shrink-0 shadow-sm dark:border-gray-700">
               <div className="flex flex-wrap items-center gap-2">
