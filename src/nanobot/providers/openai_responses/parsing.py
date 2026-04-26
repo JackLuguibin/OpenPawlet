@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Awaitable, Callable
-from typing import Any, AsyncGenerator
+from collections.abc import AsyncGenerator, Awaitable, Callable
+from typing import Any
 
 import httpx
 import json_repair
@@ -30,7 +30,7 @@ async def iter_sse(response: httpx.Response) -> AsyncGenerator[dict[str, Any], N
     buffer: list[str] = []
 
     def _flush() -> dict[str, Any] | None:
-        data_lines = [l[5:].strip() for l in buffer if l.startswith("data:")]
+        data_lines = [line[5:].strip() for line in buffer if line.startswith("data:")]
         buffer.clear()
         if not data_lines:
             return None
@@ -177,11 +177,13 @@ def parse_response_output(response: Any) -> LLMResponse:
                 args = json_repair.loads(args_raw) if isinstance(args_raw, str) else args_raw
                 if not isinstance(args, dict):
                     args = {"raw": args_raw}
-            tool_calls.append(ToolCallRequest(
-                id=f"{call_id}|{item_id}",
-                name=item.get("name") or "",
-                arguments=args if isinstance(args, dict) else {},
-            ))
+            tool_calls.append(
+                ToolCallRequest(
+                    id=f"{call_id}|{item_id}",
+                    name=item.get("name") or "",
+                    arguments=args if isinstance(args, dict) else {},
+                )
+            )
 
     usage_raw = response.get("usage") or {}
     if not isinstance(usage_raw, dict):

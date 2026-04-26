@@ -24,7 +24,9 @@ class NanobotGatewayInfo(BaseModel):
     endpoint: str = Field(description="URL that was probed")
     ok: bool = Field(description="True when HTTP 200 and body looks healthy")
     status: str | None = Field(default=None, description="`status` field from JSON body if present")
-    version: str | None = Field(default=None, description="`version` from nanobot gateway if present")
+    version: str | None = Field(
+        default=None, description="`version` from nanobot gateway if present"
+    )
     uptime_s: float | None = Field(default=None, description="`uptime_s` from nanobot if present")
     error: str | None = Field(default=None, description="Probe or parse error, when not ok")
 

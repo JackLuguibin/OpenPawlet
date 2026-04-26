@@ -15,16 +15,18 @@ from nanobot.agent.tools.registry import ToolRegistry
 # Transient connection errors that warrant a single retry.
 # These typically happen when an MCP server restarts or a network
 # connection is interrupted between calls.
-_TRANSIENT_EXC_NAMES: frozenset[str] = frozenset((
-    "ClosedResourceError",
-    "BrokenResourceError",
-    "EndOfStream",
-    "BrokenPipeError",
-    "ConnectionResetError",
-    "ConnectionRefusedError",
-    "ConnectionAbortedError",
-    "ConnectionError",
-))
+_TRANSIENT_EXC_NAMES: frozenset[str] = frozenset(
+    (
+        "ClosedResourceError",
+        "BrokenResourceError",
+        "EndOfStream",
+        "BrokenPipeError",
+        "ConnectionResetError",
+        "ConnectionRefusedError",
+        "ConnectionAbortedError",
+        "ConnectionError",
+    )
+)
 
 _WINDOWS_SHELL_LAUNCHERS: frozenset[str] = frozenset(("npx", "npm", "pnpm", "yarn", "bunx"))
 
@@ -164,10 +166,8 @@ class MCPToolWrapper(Tool):
                     self._session.call_tool(self._original_name, arguments=kwargs),
                     timeout=self._tool_timeout,
                 )
-            except asyncio.TimeoutError:
-                logger.warning(
-                    "MCP tool '{}' timed out after {}s", self._name, self._tool_timeout
-                )
+            except TimeoutError:
+                logger.warning("MCP tool '{}' timed out after {}s", self._name, self._tool_timeout)
                 return f"(MCP tool call timed out after {self._tool_timeout}s)"
             except asyncio.CancelledError:
                 # MCP SDK's anyio cancel scopes can leak CancelledError on timeout/failure.
@@ -256,7 +256,7 @@ class MCPResourceWrapper(Tool):
                     self._session.read_resource(self._uri),
                     timeout=self._resource_timeout,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.warning(
                     "MCP resource '{}' timed out after {}s", self._name, self._resource_timeout
                 )
@@ -361,7 +361,7 @@ class MCPPromptWrapper(Tool):
                     self._session.get_prompt(self._prompt_name, arguments=kwargs),
                     timeout=self._prompt_timeout,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.warning(
                     "MCP prompt '{}' timed out after {}s", self._name, self._prompt_timeout
                 )

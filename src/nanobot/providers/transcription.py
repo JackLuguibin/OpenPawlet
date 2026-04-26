@@ -40,7 +40,10 @@ class OpenAITranscriptionProvider:
                         files["language"] = (None, self.language)
                     headers = {"Authorization": f"Bearer {self.api_key}"}
                     response = await client.post(
-                        self.api_url, headers=headers, files=files, timeout=60.0,
+                        self.api_url,
+                        headers=headers,
+                        files=files,
+                        timeout=60.0,
                     )
                     response.raise_for_status()
                     return response.json().get("text", "")
@@ -63,7 +66,11 @@ class GroqTranscriptionProvider:
         language: str | None = None,
     ):
         self.api_key = api_key or os.environ.get("GROQ_API_KEY")
-        self.api_url = api_base or os.environ.get("GROQ_BASE_URL") or "https://api.groq.com/openai/v1/audio/transcriptions"
+        self.api_url = (
+            api_base
+            or os.environ.get("GROQ_BASE_URL")
+            or "https://api.groq.com/openai/v1/audio/transcriptions"
+        )
         self.language = language or None
 
     async def transcribe(self, file_path: str | Path) -> str:
@@ -99,10 +106,7 @@ class GroqTranscriptionProvider:
                     }
 
                     response = await client.post(
-                        self.api_url,
-                        headers=headers,
-                        files=files,
-                        timeout=60.0
+                        self.api_url, headers=headers, files=files, timeout=60.0
                     )
 
                     response.raise_for_status()

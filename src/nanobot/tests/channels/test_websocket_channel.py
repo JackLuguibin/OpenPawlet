@@ -118,12 +118,12 @@ def test_parse_inbound_invalid_json_falls_back_to_raw_string() -> None:
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [
-        ('{"content": ""}', None),           # empty string content
-        ('{"content": 123}', None),          # non-string content
-        ('{"content": "  "}', None),         # whitespace-only content
-        ('["hello"]', None),                  # JSON array: ignored (not a content object)
-        ('{"unknown_key": "val"}', None),    # unrecognized key
-        ('{"content": null}', None),         # null content
+        ('{"content": ""}', None),  # empty string content
+        ('{"content": 123}', None),  # non-string content
+        ('{"content": "  "}', None),  # whitespace-only content
+        ('["hello"]', None),  # JSON array: ignored (not a content object)
+        ('{"unknown_key": "val"}', None),  # unrecognized key
+        ('{"content": null}', None),  # null content
     ],
 )
 def test_parse_inbound_payload_edge_cases(raw: str, expected: str | None) -> None:
@@ -547,7 +547,8 @@ def test_registry_discovers_websocket_channel() -> None:
 async def test_http_route_issues_token_then_websocket_requires_it(bus: MagicMock) -> None:
     port = 29879
     channel = _ch(
-        bus, port=port,
+        bus,
+        port=port,
         tokenIssuePath="/auth/token",
         tokenIssueSecret="route-secret",
         websocketRequiresToken=True,
@@ -597,21 +598,17 @@ async def test_end_to_end_server_pushes_streaming_deltas_to_client(bus: MagicMoc
     await asyncio.sleep(0.3)
 
     try:
-        async with websockets.connect(f"ws://127.0.0.1:{port}/ws?client_id=stream-tester") as client:
+        async with websockets.connect(
+            f"ws://127.0.0.1:{port}/ws?client_id=stream-tester"
+        ) as client:
             ready_raw = await client.recv()
             ready = json.loads(ready_raw)
             chat_id = ready["chat_id"]
 
             # Server pushes deltas directly
-            await channel.send_delta(
-                chat_id, "Hello ", {"_stream_delta": True, "_stream_id": "s1"}
-            )
-            await channel.send_delta(
-                chat_id, "world", {"_stream_delta": True, "_stream_id": "s1"}
-            )
-            await channel.send_delta(
-                chat_id, "", {"_stream_end": True, "_stream_id": "s1"}
-            )
+            await channel.send_delta(chat_id, "Hello ", {"_stream_delta": True, "_stream_id": "s1"})
+            await channel.send_delta(chat_id, "world", {"_stream_delta": True, "_stream_id": "s1"})
+            await channel.send_delta(chat_id, "", {"_stream_end": True, "_stream_id": "s1"})
 
             delta1 = json.loads(await client.recv())
             assert delta1["event"] == "delta"
@@ -719,7 +716,8 @@ async def test_non_utf8_binary_frame_ignored(bus: MagicMock) -> None:
 async def test_static_token_accepts_issued_token_as_fallback(bus: MagicMock) -> None:
     port = 29885
     channel = _ch(
-        bus, port=port,
+        bus,
+        port=port,
         token="static-secret",
         tokenIssuePath="/auth/token",
         tokenIssueSecret="route-secret",
@@ -738,7 +736,9 @@ async def test_static_token_accepts_issued_token_as_fallback(bus: MagicMock) -> 
         issued_token = resp.json()["token"]
 
         # Connect using issued token (not the static one)
-        async with websockets.connect(f"ws://127.0.0.1:{port}/ws?token={issued_token}&client_id=caller") as client:
+        async with websockets.connect(
+            f"ws://127.0.0.1:{port}/ws?token={issued_token}&client_id=caller"
+        ) as client:
             ready = json.loads(await client.recv())
             assert ready["event"] == "ready"
     finally:
@@ -878,9 +878,7 @@ async def test_second_connection_same_chat_id_replaces_first(bus: MagicMock) -> 
                 await asyncio.sleep(0.1)
                 assert first.close_code == 1000
 
-                await channel.send_delta(
-                    cid, "x", {"_stream_delta": True, "_stream_id": "s1"}
-                )
+                await channel.send_delta(cid, "x", {"_stream_delta": True, "_stream_id": "s1"})
                 delta = json.loads(await second.recv())
                 assert delta["event"] == "delta"
                 assert delta["text"] == "x"
@@ -962,9 +960,7 @@ async def test_multiplex_new_chat_roundtrip(bus: MagicMock) -> None:
             assert inbound.content == "hi on new"
 
             # Server pushes a message back; chat_id must match
-            await channel.send(
-                OutboundMessage(channel="websocket", chat_id=new_chat, content="ok")
-            )
+            await channel.send(OutboundMessage(channel="websocket", chat_id=new_chat, content="ok"))
             reply = json.loads(await client.recv())
             assert reply["event"] == "message"
             assert reply["chat_id"] == new_chat

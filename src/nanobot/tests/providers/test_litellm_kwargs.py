@@ -58,11 +58,13 @@ def _fake_responses_response(content: str = "ok") -> MagicMock:
     """Build a minimal Responses API response object."""
     resp = MagicMock()
     resp.model_dump.return_value = {
-        "output": [{
-            "type": "message",
-            "role": "assistant",
-            "content": [{"type": "output_text", "text": content}],
-        }],
+        "output": [
+            {
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "output_text", "text": content}],
+            }
+        ],
         "status": "completed",
         "usage": {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15},
     }
@@ -87,11 +89,21 @@ def _fake_responses_stream(text: str = "ok"):
 def _fake_chat_stream(text: str = "ok"):
     async def _stream():
         yield SimpleNamespace(
-            choices=[SimpleNamespace(finish_reason=None, delta=SimpleNamespace(content=text, reasoning_content=None, tool_calls=None))],
+            choices=[
+                SimpleNamespace(
+                    finish_reason=None,
+                    delta=SimpleNamespace(content=text, reasoning_content=None, tool_calls=None),
+                )
+            ],
             usage=None,
         )
         yield SimpleNamespace(
-            choices=[SimpleNamespace(finish_reason="stop", delta=SimpleNamespace(content=None, reasoning_content=None, tool_calls=None))],
+            choices=[
+                SimpleNamespace(
+                    finish_reason="stop",
+                    delta=SimpleNamespace(content=None, reasoning_content=None, tool_calls=None),
+                )
+            ],
             usage=SimpleNamespace(prompt_tokens=10, completion_tokens=5, total_tokens=15),
         )
 
@@ -418,7 +430,9 @@ async def test_direct_openai_streaming_gpt5_uses_responses_api() -> None:
 @pytest.mark.asyncio
 async def test_direct_openai_responses_404_falls_back_to_chat_completions() -> None:
     mock_chat = AsyncMock(return_value=_fake_chat_response("from chat"))
-    mock_responses = AsyncMock(side_effect=_FakeResponsesError(404, "Responses endpoint not supported"))
+    mock_responses = AsyncMock(
+        side_effect=_FakeResponsesError(404, "Responses endpoint not supported")
+    )
     spec = find_by_name("openai")
 
     with patch("nanobot.providers.openai_compat_provider.AsyncOpenAI") as MockClient:
@@ -474,7 +488,9 @@ async def test_direct_openai_open_circuit_skips_responses_api() -> None:
 async def test_direct_openai_stream_responses_unsupported_param_falls_back() -> None:
     mock_chat = AsyncMock(return_value=_fake_chat_stream("fallback stream"))
     mock_responses = AsyncMock(
-        side_effect=_FakeResponsesError(400, "Unknown parameter: max_output_tokens for Responses API")
+        side_effect=_FakeResponsesError(
+            400, "Unknown parameter: max_output_tokens for Responses API"
+        )
     )
     spec = find_by_name("openai")
 
@@ -560,52 +576,63 @@ def test_openai_compat_preserves_message_level_reasoning_fields() -> None:
     with patch("nanobot.providers.openai_compat_provider.AsyncOpenAI"):
         provider = OpenAICompatProvider()
 
-    sanitized = provider._sanitize_messages([
-        {"role": "user", "content": "hi"},
-        {
-            "role": "assistant",
-            "content": "done",
-            "reasoning_content": "hidden",
-            "extra_content": {"debug": True},
-            "tool_calls": [
-                {
-                    "id": "call_1",
-                    "type": "function",
-                    "function": {"name": "fn", "arguments": "{}"},
-                    "extra_content": {"google": {"thought_signature": "sig"}},
-                }
-            ],
-        },
-        {"role": "user", "content": "thanks"},
-    ])
+    sanitized = provider._sanitize_messages(
+        [
+            {"role": "user", "content": "hi"},
+            {
+                "role": "assistant",
+                "content": "done",
+                "reasoning_content": "hidden",
+                "extra_content": {"debug": True},
+                "tool_calls": [
+                    {
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {"name": "fn", "arguments": "{}"},
+                        "extra_content": {"google": {"thought_signature": "sig"}},
+                    }
+                ],
+            },
+            {"role": "user", "content": "thanks"},
+        ]
+    )
 
     assert sanitized[1]["content"] is None
     assert sanitized[1]["reasoning_content"] == "hidden"
     assert sanitized[1]["extra_content"] == {"debug": True}
-    assert sanitized[1]["tool_calls"][0]["extra_content"] == {"google": {"thought_signature": "sig"}}
+    assert sanitized[1]["tool_calls"][0]["extra_content"] == {
+        "google": {"thought_signature": "sig"}
+    }
 
 
 def test_openai_compat_keeps_tool_calls_after_consecutive_assistant_messages() -> None:
     with patch("nanobot.providers.openai_compat_provider.AsyncOpenAI"):
         provider = OpenAICompatProvider()
 
-    sanitized = provider._sanitize_messages([
-        {"role": "user", "content": "不错"},
-        {"role": "assistant", "content": "对，破 4 万指日可待"},
-        {
-            "role": "assistant",
-            "content": "<think>我再查一下</think>",
-            "tool_calls": [
-                {
-                    "id": "call_function_akxp3wqzn7ph_1",
-                    "type": "function",
-                    "function": {"name": "exec", "arguments": "{}"},
-                }
-            ],
-        },
-        {"role": "tool", "tool_call_id": "call_function_akxp3wqzn7ph_1", "name": "exec", "content": "ok"},
-        {"role": "user", "content": "多少star了呢"},
-    ])
+    sanitized = provider._sanitize_messages(
+        [
+            {"role": "user", "content": "不错"},
+            {"role": "assistant", "content": "对，破 4 万指日可待"},
+            {
+                "role": "assistant",
+                "content": "<think>我再查一下</think>",
+                "tool_calls": [
+                    {
+                        "id": "call_function_akxp3wqzn7ph_1",
+                        "type": "function",
+                        "function": {"name": "exec", "arguments": "{}"},
+                    }
+                ],
+            },
+            {
+                "role": "tool",
+                "tool_call_id": "call_function_akxp3wqzn7ph_1",
+                "name": "exec",
+                "content": "ok",
+            },
+            {"role": "user", "content": "多少star了呢"},
+        ]
+    )
 
     assert sanitized[1]["role"] == "assistant"
     assert sanitized[1]["content"] is None
@@ -617,22 +644,24 @@ def test_openai_compat_stringifies_dict_tool_arguments() -> None:
     with patch("nanobot.providers.openai_compat_provider.AsyncOpenAI"):
         provider = OpenAICompatProvider()
 
-    sanitized = provider._sanitize_messages([
-        {"role": "user", "content": "hi"},
-        {
-            "role": "assistant",
-            "content": "",
-            "tool_calls": [
-                {
-                    "id": "call_1",
-                    "type": "function",
-                    "function": {"name": "exec", "arguments": {"cmd": "ls -la"}},
-                }
-            ],
-        },
-        {"role": "tool", "tool_call_id": "call_1", "name": "exec", "content": "ok"},
-        {"role": "user", "content": "done"},
-    ])
+    sanitized = provider._sanitize_messages(
+        [
+            {"role": "user", "content": "hi"},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {"name": "exec", "arguments": {"cmd": "ls -la"}},
+                    }
+                ],
+            },
+            {"role": "tool", "tool_call_id": "call_1", "name": "exec", "content": "ok"},
+            {"role": "user", "content": "done"},
+        ]
+    )
 
     assert sanitized[1]["tool_calls"][0]["function"]["arguments"] == '{"cmd": "ls -la"}'
 
@@ -641,22 +670,24 @@ def test_openai_compat_repairs_non_json_tool_arguments_string() -> None:
     with patch("nanobot.providers.openai_compat_provider.AsyncOpenAI"):
         provider = OpenAICompatProvider()
 
-    sanitized = provider._sanitize_messages([
-        {"role": "user", "content": "hi"},
-        {
-            "role": "assistant",
-            "content": "",
-            "tool_calls": [
-                {
-                    "id": "call_1",
-                    "type": "function",
-                    "function": {"name": "exec", "arguments": "{'cmd': 'pwd'}"},
-                }
-            ],
-        },
-        {"role": "tool", "tool_call_id": "call_1", "name": "exec", "content": "ok"},
-        {"role": "user", "content": "done"},
-    ])
+    sanitized = provider._sanitize_messages(
+        [
+            {"role": "user", "content": "hi"},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {"name": "exec", "arguments": "{'cmd': 'pwd'}"},
+                    }
+                ],
+            },
+            {"role": "tool", "tool_call_id": "call_1", "name": "exec", "content": "ok"},
+            {"role": "user", "content": "done"},
+        ]
+    )
 
     assert sanitized[1]["tool_calls"][0]["function"]["arguments"] == '{"cmd": "pwd"}'
 
@@ -665,22 +696,24 @@ def test_openai_compat_defaults_missing_tool_arguments_to_empty_object() -> None
     with patch("nanobot.providers.openai_compat_provider.AsyncOpenAI"):
         provider = OpenAICompatProvider()
 
-    sanitized = provider._sanitize_messages([
-        {"role": "user", "content": "hi"},
-        {
-            "role": "assistant",
-            "content": "",
-            "tool_calls": [
-                {
-                    "id": "call_1",
-                    "type": "function",
-                    "function": {"name": "exec"},
-                }
-            ],
-        },
-        {"role": "tool", "tool_call_id": "call_1", "name": "exec", "content": "ok"},
-        {"role": "user", "content": "done"},
-    ])
+    sanitized = provider._sanitize_messages(
+        [
+            {"role": "user", "content": "hi"},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {"name": "exec"},
+                    }
+                ],
+            },
+            {"role": "tool", "tool_call_id": "call_1", "name": "exec", "content": "ok"},
+            {"role": "user", "content": "done"},
+        ]
+    )
 
     assert sanitized[1]["tool_calls"][0]["function"]["arguments"] == "{}"
 
@@ -714,14 +747,19 @@ async def test_openai_compat_stream_watchdog_returns_error_on_stall(monkeypatch)
 # Provider-specific thinking parameters (extra_body)
 # ---------------------------------------------------------------------------
 
+
 def _build_kwargs_for(provider_name: str, model: str, reasoning_effort=None):
     spec = find_by_name(provider_name)
     with patch("nanobot.providers.openai_compat_provider.AsyncOpenAI"):
         p = OpenAICompatProvider(api_key="k", default_model=model, spec=spec)
     return p._build_kwargs(
         messages=[{"role": "user", "content": "hi"}],
-        tools=None, model=model, max_tokens=1024, temperature=0.7,
-        reasoning_effort=reasoning_effort, tool_choice=None,
+        tools=None,
+        model=model,
+        max_tokens=1024,
+        temperature=0.7,
+        reasoning_effort=reasoning_effort,
+        tool_choice=None,
     )
 
 

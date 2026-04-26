@@ -6,7 +6,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from nanobot.utils.helpers import ensure_dir, safe_filename, timestamp, truncate_text as truncate_text_fn
+from nanobot.utils.helpers import ensure_dir, safe_filename, timestamp
+from nanobot.utils.helpers import truncate_text as truncate_text_fn
 
 
 class SessionTranscriptWriter:
@@ -69,7 +70,9 @@ class SessionTranscriptWriter:
             if block.get("type") == "text" and isinstance(block.get("text"), str):
                 text = block["text"]
                 if len(text) > self.max_tool_result_chars:
-                    out.append({**block, "text": truncate_text_fn(text, self.max_tool_result_chars)})
+                    out.append(
+                        {**block, "text": truncate_text_fn(text, self.max_tool_result_chars)}
+                    )
                 else:
                     out.append(dict(block))
             else:

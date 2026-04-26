@@ -578,12 +578,8 @@ class AgentLoop:
         # Events tools: agent-to-agent / pub-sub.  SubscribeEventTool
         # forwards background events to the loop as InboundMessage so the
         # agent can react on its next turn without blocking the current one.
-        self.tools.register(
-            PublishEventTool(bus=self.bus, default_source_agent=self.agent_id)
-        )
-        self.tools.register(
-            SendToAgentTool(bus=self.bus, default_source_agent=self.agent_id)
-        )
+        self.tools.register(PublishEventTool(bus=self.bus, default_source_agent=self.agent_id))
+        self.tools.register(SendToAgentTool(bus=self.bus, default_source_agent=self.agent_id))
         self.tools.register(
             SendToAgentWaitReplyTool(bus=self.bus, default_source_agent=self.agent_id)
         )
@@ -637,7 +633,9 @@ class AgentLoop:
                     if name == "spawn":
                         tool.set_context(channel, chat_id, effective_key=effective_key)
                     else:
-                        tool.set_context(channel, chat_id, *([message_id] if name == "message" else []))
+                        tool.set_context(
+                            channel, chat_id, *([message_id] if name == "message" else [])
+                        )
         # Event tools follow a different signature (agent_id-aware) so
         # they get their own configuration pass.
         for name in (
@@ -823,9 +821,11 @@ class AgentLoop:
             # Block if nothing drained but sub-agents spawned in this dispatch
             # are still running.  Keeps the runner loop alive so subsequent
             # completions are injected in-order rather than dispatched separately.
-            if (not items
-                    and session is not None
-                    and self.subagents.get_running_count_by_session(session.key) > 0):
+            if (
+                not items
+                and session is not None
+                and self.subagents.get_running_count_by_session(session.key) > 0
+            ):
                 try:
                     msg = await asyncio.wait_for(pending_queue.get(), timeout=300)
                 except TimeoutError:
@@ -843,25 +843,27 @@ class AgentLoop:
 
             return items
 
-        result = await self.runner.run(AgentRunSpec(
-            initial_messages=initial_messages,
-            tools=self.tools,
-            model=self.model,
-            max_iterations=self.max_iterations,
-            max_tool_result_chars=self.max_tool_result_chars,
-            hook=hook,
-            error_message="Sorry, I encountered an error calling the AI model.",
-            concurrent_tools=True,
-            workspace=self.workspace,
-            session_key=session.key if session else None,
-            context_window_tokens=self.context_window_tokens,
-            context_block_limit=self.context_block_limit,
-            provider_retry_mode=self.provider_retry_mode,
-            progress_callback=on_progress,
-            retry_wait_callback=on_retry_wait,
-            checkpoint_callback=_checkpoint,
-            injection_callback=_drain_pending,
-        ))
+        result = await self.runner.run(
+            AgentRunSpec(
+                initial_messages=initial_messages,
+                tools=self.tools,
+                model=self.model,
+                max_iterations=self.max_iterations,
+                max_tool_result_chars=self.max_tool_result_chars,
+                hook=hook,
+                error_message="Sorry, I encountered an error calling the AI model.",
+                concurrent_tools=True,
+                workspace=self.workspace,
+                session_key=session.key if session else None,
+                context_window_tokens=self.context_window_tokens,
+                context_block_limit=self.context_block_limit,
+                provider_retry_mode=self.provider_retry_mode,
+                progress_callback=on_progress,
+                retry_wait_callback=on_retry_wait,
+                checkpoint_callback=_checkpoint,
+                injection_callback=_drain_pending,
+            )
+        )
         self._last_usage = result.usage
         if result.stop_reason == "max_iterations":
             logger.warning("Max iterations ({}) reached", self.max_iterations)
@@ -872,7 +874,13 @@ class AgentLoop:
                 await on_stream_end(resuming=False)
         elif result.stop_reason == "error":
             logger.error("LLM returned error: {}", (result.final_content or "")[:200])
-        return result.final_content, result.tools_used, result.messages, result.stop_reason, result.had_injections
+        return (
+            result.final_content,
+            result.tools_used,
+            result.messages,
+            result.stop_reason,
+            result.had_injections,
+        )
 
     async def _install_team_event_tap(self) -> None:
         """If ``NANOBOT_TEAM_SESSION_KEY`` is set, install background bus subscription."""
@@ -973,7 +981,9 @@ class AgentLoop:
             target, effective_key = self._dispatch_target_for_message(msg)
             if target.commands.is_priority(raw):
                 await target._dispatch_command_inline(
-                    msg, effective_key, raw,
+                    msg,
+                    effective_key,
+                    raw,
                     target.commands.dispatch_priority,
                 )
                 continue
@@ -985,7 +995,9 @@ class AgentLoop:
                 # dispatch them directly (same pattern as priority commands).
                 if target.commands.is_dispatchable_command(raw):
                     await target._dispatch_command_inline(
-                        msg, effective_key, raw,
+                        msg,
+                        effective_key,
+                        raw,
                         target.commands.dispatch,
                     )
                     continue
@@ -1013,15 +1025,14 @@ class AgentLoop:
             task = asyncio.create_task(target._dispatch(msg))
             target._active_tasks.setdefault(effective_key, []).append(task)
             task.add_done_callback(
-                lambda t, k=effective_key, tgt=target: tgt._active_tasks.get(k, [])
-                and tgt._active_tasks[k].remove(t)
-                if t in tgt._active_tasks.get(k, [])
-                else None
+                lambda t, k=effective_key, tgt=target: (
+                    tgt._active_tasks.get(k, []) and tgt._active_tasks[k].remove(t)
+                    if t in tgt._active_tasks.get(k, [])
+                    else None
+                )
             )
 
-    async def _publish_session_turn_lifecycle(
-        self, msg: InboundMessage, *, phase: str
-    ) -> None:
+    async def _publish_session_turn_lifecycle(self, msg: InboundMessage, *, phase: str) -> None:
         """Notify channel that an agent turn is starting or finished (wire protocol specific)."""
         meta = dict(msg.metadata or {})
         meta["_session_turn_event"] = phase
@@ -1076,11 +1087,14 @@ class AgentLoop:
                                 meta = dict(msg.metadata or {})
                                 meta["_stream_delta"] = True
                                 meta["_stream_id"] = _current_stream_id()
-                                await self.bus.publish_outbound(OutboundMessage(
-                                    channel=msg.channel, chat_id=msg.chat_id,
-                                    content=delta,
-                                    metadata=meta,
-                                ))
+                                await self.bus.publish_outbound(
+                                    OutboundMessage(
+                                        channel=msg.channel,
+                                        chat_id=msg.chat_id,
+                                        content=delta,
+                                        metadata=meta,
+                                    )
+                                )
 
                             async def on_stream_end(*, resuming: bool = False) -> None:
                                 nonlocal stream_segment
@@ -1088,24 +1102,33 @@ class AgentLoop:
                                 meta["_stream_end"] = True
                                 meta["_resuming"] = resuming
                                 meta["_stream_id"] = _current_stream_id()
-                                await self.bus.publish_outbound(OutboundMessage(
-                                    channel=msg.channel, chat_id=msg.chat_id,
-                                    content="",
-                                    metadata=meta,
-                                ))
+                                await self.bus.publish_outbound(
+                                    OutboundMessage(
+                                        channel=msg.channel,
+                                        chat_id=msg.chat_id,
+                                        content="",
+                                        metadata=meta,
+                                    )
+                                )
                                 stream_segment += 1
 
                         response = await self._process_message(
-                            msg, on_stream=on_stream, on_stream_end=on_stream_end,
+                            msg,
+                            on_stream=on_stream,
+                            on_stream_end=on_stream_end,
                             pending_queue=pending,
                         )
                         if response is not None:
                             await self.bus.publish_outbound(response)
                         elif msg.channel == "cli":
-                            await self.bus.publish_outbound(OutboundMessage(
-                                channel=msg.channel, chat_id=msg.chat_id,
-                                content="", metadata=msg.metadata or {},
-                            ))
+                            await self.bus.publish_outbound(
+                                OutboundMessage(
+                                    channel=msg.channel,
+                                    chat_id=msg.chat_id,
+                                    content="",
+                                    metadata=msg.metadata or {},
+                                )
+                            )
                     except asyncio.CancelledError:
                         outcome = "cancelled"
                         logger.info("Task cancelled for session {}", session_key)
@@ -1113,15 +1136,19 @@ class AgentLoop:
                     except Exception:
                         outcome = "error"
                         logger.exception("Error processing message for session {}", session_key)
-                        await self.bus.publish_outbound(OutboundMessage(
-                            channel=msg.channel, chat_id=msg.chat_id,
-                            content="Sorry, I encountered an error.",
-                        ))
+                        await self.bus.publish_outbound(
+                            OutboundMessage(
+                                channel=msg.channel,
+                                chat_id=msg.chat_id,
+                                content="Sorry, I encountered an error.",
+                            )
+                        )
                     finally:
                         elapsed_ms = (time.perf_counter() - t0) * 1000
                         logger.info(
                             "agent_turn_done outcome={} elapsed_ms={:.1f}",
-                            outcome, elapsed_ms,
+                            outcome,
+                            elapsed_ms,
                         )
                         if turn_lifecycle:
                             await self._publish_session_turn_lifecycle(msg, phase="end")
@@ -1142,7 +1169,8 @@ class AgentLoop:
                 if leftover:
                     logger.info(
                         "Re-published {} leftover message(s) to bus for session {}",
-                        leftover, session_key,
+                        leftover,
+                        session_key,
                     )
 
     async def close_mcp(self) -> None:
@@ -1228,7 +1256,10 @@ class AgentLoop:
                 source="system_turn",
             )
             final_content, _, all_msgs, _, _ = await self._run_agent_loop(
-                messages, session=session, channel=channel, chat_id=chat_id,
+                messages,
+                session=session,
+                channel=channel,
+                chat_id=chat_id,
                 message_id=msg.metadata.get("message_id"),
                 pending_queue=pending_queue,
             )
@@ -1392,7 +1423,9 @@ class AgentLoop:
         preview = final_content[:120] + "..." if len(final_content) > 120 else final_content
         tid = get_trace_id()
         if tid:
-            logger.info("Response to {}:{} (trace_id={}): {}", msg.channel, msg.sender_id, tid, preview)
+            logger.info(
+                "Response to {}:{} (trace_id={}): {}", msg.channel, msg.sender_id, tid, preview
+            )
         else:
             logger.info("Response to {}:{}: {}", msg.channel, msg.sender_id, preview)
 
@@ -1495,20 +1528,22 @@ class AgentLoop:
                         continue
                     entry["content"] = filtered
             elif role == "user":
-                if isinstance(content, str) and content.startswith(ContextBuilder._RUNTIME_CONTEXT_TAG):
+                if isinstance(content, str) and content.startswith(
+                    ContextBuilder._RUNTIME_CONTEXT_TAG
+                ):
                     # Strip the entire runtime-context block (including any session summary).
                     # The block is bounded by _RUNTIME_CONTEXT_TAG and _RUNTIME_CONTEXT_END.
                     end_marker = ContextBuilder._RUNTIME_CONTEXT_END
                     end_pos = content.find(end_marker)
                     if end_pos >= 0:
-                        after = content[end_pos + len(end_marker):].lstrip("\n")
+                        after = content[end_pos + len(end_marker) :].lstrip("\n")
                         if after:
                             entry["content"] = after
                         else:
                             continue
                     else:
                         # Fallback: no end marker found, strip the tag prefix
-                        after_tag = content[len(ContextBuilder._RUNTIME_CONTEXT_TAG):].lstrip("\n")
+                        after_tag = content[len(ContextBuilder._RUNTIME_CONTEXT_TAG) :].lstrip("\n")
                         if after_tag.strip():
                             entry["content"] = after_tag
                         else:
@@ -1660,8 +1695,11 @@ class AgentLoop:
         """Process a message directly and return the outbound payload."""
         await self._connect_mcp()
         msg = InboundMessage(
-            channel=channel, sender_id="user", chat_id=chat_id,
-            content=content, media=media or [],
+            channel=channel,
+            sender_id="user",
+            chat_id=chat_id,
+            content=content,
+            media=media or [],
         )
         turn_id = str(uuid.uuid4())
         t0 = time.perf_counter()
@@ -1691,5 +1729,6 @@ class AgentLoop:
                 elapsed_ms = (time.perf_counter() - t0) * 1000
                 logger.info(
                     "agent_turn_done outcome={} elapsed_ms={:.1f}",
-                    outcome, elapsed_ms,
+                    outcome,
+                    elapsed_ms,
                 )

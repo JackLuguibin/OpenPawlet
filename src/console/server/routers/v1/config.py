@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
-from nanobot.config.schema import Config
 from pydantic import ValidationError
 
 from console.server.models import (
@@ -21,6 +20,8 @@ from console.server.nanobot_user_config import (
     save_full_config,
     validate_core_config,
 )
+from nanobot.config.schema import Config
+
 router = APIRouter(tags=["Config"])
 
 

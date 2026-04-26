@@ -58,7 +58,6 @@ async def test_subagent_exec_tool_receives_allowed_env_keys(tmp_path):
 async def test_drain_pending_blocks_while_subagents_running(tmp_path):
     """_drain_pending should block when no messages are available but sub-agents are still running."""
     from nanobot.agent.loop import AgentLoop
-    from nanobot.agent.subagent import SubagentManager
     from nanobot.bus.events import InboundMessage
     from nanobot.bus.queue import MessageBus
     from nanobot.session.manager import Session
@@ -126,14 +125,16 @@ async def test_drain_pending_blocks_while_subagents_running(tmp_path):
     assert not drain_task.done(), "drain should block while sub-agents are running"
 
     # Now put a message in the queue (simulating sub-agent completion)
-    await pending_queue.put(InboundMessage(
-        sender_id="subagent",
-        channel="test",
-        chat_id="c1",
-        content="Sub-agent result",
-        media=None,
-        metadata={},
-    ))
+    await pending_queue.put(
+        InboundMessage(
+            sender_id="subagent",
+            channel="test",
+            chat_id="c1",
+            content="Sub-agent result",
+            media=None,
+            metadata={},
+        )
+    )
 
     # Should unblock and return results
     results = await asyncio.wait_for(drain_task, timeout=2.0)

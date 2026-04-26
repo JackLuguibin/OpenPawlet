@@ -26,7 +26,8 @@ import asyncio
 import os
 import time
 from collections import defaultdict
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from loguru import logger
 
@@ -73,7 +74,9 @@ class EmbeddedNanobot:
         )
 
         if provider_factory is None:
-            from nanobot.cli.commands import _make_provider as provider_factory  # type: ignore[no-redef]
+            from nanobot.cli.commands import (
+                _make_provider as provider_factory,  # type: ignore[no-redef]
+            )
 
         if verbose:
             import logging
@@ -135,9 +138,7 @@ class EmbeddedNanobot:
                 env_room_id,
             )
         elif env_team_id and env_room_id and not team_member_ids:
-            logger.warning(
-                "team/room resolved but no member_agent_ids; skipping member loops"
-            )
+            logger.warning("team/room resolved but no member_agent_ids; skipping member loops")
 
         sub_ev = getattr(self.message_bus, "subscribe_events", None)
         if load_all_team_member_bindings(config.workspace_path) and sub_ev is None:
@@ -200,7 +201,9 @@ class EmbeddedNanobot:
         self.cron.on_job = self._on_cron_job
 
         # Channels (need a fully built agent so they can resolve busy state).
-        self.channels = ChannelManager(config, self.message_bus, session_manager=self.session_manager)
+        self.channels = ChannelManager(
+            config, self.message_bus, session_manager=self.session_manager
+        )
         ws_ch = self.channels.channels.get("websocket")
         if isinstance(ws_ch, WebSocketChannel):
             ws_ch.set_session_busy_resolver(self.agent.is_session_busy)
@@ -248,7 +251,7 @@ class EmbeddedNanobot:
         config_path: str | None = None,
         workspace: str | None = None,
         verbose: bool = False,
-    ) -> "EmbeddedNanobot":
+    ) -> EmbeddedNanobot:
         """Build an instance from on-disk config (matches legacy ``nanobot gateway``)."""
         from nanobot.cli.commands import _load_runtime_config
 
@@ -261,9 +264,7 @@ class EmbeddedNanobot:
             return
         self._started = True
         self._start_perf = time.perf_counter()
-        logger.info(
-            "{} Starting embedded nanobot runtime version {}", __logo__, __version__
-        )
+        logger.info("{} Starting embedded nanobot runtime version {}", __logo__, __version__)
 
         await self._ensure_team_runtime()
         self._reconciler_task = asyncio.create_task(
@@ -274,9 +275,7 @@ class EmbeddedNanobot:
         await self.heartbeat.start()
 
         agent_task = asyncio.create_task(self.agent.run(), name="nanobot-agent-run")
-        channels_task = asyncio.create_task(
-            self.channels.start_all(), name="nanobot-channels"
-        )
+        channels_task = asyncio.create_task(self.channels.start_all(), name="nanobot-channels")
         self._tasks.extend([agent_task, channels_task, self._reconciler_task])
 
     async def stop(self) -> None:
@@ -293,15 +292,10 @@ class EmbeddedNanobot:
         for task in list(self._team_tasks_by_agent.values()):
             task.cancel()
         if self._team_tasks_by_agent:
-            await asyncio.gather(
-                *self._team_tasks_by_agent.values(), return_exceptions=True
-            )
+            await asyncio.gather(*self._team_tasks_by_agent.values(), return_exceptions=True)
         self._team_tasks_by_agent.clear()
 
-        if (
-            self._primary_team_event_task is not None
-            and not self._primary_team_event_task.done()
-        ):
+        if self._primary_team_event_task is not None and not self._primary_team_event_task.done():
             self._primary_team_event_task.cancel()
             await asyncio.gather(self._primary_team_event_task, return_exceptions=True)
         self._primary_team_event_task = None
@@ -353,9 +347,7 @@ class EmbeddedNanobot:
     async def run_forever(self) -> None:
         """Convenience helper that mirrors the legacy gateway behaviour."""
         await self.start()
-        agent_task = next(
-            (t for t in self._tasks if t.get_name() == "nanobot-agent-run"), None
-        )
+        agent_task = next((t for t in self._tasks if t.get_name() == "nanobot-agent-run"), None)
         try:
             if agent_task is not None:
                 await agent_task
@@ -475,9 +467,7 @@ class EmbeddedNanobot:
             if loop is None or not session_key:
                 continue
             self._team_tasks_by_agent[aid] = asyncio.create_task(
-                run_team_member_event_loop(
-                    self.message_bus, loop, session_key=session_key
-                ),
+                run_team_member_event_loop(self.message_bus, loop, session_key=session_key),
                 name=f"team-member-{aid}",
             )
         self._rebuild_dispatch()
@@ -490,17 +480,12 @@ class EmbeddedNanobot:
             and callable(sub_api)
         )
         if want_primary_direct:
-            if (
-                self._primary_team_event_task is None
-                or self._primary_team_event_task.done()
-            ):
+            if self._primary_team_event_task is None or self._primary_team_event_task.done():
                 psk = team_member_session_key(
                     self._env_team_id, self._env_room_id, self._primary_aid
                 )
                 self._primary_team_event_task = asyncio.create_task(
-                    run_team_member_event_loop(
-                        self.message_bus, self.agent, session_key=psk
-                    ),
+                    run_team_member_event_loop(self.message_bus, self.agent, session_key=psk),
                     name=f"team-primary-{self._primary_aid}",
                 )
         else:

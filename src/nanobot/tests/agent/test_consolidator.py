@@ -1,8 +1,8 @@
 """Tests for the lightweight Consolidator — append-only to HISTORY.md."""
 
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from nanobot.agent.memory import Consolidator, MemoryStore
 
@@ -71,7 +71,9 @@ class TestConsolidatorArchiveErrorHandling:
     See https://github.com/HKUDS/nanobot/issues/3244
     """
 
-    async def test_archive_falls_back_on_error_finish_reason(self, consolidator, mock_provider, store):
+    async def test_archive_falls_back_on_error_finish_reason(
+        self, consolidator, mock_provider, store
+    ):
         """LLM returning finish_reason='error' should trigger raw_archive, not write error text."""
         mock_provider.chat_with_retry.return_value = MagicMock(
             content="Error: {'type': 'error', 'error': {'type': 'overloaded_error', 'message': 'overloaded_error (529)'}}",

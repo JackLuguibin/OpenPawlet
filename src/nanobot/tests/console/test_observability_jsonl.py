@@ -6,8 +6,6 @@ import json
 import time
 from pathlib import Path
 
-import pytest
-
 from console.server.observability_jsonl import read_recent_observability_dicts
 
 
@@ -20,7 +18,9 @@ def test_read_newest_first_and_limit(tmp_path: Path) -> None:
         {"ts": 2.0, "event": "b", "trace_id": "t1", "session_key": None, "payload": {}},
         {"ts": 3.0, "event": "c", "trace_id": "t1", "session_key": None, "payload": {}},
     ]
-    f.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n", encoding="utf-8")
+    f.write_text(
+        "\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n", encoding="utf-8"
+    )
 
     out, _label, err = read_recent_observability_dicts(tmp_path, limit=2, trace_id=None)
     assert err is None

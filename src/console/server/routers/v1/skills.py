@@ -123,9 +123,7 @@ async def get_skill_content(
     validate_skill_name(name)
     wpath = workspace_skill_md_path(bot_id, name)
     if wpath.is_file():
-        return DataResponse(
-            data=SkillContentResponse(name=name, content=read_text(wpath))
-        )
+        return DataResponse(data=SkillContentResponse(name=name, content=read_text(wpath)))
     cfg = _skill_cfg_map(bot_id)
     if name in cfg:
         return DataResponse(data=SkillContentResponse(name=name, content=""))
@@ -199,9 +197,7 @@ async def update_skill_bundle(
             try:
                 target.relative_to(skill_root)
             except ValueError as exc:
-                raise HTTPException(
-                    status_code=400, detail="Path escapes skill folder"
-                ) from exc
+                raise HTTPException(status_code=400, detail="Path escapes skill folder") from exc
             if not target.exists():
                 continue
             if target.is_dir():
@@ -224,24 +220,18 @@ async def update_skill_bundle(
         for raw in body.directories:
             d = validate_skill_bundle_dir_rel_path(raw)
             if d in dir_set:
-                raise HTTPException(
-                    status_code=400, detail="Duplicate directory path"
-                )
+                raise HTTPException(status_code=400, detail="Duplicate directory path")
             dir_set.add(d)
 
     if set(file_map) & dir_set:
-        raise HTTPException(
-            status_code=400, detail="Path is both file and directory"
-        )
+        raise HTTPException(status_code=400, detail="Path is both file and directory")
 
     for d in sorted(dir_set, key=len):
         target = (skill_root / d).resolve()
         try:
             target.relative_to(skill_root)
         except ValueError as exc:
-            raise HTTPException(
-                status_code=400, detail="Path escapes skill folder"
-            ) from exc
+            raise HTTPException(status_code=400, detail="Path escapes skill folder") from exc
         target.mkdir(parents=True, exist_ok=True)
 
     for rel, file_content in file_map.items():
@@ -249,9 +239,7 @@ async def update_skill_bundle(
         try:
             target.relative_to(skill_root)
         except ValueError as exc:
-            raise HTTPException(
-                status_code=400, detail="Path escapes skill folder"
-            ) from exc
+            raise HTTPException(status_code=400, detail="Path escapes skill folder") from exc
         write_text(target, file_content)
 
     write_text(wpath, body.content)
@@ -287,24 +275,18 @@ async def create_skill(
         for raw in body.directories:
             d = validate_skill_bundle_dir_rel_path(raw)
             if d in dir_set:
-                raise HTTPException(
-                    status_code=400, detail="Duplicate directory path"
-                )
+                raise HTTPException(status_code=400, detail="Duplicate directory path")
             dir_set.add(d)
 
     if set(file_map) & dir_set:
-        raise HTTPException(
-            status_code=400, detail="Path is both file and directory"
-        )
+        raise HTTPException(status_code=400, detail="Path is both file and directory")
 
     for d in sorted(dir_set, key=len):
         target = (skill_root / d).resolve()
         try:
             target.relative_to(skill_root)
         except ValueError as exc:
-            raise HTTPException(
-                status_code=400, detail="Path escapes skill folder"
-            ) from exc
+            raise HTTPException(status_code=400, detail="Path escapes skill folder") from exc
         target.mkdir(parents=True, exist_ok=True)
 
     for rel, file_content in file_map.items():
@@ -312,9 +294,7 @@ async def create_skill(
         try:
             target.relative_to(skill_root)
         except ValueError as exc:
-            raise HTTPException(
-                status_code=400, detail="Path escapes skill folder"
-            ) from exc
+            raise HTTPException(status_code=400, detail="Path escapes skill folder") from exc
         write_text(target, file_content)
     return DataResponse(data=OkWithName(name=name))
 

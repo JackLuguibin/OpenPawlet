@@ -39,7 +39,9 @@ _CRON_PARAMETERS = tool_parameters_schema(
         description="Whether to deliver the execution result to the user channel (default true)",
         default=True,
     ),
-    job_id=StringSchema("REQUIRED when action='remove'. Job ID to remove (obtain via action='list')."),
+    job_id=StringSchema(
+        "REQUIRED when action='remove'. Job ID to remove (obtain via action='list')."
+    ),
     required=["action"],
     description=(
         "Action-specific parameters: add requires a non-empty message plus one schedule "
@@ -153,7 +155,7 @@ class CronTool(Tool):
             return (
                 "Error: cron action='add' requires a non-empty 'message' parameter "
                 "describing what to do when the job triggers "
-                "(e.g. the reminder text). Retry including message=\"...\"."
+                '(e.g. the reminder text). Retry including message="...".'
             )
         ch, cid = self._channel_ctx.get(), self._chat_id_ctx.get()
         if not ch or not cid:
@@ -270,8 +272,5 @@ class CronTool(Tool):
                     "This is a system-managed Dream memory consolidation job for long-term memory.\n"
                     "It remains visible so you can inspect it, but it cannot be removed."
                 )
-            return (
-                f"Cannot remove job `{job_id}`.\n"
-                "This is a protected system-managed cron job."
-            )
+            return f"Cannot remove job `{job_id}`.\nThis is a protected system-managed cron job."
         return f"Job {job_id} not found"

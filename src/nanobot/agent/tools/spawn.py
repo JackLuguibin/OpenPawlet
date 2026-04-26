@@ -25,9 +25,15 @@ class SpawnTool(Tool):
         self._default_origin_channel = "cli"
         self._default_origin_chat_id = "direct"
         self._default_session_key = "cli:direct"
-        self._origin_channel_ctx: ContextVar[str | None] = ContextVar("spawn_origin_channel", default=None)
-        self._origin_chat_id_ctx: ContextVar[str | None] = ContextVar("spawn_origin_chat_id", default=None)
-        self._session_key_ctx: ContextVar[str | None] = ContextVar("spawn_session_key", default=None)
+        self._origin_channel_ctx: ContextVar[str | None] = ContextVar(
+            "spawn_origin_channel", default=None
+        )
+        self._origin_chat_id_ctx: ContextVar[str | None] = ContextVar(
+            "spawn_origin_chat_id", default=None
+        )
+        self._session_key_ctx: ContextVar[str | None] = ContextVar(
+            "spawn_session_key", default=None
+        )
 
     def set_context(self, channel: str, chat_id: str, effective_key: str | None = None) -> None:
         """Set the origin context for subagent announcements (task-local under asyncio)."""

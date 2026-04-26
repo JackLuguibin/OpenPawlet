@@ -155,6 +155,13 @@ target-version = "py312"
 select = ["E", "F", "I", "N", "W", "UP"]
 ignore = ["E501"]
 
+[tool.ruff.lint.per-file-ignores]
+# Tests routinely use `MockFoo`, `MockSession` style names for mocked classes,
+# and may import after pytest.importorskip / sys.path tweaks.
+"**/tests/**" = ["N806", "N802", "N803", "N817", "E402", "F841"]
+# __init__.py modules sometimes need late imports after metadata constants.
+"**/__init__.py" = ["E402"]
+
 [tool.mypy]
 python_version = "3.12"
 strict = false

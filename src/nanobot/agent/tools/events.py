@@ -15,8 +15,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Awaitable, Callable
 from contextvars import ContextVar
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 from loguru import logger
 
@@ -38,7 +39,6 @@ from nanobot.bus.envelope import (
     new_message_id,
     produced_at,
     target_for_agent,
-    target_for_topic,
 )
 from nanobot.bus.events import (
     AgentEvent,
@@ -48,7 +48,6 @@ from nanobot.bus.events import (
     should_handle_direct_for_session,
 )
 from nanobot.bus.queue import EventSubscription, MessageBusProtocol
-
 
 _MAX_WAIT_SECONDS = 300
 
@@ -110,9 +109,7 @@ class PublishEventTool(Tool):
             "publish_event_source_agent", default=None
         )
 
-    def set_context(
-        self, source_agent: str, source_session_key: str | None = None
-    ) -> None:
+    def set_context(self, source_agent: str, source_session_key: str | None = None) -> None:
         """Set the source agent id (task-local under asyncio)."""
         _ = source_session_key
         self._source_ctx.set(source_agent)
@@ -152,10 +149,7 @@ class PublishEventTool(Tool):
             await self._bus.publish_event(ev)
         except Exception as exc:
             return f"Error publishing event: {exc}"
-        return (
-            f"Event published (topic={ev.topic}, target={ev.target}, "
-            f"message_id={ev.message_id})"
-        )
+        return f"Event published (topic={ev.topic}, target={ev.target}, message_id={ev.message_id})"
 
 
 @tool_parameters(
@@ -187,9 +181,7 @@ class SendToAgentTool(Tool):
     def __init__(self, bus: MessageBusProtocol, default_source_agent: str = "agent") -> None:
         self._bus = bus
         self._default_source = default_source_agent
-        self._source_ctx: ContextVar[str | None] = ContextVar(
-            "send_to_agent_source", default=None
-        )
+        self._source_ctx: ContextVar[str | None] = ContextVar("send_to_agent_source", default=None)
         self._source_session_ctx: ContextVar[str | None] = ContextVar(
             "send_to_agent_source_session_key", default=None
         )
@@ -505,8 +497,7 @@ class ReplyToAgentRequestTool(Tool):
         ),
         timeout_s=IntegerSchema(
             description=(
-                "How long to wait for the next matching event, in seconds. "
-                "Bounded to [1, 300]."
+                "How long to wait for the next matching event, in seconds. Bounded to [1, 300]."
             ),
             minimum=1,
             maximum=_MAX_WAIT_SECONDS,
@@ -577,9 +568,7 @@ class SubscribeEventTool(Tool):
         self._channel_ctx.set(channel)
         self._chat_id_ctx.set(chat_id)
 
-    def set_inject_callback(
-        self, inject: Callable[[InboundMessage], Awaitable[None]]
-    ) -> None:
+    def set_inject_callback(self, inject: Callable[[InboundMessage], Awaitable[None]]) -> None:
         self._inject = inject
 
     def cancel_background_subscription(self, key: str) -> bool:
@@ -668,7 +657,7 @@ class SubscribeEventTool(Tool):
                     ev = await asyncio.wait_for(sub.get(), timeout=timeout_s)
                     if should_handle_direct_for_session(ev, session_key):
                         break
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 return f"timeout: no events received in {timeout_s}s"
             return json.dumps(
                 {

@@ -31,6 +31,4 @@ async def chat(body: ChatRequest) -> DataResponse[ChatResponse]:
     compatibility and always returns an empty ``message``.
     """
     sk = body.session_key or "stub-session"
-    return DataResponse(
-        data=ChatResponse(session_key=sk, message="", done=True)
-    )
+    return DataResponse(data=ChatResponse(session_key=sk, message="", done=True))

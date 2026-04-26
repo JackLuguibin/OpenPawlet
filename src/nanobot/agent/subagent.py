@@ -12,8 +12,7 @@ from loguru import logger
 
 from nanobot.agent.context import ContextBuilder
 from nanobot.agent.hook import AgentHook, AgentHookContext
-from nanobot.utils.prompt_templates import render_template
-from nanobot.agent.runner import AgentRunSpec, AgentRunner
+from nanobot.agent.runner import AgentRunner, AgentRunSpec
 from nanobot.agent.skills import BUILTIN_SKILLS_DIR
 from nanobot.agent.tools.events import (
     ListEventSubscribersTool,
@@ -28,11 +27,12 @@ from nanobot.agent.tools.registry import ToolRegistry
 from nanobot.agent.tools.search import GlobTool, GrepTool
 from nanobot.agent.tools.shell import ExecTool
 from nanobot.agent.tools.web import WebFetchTool, WebSearchTool
-from nanobot.bus.envelope import TARGET_BROADCAST, target_for_agent
+from nanobot.bus.envelope import TARGET_BROADCAST
 from nanobot.bus.events import AgentEvent, InboundMessage
 from nanobot.bus.queue import MessageBus
 from nanobot.config.schema import ExecToolConfig, WebToolsConfig
 from nanobot.providers.base import LLMProvider
+from nanobot.utils.prompt_templates import render_template
 
 
 @dataclass(slots=True)
@@ -42,11 +42,11 @@ class SubagentStatus:
     task_id: str
     label: str
     task_description: str
-    started_at: float          # time.monotonic()
+    started_at: float  # time.monotonic()
     phase: str = "initializing"  # initializing | awaiting_tools | tools_completed | final_response | done | error
     iteration: int = 0
-    tool_events: list = field(default_factory=list)   # [{name, status, detail}, ...]
-    usage: dict = field(default_factory=dict)          # token usage
+    tool_events: list = field(default_factory=list)  # [{name, status, detail}, ...]
+    usage: dict = field(default_factory=dict)  # token usage
     stop_reason: str | None = None
     error: str | None = None
 
@@ -64,7 +64,9 @@ class _SubagentHook(AgentHook):
             args_str = json.dumps(tool_call.arguments, ensure_ascii=False)
             logger.debug(
                 "Subagent [{}] executing: {} with arguments: {}",
-                self._task_id, tool_call.name, args_str,
+                self._task_id,
+                tool_call.name,
+                args_str,
             )
 
     async def after_iteration(self, context: AgentHookContext) -> None:
@@ -169,40 +171,44 @@ class SubagentManager:
         try:
             # Build subagent tools (no message tool, no spawn tool)
             tools = ToolRegistry()
-            allowed_dir = self.workspace if (self.restrict_to_workspace or self.exec_config.sandbox) else None
+            allowed_dir = (
+                self.workspace if (self.restrict_to_workspace or self.exec_config.sandbox) else None
+            )
             extra_read = [BUILTIN_SKILLS_DIR] if allowed_dir else None
-            tools.register(ReadFileTool(workspace=self.workspace, allowed_dir=allowed_dir, extra_allowed_dirs=extra_read))
+            tools.register(
+                ReadFileTool(
+                    workspace=self.workspace, allowed_dir=allowed_dir, extra_allowed_dirs=extra_read
+                )
+            )
             tools.register(WriteFileTool(workspace=self.workspace, allowed_dir=allowed_dir))
             tools.register(EditFileTool(workspace=self.workspace, allowed_dir=allowed_dir))
             tools.register(ListDirTool(workspace=self.workspace, allowed_dir=allowed_dir))
             tools.register(GlobTool(workspace=self.workspace, allowed_dir=allowed_dir))
             tools.register(GrepTool(workspace=self.workspace, allowed_dir=allowed_dir))
             if self.exec_config.enable:
-                tools.register(ExecTool(
-                    working_dir=str(self.workspace),
-                    timeout=self.exec_config.timeout,
-                    restrict_to_workspace=self.restrict_to_workspace,
-                    sandbox=self.exec_config.sandbox,
-                    path_append=self.exec_config.path_append,
-                    allowed_env_keys=self.exec_config.allowed_env_keys,
-                ))
+                tools.register(
+                    ExecTool(
+                        working_dir=str(self.workspace),
+                        timeout=self.exec_config.timeout,
+                        restrict_to_workspace=self.restrict_to_workspace,
+                        sandbox=self.exec_config.sandbox,
+                        path_append=self.exec_config.path_append,
+                        allowed_env_keys=self.exec_config.allowed_env_keys,
+                    )
+                )
             if self.web_config.enable:
-                tools.register(WebSearchTool(config=self.web_config.search, proxy=self.web_config.proxy))
+                tools.register(
+                    WebSearchTool(config=self.web_config.search, proxy=self.web_config.proxy)
+                )
                 tools.register(WebFetchTool(proxy=self.web_config.proxy))
             # Subagents get the event tools so they can talk back to
             # the parent agent (via send_to_agent) or listen for
             # system events; they still don't get message/spawn, matching
             # the existing isolation policy.
             subagent_id = f"sub:{task_id}"
-            tools.register(
-                PublishEventTool(bus=self.bus, default_source_agent=subagent_id)
-            )
-            tools.register(
-                SendToAgentTool(bus=self.bus, default_source_agent=subagent_id)
-            )
-            tools.register(
-                SendToAgentWaitReplyTool(bus=self.bus, default_source_agent=subagent_id)
-            )
+            tools.register(PublishEventTool(bus=self.bus, default_source_agent=subagent_id))
+            tools.register(SendToAgentTool(bus=self.bus, default_source_agent=subagent_id))
+            tools.register(SendToAgentWaitReplyTool(bus=self.bus, default_source_agent=subagent_id))
             tools.register(ReplyToAgentRequestTool(bus=self.bus, default_source_agent=subagent_id))
             subscribe_tool = SubscribeEventTool(
                 bus=self.bus,
@@ -228,36 +234,46 @@ class SubagentManager:
                 {"role": "user", "content": f"{runtime}\n\n{task}"},
             ]
 
-            result = await self.runner.run(AgentRunSpec(
-                initial_messages=messages,
-                tools=tools,
-                model=self.model,
-                max_iterations=15,
-                max_tool_result_chars=self.max_tool_result_chars,
-                hook=_SubagentHook(task_id, status),
-                max_iterations_message="Task completed but no final response was generated.",
-                error_message=None,
-                fail_on_tool_error=True,
-                checkpoint_callback=_on_checkpoint,
-            ))
+            result = await self.runner.run(
+                AgentRunSpec(
+                    initial_messages=messages,
+                    tools=tools,
+                    model=self.model,
+                    max_iterations=15,
+                    max_tool_result_chars=self.max_tool_result_chars,
+                    hook=_SubagentHook(task_id, status),
+                    max_iterations_message="Task completed but no final response was generated.",
+                    error_message=None,
+                    fail_on_tool_error=True,
+                    checkpoint_callback=_on_checkpoint,
+                )
+            )
             status.phase = "done"
             status.stop_reason = result.stop_reason
 
             if result.stop_reason == "tool_error":
                 status.tool_events = list(result.tool_events)
                 await self._announce_result(
-                    task_id, label, task,
+                    task_id,
+                    label,
+                    task,
                     self._format_partial_progress(result),
-                    origin, "error",
+                    origin,
+                    "error",
                 )
             elif result.stop_reason == "error":
                 await self._announce_result(
-                    task_id, label, task,
+                    task_id,
+                    label,
+                    task,
                     result.error or "Error: subagent execution failed.",
-                    origin, "error",
+                    origin,
+                    "error",
                 )
             else:
-                final_result = result.final_content or "Task completed but no final response was generated."
+                final_result = (
+                    result.final_content or "Task completed but no final response was generated."
+                )
                 logger.info("Subagent [{}] completed successfully", task_id)
                 await self._announce_result(task_id, label, task, final_result, origin, "ok")
 
@@ -329,7 +345,9 @@ class SubagentManager:
             )
         except Exception as exc:  # pragma: no cover - event channel is best-effort
             logger.debug("subagent.done event publish failed: {}", exc)
-        logger.debug("Subagent [{}] announced result to {}:{}", task_id, origin['channel'], origin['chat_id'])
+        logger.debug(
+            "Subagent [{}] announced result to {}:{}", task_id, origin["channel"], origin["chat_id"]
+        )
 
     @staticmethod
     def _format_partial_progress(result) -> str:
@@ -371,8 +389,11 @@ class SubagentManager:
 
     async def cancel_by_session(self, session_key: str) -> int:
         """Cancel all subagents for the given session. Returns count cancelled."""
-        tasks = [self._running_tasks[tid] for tid in self._session_tasks.get(session_key, [])
-                 if tid in self._running_tasks and not self._running_tasks[tid].done()]
+        tasks = [
+            self._running_tasks[tid]
+            for tid in self._session_tasks.get(session_key, [])
+            if tid in self._running_tasks and not self._running_tasks[tid].done()
+        ]
         for t in tasks:
             t.cancel()
         if tasks:
@@ -387,6 +408,5 @@ class SubagentManager:
         """Return the number of currently running subagents for a session."""
         tids = self._session_tasks.get(session_key, set())
         return sum(
-            1 for tid in tids
-            if tid in self._running_tasks and not self._running_tasks[tid].done()
+            1 for tid in tids if tid in self._running_tasks and not self._running_tasks[tid].done()
         )

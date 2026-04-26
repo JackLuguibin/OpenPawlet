@@ -6,13 +6,16 @@ import asyncio
 import json
 import re
 import weakref
-from datetime import datetime, timezone
+from collections.abc import Callable, Iterator
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Iterator
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
-from nanobot.utils.prompt_templates import render_template
+from nanobot.agent.runner import AgentRunner, AgentRunSpec
+from nanobot.agent.tools.registry import ToolRegistry
+from nanobot.utils.gitstore import GitStore
 from nanobot.utils.helpers import (
     ensure_dir,
     estimate_message_tokens,
@@ -20,10 +23,7 @@ from nanobot.utils.helpers import (
     local_now,
     strip_think,
 )
-
-from nanobot.agent.runner import AgentRunSpec, AgentRunner
-from nanobot.agent.tools.registry import ToolRegistry
-from nanobot.utils.gitstore import GitStore
+from nanobot.utils.prompt_templates import render_template
 
 if TYPE_CHECKING:
     from nanobot.providers.base import LLMProvider
@@ -33,6 +33,7 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 # MemoryStore — pure file I/O layer
 # ---------------------------------------------------------------------------
+
 
 class MemoryStore:
     """Pure file I/O for memory files: MEMORY.md, history.jsonl, SOUL.md, USER.md."""
@@ -65,7 +66,9 @@ class MemoryStore:
         self._git = GitStore(
             workspace,
             tracked_files=[
-                "SOUL.md", "USER.md", "memory/MEMORY.md",
+                "SOUL.md",
+                "USER.md",
+                "memory/MEMORY.md",
             ],
             timezone=timezone,
         )
@@ -138,15 +141,17 @@ class MemoryStore:
             match = self._LEGACY_TIMESTAMP_RE.match(chunk)
             if match:
                 timestamp = match.group(1)
-                remainder = chunk[match.end():].lstrip()
+                remainder = chunk[match.end() :].lstrip()
                 if remainder:
                     content = remainder
 
-            entries.append({
-                "cursor": cursor,
-                "timestamp": timestamp,
-                "content": content,
-            })
+            entries.append(
+                {
+                    "cursor": cursor,
+                    "timestamp": timestamp,
+                    "content": content,
+                }
+            )
         return entries
 
     def _split_legacy_history_chunks(self, text: str) -> list[str]:
@@ -187,14 +192,14 @@ class MemoryStore:
         match = self._LEGACY_TIMESTAMP_RE.match(first_nonempty)
         if not match:
             return False
-        return first_nonempty[match.end():].lstrip().startswith("[RAW]")
+        return first_nonempty[match.end() :].lstrip().startswith("[RAW]")
 
     def _legacy_fallback_timestamp(self) -> str:
         try:
             mt = self.legacy_history_file.stat().st_mtime
             anchor = local_now(self.timezone)
             tz = anchor.tzinfo
-            dt = datetime.fromtimestamp(mt, tz=timezone.utc)
+            dt = datetime.fromtimestamp(mt, tz=UTC)
             dt = dt.astimezone(tz) if tz is not None else dt.astimezone()
             return dt.strftime("%Y-%m-%d %H:%M")
         except OSError:
@@ -320,7 +325,7 @@ class MemoryStore:
         entries = self._read_entries()
         if len(entries) <= self.max_history_entries:
             return
-        kept = entries[-self.max_history_entries:]
+        kept = entries[-self.max_history_entries :]
         self._write_entries(kept)
 
     # -- JSONL helpers -------------------------------------------------------
@@ -329,7 +334,7 @@ class MemoryStore:
         """Read all entries from history.jsonl."""
         entries: list[dict[str, Any]] = []
         try:
-            with open(self.history_file, "r", encoding="utf-8") as f:
+            with open(self.history_file, encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
                     if line:
@@ -352,7 +357,7 @@ class MemoryStore:
                 read_size = min(size, 4096)
                 f.seek(size - read_size)
                 data = f.read().decode("utf-8")
-                lines = [l for l in data.split("\n") if l.strip()]
+                lines = [line for line in data.split("\n") if line.strip()]
                 if not lines:
                     return None
                 return json.loads(lines[-1])
@@ -386,7 +391,9 @@ class MemoryStore:
         for message in messages:
             if not message.get("content"):
                 continue
-            tools = f" [tools: {', '.join(message['tools_used'])}]" if message.get("tools_used") else ""
+            tools = (
+                f" [tools: {', '.join(message['tools_used'])}]" if message.get("tools_used") else ""
+            )
             lines.append(
                 f"[{message.get('timestamp', '?')[:16]}] {message['role'].upper()}{tools}: {message['content']}"
             )
@@ -394,14 +401,8 @@ class MemoryStore:
 
     def raw_archive(self, messages: list[dict]) -> None:
         """Fallback: dump raw messages to history.jsonl without LLM summarization."""
-        self.append_history(
-            f"[RAW] {len(messages)} messages\n"
-            f"{self._format_messages(messages)}"
-        )
-        logger.warning(
-            "Memory consolidation degraded: raw-archived {} messages", len(messages)
-        )
-
+        self.append_history(f"[RAW] {len(messages)} messages\n{self._format_messages(messages)}")
+        logger.warning("Memory consolidation degraded: raw-archived {} messages", len(messages))
 
 
 # ---------------------------------------------------------------------------
@@ -436,9 +437,7 @@ class Consolidator:
         self.max_completion_tokens = max_completion_tokens
         self._build_messages = build_messages
         self._get_tool_definitions = get_tool_definitions
-        self._locks: weakref.WeakValueDictionary[str, asyncio.Lock] = (
-            weakref.WeakValueDictionary()
-        )
+        self._locks: weakref.WeakValueDictionary[str, asyncio.Lock] = weakref.WeakValueDictionary()
 
     def get_lock(self, session_key: str) -> asyncio.Lock:
         """Return the shared consolidation lock for one session."""
@@ -490,7 +489,7 @@ class Consolidator:
     ) -> tuple[int, str]:
         """Estimate current prompt size for the normal session history view."""
         history = session.get_history(max_messages=0)
-        channel, chat_id = (session.key.split(":", 1) if ":" in session.key else (None, None))
+        channel, chat_id = session.key.split(":", 1) if ":" in session.key else (None, None)
         probe_messages = self._build_messages(
             history=history,
             current_message="[token-probe]",
@@ -603,7 +602,7 @@ class Consolidator:
                     )
                     break
 
-                chunk = session.messages[session.last_consolidated:end_idx]
+                chunk = session.messages[session.last_consolidated : end_idx]
                 if not chunk:
                     break
 
@@ -700,11 +699,13 @@ class Dream:
         workspace = self.store.workspace
         # Allow reading builtin skills for reference during skill creation
         extra_read = [BUILTIN_SKILLS_DIR] if BUILTIN_SKILLS_DIR.exists() else None
-        tools.register(ReadFileTool(
-            workspace=workspace,
-            allowed_dir=workspace,
-            extra_allowed_dirs=extra_read,
-        ))
+        tools.register(
+            ReadFileTool(
+                workspace=workspace,
+                allowed_dir=workspace,
+                extra_allowed_dirs=extra_read,
+            )
+        )
         tools.register(EditFileTool(workspace=workspace, allowed_dir=workspace))
         # write_file resolves relative paths from workspace root, but can only
         # write under skills/ so the prompt can safely use skills/<name>/SKILL.md.
@@ -721,7 +722,7 @@ class Dream:
 
         from nanobot.agent.skills import BUILTIN_SKILLS_DIR
 
-        _DESC_RE = _re.compile(r"^description:\s*(.+)$", _re.MULTILINE | _re.IGNORECASE)
+        desc_pattern = _re.compile(r"^description:\s*(.+)$", _re.MULTILINE | _re.IGNORECASE)
         entries: dict[str, str] = {}
         for base in (self.store.workspace / "skills", BUILTIN_SKILLS_DIR):
             if not base.exists():
@@ -736,7 +737,7 @@ class Dream:
                 if d.name in entries and base == BUILTIN_SKILLS_DIR:
                     continue
                 content = skill_md.read_text(encoding="utf-8")[:500]
-                m = _DESC_RE.search(content)
+                m = desc_pattern.search(content)
                 desc = m.group(1).strip() if m else "(no description)"
                 entries[d.name] = desc
         return [f"{name} — {desc}" for name, desc in sorted(entries.items())]
@@ -771,7 +772,9 @@ class Dream:
         if len(lines) != len(ages):
             logger.debug(
                 "line_ages length mismatch for {} (lines={}, ages={}); skipping annotation",
-                file_path, len(lines), len(ages),
+                file_path,
+                len(lines),
+                len(ages),
             )
             return content
 
@@ -801,21 +804,20 @@ class Dream:
         batch = entries[: self.max_batch_size]
         logger.info(
             "Dream: processing {} entries (cursor {}→{}), batch={}",
-            len(entries), last_cursor, batch[-1]["cursor"], len(batch),
+            len(entries),
+            last_cursor,
+            batch[-1]["cursor"],
+            len(batch),
         )
 
         # Build history text for LLM
-        history_text = "\n".join(
-            f"[{e['timestamp']}] {e['content']}" for e in batch
-        )
+        history_text = "\n".join(f"[{e['timestamp']}] {e['content']}" for e in batch)
 
         # Current file contents + per-line age annotations (MEMORY.md only)
         current_date = local_now(self.store.timezone).strftime("%Y-%m-%d")
         raw_memory = self.store.read_memory() or "(empty)"
         current_memory = (
-            self._annotate_with_ages(raw_memory)
-            if self.annotate_line_ages
-            else raw_memory
+            self._annotate_with_ages(raw_memory) if self.annotate_line_ages else raw_memory
         )
         current_soul = self.store.read_soul() or "(empty)"
         current_user = self.store.read_user() or "(empty)"
@@ -828,9 +830,7 @@ class Dream:
         )
 
         # Phase 1: Analyze (no skills list — dedup is Phase 2's job)
-        phase1_prompt = (
-            f"## Conversation History\n{history_text}\n\n{file_context}"
-        )
+        phase1_prompt = f"## Conversation History\n{history_text}\n\n{file_context}"
 
         try:
             phase1_response = await self.provider.chat_with_retry(
@@ -859,9 +859,8 @@ class Dream:
         existing_skills = self._list_existing_skills()
         skills_section = ""
         if existing_skills:
-            skills_section = (
-                "\n\n## Existing Skills\n"
-                + "\n".join(f"- {s}" for s in existing_skills)
+            skills_section = "\n\n## Existing Skills\n" + "\n".join(
+                f"- {s}" for s in existing_skills
             )
         phase2_prompt = f"## Analysis Result\n{analysis}\n\n{file_context}{skills_section}"
 
@@ -880,20 +879,28 @@ class Dream:
         ]
 
         try:
-            result = await self._runner.run(AgentRunSpec(
-                initial_messages=messages,
-                tools=tools,
-                model=self.model,
-                max_iterations=self.max_iterations,
-                max_tool_result_chars=self.max_tool_result_chars,
-                fail_on_tool_error=False,
-            ))
+            result = await self._runner.run(
+                AgentRunSpec(
+                    initial_messages=messages,
+                    tools=tools,
+                    model=self.model,
+                    max_iterations=self.max_iterations,
+                    max_tool_result_chars=self.max_tool_result_chars,
+                    fail_on_tool_error=False,
+                )
+            )
             logger.debug(
                 "Dream Phase 2 complete: stop_reason={}, tool_events={}",
-                result.stop_reason, len(result.tool_events),
+                result.stop_reason,
+                len(result.tool_events),
             )
-            for ev in (result.tool_events or []):
-                logger.info("Dream tool_event: name={}, status={}, detail={}", ev.get("name"), ev.get("status"), ev.get("detail", "")[:200])
+            for ev in result.tool_events or []:
+                logger.info(
+                    "Dream tool_event: name={}, status={}, detail={}",
+                    ev.get("name"),
+                    ev.get("status"),
+                    ev.get("detail", "")[:200],
+                )
         except Exception:
             logger.exception("Dream Phase 2 failed")
             result = None
@@ -913,13 +920,15 @@ class Dream:
         if result and result.stop_reason == "completed":
             logger.info(
                 "Dream done: {} change(s), cursor advanced to {}",
-                len(changelog), new_cursor,
+                len(changelog),
+                new_cursor,
             )
         else:
             reason = result.stop_reason if result else "exception"
             logger.warning(
                 "Dream incomplete ({}): cursor advanced to {}",
-                reason, new_cursor,
+                reason,
+                new_cursor,
             )
 
         # Git auto-commit (only when there are actual changes)

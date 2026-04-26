@@ -1,9 +1,7 @@
 import importlib
-import shutil
 import sys
 import zipfile
 from pathlib import Path
-
 
 _REPO_ROOT = Path(__file__).resolve().parents[4]
 SCRIPT_DIR = _REPO_ROOT / "src/nanobot/skills/skill-creator/scripts"
@@ -31,9 +29,7 @@ def test_init_skill_creates_expected_files(tmp_path: Path) -> None:
 
 
 def test_validate_skill_accepts_existing_skill_creator() -> None:
-    valid, message = quick_validate.validate_skill(
-        _REPO_ROOT / "src/nanobot/skills/skill-creator"
-    )
+    valid, message = quick_validate.validate_skill(_REPO_ROOT / "src/nanobot/skills/skill-creator")
 
     assert valid, message
 
@@ -42,11 +38,7 @@ def test_validate_skill_rejects_placeholder_description(tmp_path: Path) -> None:
     skill_dir = tmp_path / "placeholder-skill"
     skill_dir.mkdir()
     (skill_dir / "SKILL.md").write_text(
-        "---\n"
-        "name: placeholder-skill\n"
-        'description: "[TODO: fill me in]"\n'
-        "---\n"
-        "# Placeholder\n",
+        '---\nname: placeholder-skill\ndescription: "[TODO: fill me in]"\n---\n# Placeholder\n',
         encoding="utf-8",
     )
 
@@ -60,11 +52,7 @@ def test_validate_skill_rejects_root_files_outside_allowed_dirs(tmp_path: Path) 
     skill_dir = tmp_path / "bad-root-skill"
     skill_dir.mkdir()
     (skill_dir / "SKILL.md").write_text(
-        "---\n"
-        "name: bad-root-skill\n"
-        "description: Valid description\n"
-        "---\n"
-        "# Skill\n",
+        "---\nname: bad-root-skill\ndescription: Valid description\n---\n# Skill\n",
         encoding="utf-8",
     )
     (skill_dir / "README.md").write_text("extra\n", encoding="utf-8")
@@ -79,11 +67,7 @@ def test_package_skill_creates_archive(tmp_path: Path) -> None:
     skill_dir = tmp_path / "package-me"
     skill_dir.mkdir()
     (skill_dir / "SKILL.md").write_text(
-        "---\n"
-        "name: package-me\n"
-        "description: Package this skill.\n"
-        "---\n"
-        "# Skill\n",
+        "---\nname: package-me\ndescription: Package this skill.\n---\n# Skill\n",
         encoding="utf-8",
     )
     scripts_dir = skill_dir / "scripts"
@@ -104,11 +88,7 @@ def test_package_skill_rejects_symlink(tmp_path: Path) -> None:
     skill_dir = tmp_path / "symlink-skill"
     skill_dir.mkdir()
     (skill_dir / "SKILL.md").write_text(
-        "---\n"
-        "name: symlink-skill\n"
-        "description: Reject symlinks during packaging.\n"
-        "---\n"
-        "# Skill\n",
+        "---\nname: symlink-skill\ndescription: Reject symlinks during packaging.\n---\n# Skill\n",
         encoding="utf-8",
     )
     scripts_dir = skill_dir / "scripts"

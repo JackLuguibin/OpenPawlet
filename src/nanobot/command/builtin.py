@@ -20,8 +20,7 @@ async def cmd_stop(ctx: CommandContext) -> OutboundMessage:
     total = await loop._cancel_active_tasks(msg.session_key)
     content = f"Stopped {total} task(s)." if total else "No active task to stop."
     return OutboundMessage(
-        channel=msg.channel, chat_id=msg.chat_id, content=content,
-        metadata=dict(msg.metadata or {})
+        channel=msg.channel, chat_id=msg.chat_id, content=content, metadata=dict(msg.metadata or {})
     )
 
 
@@ -36,8 +35,10 @@ async def cmd_restart(ctx: CommandContext) -> OutboundMessage:
 
     asyncio.create_task(_do_restart())
     return OutboundMessage(
-        channel=msg.channel, chat_id=msg.chat_id, content="Restarting...",
-        metadata=dict(msg.metadata or {})
+        channel=msg.channel,
+        chat_id=msg.chat_id,
+        content="Restarting...",
+        metadata=dict(msg.metadata or {}),
     )
 
 
@@ -57,6 +58,7 @@ async def cmd_status(ctx: CommandContext) -> OutboundMessage:
     search_usage_text: str | None = None
     try:
         from nanobot.utils.searchusage import fetch_search_usage
+
         web_cfg = getattr(loop, "web_config", None)
         search_cfg = getattr(web_cfg, "search", None) if web_cfg else None
         if search_cfg is not None:
@@ -76,8 +78,10 @@ async def cmd_status(ctx: CommandContext) -> OutboundMessage:
         channel=ctx.msg.channel,
         chat_id=ctx.msg.chat_id,
         content=build_status_content(
-            version=__version__, model=loop.model,
-            start_time=loop._start_time, last_usage=loop._last_usage,
+            version=__version__,
+            model=loop.model,
+            start_time=loop._start_time,
+            last_usage=loop._last_usage,
             context_window_tokens=loop.context_window_tokens,
             session_msg_count=len(session.get_history(max_messages=0)),
             context_tokens_estimate=ctx_est,
@@ -96,16 +100,17 @@ async def cmd_new(ctx: CommandContext) -> OutboundMessage:
     loop = ctx.loop
     await loop._cancel_active_tasks(ctx.key)
     session = ctx.session or loop.sessions.get_or_create(ctx.key)
-    snapshot = session.messages[session.last_consolidated:]
+    snapshot = session.messages[session.last_consolidated :]
     session.clear()
     loop.sessions.save(session)
     loop.sessions.invalidate(session.key)
     if snapshot:
         loop._schedule_background(loop.consolidator.archive(snapshot))
     return OutboundMessage(
-        channel=ctx.msg.channel, chat_id=ctx.msg.chat_id,
+        channel=ctx.msg.channel,
+        chat_id=ctx.msg.chat_id,
         content="New session started.",
-        metadata=dict(ctx.msg.metadata or {})
+        metadata=dict(ctx.msg.metadata or {}),
     )
 
 
@@ -128,13 +133,19 @@ async def cmd_dream(ctx: CommandContext) -> OutboundMessage:
         except Exception as e:
             elapsed = time.monotonic() - t0
             content = f"Dream failed after {elapsed:.1f}s: {e}"
-        await loop.bus.publish_outbound(OutboundMessage(
-            channel=msg.channel, chat_id=msg.chat_id, content=content,
-        ))
+        await loop.bus.publish_outbound(
+            OutboundMessage(
+                channel=msg.channel,
+                chat_id=msg.chat_id,
+                content=content,
+            )
+        )
 
     asyncio.create_task(_run_dream())
     return OutboundMessage(
-        channel=msg.channel, chat_id=msg.chat_id, content="Dreaming...",
+        channel=msg.channel,
+        chat_id=msg.chat_id,
+        content="Dreaming...",
     )
 
 
@@ -170,26 +181,32 @@ def _format_dream_log_content(commit, diff: str, *, requested_sha: str | None = 
     lines = [
         "## Dream Update",
         "",
-        "Here is the selected Dream memory change." if requested_sha else "Here is the latest Dream memory change.",
+        "Here is the selected Dream memory change."
+        if requested_sha
+        else "Here is the latest Dream memory change.",
         "",
         f"- Commit: `{commit.sha}`",
         f"- Time: {commit.timestamp}",
         f"- Changed files: {files_line}",
     ]
     if diff:
-        lines.extend([
-            "",
-            f"Use `/dream-restore {commit.sha}` to undo this change.",
-            "",
-            "```diff",
-            diff.rstrip(),
-            "```",
-        ])
+        lines.extend(
+            [
+                "",
+                f"Use `/dream-restore {commit.sha}` to undo this change.",
+                "",
+                "```diff",
+                diff.rstrip(),
+                "```",
+            ]
+        )
     else:
-        lines.extend([
-            "",
-            "Dream recorded this version, but there is no file diff to display.",
-        ])
+        lines.extend(
+            [
+                "",
+                "Dream recorded this version, but there is no file diff to display.",
+            ]
+        )
     return "\n".join(lines)
 
 
@@ -202,11 +219,13 @@ def _format_dream_restore_list(commits: list) -> str:
     ]
     for c in commits:
         lines.append(f"- `{c.sha}` {c.timestamp} - {c.message.splitlines()[0]}")
-    lines.extend([
-        "",
-        "Preview a version with `/dream-log <sha>` before restoring it.",
-        "Restore a version with `/dream-restore <sha>`.",
-    ])
+    lines.extend(
+        [
+            "",
+            "Preview a version with `/dream-log <sha>` before restoring it.",
+            "Restore a version with `/dream-restore <sha>`.",
+        ]
+    )
     return "\n".join(lines)
 
 
@@ -225,8 +244,10 @@ async def cmd_dream_log(ctx: CommandContext) -> OutboundMessage:
         else:
             msg = "Dream history is not available because memory versioning is not initialized."
         return OutboundMessage(
-            channel=ctx.msg.channel, chat_id=ctx.msg.chat_id,
-            content=msg, metadata={"render_as": "text"},
+            channel=ctx.msg.channel,
+            chat_id=ctx.msg.chat_id,
+            content=msg,
+            metadata={"render_as": "text"},
         )
 
     args = ctx.args.strip()
@@ -255,8 +276,10 @@ async def cmd_dream_log(ctx: CommandContext) -> OutboundMessage:
             content = "Dream memory has no saved versions yet."
 
     return OutboundMessage(
-        channel=ctx.msg.channel, chat_id=ctx.msg.chat_id,
-        content=content, metadata={"render_as": "text"},
+        channel=ctx.msg.channel,
+        chat_id=ctx.msg.chat_id,
+        content=content,
+        metadata={"render_as": "text"},
     )
 
 
@@ -271,7 +294,8 @@ async def cmd_dream_restore(ctx: CommandContext) -> OutboundMessage:
     git = store.git
     if not git.is_initialized():
         return OutboundMessage(
-            channel=ctx.msg.channel, chat_id=ctx.msg.chat_id,
+            channel=ctx.msg.channel,
+            chat_id=ctx.msg.chat_id,
             content="Dream history is not available because memory versioning is not initialized.",
         )
 
@@ -301,8 +325,10 @@ async def cmd_dream_restore(ctx: CommandContext) -> OutboundMessage:
                 "It may not exist, or it may be the first saved version with no earlier state to restore."
             )
     return OutboundMessage(
-        channel=ctx.msg.channel, chat_id=ctx.msg.chat_id,
-        content=content, metadata={"render_as": "text"},
+        channel=ctx.msg.channel,
+        chat_id=ctx.msg.chat_id,
+        content=content,
+        metadata={"render_as": "text"},
     )
 
 

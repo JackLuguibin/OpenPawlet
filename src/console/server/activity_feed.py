@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from console.server.models import ActivityItem
@@ -46,7 +46,7 @@ def _iso_timestamp(ts: Any) -> str:
             sec = float(ts)
         except (TypeError, ValueError):
             sec = 0.0
-    return datetime.fromtimestamp(sec, tz=timezone.utc).isoformat()
+    return datetime.fromtimestamp(sec, tz=UTC).isoformat()
 
 
 def _map_row_to_item(row: dict[str, Any]) -> ActivityItem | None:

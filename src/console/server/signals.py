@@ -49,9 +49,7 @@ def install_async_signal_handlers(
     synchronously - keep it cheap (typically ``stop_event.set()``).
     """
     if signals is None:
-        signals = (signal.SIGINT,) + (
-            (signal.SIGTERM,) if hasattr(signal, "SIGTERM") else ()
-        )
+        signals = (signal.SIGINT,) + ((signal.SIGTERM,) if hasattr(signal, "SIGTERM") else ())
 
     def _proxy(*_: object) -> None:
         on_stop()
@@ -81,9 +79,7 @@ def install_signal_handlers(
     setups, or ``SIGHUP`` always missing on Windows).
     """
     if signals is None:
-        signals = (signal.SIGINT,) + (
-            (signal.SIGTERM,) if hasattr(signal, "SIGTERM") else ()
-        )
+        signals = (signal.SIGINT,) + ((signal.SIGTERM,) if hasattr(signal, "SIGTERM") else ())
 
     def _proxy(_signum: int, _frame: object) -> None:
         on_stop()

@@ -67,9 +67,13 @@ class TestMidTurnCommandDispatchedDirectly:
     def fake_loop(self) -> MagicMock:
         loop = MagicMock()
         loop.sessions = MagicMock()
-        loop.sessions.get_or_create = MagicMock(return_value=MagicMock(
-            messages=[], last_consolidated=0, clear=MagicMock(),
-        ))
+        loop.sessions.get_or_create = MagicMock(
+            return_value=MagicMock(
+                messages=[],
+                last_consolidated=0,
+                clear=MagicMock(),
+            )
+        )
         loop.sessions.save = MagicMock()
         loop.sessions.invalidate = MagicMock()
         loop._schedule_background = MagicMock()
@@ -87,12 +91,18 @@ class TestMidTurnCommandDispatchedDirectly:
 
     @pytest.mark.asyncio
     async def test_new_dispatched_with_session_none(
-        self, router: CommandRouter, fake_loop: MagicMock, fake_msg: MagicMock,
+        self,
+        router: CommandRouter,
+        fake_loop: MagicMock,
+        fake_msg: MagicMock,
     ) -> None:
         """cmd_new works when session=None (mid-turn dispatch path)."""
         ctx = CommandContext(
-            msg=fake_msg, session=None,
-            key="test:chat1", raw="/new", loop=fake_loop,
+            msg=fake_msg,
+            session=None,
+            key="test:chat1",
+            raw="/new",
+            loop=fake_loop,
         )
         result = await router.dispatch(ctx)
         assert result is not None
@@ -101,11 +111,17 @@ class TestMidTurnCommandDispatchedDirectly:
 
     @pytest.mark.asyncio
     async def test_help_dispatched_with_session_none(
-        self, router: CommandRouter, fake_loop: MagicMock, fake_msg: MagicMock,
+        self,
+        router: CommandRouter,
+        fake_loop: MagicMock,
+        fake_msg: MagicMock,
     ) -> None:
         ctx = CommandContext(
-            msg=fake_msg, session=None,
-            key="test:chat1", raw="/help", loop=fake_loop,
+            msg=fake_msg,
+            session=None,
+            key="test:chat1",
+            raw="/help",
+            loop=fake_loop,
         )
         result = await router.dispatch(ctx)
         assert result is not None
@@ -125,19 +141,28 @@ class TestMidTurnCommandDispatchedDirectly:
 
         ctx = CommandContext(
             msg=MagicMock(channel="test", chat_id="c1", metadata={}),
-            session=None, key="test:c1", raw="/test hello world", loop=MagicMock(),
+            session=None,
+            key="test:c1",
+            raw="/test hello world",
+            loop=MagicMock(),
         )
         await custom.dispatch(ctx)
         assert captured_args == ["hello world"]
 
     @pytest.mark.asyncio
     async def test_non_command_returns_none(
-        self, router: CommandRouter, fake_loop: MagicMock, fake_msg: MagicMock,
+        self,
+        router: CommandRouter,
+        fake_loop: MagicMock,
+        fake_msg: MagicMock,
     ) -> None:
         """Regular text returns None from dispatch (not a command)."""
         ctx = CommandContext(
-            msg=fake_msg, session=None,
-            key="test:chat1", raw="hello world", loop=fake_loop,
+            msg=fake_msg,
+            session=None,
+            key="test:chat1",
+            raw="hello world",
+            loop=fake_loop,
         )
         result = await router.dispatch(ctx)
         assert result is None

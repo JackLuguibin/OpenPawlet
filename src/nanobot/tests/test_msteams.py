@@ -5,19 +5,23 @@ import pytest
 # Check optional msteams dependencies before running tests
 try:
     from nanobot.channels import msteams
+
     MSTEAMS_AVAILABLE = getattr(msteams, "MSTEAMS_AVAILABLE", False)
 except ImportError:
     MSTEAMS_AVAILABLE = False
 
 if not MSTEAMS_AVAILABLE:
-    pytest.skip("MSTeams dependencies not installed (PyJWT, cryptography). Run: pip install open-pawlet[msteams]", allow_module_level=True)
+    pytest.skip(
+        "MSTeams dependencies not installed (PyJWT, cryptography). Run: pip install open-pawlet[msteams]",
+        allow_module_level=True,
+    )
 
 import jwt
 from cryptography.hazmat.primitives.asymmetric import rsa
 
 import nanobot.channels.msteams as msteams_module
 from nanobot.bus.events import OutboundMessage
-from nanobot.channels.msteams import ConversationRef, MSTeamsChannel, MSTeamsConfig
+from nanobot.channels.msteams import ConversationRef, MSTeamsChannel
 
 
 class DummyBus:
@@ -112,7 +116,9 @@ async def test_handle_activity_personal_message_publishes_and_stores_ref(make_ch
     assert msg.metadata["msteams"]["conversation_id"] == "conv-123"
     assert "conv-123" in ch._conversation_refs
 
-    saved = json.loads((tmp_path / "state" / "msteams_conversations.json").read_text(encoding="utf-8"))
+    saved = json.loads(
+        (tmp_path / "state" / "msteams_conversations.json").read_text(encoding="utf-8")
+    )
     assert saved["conv-123"]["conversation_id"] == "conv-123"
     assert saved["conv-123"]["tenant_id"] == "tenant-id"
 
@@ -269,8 +275,7 @@ def test_sanitize_inbound_text_normalizes_reply_wrapper_without_reply_metadata(m
     }
 
     assert ch._sanitize_inbound_text(activity) == (
-        "User is replying to: Quoted prior message\n"
-        "User reply: This is a reply with quote test"
+        "User is replying to: Quoted prior message\nUser reply: This is a reply with quote test"
     )
 
 
@@ -283,7 +288,10 @@ def test_sanitize_inbound_text_structures_reply_quote_prefix(make_channel):
         "channelData": {"messageType": "reply"},
     }
 
-    assert ch._sanitize_inbound_text(activity) == "User is replying to: Bob Smith\nUser reply: actual reply text"
+    assert (
+        ch._sanitize_inbound_text(activity)
+        == "User is replying to: Bob Smith\nUser reply: actual reply text"
+    )
 
 
 def test_sanitize_inbound_text_structures_live_reply_wrapper_shape(make_channel):
@@ -387,7 +395,10 @@ async def test_send_replies_to_activity_when_reply_in_thread_enabled(make_channe
 
     assert len(fake_http.calls) == 1
     url, kwargs = fake_http.calls[0]
-    assert url == "https://smba.trafficmanager.net/amer/v3/conversations/conv-123/activities/activity-1"
+    assert (
+        url
+        == "https://smba.trafficmanager.net/amer/v3/conversations/conv-123/activities/activity-1"
+    )
     assert kwargs["headers"]["Authorization"] == "Bearer tok"
     assert kwargs["json"]["text"] == "Reply text"
     assert kwargs["json"]["replyToId"] == "activity-1"
@@ -417,7 +428,9 @@ async def test_send_posts_to_conversation_when_thread_reply_disabled(make_channe
 
 
 @pytest.mark.asyncio
-async def test_send_posts_to_conversation_when_thread_reply_enabled_but_no_activity_id(make_channel):
+async def test_send_posts_to_conversation_when_thread_reply_enabled_but_no_activity_id(
+    make_channel,
+):
     ch = make_channel(replyInThread=True)
     fake_http = FakeHttpClient()
     ch._http = fake_http
@@ -536,7 +549,9 @@ async def test_validate_inbound_auth_rejects_missing_bearer_token(make_channel):
     ch = make_channel(validateInboundAuth=True)
 
     with pytest.raises(ValueError, match="missing bearer token"):
-        await ch._validate_inbound_auth("", {"serviceUrl": "https://smba.trafficmanager.net/amer/tenant/"})
+        await ch._validate_inbound_auth(
+            "", {"serviceUrl": "https://smba.trafficmanager.net/amer/tenant/"}
+        )
 
 
 @pytest.mark.asyncio
@@ -544,7 +559,9 @@ async def test_start_logs_install_hint_when_pyjwt_missing(make_channel, monkeypa
     ch = make_channel()
     errors = []
     monkeypatch.setattr(msteams_module, "MSTEAMS_AVAILABLE", False)
-    monkeypatch.setattr(msteams_module.logger, "error", lambda message, *args: errors.append(message.format(*args)))
+    monkeypatch.setattr(
+        msteams_module.logger, "error", lambda message, *args: errors.append(message.format(*args))
+    )
 
     await ch.start()
 
@@ -558,5 +575,3 @@ def test_msteams_default_config_includes_restart_notify_fields():
     assert "restartNotifyEnabled" not in cfg
     assert "restartNotifyPreMessage" not in cfg
     assert "restartNotifyPostMessage" not in cfg
-
-

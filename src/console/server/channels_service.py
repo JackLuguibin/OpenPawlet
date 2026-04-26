@@ -19,9 +19,7 @@ from console.server.nanobot_user_config import (
 )
 
 # Keys reserved for ``ChannelsConfig`` (not plugin channel names).
-_RESERVED_CHANNELS_ROOT_KEYS = frozenset(
-    {"sendProgress", "sendToolHints", "sendMaxRetries"}
-)
+_RESERVED_CHANNELS_ROOT_KEYS = frozenset({"sendProgress", "sendToolHints", "sendMaxRetries"})
 
 
 class ChannelNotFoundError(Exception):

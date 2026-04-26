@@ -35,9 +35,7 @@ def _clear_settings_cache() -> None:
 
 
 @pytest.fixture
-def isolated_config(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> Path:
+def isolated_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Redirect the nanobot config dir to ``tmp_path`` so tests don't touch ``~``.
 
     Returns the expected ``nanobot_web.json`` path.
@@ -76,18 +74,14 @@ def test_json_file_overrides_defaults(isolated_config: Path) -> None:
     assert settings.host == "127.0.0.1"
 
 
-def test_env_overrides_json_file(
-    isolated_config: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_env_overrides_json_file(isolated_config: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _write_server_json(isolated_config, {"port": 9100})
     monkeypatch.setenv("NANOBOT_SERVER_PORT", "9200")
     settings = ServerSettings()
     assert settings.port == 9200
 
 
-def test_init_kwargs_override_env(
-    isolated_config: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_init_kwargs_override_env(isolated_config: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("NANOBOT_SERVER_PORT", "9200")
     settings = ServerSettings(port=9300)
     assert settings.port == 9300

@@ -72,9 +72,7 @@ def test_delete_missing_session_leaves_transcript(monkeypatch, tmp_path: Path) -
     assert tr_file.is_file()
 
 
-def test_delete_session_removes_observability_session_dir(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_delete_session_removes_observability_session_dir(monkeypatch, tmp_path: Path) -> None:
     def fake_mgr(_bot_id: str | None) -> SessionManager:
         return SessionManager(tmp_path, timezone=None)
 
@@ -90,15 +88,13 @@ def test_delete_session_removes_observability_session_dir(
     )
     day = time.strftime("%Y-%m-%d", time.localtime())
     safe = safe_filename(key.replace(":", "_"))
-    obs_f = (
-        tmp_path
-        / "observability"
-        / "sessions"
-        / safe
-        / f"events_{day}.jsonl"
-    )
+    obs_f = tmp_path / "observability" / "sessions" / safe / f"events_{day}.jsonl"
     obs_f.parent.mkdir(parents=True)
-    obs_f.write_text(json.dumps({"ts": 0.0, "event": "x", "trace_id": None, "session_key": key, "payload": {}}) + "\n", encoding="utf-8")
+    obs_f.write_text(
+        json.dumps({"ts": 0.0, "event": "x", "trace_id": None, "session_key": key, "payload": {}})
+        + "\n",
+        encoding="utf-8",
+    )
 
     assert session_store.delete_session_files(None, key) is True
     assert not session_path.is_file()

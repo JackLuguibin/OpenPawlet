@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Awaitable, Callable
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from nanobot.bus.events import InboundMessage, OutboundMessage
@@ -87,7 +88,7 @@ class CommandRouter:
 
         for pfx, handler in self._prefix:
             if cmd.startswith(pfx):
-                ctx.args = ctx.raw[len(pfx):]
+                ctx.args = ctx.raw[len(pfx) :]
                 return await handler(ctx)
 
         for interceptor in self._interceptors:

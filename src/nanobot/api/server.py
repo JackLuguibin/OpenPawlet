@@ -8,14 +8,14 @@ release.
 """
 
 from console.server.openai_api import (
+    _DATA_URL_RE,
+    _SSE_DONE,
     API_CHAT_ID,
     API_SESSION_KEY,
     MAX_FILE_SIZE,
-    _DATA_URL_RE,
-    _FileSizeExceededError,
-    _SSE_DONE,
     _chat_completion_response,
     _error_json,
+    _FileSizeExceededError,
     _parse_json_content,
     _parse_multipart,
     _response_text,

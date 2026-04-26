@@ -83,6 +83,7 @@ async def test_send_to_agent_wait_reply_tool_ok() -> None:
     tool = SendToAgentWaitReplyTool(bus=bus, default_source_agent="alice")
     tool.set_context("alice", "console:sender")
     try:
+
         async def _bob_reply() -> None:
             ev = await asyncio.wait_for(bob_sub.get(), timeout=2.0)
             pl = ev.payload or {}
@@ -118,6 +119,7 @@ async def test_send_to_agent_wait_reply_self_target_uses_source_team_session() -
     tool = SendToAgentWaitReplyTool(bus=bus, default_source_agent="alice")
     tool.set_context("alice", "console:team_t1_room_r1_agent_alice")
     try:
+
         async def _reply() -> None:
             ev = await asyncio.wait_for(sub.get(), timeout=2.0)
             pl = ev.payload or {}
@@ -158,6 +160,7 @@ async def test_reply_to_agent_request_tool_ends_send_to_agent_wait_reply() -> No
     reply_tool = ReplyToAgentRequestTool(bus=bus, default_source_agent="bob")
     reply_tool.set_context("bob", "console:callee")
     try:
+
         async def _bob_reply() -> None:
             ev = await asyncio.wait_for(bob_sub.get(), timeout=2.0)
             pl = ev.payload or {}
@@ -249,9 +252,7 @@ async def test_subscribe_event_background_injects_inbound_message() -> None:
         default_agent_id="alice",
         inject_inbound=_inject,
     )
-    tool.set_context(
-        agent_id="alice", session_key="cli:direct", channel="cli", chat_id="direct"
-    )
+    tool.set_context(agent_id="alice", session_key="cli:direct", channel="cli", chat_id="direct")
     result = await tool.execute(topics=["chat"])
     assert "Subscribed in background" in result
 

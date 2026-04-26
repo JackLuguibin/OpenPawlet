@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Collection
+from collections.abc import Callable, Collection, Coroutine
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Callable, Coroutine
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
+
 from nanobot.session.manager import Session, SessionManager, _as_agent_aware
 from nanobot.utils.helpers import local_now
 
@@ -23,7 +24,7 @@ class AutoCompact:
         sessions: SessionManager,
         consolidator: Consolidator,
         session_ttl_minutes: int = 0,
-        transcript: "SessionTranscriptWriter | None" = None,
+        transcript: SessionTranscriptWriter | None = None,
     ):
         self.sessions = sessions
         self.consolidator = consolidator
@@ -32,8 +33,7 @@ class AutoCompact:
         self._archiving: set[str] = set()
         self._summaries: dict[str, tuple[str, datetime]] = {}
 
-    def _is_expired(self, ts: datetime | str | None,
-                    now: datetime | None = None) -> bool:
+    def _is_expired(self, ts: datetime | str | None, now: datetime | None = None) -> bool:
         if self._ttl <= 0 or not ts:
             return False
         tz = self.sessions.agent_timezone
@@ -44,16 +44,15 @@ class AutoCompact:
         return ((now or local_now(tz)) - ts).total_seconds() >= self._ttl * 60
 
     def _format_summary(self, text: str, last_active: datetime) -> str:
-        idle_min = int(
-            (local_now(self.sessions.agent_timezone) - last_active).total_seconds() / 60
-        )
+        idle_min = int((local_now(self.sessions.agent_timezone) - last_active).total_seconds() / 60)
         return f"Inactive for {idle_min} minutes.\nPrevious conversation summary: {text}"
 
     def _split_unconsolidated(
-        self, session: Session,
+        self,
+        session: Session,
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         """Split live session tail into archiveable prefix and retained recent suffix."""
-        tail = list(session.messages[session.last_consolidated:])
+        tail = list(session.messages[session.last_consolidated :])
         if not tail:
             return [], []
 
@@ -71,8 +70,11 @@ class AutoCompact:
         cut = len(tail) - len(kept)
         return tail[:cut], kept
 
-    def check_expired(self, schedule_background: Callable[[Coroutine], None],
-                      active_session_keys: Collection[str] = ()) -> None:
+    def check_expired(
+        self,
+        schedule_background: Callable[[Coroutine], None],
+        active_session_keys: Collection[str] = (),
+    ) -> None:
         """Schedule archival for idle sessions, skipping those with in-flight agent tasks."""
         now = local_now(self.sessions.agent_timezone)
         for info in self.sessions.list_sessions():
@@ -96,11 +98,7 @@ class AutoCompact:
                 return
 
             last_active = session.updated_at
-            if (
-                archive_msgs
-                and self._transcript
-                and self._transcript.enabled
-            ):
+            if archive_msgs and self._transcript and self._transcript.enabled:
                 self._transcript.append_evicted(
                     key,
                     "auto_compact_evict",
@@ -112,7 +110,10 @@ class AutoCompact:
                 summary = await self.consolidator.archive(archive_msgs) or ""
             if summary and summary != "(nothing)":
                 self._summaries[key] = (summary, last_active)
-                session.metadata["_last_summary"] = {"text": summary, "last_active": last_active.isoformat()}
+                session.metadata["_last_summary"] = {
+                    "text": summary,
+                    "last_active": last_active.isoformat(),
+                }
             session.messages = kept_msgs
             session.last_consolidated = 0
             session.updated_at = local_now(self.sessions.agent_timezone)
@@ -132,7 +133,9 @@ class AutoCompact:
 
     def prepare_session(self, session: Session, key: str) -> tuple[Session, str | None]:
         if key in self._archiving or self._is_expired(session.updated_at):
-            logger.info("Auto-compact: reloading session {} (archiving={})", key, key in self._archiving)
+            logger.info(
+                "Auto-compact: reloading session {} (archiving={})", key, key in self._archiving
+            )
             session = self.sessions.get_or_create(key)
         # Hot path: summary from in-memory dict (process hasn't restarted).
         # Also clean metadata copy so stale _last_summary never leaks to disk.

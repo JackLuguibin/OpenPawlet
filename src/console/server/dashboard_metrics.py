@@ -9,8 +9,6 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from nanobot.session.manager import SessionManager
-
 from console.server.bot_workspace import workspace_root
 from console.server.models.status import TokenUsage
 from console.server.models.usage import UsageHistoryItem
@@ -19,6 +17,7 @@ from console.server.nanobot_user_config import (
     read_default_timezone,
     resolve_config_path,
 )
+from nanobot.session.manager import SessionManager
 
 
 def _today_in_config_tz(iana: str | None) -> date:
@@ -160,9 +159,7 @@ class DashboardMetrics:
     history: list[UsageHistoryItem]
 
 
-def collect_dashboard_metrics(
-    bot_id: str | None, *, history_days: int = 14
-) -> DashboardMetrics:
+def collect_dashboard_metrics(bot_id: str | None, *, history_days: int = 14) -> DashboardMetrics:
     """Scan session files for session counts, today's stats, and daily token history."""
     cfg_path = resolve_config_path(bot_id)
     default_model = read_default_model(cfg_path) or "unknown"

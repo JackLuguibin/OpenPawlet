@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 import re
+from collections.abc import Callable
 from typing import Literal
 from uuid import uuid4
 
@@ -168,8 +168,7 @@ def _rotate_team_room_for_deleted_team_session(
     if not isinstance(teams, list) or not isinstance(rooms, list):
         return
     if not any(
-        isinstance(item, dict) and str(item.get("id", "")).strip() == team_id
-        for item in teams
+        isinstance(item, dict) and str(item.get("id", "")).strip() == team_id for item in teams
     ):
         return
     if not any(
@@ -245,7 +244,9 @@ async def get_session_transcript(
     bot_id: str | None = Query(default=None, alias="bot_id"),
     limit: int | None = Query(default=None, ge=1, le=5000),
     before_index: int | None = Query(
-        default=None, alias="before_index", ge=0,
+        default=None,
+        alias="before_index",
+        ge=0,
     ),
 ) -> DataResponse[SessionMessagesPayload]:
     """Load chat history from append-only transcript JSONL (full verbatim log).
@@ -269,7 +270,9 @@ async def get_session_transcript(
         tmsgs = session.messages
 
     window, offset, total, has_more = _paginate_transcript_window(
-        tmsgs, limit, before_index,
+        tmsgs,
+        limit,
+        before_index,
     )
     paginated = limit is not None or before_index is not None
     return DataResponse(
@@ -306,9 +309,7 @@ async def get_session_context(
     if entries_raw is None:
         raise HTTPException(status_code=404, detail="Session context not found")
 
-    latest = (
-        SessionContextEntry.model_validate(entries_raw[-1]) if entries_raw else None
-    )
+    latest = SessionContextEntry.model_validate(entries_raw[-1]) if entries_raw else None
     text = read_context_jsonl_raw(bot_id, session_key) or ""
     return DataResponse(
         data=SessionContextPayload(

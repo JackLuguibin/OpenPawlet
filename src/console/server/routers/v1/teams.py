@@ -25,8 +25,8 @@ from console.server.models import (
     Team,
     TeamCreateRequest,
     TeamRoom,
-    TeamRoomDeleteResponse,
     TeamRoomCreateResponse,
+    TeamRoomDeleteResponse,
     TeamTranscriptResponse,
     TeamUpdateRequest,
     UpdateTeamMemberBody,
@@ -159,7 +159,9 @@ async def get_team(bot_id: str, team_id: str) -> DataResponse[Team]:
 
 @router.put("/{team_id}", response_model=DataResponse[Team])
 async def update_team(
-    bot_id: str, team_id: str, body: TeamUpdateRequest,
+    bot_id: str,
+    team_id: str,
+    body: TeamUpdateRequest,
 ) -> DataResponse[Team]:
     raw = _load_teams_state(bot_id)
     teams = _parse_teams(raw["teams"])
@@ -194,7 +196,9 @@ async def delete_team(bot_id: str, team_id: str) -> DataResponse[OkBody]:
 
 @router.post("/{team_id}/members", response_model=DataResponse[Team])
 async def add_team_member(
-    bot_id: str, team_id: str, body: AddTeamMemberBody,
+    bot_id: str,
+    team_id: str,
+    body: AddTeamMemberBody,
 ) -> DataResponse[Team]:
     valid = _agent_id_set(bot_id)
     if body.agent_id not in valid:
@@ -227,7 +231,9 @@ async def add_team_member(
 
 @router.delete("/{team_id}/members/{agent_id}", response_model=DataResponse[Team])
 async def remove_team_member(
-    bot_id: str, team_id: str, agent_id: str,
+    bot_id: str,
+    team_id: str,
+    agent_id: str,
 ) -> DataResponse[Team]:
     raw = _load_teams_state(bot_id)
     teams = _parse_teams(raw["teams"])
@@ -242,7 +248,8 @@ async def remove_team_member(
         description=t.description,
         member_agent_ids=new_ids,
         member_ephemeral=_normalize_member_ephemeral(
-            new_ids, {k: v for k, v in t.member_ephemeral.items() if k != agent_id},
+            new_ids,
+            {k: v for k, v in t.member_ephemeral.items() if k != agent_id},
         ),
         team_skills=t.team_skills,
         context_notes=t.context_notes,
@@ -310,9 +317,7 @@ async def create_team_room(bot_id: str, team_id: str) -> DataResponse[TeamRoomCr
     keys: dict[str, str] = {
         aid: team_member_session_key(team_id, room_id, aid) for aid in t.member_agent_ids
     }
-    return DataResponse(
-        data=TeamRoomCreateResponse(room=tr, member_session_keys=keys)
-    )
+    return DataResponse(data=TeamRoomCreateResponse(room=tr, member_session_keys=keys))
 
 
 @router.get(
@@ -330,7 +335,9 @@ async def list_team_rooms(bot_id: str, team_id: str) -> DataResponse[list[TeamRo
     "/{team_id}/rooms/{room_id}",
     response_model=DataResponse[TeamRoomDeleteResponse],
 )
-async def delete_team_room(bot_id: str, team_id: str, room_id: str) -> DataResponse[TeamRoomDeleteResponse]:
+async def delete_team_room(
+    bot_id: str, team_id: str, room_id: str
+) -> DataResponse[TeamRoomDeleteResponse]:
     raw = _load_teams_state(bot_id)
     teams = _parse_teams(raw["teams"])
     _get_team(teams, team_id)
@@ -353,7 +360,9 @@ async def delete_team_room(bot_id: str, team_id: str, room_id: str) -> DataRespo
     response_model=DataResponse[TeamTranscriptResponse],
 )
 async def get_team_room_transcript(
-    bot_id: str, team_id: str, room_id: str,
+    bot_id: str,
+    team_id: str,
+    room_id: str,
 ) -> DataResponse[TeamTranscriptResponse]:
     raw = _load_teams_state(bot_id)
     t = _get_team(_parse_teams(raw["teams"]), team_id)

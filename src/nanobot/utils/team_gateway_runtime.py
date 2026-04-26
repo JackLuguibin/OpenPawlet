@@ -173,9 +173,7 @@ def resolve_effective_gateway_agent_id(workspace: Path) -> str | None:
     if not adir.is_dir():
         return None
     stems: list[str] = sorted(
-        p.stem
-        for p in adir.glob("*.json")
-        if p.is_file() and p.stem and ".." not in p.stem
+        p.stem for p in adir.glob("*.json") if p.is_file() and p.stem and ".." not in p.stem
     )
     if not stems:
         return None

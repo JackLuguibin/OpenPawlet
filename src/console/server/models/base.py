@@ -77,7 +77,7 @@ class BaseResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class DataResponse(BaseResponse, Generic[T]):
+class DataResponse(BaseResponse, Generic[T]):  # noqa: UP046 - keep TypeVar form for Pydantic generics
     """Wrapper for responses that carry a data payload.
 
     Matches the web client's success envelope: ``code == 0`` unwraps ``data``.

@@ -14,7 +14,13 @@ if TYPE_CHECKING:
     from nanobot.session.transcript import SessionTranscriptWriter
 
 from nanobot.config.paths import get_legacy_sessions_dir
-from nanobot.utils.helpers import ensure_dir, find_legal_message_start, local_now, safe_filename, timestamp
+from nanobot.utils.helpers import (
+    ensure_dir,
+    find_legal_message_start,
+    local_now,
+    safe_filename,
+    timestamp,
+)
 
 
 def _as_agent_aware(dt: datetime, agent_tz: str | None) -> datetime:
@@ -54,18 +60,13 @@ class Session:
     def add_message(self, role: str, content: str, **kwargs: Any) -> None:
         """Add a message to the session."""
         tz = self.agent_timezone
-        msg = {
-            "role": role,
-            "content": content,
-            "timestamp": timestamp(tz),
-            **kwargs
-        }
+        msg = {"role": role, "content": content, "timestamp": timestamp(tz), **kwargs}
         self.messages.append(msg)
         self.updated_at = local_now(tz)
 
     def get_history(self, max_messages: int = 500) -> list[dict[str, Any]]:
         """Return unconsolidated messages for LLM input, aligned to a legal tool-call boundary."""
-        unconsolidated = self.messages[self.last_consolidated:]
+        unconsolidated = self.messages[self.last_consolidated :]
         sliced = unconsolidated[-max_messages:]
 
         # Avoid starting mid-turn when possible.
@@ -276,7 +277,11 @@ class SessionManager:
             logger.warning("Failed to load session {}: {}", key, e)
             repaired = self._repair(key)
             if repaired is not None:
-                logger.info("Recovered session {} from corrupt file ({} messages)", key, len(repaired.messages))
+                logger.info(
+                    "Recovered session {} from corrupt file ({} messages)",
+                    key,
+                    len(repaired.messages),
+                )
                 repaired._disk_anchored = True
             return repaired
 
@@ -310,7 +315,9 @@ class SessionManager:
                         if data.get("created_at"):
                             try:
                                 created_at = _as_agent_aware(
-                                    datetime.fromisoformat(data["created_at"].replace("Z", "+00:00")),
+                                    datetime.fromisoformat(
+                                        data["created_at"].replace("Z", "+00:00")
+                                    ),
                                     self._timezone,
                                 )
                             except (ValueError, TypeError):
@@ -318,7 +325,9 @@ class SessionManager:
                         if data.get("updated_at"):
                             try:
                                 updated_at = _as_agent_aware(
-                                    datetime.fromisoformat(data["updated_at"].replace("Z", "+00:00")),
+                                    datetime.fromisoformat(
+                                        data["updated_at"].replace("Z", "+00:00")
+                                    ),
                                     self._timezone,
                                 )
                             except (ValueError, TypeError):
@@ -385,7 +394,7 @@ class SessionManager:
                     "created_at": session.created_at.isoformat(),
                     "updated_at": session.updated_at.isoformat(),
                     "metadata": session.metadata,
-                    "last_consolidated": session.last_consolidated
+                    "last_consolidated": session.last_consolidated,
                 }
                 f.write(json.dumps(metadata_line, ensure_ascii=False) + "\n")
                 for msg in session.messages:
@@ -514,21 +523,25 @@ class SessionManager:
                         data = json.loads(first_line)
                         if data.get("_type") == "metadata":
                             key = data.get("key") or path.stem.replace("_", ":", 1)
-                            sessions.append({
-                                "key": key,
-                                "created_at": data.get("created_at"),
-                                "updated_at": data.get("updated_at"),
-                                "path": str(path)
-                            })
+                            sessions.append(
+                                {
+                                    "key": key,
+                                    "created_at": data.get("created_at"),
+                                    "updated_at": data.get("updated_at"),
+                                    "path": str(path),
+                                }
+                            )
             except Exception:
                 repaired = self._repair(fallback_key)
                 if repaired is not None:
-                    sessions.append({
-                        "key": repaired.key,
-                        "created_at": repaired.created_at.isoformat(),
-                        "updated_at": repaired.updated_at.isoformat(),
-                        "path": str(path)
-                    })
+                    sessions.append(
+                        {
+                            "key": repaired.key,
+                            "created_at": repaired.created_at.isoformat(),
+                            "updated_at": repaired.updated_at.isoformat(),
+                            "path": str(path),
+                        }
+                    )
                 continue
 
         return sorted(sessions, key=lambda x: x.get("updated_at", ""), reverse=True)

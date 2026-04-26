@@ -7,13 +7,12 @@ from pathlib import Path
 from typing import Any
 
 from loguru import logger
-from nanobot.config.loader import migrate_config
-from nanobot.config.schema import Config
 from pydantic import ValidationError
 
-CONFIG_ROOT_KEYS = frozenset(
-    {"agents", "channels", "providers", "api", "gateway", "tools"}
-)
+from nanobot.config.loader import migrate_config
+from nanobot.config.schema import Config
+
+CONFIG_ROOT_KEYS = frozenset({"agents", "channels", "providers", "api", "gateway", "tools"})
 
 # Shared OpenAPI description for the optional ``bot_id`` query parameter.
 # The console is currently single-instance (one ``~/.nanobot/config.json``);
@@ -49,11 +48,7 @@ def deep_merge(base: dict[str, Any], update: dict[str, Any]) -> dict[str, Any]:
     """Recursively merge ``update`` into ``base`` (neither input is mutated)."""
     result = dict(base)
     for key, value in update.items():
-        if (
-            key in result
-            and isinstance(result[key], dict)
-            and isinstance(value, dict)
-        ):
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
             result[key] = deep_merge(result[key], value)
         else:
             result[key] = value

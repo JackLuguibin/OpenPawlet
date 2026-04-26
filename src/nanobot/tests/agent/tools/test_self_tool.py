@@ -4,17 +4,17 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 from pydantic import BaseModel
 
 from nanobot.agent.tools.self import MyTool
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_mock_loop(**overrides):
     """Build a lightweight mock AgentLoop with the attributes MyTool reads."""
@@ -69,8 +69,8 @@ def _make_tool(loop=None):
 # check — no key (summary)
 # ---------------------------------------------------------------------------
 
-class TestInspectSummary:
 
+class TestInspectSummary:
     @pytest.mark.asyncio
     async def test_inspect_returns_current_state(self):
         tool = _make_tool()
@@ -105,8 +105,8 @@ class TestInspectSummary:
 # check — single key (direct)
 # ---------------------------------------------------------------------------
 
-class TestInspectSingleKey:
 
+class TestInspectSingleKey:
     @pytest.mark.asyncio
     async def test_inspect_simple_value(self):
         tool = _make_tool()
@@ -137,8 +137,8 @@ class TestInspectSingleKey:
 # check — dot-path navigation
 # ---------------------------------------------------------------------------
 
-class TestInspectPathNavigation:
 
+class TestInspectPathNavigation:
     @pytest.mark.asyncio
     async def test_inspect_config_subfield(self):
         loop = _make_mock_loop()
@@ -189,13 +189,12 @@ class TestInspectPathNavigation:
         assert "api_key" not in result.lower()
 
 
-
 # ---------------------------------------------------------------------------
 # set — restricted (with validation)
 # ---------------------------------------------------------------------------
 
-class TestModifyRestricted:
 
+class TestModifyRestricted:
     @pytest.mark.asyncio
     async def test_modify_restricted_valid(self):
         tool = _make_tool()
@@ -251,8 +250,8 @@ class TestModifyRestricted:
 # set — blocked (minimal set)
 # ---------------------------------------------------------------------------
 
-class TestModifyBlocked:
 
+class TestModifyBlocked:
     @pytest.mark.asyncio
     async def test_modify_bus_blocked(self):
         tool = _make_tool()
@@ -304,8 +303,8 @@ class TestModifyBlocked:
 # set — free tier (setattr priority)
 # ---------------------------------------------------------------------------
 
-class TestModifyFree:
 
+class TestModifyFree:
     @pytest.mark.asyncio
     async def test_modify_existing_attr_setattr(self):
         """Modifying an existing loop attribute should use setattr."""
@@ -397,8 +396,8 @@ class TestModifyFree:
 # set — previously BLOCKED/READONLY now open
 # ---------------------------------------------------------------------------
 
-class TestModifyOpen:
 
+class TestModifyOpen:
     @pytest.mark.asyncio
     async def test_modify_tools_blocked(self):
         """tools is BLOCKED — cannot be replaced."""
@@ -546,8 +545,8 @@ class TestModifyOpen:
 # validate_json_safe — element counting
 # ---------------------------------------------------------------------------
 
-class TestValidateJsonSafe:
 
+class TestValidateJsonSafe:
     def test_single_list_passes(self):
         assert MyTool._validate_json_safe(list(range(500))) is None
 
@@ -560,8 +559,8 @@ class TestValidateJsonSafe:
 # unknown action
 # ---------------------------------------------------------------------------
 
-class TestUnknownAction:
 
+class TestUnknownAction:
     @pytest.mark.asyncio
     async def test_unknown_action(self):
         tool = _make_tool()
@@ -573,8 +572,8 @@ class TestUnknownAction:
 # runtime_vars limits (from code review)
 # ---------------------------------------------------------------------------
 
-class TestRuntimeVarsLimits:
 
+class TestRuntimeVarsLimits:
     @pytest.mark.asyncio
     async def test_runtime_vars_rejects_at_max_keys(self):
         loop = _make_mock_loop()
@@ -598,8 +597,8 @@ class TestRuntimeVarsLimits:
 # denied attrs (non-dunder)
 # ---------------------------------------------------------------------------
 
-class TestDeniedAttrs:
 
+class TestDeniedAttrs:
     @pytest.mark.asyncio
     async def test_modify_denied_non_dunder_blocked(self):
         tool = _make_tool()
@@ -612,8 +611,8 @@ class TestDeniedAttrs:
 # SubagentStatus formatting
 # ---------------------------------------------------------------------------
 
-class TestSubagentStatusFormatting:
 
+class TestSubagentStatusFormatting:
     def test_format_single_status(self):
         """_format_value should produce a rich multi-line display for a SubagentStatus."""
         from nanobot.agent.subagent import SubagentStatus
@@ -680,17 +679,18 @@ class TestSubagentStatusFormatting:
         result = MyTool._format_value(status)
         assert "error: Connection refused" in result
 
+
 # ---------------------------------------------------------------------------
 # _SubagentHook after_iteration updates status
 # ---------------------------------------------------------------------------
 
-class TestSubagentHookStatus:
 
+class TestSubagentHookStatus:
     @pytest.mark.asyncio
     async def test_after_iteration_updates_status(self):
         """after_iteration should copy iteration, tool_events, usage to status."""
-        from nanobot.agent.subagent import SubagentStatus, _SubagentHook
         from nanobot.agent.hook import AgentHookContext
+        from nanobot.agent.subagent import SubagentStatus, _SubagentHook
 
         status = SubagentStatus(
             task_id="test",
@@ -716,8 +716,8 @@ class TestSubagentHookStatus:
     @pytest.mark.asyncio
     async def test_after_iteration_with_error(self):
         """after_iteration should set status.error when context has an error."""
-        from nanobot.agent.subagent import SubagentStatus, _SubagentHook
         from nanobot.agent.hook import AgentHookContext
+        from nanobot.agent.subagent import SubagentStatus, _SubagentHook
 
         status = SubagentStatus(
             task_id="test",
@@ -739,8 +739,8 @@ class TestSubagentHookStatus:
     @pytest.mark.asyncio
     async def test_after_iteration_no_status_is_noop(self):
         """after_iteration with no status should be a no-op."""
-        from nanobot.agent.subagent import _SubagentHook
         from nanobot.agent.hook import AgentHookContext
+        from nanobot.agent.subagent import _SubagentHook
 
         hook = _SubagentHook("test")
         context = AgentHookContext(iteration=1, messages=[])
@@ -751,13 +751,13 @@ class TestSubagentHookStatus:
 # Checkpoint callback updates status
 # ---------------------------------------------------------------------------
 
-class TestCheckpointCallback:
 
+class TestCheckpointCallback:
     @pytest.mark.asyncio
     async def test_checkpoint_updates_phase_and_iteration(self):
         """The _on_checkpoint callback should update status.phase and iteration."""
+
         from nanobot.agent.subagent import SubagentStatus
-        import asyncio
 
         status = SubagentStatus(
             task_id="cp",
@@ -807,8 +807,8 @@ class TestCheckpointCallback:
 # that access is properly rejected.
 # ---------------------------------------------------------------------------
 
-class TestInspectTaskStatuses:
 
+class TestInspectTaskStatuses:
     @pytest.mark.asyncio
     async def test_inspect_task_statuses_accessible(self):
         """subagents is READ_ONLY — check should show subagent statuses."""
@@ -858,8 +858,8 @@ class TestInspectTaskStatuses:
 # read-only mode (tools.my.allow_set=False)
 # ---------------------------------------------------------------------------
 
-class TestReadOnlyMode:
 
+class TestReadOnlyMode:
     def _make_readonly_tool(self):
         loop = _make_mock_loop()
         return MyTool(loop=loop, modify_allowed=False)
@@ -890,8 +890,8 @@ class TestReadOnlyMode:
 # runtime vars check fallback (Fix #1: cross-turn memory)
 # ---------------------------------------------------------------------------
 
-class TestRuntimeVarsInspectFallback:
 
+class TestRuntimeVarsInspectFallback:
     @pytest.mark.asyncio
     async def test_inspect_runtime_var_after_modify(self):
         """Design doc scenario: set then check should return the value."""
@@ -926,8 +926,8 @@ class TestRuntimeVarsInspectFallback:
 # sensitive sub-field blocking (Fix #3: API key leak prevention)
 # ---------------------------------------------------------------------------
 
-class TestSensitiveSubFieldBlocking:
 
+class TestSensitiveSubFieldBlocking:
     @pytest.mark.asyncio
     async def test_inspect_api_key_blocked(self):
         """web_config.search.api_key must not be accessible."""
@@ -998,8 +998,8 @@ class TestSensitiveSubFieldBlocking:
 # security-sensitive attribute protection (Fix #4)
 # ---------------------------------------------------------------------------
 
-class TestSecurityAttributeProtection:
 
+class TestSecurityAttributeProtection:
     @pytest.mark.asyncio
     async def test_modify_restrict_to_workspace_blocked(self):
         """restrict_to_workspace is BLOCKED — cannot be toggled."""
@@ -1068,8 +1068,8 @@ class TestSecurityAttributeProtection:
 # current iteration count (Fix #2)
 # ---------------------------------------------------------------------------
 
-class TestCurrentIteration:
 
+class TestCurrentIteration:
     @pytest.mark.asyncio
     async def test_inspect_current_iteration(self):
         tool = _make_tool()
@@ -1094,8 +1094,8 @@ class TestCurrentIteration:
 # _last_usage in check summary (Fix #5)
 # ---------------------------------------------------------------------------
 
-class TestLastUsageInSummary:
 
+class TestLastUsageInSummary:
     @pytest.mark.asyncio
     async def test_last_usage_shown_in_summary(self):
         tool = _make_tool()
@@ -1116,8 +1116,8 @@ class TestLastUsageInSummary:
 # set_context (audit session tracking)
 # ---------------------------------------------------------------------------
 
-class TestSetContext:
 
+class TestSetContext:
     def test_set_context_stores_channel_and_chat_id(self):
         tool = _make_tool()
         tool.set_context("feishu", "oc_abc123")

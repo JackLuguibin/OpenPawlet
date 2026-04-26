@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import asyncio
 
-from console.server.routers.v1.sessions import _row_to_session_info
 from console.server.routers.v1 import sessions as sessions_router
+from console.server.routers.v1.sessions import _row_to_session_info
 
 
 def test_row_to_session_info_extracts_team_metadata() -> None:
@@ -86,9 +86,7 @@ def test_delete_team_session_rotates_team_room(monkeypatch) -> None:
     assert saved_payload is not None
     assert isinstance(saved_payload.get("rooms"), list)
     assert any(
-        isinstance(room, dict)
-        and room.get("id") == "room-new"
-        and room.get("team_id") == "tm1"
+        isinstance(room, dict) and room.get("id") == "room-new" and room.get("team_id") == "tm1"
         for room in saved_payload["rooms"]
     )
     assert saved_gateway == ("bot-1", "tm1", "room-new")

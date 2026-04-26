@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any
 
 from loguru import logger
 
@@ -56,7 +55,9 @@ async def run_team_member_event_loop(
         return
     sub_api = getattr(bus, "subscribe_events", None)
     if sub_api is None:
-        raise RuntimeError("Message bus has no subscribe_events (ZMQ / events path required for teams)")
+        raise RuntimeError(
+            "Message bus has no subscribe_events (ZMQ / events path required for teams)"
+        )
 
     await loop._connect_mcp()
     sub = sub_api(

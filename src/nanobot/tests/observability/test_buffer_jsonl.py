@@ -49,9 +49,7 @@ def test_jsonl_always_appends_with_buffer_off(
     assert isinstance(row["ts"], (int, float))
 
 
-def test_buffer_on_also_appends_jsonl(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_buffer_on_also_appends_jsonl(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import nanobot.observability.buffer as buf
 
     def fake_path(sk: str | None) -> Path:

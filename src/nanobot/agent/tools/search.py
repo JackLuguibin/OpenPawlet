@@ -5,8 +5,9 @@ from __future__ import annotations
 import fnmatch
 import os
 import re
+from collections.abc import Iterable
 from pathlib import Path, PurePosixPath
-from typing import Any, Iterable, TypeVar
+from typing import Any, TypeVar
 
 from nanobot.agent.tools.filesystem import ListDirTool, _FsTool
 
@@ -59,7 +60,7 @@ def _is_binary(raw: bytes) -> bool:
     return (non_text / len(sample)) > 0.2
 
 
-def _paginate(items: list[T], limit: int | None, offset: int) -> tuple[list[T], bool]:
+def _paginate(items: list[T], limit: int | None, offset: int) -> tuple[list[T], bool]:  # noqa: UP047
     if limit is None:
         return items[offset:], False
     sliced = items[offset : offset + limit]
@@ -252,6 +253,7 @@ class GlobTool(_SearchTool):
 
 class GrepTool(_SearchTool):
     """Search file contents using a regex-like pattern."""
+
     _MAX_RESULT_CHARS = 128_000
     _MAX_FILE_BYTES = 2_000_000
 
@@ -326,9 +328,7 @@ class GrepTool(_SearchTool):
                 },
                 "max_matches": {
                     "type": "integer",
-                    "description": (
-                        "Legacy alias for head_limit in content mode"
-                    ),
+                    "description": ("Legacy alias for head_limit in content mode"),
                     "minimum": 1,
                     "maximum": 1000,
                 },
@@ -525,15 +525,11 @@ class GrepTool(_SearchTool):
 
             notes: list[str] = []
             if output_mode == "content" and truncated:
-                notes.append(
-                    f"(pagination: limit={limit}, offset={offset})"
-                )
+                notes.append(f"(pagination: limit={limit}, offset={offset})")
             elif output_mode == "content" and size_truncated:
                 notes.append("(output truncated due to size)")
             elif truncated and output_mode in {"count", "files_with_matches"}:
-                notes.append(
-                    f"(pagination: limit={limit}, offset={offset})"
-                )
+                notes.append(f"(pagination: limit={limit}, offset={offset})")
             elif output_mode in {"count", "files_with_matches"} and offset > 0:
                 notes.append(f"(pagination: offset={offset})")
             elif output_mode == "content" and offset > 0 and blocks:
@@ -543,9 +539,7 @@ class GrepTool(_SearchTool):
             if skipped_large:
                 notes.append(f"(skipped {skipped_large} large files)")
             if output_mode == "count" and counts:
-                notes.append(
-                    f"(total matches: {sum(counts.values())} in {len(counts)} files)"
-                )
+                notes.append(f"(total matches: {sum(counts.values())} in {len(counts)} files)")
             if notes:
                 result += "\n\n" + "\n".join(notes)
             return result

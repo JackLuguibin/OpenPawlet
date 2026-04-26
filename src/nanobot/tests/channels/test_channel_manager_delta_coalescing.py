@@ -1,6 +1,7 @@
 """Tests for ChannelManager delta coalescing to reduce streaming latency."""
+
 import asyncio
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -83,7 +84,7 @@ class TestDeltaCoalescing:
                 channel = manager.channels.get(m.channel)
                 if channel:
                     await channel.send_delta(m.chat_id, m.content, m.metadata)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass
 
         await process_one()
@@ -97,12 +98,14 @@ class TestDeltaCoalescing:
         """Multiple consecutive deltas for same chat should be merged."""
         # Put multiple deltas in queue
         for text in ["Hello", " ", "world", "!"]:
-            await bus.publish_outbound(OutboundMessage(
-                channel="mock",
-                chat_id="chat1",
-                content=text,
-                metadata={"_stream_delta": True},
-            ))
+            await bus.publish_outbound(
+                OutboundMessage(
+                    channel="mock",
+                    chat_id="chat1",
+                    content=text,
+                    metadata={"_stream_delta": True},
+                )
+            )
 
         # Process using coalescing logic
         first_msg = await bus.consume_outbound()
@@ -117,18 +120,22 @@ class TestDeltaCoalescing:
     @pytest.mark.asyncio
     async def test_interleaved_stream_ids_not_coalesced(self, manager, bus):
         """Same chat but different _stream_id must not merge into one delta."""
-        await bus.publish_outbound(OutboundMessage(
-            channel="mock",
-            chat_id="chat1",
-            content="A",
-            metadata={"_stream_delta": True, "_stream_id": "s1"},
-        ))
-        await bus.publish_outbound(OutboundMessage(
-            channel="mock",
-            chat_id="chat1",
-            content="B",
-            metadata={"_stream_delta": True, "_stream_id": "s2"},
-        ))
+        await bus.publish_outbound(
+            OutboundMessage(
+                channel="mock",
+                chat_id="chat1",
+                content="A",
+                metadata={"_stream_delta": True, "_stream_id": "s1"},
+            )
+        )
+        await bus.publish_outbound(
+            OutboundMessage(
+                channel="mock",
+                chat_id="chat1",
+                content="B",
+                metadata={"_stream_delta": True, "_stream_id": "s2"},
+            )
+        )
 
         first_msg = await bus.consume_outbound()
         merged, pending = manager._coalesce_stream_deltas(first_msg)
@@ -143,18 +150,22 @@ class TestDeltaCoalescing:
     async def test_deltas_different_chats_not_coalesced(self, manager, bus):
         """Deltas for different chats should not be merged."""
         # Put deltas for different chats
-        await bus.publish_outbound(OutboundMessage(
-            channel="mock",
-            chat_id="chat1",
-            content="Hello",
-            metadata={"_stream_delta": True},
-        ))
-        await bus.publish_outbound(OutboundMessage(
-            channel="mock",
-            chat_id="chat2",
-            content="World",
-            metadata={"_stream_delta": True},
-        ))
+        await bus.publish_outbound(
+            OutboundMessage(
+                channel="mock",
+                chat_id="chat1",
+                content="Hello",
+                metadata={"_stream_delta": True},
+            )
+        )
+        await bus.publish_outbound(
+            OutboundMessage(
+                channel="mock",
+                chat_id="chat2",
+                content="World",
+                metadata={"_stream_delta": True},
+            )
+        )
 
         first_msg = await bus.consume_outbound()
         merged, pending = manager._coalesce_stream_deltas(first_msg)
@@ -171,18 +182,22 @@ class TestDeltaCoalescing:
     async def test_stream_end_terminates_coalescing(self, manager, bus):
         """_stream_end should stop coalescing and be included in final message."""
         # Put deltas with stream_end at the end
-        await bus.publish_outbound(OutboundMessage(
-            channel="mock",
-            chat_id="chat1",
-            content="Hello",
-            metadata={"_stream_delta": True},
-        ))
-        await bus.publish_outbound(OutboundMessage(
-            channel="mock",
-            chat_id="chat1",
-            content=" world",
-            metadata={"_stream_delta": True, "_stream_end": True},
-        ))
+        await bus.publish_outbound(
+            OutboundMessage(
+                channel="mock",
+                chat_id="chat1",
+                content="Hello",
+                metadata={"_stream_delta": True},
+            )
+        )
+        await bus.publish_outbound(
+            OutboundMessage(
+                channel="mock",
+                chat_id="chat1",
+                content=" world",
+                metadata={"_stream_delta": True, "_stream_end": True},
+            )
+        )
 
         first_msg = await bus.consume_outbound()
         merged, pending = manager._coalesce_stream_deltas(first_msg)
@@ -197,18 +212,22 @@ class TestDeltaCoalescing:
     @pytest.mark.asyncio
     async def test_stream_end_only_tail_coalesces_with_prior_delta(self, manager, bus):
         """A trailing frame with only _stream_end still merges with the same stream."""
-        await bus.publish_outbound(OutboundMessage(
-            channel="mock",
-            chat_id="chat1",
-            content="Hello",
-            metadata={"_stream_delta": True, "_stream_id": "z"},
-        ))
-        await bus.publish_outbound(OutboundMessage(
-            channel="mock",
-            chat_id="chat1",
-            content="",
-            metadata={"_stream_end": True, "_stream_id": "z"},
-        ))
+        await bus.publish_outbound(
+            OutboundMessage(
+                channel="mock",
+                chat_id="chat1",
+                content="Hello",
+                metadata={"_stream_delta": True, "_stream_id": "z"},
+            )
+        )
+        await bus.publish_outbound(
+            OutboundMessage(
+                channel="mock",
+                chat_id="chat1",
+                content="",
+                metadata={"_stream_end": True, "_stream_id": "z"},
+            )
+        )
 
         first_msg = await bus.consume_outbound()
         merged, pending = manager._coalesce_stream_deltas(first_msg)
@@ -221,24 +240,30 @@ class TestDeltaCoalescing:
     @pytest.mark.asyncio
     async def test_coalescing_stops_at_first_non_matching_boundary(self, manager, bus):
         """Only consecutive deltas should be merged; later deltas stay queued."""
-        await bus.publish_outbound(OutboundMessage(
-            channel="mock",
-            chat_id="chat1",
-            content="Hello",
-            metadata={"_stream_delta": True, "_stream_id": "seg-1"},
-        ))
-        await bus.publish_outbound(OutboundMessage(
-            channel="mock",
-            chat_id="chat1",
-            content="",
-            metadata={"_stream_end": True, "_stream_id": "seg-1"},
-        ))
-        await bus.publish_outbound(OutboundMessage(
-            channel="mock",
-            chat_id="chat1",
-            content="world",
-            metadata={"_stream_delta": True, "_stream_id": "seg-2"},
-        ))
+        await bus.publish_outbound(
+            OutboundMessage(
+                channel="mock",
+                chat_id="chat1",
+                content="Hello",
+                metadata={"_stream_delta": True, "_stream_id": "seg-1"},
+            )
+        )
+        await bus.publish_outbound(
+            OutboundMessage(
+                channel="mock",
+                chat_id="chat1",
+                content="",
+                metadata={"_stream_end": True, "_stream_id": "seg-1"},
+            )
+        )
+        await bus.publish_outbound(
+            OutboundMessage(
+                channel="mock",
+                chat_id="chat1",
+                content="world",
+                metadata={"_stream_delta": True, "_stream_id": "seg-2"},
+            )
+        )
 
         first_msg = await bus.consume_outbound()
         merged, pending = manager._coalesce_stream_deltas(first_msg)
@@ -256,18 +281,22 @@ class TestDeltaCoalescing:
     @pytest.mark.asyncio
     async def test_non_delta_message_preserved(self, manager, bus):
         """Non-delta messages should be preserved in pending list."""
-        await bus.publish_outbound(OutboundMessage(
-            channel="mock",
-            chat_id="chat1",
-            content="Delta",
-            metadata={"_stream_delta": True},
-        ))
-        await bus.publish_outbound(OutboundMessage(
-            channel="mock",
-            chat_id="chat1",
-            content="Final message",
-            metadata={},  # Not a delta
-        ))
+        await bus.publish_outbound(
+            OutboundMessage(
+                channel="mock",
+                chat_id="chat1",
+                content="Delta",
+                metadata={"_stream_delta": True},
+            )
+        )
+        await bus.publish_outbound(
+            OutboundMessage(
+                channel="mock",
+                chat_id="chat1",
+                content="Final message",
+                metadata={},  # Not a delta
+            )
+        )
 
         first_msg = await bus.consume_outbound()
         merged, pending = manager._coalesce_stream_deltas(first_msg)
@@ -280,12 +309,14 @@ class TestDeltaCoalescing:
     @pytest.mark.asyncio
     async def test_empty_queue_stops_coalescing(self, manager, bus):
         """Coalescing should stop when queue is empty."""
-        await bus.publish_outbound(OutboundMessage(
-            channel="mock",
-            chat_id="chat1",
-            content="Only message",
-            metadata={"_stream_delta": True},
-        ))
+        await bus.publish_outbound(
+            OutboundMessage(
+                channel="mock",
+                chat_id="chat1",
+                content="Only message",
+                metadata={"_stream_delta": True},
+            )
+        )
 
         first_msg = await bus.consume_outbound()
         merged, pending = manager._coalesce_stream_deltas(first_msg)
@@ -301,24 +332,30 @@ class TestDispatchOutboundWithCoalescing:
     async def test_dispatch_coalesces_and_processes_pending(self, manager, bus):
         """_dispatch_outbound should coalesce deltas and process pending messages."""
         # Put multiple deltas followed by a regular message
-        await bus.publish_outbound(OutboundMessage(
-            channel="mock",
-            chat_id="chat1",
-            content="A",
-            metadata={"_stream_delta": True},
-        ))
-        await bus.publish_outbound(OutboundMessage(
-            channel="mock",
-            chat_id="chat1",
-            content="B",
-            metadata={"_stream_delta": True},
-        ))
-        await bus.publish_outbound(OutboundMessage(
-            channel="mock",
-            chat_id="chat1",
-            content="Final",
-            metadata={},  # Regular message
-        ))
+        await bus.publish_outbound(
+            OutboundMessage(
+                channel="mock",
+                chat_id="chat1",
+                content="A",
+                metadata={"_stream_delta": True},
+            )
+        )
+        await bus.publish_outbound(
+            OutboundMessage(
+                channel="mock",
+                chat_id="chat1",
+                content="B",
+                metadata={"_stream_delta": True},
+            )
+        )
+        await bus.publish_outbound(
+            OutboundMessage(
+                channel="mock",
+                chat_id="chat1",
+                content="Final",
+                metadata={},  # Regular message
+            )
+        )
 
         # Run one iteration of dispatch logic manually
         pending = []

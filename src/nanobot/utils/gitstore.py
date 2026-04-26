@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import io
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from loguru import logger
@@ -40,7 +40,7 @@ def _compute_line_ages(annotated, tz_name: str | None) -> list[LineAge]:
     now = anchor.date()
     ages: list[LineAge] = []
     for (commit, _tree_entry), _line_bytes in annotated:
-        dt = datetime.fromtimestamp(commit.commit_time, tz=timezone.utc)
+        dt = datetime.fromtimestamp(commit.commit_time, tz=UTC)
         dt = dt.astimezone(tz) if tz is not None else dt.astimezone()
         ages.append(LineAge(age_days=(now - dt.date()).days))
     return ages
@@ -77,8 +77,7 @@ class GitStore:
 
         if self._is_inside_git_repo():
             logger.warning(
-                "Workspace {} is already inside a git repo; "
-                "skipping nested repo initialization",
+                "Workspace {} is already inside a git repo; skipping nested repo initialization",
                 self._workspace,
             )
             return False
@@ -95,9 +94,7 @@ class GitStore:
                 existing = gitignore.read_text(encoding="utf-8")
                 existing_lines = set(existing.splitlines())
                 new_lines = [
-                    line
-                    for line in dream_entries.splitlines()
-                    if line not in existing_lines
+                    line for line in dream_entries.splitlines() if line not in existing_lines
                 ]
                 if new_lines:
                     merged = existing.rstrip("\n") + "\n" + "\n".join(new_lines) + "\n"
@@ -240,17 +237,19 @@ class GitStore:
                     commit = repo[sha]
                     if commit.type_name != b"commit":
                         break
-                    dt = datetime.fromtimestamp(commit.commit_time, tz=timezone.utc)
+                    dt = datetime.fromtimestamp(commit.commit_time, tz=UTC)
                     anchor = local_now(self._timezone)
                     tz = anchor.tzinfo
                     dt = dt.astimezone(tz) if tz is not None else dt.astimezone()
                     ts = dt.strftime("%Y-%m-%d %H:%M")
                     msg = commit.message.decode("utf-8", errors="replace").strip()
-                    entries.append(CommitInfo(
-                        sha=sha.hex()[:8],
-                        message=msg,
-                        timestamp=ts,
-                    ))
+                    entries.append(
+                        CommitInfo(
+                            sha=sha.hex()[:8],
+                            message=msg,
+                            timestamp=ts,
+                        )
+                    )
                     sha = commit.parents[0] if commit.parents else None
 
             return entries
@@ -318,7 +317,9 @@ class GitStore:
                 return c
         return None
 
-    def show_commit_diff(self, short_sha: str, max_entries: int = 20) -> tuple[CommitInfo, str] | None:
+    def show_commit_diff(
+        self, short_sha: str, max_entries: int = 20
+    ) -> tuple[CommitInfo, str] | None:
         """Find a commit and return it with its diff vs the parent."""
         commits = self.log(max_entries=max_entries)
         for i, c in enumerate(commits):

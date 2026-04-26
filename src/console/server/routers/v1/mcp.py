@@ -27,9 +27,7 @@ async def test_mcp(
 ) -> DataResponse[MCPTestResult]:
     """Connectivity check (stub — use running nanobot for real MCP tests)."""
     _ = bot_id
-    return DataResponse(
-        data=MCPTestResult(name=name, success=True, message=None, latency_ms=0.0)
-    )
+    return DataResponse(data=MCPTestResult(name=name, success=True, message=None, latency_ms=0.0))
 
 
 @router.post("/mcp/{name}/refresh", response_model=DataResponse[MCPTestResult])
@@ -39,6 +37,4 @@ async def refresh_mcp(
 ) -> DataResponse[MCPTestResult]:
     """Refresh MCP server registration (stub)."""
     _ = bot_id
-    return DataResponse(
-        data=MCPTestResult(name=name, success=True, message=None, latency_ms=0.0)
-    )
+    return DataResponse(data=MCPTestResult(name=name, success=True, message=None, latency_ms=0.0))

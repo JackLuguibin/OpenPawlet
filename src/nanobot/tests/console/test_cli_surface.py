@@ -47,14 +47,10 @@ def test_start_help_documents_no_spa_flag(
     assert "--strict-gateway" not in out
 
 
-def test_init_config_writes_default_file(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_init_config_writes_default_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import nanobot.config.loader as nanobot_loader
 
-    monkeypatch.setattr(
-        nanobot_loader, "_current_config_path", tmp_path / "config.json"
-    )
+    monkeypatch.setattr(nanobot_loader, "_current_config_path", tmp_path / "config.json")
 
     # Clean run returns without SystemExit.
     _call_with_args(["init-config"])
@@ -66,33 +62,23 @@ def test_init_config_writes_default_file(
     assert "port" in data["server"]
 
 
-def test_init_config_refuses_to_overwrite(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_init_config_refuses_to_overwrite(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import nanobot.config.loader as nanobot_loader
 
-    monkeypatch.setattr(
-        nanobot_loader, "_current_config_path", tmp_path / "config.json"
-    )
+    monkeypatch.setattr(nanobot_loader, "_current_config_path", tmp_path / "config.json")
     target = tmp_path / "nanobot_web.json"
     target.write_text('{"server": {"port": 1234}}', encoding="utf-8")
 
     with pytest.raises(SystemExit) as exc:
         _call_with_args(["init-config"])
     assert exc.value.code != 0
-    assert json.loads(target.read_text(encoding="utf-8")) == {
-        "server": {"port": 1234}
-    }
+    assert json.loads(target.read_text(encoding="utf-8")) == {"server": {"port": 1234}}
 
 
-def test_init_config_force_overwrites(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_init_config_force_overwrites(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import nanobot.config.loader as nanobot_loader
 
-    monkeypatch.setattr(
-        nanobot_loader, "_current_config_path", tmp_path / "config.json"
-    )
+    monkeypatch.setattr(nanobot_loader, "_current_config_path", tmp_path / "config.json")
     target = tmp_path / "nanobot_web.json"
     target.write_text('{"server": {"port": 1234}}', encoding="utf-8")
 

@@ -1,7 +1,8 @@
 """Message tool for sending messages to users."""
 
+from collections.abc import Awaitable, Callable
 from contextvars import ContextVar
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 from nanobot.agent.tools.base import Tool, tool_parameters
 from nanobot.agent.tools.schema import ArraySchema, StringSchema, tool_parameters_schema
@@ -37,7 +38,9 @@ class MessageTool(Tool):
         self._sent_in_turn: bool = False
         self._channel_ctx: ContextVar[str | None] = ContextVar("message_tool_channel", default=None)
         self._chat_id_ctx: ContextVar[str | None] = ContextVar("message_tool_chat_id", default=None)
-        self._message_id_ctx: ContextVar[str | None] = ContextVar("message_tool_message_id", default=None)
+        self._message_id_ctx: ContextVar[str | None] = ContextVar(
+            "message_tool_message_id", default=None
+        )
 
     def set_context(self, channel: str, chat_id: str, message_id: str | None = None) -> None:
         """Set the current message context (task-local when running under asyncio)."""
@@ -73,9 +76,10 @@ class MessageTool(Tool):
         chat_id: str | None = None,
         message_id: str | None = None,
         media: list[str] | None = None,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> str:
         from nanobot.utils.helpers import strip_think
+
         content = strip_think(content)
 
         ctx_ch = self._channel_ctx.get()
@@ -109,7 +113,9 @@ class MessageTool(Tool):
             media=media or [],
             metadata={
                 "message_id": message_id,
-            } if message_id else {},
+            }
+            if message_id
+            else {},
         )
 
         try:

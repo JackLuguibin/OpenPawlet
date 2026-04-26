@@ -53,7 +53,7 @@ class MessageBusProtocol(Protocol):
         topics: Iterable[str] = (),
         include_broadcast: bool = True,
         maxsize: int = 0,
-    ) -> "EventSubscription": ...
+    ) -> EventSubscription: ...
 
     async def list_pending_direct_events(self, *, agent_id: str) -> list[AgentEvent]: ...
 
@@ -88,7 +88,7 @@ class EventSubscription:
     def __init__(
         self,
         queue: asyncio.Queue[AgentEvent],
-        detach: "callable[[EventSubscription], None] | None" = None,
+        detach: callable[[EventSubscription], None] | None = None,
         *,
         agent_id: str,
         agent_name: str = "",
@@ -135,13 +135,13 @@ class EventSubscription:
             except Exception:  # pragma: no cover - defensive, detach is best-effort
                 pass
 
-    async def __aenter__(self) -> "EventSubscription":
+    async def __aenter__(self) -> EventSubscription:
         return self
 
     async def __aexit__(self, exc_type, exc, tb) -> None:
         self.close()
 
-    def __aiter__(self) -> "EventSubscription":
+    def __aiter__(self) -> EventSubscription:
         return self
 
     async def __anext__(self) -> AgentEvent:
@@ -175,10 +175,7 @@ def _event_matches(
             return False
         # Prefix match so subscribers can listen to "chat" and receive
         # events targeted at "chat.new" / "chat.updated" etc.
-        return any(
-            topic_target == t or topic_target.startswith(t + ".") or t == ""
-            for t in topics
-        )
+        return any(topic_target == t or topic_target.startswith(t + ".") or t == "" for t in topics)
     # Unknown target shape: deliver only to a broadcast subscriber.
     return include_broadcast
 
@@ -194,9 +191,7 @@ class RequestReplyMixin:
         if (ev.topic or "") != TOPIC_AGENT_REQUEST_REPLY:
             return False
         payload = ev.payload or {}
-        cid = str(
-            payload.get(KEY_CORRELATION_ID) or payload.get("correlation_id") or ""
-        ).strip()
+        cid = str(payload.get(KEY_CORRELATION_ID) or payload.get("correlation_id") or "").strip()
         if not cid:
             return False
         async with self._request_waiters_lock:
@@ -269,9 +264,7 @@ class RequestReplyMixin:
                         self._request_waiters.pop(cid, None)
                 if not fut.done():
                     fut.cancel()
-            except (
-                Exception
-            ) as exc:  # pragma: no cover - defensive, invalid wait state
+            except Exception as exc:  # pragma: no cover - defensive, invalid wait state
                 async with self._request_waiters_lock:
                     if self._request_waiters.get(cid) is fut:
                         self._request_waiters.pop(cid, None)
@@ -471,9 +464,7 @@ class MessageBus(RequestReplyMixin):
             topics_set = row["topics"]
             assert isinstance(topics_set, set)
             topics_set.update(sub.topics)
-            row["include_broadcast"] = bool(row["include_broadcast"]) or bool(
-                sub.include_broadcast
-            )
+            row["include_broadcast"] = bool(row["include_broadcast"]) or bool(sub.include_broadcast)
             row["subscription_count"] = int(row["subscription_count"]) + 1
         rows: list[dict[str, object]] = []
         for aid in sorted(aggregated):

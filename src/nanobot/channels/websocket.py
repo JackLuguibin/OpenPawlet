@@ -393,7 +393,7 @@ class WebSocketChannel(BaseChannel):
         config: Any,
         bus: MessageBus,
         *,
-        session_manager: "SessionManager | None" = None,
+        session_manager: SessionManager | None = None,
     ):
         if isinstance(config, dict):
             config = WebSocketConfig.model_validate(config)
@@ -416,9 +416,7 @@ class WebSocketChannel(BaseChannel):
         # Optional ``(session_key) -> bool`` from gateway; enriches ``ready`` with ``session_busy``.
         self._session_busy_resolver: Callable[[str], bool] | None = None
 
-    def set_session_busy_resolver(
-        self, fn: Callable[[str], bool] | None
-    ) -> None:
+    def set_session_busy_resolver(self, fn: Callable[[str], bool] | None) -> None:
         """Register whether a nanobot session key is mid-turn (gateway + AgentLoop only)."""
         self._session_busy_resolver = fn
 
@@ -528,9 +526,7 @@ class WebSocketChannel(BaseChannel):
         token_value = f"nbwt_{secrets.token_urlsafe(32)}"
         self._issued_tokens[token_value] = time.monotonic() + float(self.config.token_ttl_s)
 
-        return _http_json_response(
-            {"token": token_value, "expires_in": self.config.token_ttl_s}
-        )
+        return _http_json_response({"token": token_value, "expires_in": self.config.token_ttl_s})
 
     # -- HTTP dispatch ------------------------------------------------------
 
@@ -580,9 +576,7 @@ class WebSocketChannel(BaseChannel):
     def _check_api_token(self, request: WsRequest) -> bool:
         """Validate a request against the API token pool (multi-use, TTL-bound)."""
         self._purge_expired_api_tokens()
-        token = _bearer_token(request.headers) or _query_first(
-            _parse_query(request.path), "token"
-        )
+        token = _bearer_token(request.headers) or _query_first(_parse_query(request.path), "token")
         if not token:
             return False
         expiry = self._api_tokens.get(token)
@@ -786,9 +780,7 @@ class WebSocketChannel(BaseChannel):
         session_key = f"{self.name}:{default_chat_id}"
         if self._session_busy_resolver is not None:
             try:
-                ready_body["session_busy"] = bool(
-                    self._session_busy_resolver(session_key)
-                )
+                ready_body["session_busy"] = bool(self._session_busy_resolver(session_key))
             except Exception as e:
                 logger.warning("websocket: session_busy resolver failed: {}", e)
                 ready_body["session_busy"] = False

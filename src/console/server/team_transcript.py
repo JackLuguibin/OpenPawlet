@@ -74,9 +74,13 @@ def merge_team_transcript(
                     "session_key": sk,
                     "role": role,
                     "content": text,
-                    "timestamp": m.get("timestamp") if isinstance(m.get("timestamp"), str) else None,
+                    "timestamp": m.get("timestamp")
+                    if isinstance(m.get("timestamp"), str)
+                    else None,
                     "source": m.get("source") if isinstance(m.get("source"), str) else None,
-                    "_sort": _parse_ts(m.get("timestamp") if isinstance(m.get("timestamp"), str) else None),
+                    "_sort": _parse_ts(
+                        m.get("timestamp") if isinstance(m.get("timestamp"), str) else None
+                    ),
                 }
             )
     for i, r in enumerate(rows):

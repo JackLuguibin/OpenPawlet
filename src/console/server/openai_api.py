@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import json as _json
+import json
 import mimetypes
 import re
 import time
@@ -41,9 +41,7 @@ API_SESSION_KEY = "api:default"
 API_CHAT_ID = "default"
 
 
-def _error_json(
-    status: int, message: str, err_type: str = "invalid_request_error"
-) -> JSONResponse:
+def _error_json(status: int, message: str, err_type: str = "invalid_request_error") -> JSONResponse:
     return JSONResponse(
         {"error": {"message": message, "type": err_type, "code": status}},
         status_code=status,
@@ -76,9 +74,7 @@ def _response_text(value: Any) -> str:
     return str(value)
 
 
-def _sse_chunk(
-    delta: str, model: str, chunk_id: str, finish_reason: str | None = None
-) -> bytes:
+def _sse_chunk(delta: str, model: str, chunk_id: str, finish_reason: str | None = None) -> bytes:
     """Format a single OpenAI-compatible SSE chunk."""
     payload = {
         "id": chunk_id,
@@ -93,7 +89,7 @@ def _sse_chunk(
             }
         ],
     }
-    return f"data: {_json.dumps(payload)}\n\n".encode()
+    return f"data: {json.dumps(payload)}\n\n".encode()
 
 
 _SSE_DONE = b"data: [DONE]\n\n"
@@ -110,9 +106,7 @@ def _save_base64_data_url(data_url: str, media_dir: Path) -> str | None:
     except Exception:
         return None
     if len(raw) > MAX_FILE_SIZE:
-        raise _FileSizeExceededError(
-            f"File exceeds {MAX_FILE_SIZE // (1024 * 1024)}MB limit"
-        )
+        raise _FileSizeExceededError(f"File exceeds {MAX_FILE_SIZE // (1024 * 1024)}MB limit")
     ext = mimetypes.guess_extension(mime_type) or ".bin"
     filename = f"{uuid.uuid4().hex[:12]}{ext}"
     dest = media_dir / safe_filename(filename)
@@ -230,9 +224,7 @@ async def handle_chat_completions(request: Request) -> Response:
         return _error_json(413, "File too large or invalid upload")
 
     if requested_model and requested_model != model_name:
-        return _error_json(
-            400, f"Only configured model '{model_name}' is available"
-        )
+        return _error_json(400, f"Only configured model '{model_name}' is available")
 
     session_key = f"api:{session_id}" if session_id else API_SESSION_KEY
     session_locks: dict[str, asyncio.Lock] = request.app.state.openai_session_locks
@@ -321,9 +313,7 @@ async def handle_chat_completions(request: Request) -> Response:
                 response_text = _response_text(response)
 
                 if not response_text or not response_text.strip():
-                    logger.warning(
-                        "Empty response for session {}, retrying", session_key
-                    )
+                    logger.warning("Empty response for session {}, retrying", session_key)
                     retry_response = await asyncio.wait_for(
                         agent_loop.process_direct(
                             content=text,
@@ -336,16 +326,12 @@ async def handle_chat_completions(request: Request) -> Response:
                     )
                     response_text = _response_text(retry_response)
                     if not response_text or not response_text.strip():
-                        logger.warning(
-                            "Empty response after retry, using fallback"
-                        )
+                        logger.warning("Empty response after retry, using fallback")
                         response_text = fallback
             except TimeoutError:
                 return _error_json(504, f"Request timed out after {timeout_s}s")
             except Exception:
-                logger.exception(
-                    "Error processing request for session {}", session_key
-                )
+                logger.exception("Error processing request for session {}", session_key)
                 return _error_json(500, "Internal server error", err_type="server_error")
     except Exception:
         logger.exception("Unexpected API lock error for session {}", session_key)
@@ -393,9 +379,7 @@ def install_openai_routes(
     if not hasattr(app.state, "openai_session_locks"):
         app.state.openai_session_locks = {}
     router = APIRouter()
-    router.add_api_route(
-        "/v1/chat/completions", handle_chat_completions, methods=["POST"]
-    )
+    router.add_api_route("/v1/chat/completions", handle_chat_completions, methods=["POST"])
     router.add_api_route("/v1/models", handle_models, methods=["GET"])
     router.add_api_route("/v1/health", handle_health, methods=["GET"])
     # Backwards-compatible alias for the legacy ``/health`` path that the
@@ -405,15 +389,11 @@ def install_openai_routes(
     return router
 
 
-def create_app(
-    agent_loop, model_name: str = "nanobot", request_timeout: float = 120.0
-) -> FastAPI:
+def create_app(agent_loop, model_name: str = "nanobot", request_timeout: float = 120.0) -> FastAPI:
     """Create a standalone FastAPI app (kept for backwards compatibility)."""
     app = FastAPI(title="nanobot-openai-api")
     app.state.agent_loop = agent_loop
-    install_openai_routes(
-        app, model_name=model_name, request_timeout=request_timeout
-    )
+    install_openai_routes(app, model_name=model_name, request_timeout=request_timeout)
     return app
 
 

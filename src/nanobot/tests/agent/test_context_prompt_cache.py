@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+import datetime as datetime_module
 import re
 from datetime import datetime as real_datetime
 from importlib.resources import files as pkg_files
 from pathlib import Path
-import datetime as datetime_module
 
 from nanobot.agent.context import ContextBuilder
 
@@ -220,8 +220,10 @@ def test_build_messages_passes_channel_to_system_prompt(tmp_path) -> None:
     builder = ContextBuilder(workspace)
 
     messages = builder.build_messages(
-        history=[], current_message="hi",
-        channel="telegram", chat_id="123",
+        history=[],
+        current_message="hi",
+        channel="telegram",
+        chat_id="123",
     )
     system = messages[0]["content"]
     assert "Format Hint" in system
@@ -266,6 +268,7 @@ def test_template_memory_md_is_skipped(tmp_path) -> None:
     """MEMORY.md matching the bundled template should not inject the Memory section."""
     workspace = _make_workspace(tmp_path)
     from nanobot.utils.helpers import sync_workspace_templates
+
     sync_workspace_templates(workspace, silent=True)
 
     builder = ContextBuilder(workspace)
@@ -283,6 +286,7 @@ def test_customized_memory_md_is_injected(tmp_path) -> None:
     """A Dream-populated MEMORY.md should be injected normally."""
     workspace = _make_workspace(tmp_path)
     from nanobot.utils.helpers import sync_workspace_templates
+
     sync_workspace_templates(workspace, silent=True)
 
     (workspace / "memory" / "MEMORY.md").write_text(

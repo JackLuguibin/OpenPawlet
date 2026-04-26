@@ -36,10 +36,10 @@ def app(mock_agent):
     return create_app(mock_agent, model_name="test-model", request_timeout=10.0)
 
 
-
 # ---------------------------------------------------------------------------
 # Helper function tests
 # ---------------------------------------------------------------------------
+
 
 def test_save_base64_data_url_saves_png(tmp_path) -> None:
     """Saving a base64 data URL creates a file with correct extension."""
@@ -84,12 +84,16 @@ def test_parse_json_content_extracts_text_and_media(tmp_path) -> None:
                 "role": "user",
                 "content": [
                     {"type": "text", "text": "describe this"},
-                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64_data}"}},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/png;base64,{b64_data}"},
+                    },
                 ],
             }
         ]
     }
     import os
+
     original_cwd = os.getcwd()
     os.chdir(tmp_path)
 
@@ -137,12 +141,16 @@ def test_parse_json_content_rejects_oversized_base64_file(tmp_path) -> None:
                 "role": "user",
                 "content": [
                     {"type": "text", "text": "describe"},
-                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{large_payload}"}},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/png;base64,{large_payload}"},
+                    },
                 ],
             }
         ]
     }
     import os
+
     original_cwd = os.getcwd()
     os.chdir(tmp_path)
 
@@ -157,10 +165,12 @@ def test_parse_json_content_rejects_oversized_base64_file(tmp_path) -> None:
 # Multipart upload tests
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_multipart_upload_saves_file(mock_agent, tmp_path) -> None:
     """Multipart upload saves file to media dir and passes path to process_direct."""
     import os
+
     original_cwd = os.getcwd()
     os.chdir(tmp_path)
 
@@ -185,6 +195,7 @@ async def test_multipart_upload_saves_file(mock_agent, tmp_path) -> None:
 async def test_multipart_multiple_files(mock_agent, tmp_path) -> None:
     """Multipart upload with multiple files saves all and passes paths."""
     import os
+
     original_cwd = os.getcwd()
     os.chdir(tmp_path)
 
@@ -197,7 +208,9 @@ async def test_multipart_multiple_files(mock_agent, tmp_path) -> None:
                 ("files", ("a.txt", b"aaa", "text/plain")),
                 ("files", ("b.txt", b"bbb", "text/plain")),
             ]
-            resp = await client.post("/v1/chat/completions", data={"message": "analyze"}, files=files)
+            resp = await client.post(
+                "/v1/chat/completions", data={"message": "analyze"}, files=files
+            )
         assert resp.status_code == 200
     finally:
         os.chdir(original_cwd)
@@ -207,6 +220,7 @@ async def test_multipart_multiple_files(mock_agent, tmp_path) -> None:
 async def test_multipart_file_size_limit(mock_agent, tmp_path) -> None:
     """File exceeding MAX_FILE_SIZE returns 413."""
     import os
+
     original_cwd = os.getcwd()
     os.chdir(tmp_path)
 
@@ -230,6 +244,7 @@ async def test_multipart_file_size_limit(mock_agent, tmp_path) -> None:
 async def test_multipart_defaults_text_when_missing(mock_agent, tmp_path) -> None:
     """Multipart without message field uses default text."""
     import os
+
     original_cwd = os.getcwd()
     os.chdir(tmp_path)
 
@@ -253,6 +268,7 @@ async def test_multipart_defaults_text_when_missing(mock_agent, tmp_path) -> Non
 async def test_multipart_with_session_id(mock_agent, tmp_path) -> None:
     """Multipart upload with session_id uses custom session key."""
     import os
+
     original_cwd = os.getcwd()
     os.chdir(tmp_path)
 
@@ -277,6 +293,7 @@ async def test_multipart_with_session_id(mock_agent, tmp_path) -> None:
 # Backward compatibility tests
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_plain_text_backward_compat(mock_agent) -> None:
     """Plain text JSON request (no media) works as before."""
@@ -300,6 +317,7 @@ async def test_plain_text_backward_compat(mock_agent) -> None:
 async def test_json_base64_image_upload(mock_agent, tmp_path) -> None:
     """JSON request with base64 data URL saves file and passes path."""
     import os
+
     original_cwd = os.getcwd()
     os.chdir(tmp_path)
 
@@ -317,7 +335,10 @@ async def test_json_base64_image_upload(mock_agent, tmp_path) -> None:
                             "role": "user",
                             "content": [
                                 {"type": "text", "text": "what is this"},
-                                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{tiny_png_b64}"}},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {"url": f"data:image/png;base64,{tiny_png_b64}"},
+                                },
                             ],
                         }
                     ]
@@ -334,6 +355,7 @@ async def test_json_base64_image_upload(mock_agent, tmp_path) -> None:
 # ---------------------------------------------------------------------------
 # extract_documents tests (now in nanobot.utils.document)
 # ---------------------------------------------------------------------------
+
 
 def test_extract_documents_separates_images_from_docs(tmp_path) -> None:
     """Images stay in media; document text is appended to content."""
@@ -360,8 +382,10 @@ def test_extract_documents_skips_extraction_errors(tmp_path, monkeypatch) -> Non
     bad_file.write_text("not a docx", encoding="utf-8")
 
     import nanobot.utils.document as _doc
+
     monkeypatch.setattr(
-        _doc, "extract_text",
+        _doc,
+        "extract_text",
         lambda _path: "[error: failed to extract DOCX: boom]",
     )
 
@@ -405,6 +429,7 @@ def test_extract_documents_does_not_read_full_file_for_mime(tmp_path) -> None:
         return data
 
     import unittest.mock
+
     with unittest.mock.patch.object(_Path, "read_bytes", _tracking_read_bytes):
         extract_documents("test", [str(big_txt)])
 
@@ -419,12 +444,14 @@ def test_extract_documents_does_not_read_full_file_for_mime(tmp_path) -> None:
 # DOCX upload test — API saves file, loop layer extracts text
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_docx_upload_passes_media_path(tmp_path) -> None:
     """Uploaded DOCX is saved to disk and its path passed as media.
     (Text extraction happens later in AgentLoop._process_message.)"""
     agent = _make_mock_agent("report summary")
     import os
+
     original_cwd = os.getcwd()
     os.chdir(tmp_path)
 
@@ -434,6 +461,7 @@ async def test_docx_upload_passes_media_path(tmp_path) -> None:
             transport=httpx.ASGITransport(app=app), base_url="http://testserver"
         ) as client:
             from docx import Document
+
             doc = Document()
             doc.add_paragraph("Total revenue: $5,000,000")
             buf = BytesIO()

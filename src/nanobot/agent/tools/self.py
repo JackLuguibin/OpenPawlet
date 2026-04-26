@@ -30,42 +30,88 @@ def _has_real_attr(obj: Any, key: str) -> bool:
 class MyTool(Tool):
     """Check and set the agent loop's runtime configuration."""
 
-    BLOCKED = frozenset({
-        # Core infrastructure
-        "bus", "provider", "_running", "tools",
-        # Config management
-        "_runtime_vars",
-        # Subsystems
-        "runner", "sessions", "consolidator",
-        "dream", "auto_compact", "context", "commands",
-        # Sensitive runtime state (credentials, message routing, task tracking)
-        "_mcp_servers", "_mcp_stacks", "_pending_queues",
-        "_session_locks", "_active_tasks", "_background_tasks",
-        # Security boundaries (inspect + modify both blocked)
-        "restrict_to_workspace", "channels_config",
-        "_concurrency_gate", "_unified_session", "_extra_hooks",
-    })
+    BLOCKED = frozenset(
+        {
+            # Core infrastructure
+            "bus",
+            "provider",
+            "_running",
+            "tools",
+            # Config management
+            "_runtime_vars",
+            # Subsystems
+            "runner",
+            "sessions",
+            "consolidator",
+            "dream",
+            "auto_compact",
+            "context",
+            "commands",
+            # Sensitive runtime state (credentials, message routing, task tracking)
+            "_mcp_servers",
+            "_mcp_stacks",
+            "_pending_queues",
+            "_session_locks",
+            "_active_tasks",
+            "_background_tasks",
+            # Security boundaries (inspect + modify both blocked)
+            "restrict_to_workspace",
+            "channels_config",
+            "_concurrency_gate",
+            "_unified_session",
+            "_extra_hooks",
+        }
+    )
 
-    READ_ONLY = frozenset({
-        "subagents",  # observable but replacing it would break the system
-        "_current_iteration",  # updated by runner only
-        "exec_config",  # inspect allowed (e.g. check sandbox), modify blocked
-        "web_config",  # inspect allowed (e.g. check enable), modify blocked
-    })
+    READ_ONLY = frozenset(
+        {
+            "subagents",  # observable but replacing it would break the system
+            "_current_iteration",  # updated by runner only
+            "exec_config",  # inspect allowed (e.g. check sandbox), modify blocked
+            "web_config",  # inspect allowed (e.g. check enable), modify blocked
+        }
+    )
 
-    _DENIED_ATTRS = frozenset({
-        "__class__", "__dict__", "__bases__", "__subclasses__", "__mro__",
-        "__init__", "__new__", "__reduce__", "__getstate__", "__setstate__",
-        "__del__", "__call__", "__getattr__", "__setattr__", "__delattr__",
-        "__code__", "__globals__", "func_globals", "func_code",
-        "__wrapped__", "__closure__",
-    })
+    _DENIED_ATTRS = frozenset(
+        {
+            "__class__",
+            "__dict__",
+            "__bases__",
+            "__subclasses__",
+            "__mro__",
+            "__init__",
+            "__new__",
+            "__reduce__",
+            "__getstate__",
+            "__setstate__",
+            "__del__",
+            "__call__",
+            "__getattr__",
+            "__setattr__",
+            "__delattr__",
+            "__code__",
+            "__globals__",
+            "func_globals",
+            "func_code",
+            "__wrapped__",
+            "__closure__",
+        }
+    )
 
     # Sub-field names that are sensitive regardless of parent path
-    _SENSITIVE_NAMES = frozenset({
-        "api_key", "secret", "password", "token", "credential",
-        "private_key", "access_token", "refresh_token", "auth",
-    })
+    _SENSITIVE_NAMES = frozenset(
+        {
+            "api_key",
+            "secret",
+            "password",
+            "token",
+            "credential",
+            "private_key",
+            "access_token",
+            "refresh_token",
+            "auth",
+        }
+    )
 
     @classmethod
     def _is_sensitive_field_name(cls, name: str) -> bool:
@@ -75,9 +121,9 @@ class MyTool(Tool):
         )
 
     RESTRICTED: dict[str, dict[str, Any]] = {
-        "max_iterations":        {"type": int, "min": 1,   "max": 100},
+        "max_iterations": {"type": int, "min": 1, "max": 100},
         "context_window_tokens": {"type": int, "min": 4096, "max": 1_000_000},
-        "model":                 {"type": str, "min_len": 1},
+        "model": {"type": str, "min_len": 1},
     }
 
     _MAX_RUNTIME_KEYS = 64
@@ -151,7 +197,9 @@ class MyTool(Tool):
                     "description": "Dot-path for check/set. Examples: 'max_iterations', 'workspace', 'provider_retry_mode'. "
                     "For check without key, shows all config values.",
                 },
-                "value": {"description": "New value (for set). Type must match target (int for max_iterations/context_window_tokens, str for model)."},
+                "value": {
+                    "description": "New value (for set). Type must match target (int for max_iterations/context_window_tokens, str for model)."
+                },
             },
             "required": ["action"],
         }
@@ -199,9 +247,10 @@ class MyTool(Tool):
     @staticmethod
     def _format_status(st: SubagentStatus, indent: str = "  ") -> str:
         elapsed = time.monotonic() - st.started_at
-        tool_summary = ", ".join(
-            f"{e.get('name', '?')}({e.get('status', '?')})" for e in st.tool_events[-5:]
-        ) or "none"
+        tool_summary = (
+            ", ".join(f"{e.get('name', '?')}({e.get('status', '?')})" for e in st.tool_events[-5:])
+            or "none"
+        )
         lines = [
             f"{indent}phase: {st.phase}, iteration: {st.iteration}, elapsed: {elapsed:.1f}s",
             f"{indent}tools: {tool_summary}",
@@ -276,7 +325,11 @@ class MyTool(Tool):
         if fields:
             preview = ", ".join(str(f) for f in fields[:20])
             suffix = ", ..." if len(fields) > 20 else ""
-            return f"{key}: <{cls_name}> [{preview}{suffix}]" if key else f"<{cls_name}> [{preview}{suffix}]"
+            return (
+                f"{key}: <{cls_name}> [{preview}{suffix}]"
+                if key
+                else f"<{cls_name}> [{preview}{suffix}]"
+            )
         r = repr(val)
         return f"{key}: {r}" if key else r
 
@@ -331,7 +384,15 @@ class MyTool(Tool):
         for k in self.RESTRICTED:
             parts.append(self._format_value(getattr(loop, k, None), k))
         # Other useful top-level keys shown in description
-        for k in ("workspace", "provider_retry_mode", "max_tool_result_chars", "_current_iteration", "web_config", "exec_config", "subagents"):
+        for k in (
+            "workspace",
+            "provider_retry_mode",
+            "max_tool_result_chars",
+            "_current_iteration",
+            "web_config",
+            "exec_config",
+            "subagents",
+        ):
             if _has_real_attr(loop, k):
                 parts.append(self._format_value(getattr(loop, k, None), k))
         # Token usage
@@ -349,7 +410,12 @@ class MyTool(Tool):
         if err := self._validate_key(key):
             return err
         top = key.split(".")[0]
-        if top in self.BLOCKED or top in self._DENIED_ATTRS or top.startswith("__") or top.lower() in self._SENSITIVE_NAMES:
+        if (
+            top in self.BLOCKED
+            or top in self._DENIED_ATTRS
+            or top.startswith("__")
+            or top.lower() in self._SENSITIVE_NAMES
+        ):
             self._audit("modify", f"BLOCKED {key}")
             return f"Error: '{key}' is protected and cannot be modified"
         if top in self.READ_ONLY:
@@ -420,7 +486,10 @@ class MyTool(Tool):
         if err:
             self._audit("modify", f"REJECTED {key}: {err}")
             return f"Error: {err}"
-        if key not in self._loop._runtime_vars and len(self._loop._runtime_vars) >= self._MAX_RUNTIME_KEYS:
+        if (
+            key not in self._loop._runtime_vars
+            and len(self._loop._runtime_vars) >= self._MAX_RUNTIME_KEYS
+        ):
             self._audit("modify", f"REJECTED {key}: max keys ({self._MAX_RUNTIME_KEYS}) reached")
             return f"Error: scratchpad is full (max {self._MAX_RUNTIME_KEYS} keys). Remove unused keys first."
         old = self._loop._runtime_vars.get(key)

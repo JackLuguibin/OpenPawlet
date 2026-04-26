@@ -6,10 +6,10 @@ from fastapi import APIRouter, Query
 from loguru import logger
 
 from console.server.activity_feed import observability_rows_to_activity_items
-from console.server.models import ActivityItem, DataResponse
 from console.server.bot_workspace import workspace_root
-from console.server.observability_jsonl import read_recent_observability_dicts
+from console.server.models import ActivityItem, DataResponse
 from console.server.nanobot_user_config import resolve_config_path
+from console.server.observability_jsonl import read_recent_observability_dicts
 from nanobot.config.loader import load_config
 
 router = APIRouter(tags=["Activity"])
@@ -33,6 +33,8 @@ async def recent_activity(
         logger.debug("activity feed: jsonl read failed: {} {}", source, err)
         return DataResponse(data=[])
 
-    filt = activity_type.strip() if isinstance(activity_type, str) and activity_type.strip() else None
+    filt = (
+        activity_type.strip() if isinstance(activity_type, str) and activity_type.strip() else None
+    )
     items = observability_rows_to_activity_items(rows, activity_type_filter=filt)
     return DataResponse(data=items)

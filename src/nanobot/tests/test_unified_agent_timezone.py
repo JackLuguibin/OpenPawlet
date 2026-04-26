@@ -5,9 +5,9 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+from zoneinfo import ZoneInfo
 
 import pytest
-from zoneinfo import ZoneInfo
 
 from nanobot.agent.context import ContextBuilder
 from nanobot.agent.loop import AgentLoop

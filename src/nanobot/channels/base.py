@@ -46,6 +46,7 @@ class BaseChannel(ABC):
         try:
             if self.transcription_provider == "openai":
                 from nanobot.providers.transcription import OpenAITranscriptionProvider
+
                 provider = OpenAITranscriptionProvider(
                     api_key=self.transcription_api_key,
                     api_base=self.transcription_api_base or None,
@@ -53,6 +54,7 @@ class BaseChannel(ABC):
                 )
             else:
                 from nanobot.providers.transcription import GroqTranscriptionProvider
+
                 provider = GroqTranscriptionProvider(
                     api_key=self.transcription_api_key,
                     api_base=self.transcription_api_base or None,
@@ -105,7 +107,9 @@ class BaseChannel(ABC):
         """
         pass
 
-    async def send_delta(self, chat_id: str, delta: str, metadata: dict[str, Any] | None = None) -> None:
+    async def send_delta(
+        self, chat_id: str, delta: str, metadata: dict[str, Any] | None = None
+    ) -> None:
         """Deliver a streaming text chunk.
 
         Override in subclasses to enable streaming. Implementations should
@@ -121,7 +125,11 @@ class BaseChannel(ABC):
     def supports_streaming(self) -> bool:
         """True when config enables streaming AND this subclass implements send_delta."""
         cfg = self.config
-        streaming = cfg.get("streaming", False) if isinstance(cfg, dict) else getattr(cfg, "streaming", False)
+        streaming = (
+            cfg.get("streaming", False)
+            if isinstance(cfg, dict)
+            else getattr(cfg, "streaming", False)
+        )
         return bool(streaming) and type(self).send_delta is not BaseChannel.send_delta
 
     def is_allowed(self, sender_id: str) -> bool:
@@ -166,7 +174,8 @@ class BaseChannel(ABC):
             logger.warning(
                 "Access denied for sender {} on channel {}. "
                 "Add them to allowFrom list in config to grant access.",
-                sender_id, self.name,
+                sender_id,
+                self.name,
             )
             return
 

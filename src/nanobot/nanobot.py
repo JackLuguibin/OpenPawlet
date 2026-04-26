@@ -58,17 +58,13 @@ class Nanobot:
 
         config: Config = resolve_config_env_vars(load_config(resolved))
         if workspace is not None:
-            config.agents.defaults.workspace = str(
-                Path(workspace).expanduser().resolve()
-            )
+            config.agents.defaults.workspace = str(Path(workspace).expanduser().resolve())
 
         provider = _make_provider(config)
         from nanobot.utils.token_usage_jsonl import attach_token_usage_jsonl
 
         defaults = config.agents.defaults
-        attach_token_usage_jsonl(
-            provider, config.workspace_path, timezone=defaults.timezone
-        )
+        attach_token_usage_jsonl(provider, config.workspace_path, timezone=defaults.timezone)
         bus = MessageBus()
 
         loop = AgentLoop(
@@ -116,7 +112,8 @@ class Nanobot:
             self._loop._extra_hooks = list(hooks)
         try:
             response = await self._loop.process_direct(
-                message, session_key=session_key,
+                message,
+                session_key=session_key,
             )
         finally:
             self._loop._extra_hooks = prev
@@ -156,9 +153,7 @@ def _make_provider(config: Any) -> Any:
     elif backend == "azure_openai":
         from nanobot.providers.azure_openai_provider import AzureOpenAIProvider
 
-        provider = AzureOpenAIProvider(
-            api_key=p.api_key, api_base=p.api_base, default_model=model
-        )
+        provider = AzureOpenAIProvider(api_key=p.api_key, api_base=p.api_base, default_model=model)
     elif backend == "anthropic":
         from nanobot.providers.anthropic_provider import AnthropicProvider
 

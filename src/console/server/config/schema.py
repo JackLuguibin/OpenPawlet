@@ -65,19 +65,13 @@ class JsonServerFileSource(PydanticBaseSettingsSource):
         self._cached = server if isinstance(server, dict) else {}
         return self._cached
 
-    def get_field_value(
-        self, field: FieldInfo, field_name: str
-    ) -> tuple[Any, str, bool]:
+    def get_field_value(self, field: FieldInfo, field_name: str) -> tuple[Any, str, bool]:
         value = self._load().get(field_name)
         return value, field_name, False
 
     def __call__(self) -> dict[str, Any]:
         data = self._load()
-        return {
-            name: data[name]
-            for name in self.settings_cls.model_fields
-            if name in data
-        }
+        return {name: data[name] for name in self.settings_cls.model_fields if name in data}
 
 
 class ServerSettings(BaseSettings):
@@ -99,14 +93,10 @@ class ServerSettings(BaseSettings):
     reload: bool = Field(default=False, description="Enable auto-reload (dev only)")
     log_level: str = Field(default="INFO", description="Loguru log level")
     workers: int = Field(default=1, ge=1, description="Number of worker processes")
-    cors_origins: list[str] = Field(
-        default=["*"], description="Allowed CORS origins"
-    )
+    cors_origins: list[str] = Field(default=["*"], description="Allowed CORS origins")
     cors_allow_credentials: bool = Field(
         default=True,
-        description=(
-            "Send Access-Control-Allow-Credentials; ignored when any origin is '*'"
-        ),
+        description=("Send Access-Control-Allow-Credentials; ignored when any origin is '*'"),
     )
     title: str = Field(default="OpenPawlet Console", description="API title")
     description: str = Field(

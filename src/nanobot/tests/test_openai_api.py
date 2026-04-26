@@ -238,6 +238,7 @@ async def test_fixed_session_requests_are_serialized() -> None:
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://testserver"
     ) as client:
+
         async def send(msg: str):
             return await client.post(
                 "/v1/chat/completions",
@@ -287,7 +288,10 @@ async def test_multimodal_content_extracts_text(mock_agent) -> None:
                         "role": "user",
                         "content": [
                             {"type": "text", "text": "describe this"},
-                            {"type": "image_url", "image_url": {"url": "data:image/png;base64,abc"}},
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": "data:image/png;base64,abc"},
+                            },
                         ],
                     }
                 ]
@@ -316,7 +320,10 @@ async def test_multimodal_remote_image_url_returns_400(mock_agent) -> None:
                         "role": "user",
                         "content": [
                             {"type": "text", "text": "describe this"},
-                            {"type": "image_url", "image_url": {"url": "https://example.com/image.png"}},
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": "https://example.com/image.png"},
+                            },
                         ],
                     }
                 ]
@@ -399,7 +406,9 @@ async def test_process_direct_accepts_media() -> None:
 
     captured_msg = None
 
-    async def fake_process(msg, *, session_key="", on_progress=None, on_stream=None, on_stream_end=None):
+    async def fake_process(
+        msg, *, session_key="", on_progress=None, on_stream=None, on_stream_end=None
+    ):
         nonlocal captured_msg
         captured_msg = msg
         return None

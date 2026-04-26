@@ -84,8 +84,7 @@ def _web_dir_or_exit() -> Path:
     pkg = web_dir / "package.json"
     if not pkg.is_file():
         raise SystemExit(
-            f"Missing package.json at {web_dir}; "
-            "run npm install in that directory first."
+            f"Missing package.json at {web_dir}; run npm install in that directory first."
         )
     return web_dir
 
@@ -140,9 +139,7 @@ def _run_init_config(force: bool = False) -> None:
     """Write a default ``nanobot_web.json`` next to the nanobot config file."""
     path = find_config_file()
     if path.exists() and not force:
-        raise SystemExit(
-            f"Config already exists at {path}. Pass --force to overwrite."
-        )
+        raise SystemExit(f"Config already exists at {path}. Pass --force to overwrite.")
     written = write_default_config(path)
     print(f"Wrote default server config to {written}")
 

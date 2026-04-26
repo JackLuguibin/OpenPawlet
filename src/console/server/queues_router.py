@@ -23,21 +23,31 @@ if TYPE_CHECKING:
     from nanobot.bus.queue import MessageBus
 
 
-def _bus_from_request(request: Request) -> "MessageBus | None":
+_MODE_TAG = "in_process"
+_VERSION_TAG = "in-process"
+
+
+def _bus_from_request(request: Request) -> MessageBus | None:
     bus = getattr(request.app.state, "message_bus", None)
     return bus  # type: ignore[return-value]
 
 
-def _snapshot(bus: "MessageBus | None", uptime_s: float) -> dict[str, Any]:
+def _uptime_seconds(state: Any) -> float:
+    """Compute current uptime from ``app.state.started_at_perf``."""
+    started_at = float(getattr(state, "started_at_perf", time.perf_counter()))
+    return time.perf_counter() - started_at
+
+
+def _snapshot(bus: MessageBus | None, uptime_s: float) -> dict[str, Any]:
     """Return a unified snapshot describing the in-process queue state."""
     inbound = int(getattr(bus, "inbound_size", 0)) if bus is not None else 0
     outbound = int(getattr(bus, "outbound_size", 0)) if bus is not None else 0
     return {
         "status": "ok",
-        "version": "in-process",
+        "version": _VERSION_TAG,
         "uptime_s": round(uptime_s, 3),
-        "settings": {"mode": "in_process"},
-        "topology": {"mode": "in_process"},
+        "settings": {"mode": _MODE_TAG},
+        "topology": {"mode": _MODE_TAG},
         "metrics": {"inbound_pending": inbound, "outbound_pending": outbound},
         "rates": {},
         "paused": {"inbound": False, "outbound": False, "events": False},
@@ -49,21 +59,18 @@ def _snapshot(bus: "MessageBus | None", uptime_s: float) -> dict[str, Any]:
 
 def _disabled(message: str) -> JSONResponse:
     return JSONResponse(
-        {"error": message, "mode": "in_process"},
+        {"error": message, "mode": _MODE_TAG},
         status_code=409,
     )
 
 
 async def _snapshot_route(request: Request) -> Response:
-    bus = _bus_from_request(request)
-    started_at = float(getattr(request.app.state, "started_at_perf", time.perf_counter()))
-    return JSONResponse(_snapshot(bus, time.perf_counter() - started_at))
+    snap = _snapshot(_bus_from_request(request), _uptime_seconds(request.app.state))
+    return JSONResponse(snap)
 
 
 async def _health_route(request: Request) -> Response:
-    bus = _bus_from_request(request)
-    started_at = float(getattr(request.app.state, "started_at_perf", time.perf_counter()))
-    snap = _snapshot(bus, time.perf_counter() - started_at)
+    snap = _snapshot(_bus_from_request(request), _uptime_seconds(request.app.state))
     return JSONResponse(
         {
             "status": snap["status"],
@@ -95,32 +102,27 @@ async def _clear_dedupe_route(_request: Request) -> Response:
     )
 
 
+_STREAM_TICK_FIELDS = frozenset({"metrics", "rates", "paused", "connections", "dedupe"})
+_STREAM_INTERVAL_S = 1.0
+
+
 async def _stream_route(websocket: WebSocket) -> None:
     """Push periodic snapshots over WebSocket; matches the legacy stream API."""
     await websocket.accept()
     bus = getattr(websocket.app.state, "message_bus", None)
-    started_at = float(
-        getattr(websocket.app.state, "started_at_perf", time.perf_counter())
-    )
-    interval = 1.0
+    state = websocket.app.state
     try:
         while True:
-            payload = {
-                "type": "tick",
-                "at": time.time(),
-                **{
-                    k: v
-                    for k, v in _snapshot(bus, time.perf_counter() - started_at).items()
-                    if k in {"metrics", "rates", "paused", "connections", "dedupe"}
-                },
-            }
+            snap = _snapshot(bus, _uptime_seconds(state))
+            payload: dict[str, Any] = {"type": "tick", "at": time.time()}
+            payload.update({k: v for k, v in snap.items() if k in _STREAM_TICK_FIELDS})
             try:
                 await websocket.send_json(payload)
             except Exception:
                 break
             try:
-                await asyncio.wait_for(websocket.receive_text(), timeout=interval)
-            except asyncio.TimeoutError:
+                await asyncio.wait_for(websocket.receive_text(), timeout=_STREAM_INTERVAL_S)
+            except TimeoutError:
                 continue
             except WebSocketDisconnect:
                 break
@@ -140,9 +142,7 @@ def install_queues_routes(app: FastAPI) -> APIRouter:
     router.add_api_route("/queues/snapshot", _snapshot_route, methods=["GET"])
     router.add_api_route("/queues/pause", _pause_route, methods=["POST"])
     router.add_api_route("/queues/replay", _replay_route, methods=["POST"])
-    router.add_api_route(
-        "/queues/dedupe/clear", _clear_dedupe_route, methods=["POST"]
-    )
+    router.add_api_route("/queues/dedupe/clear", _clear_dedupe_route, methods=["POST"])
     app.include_router(router)
     app.add_api_websocket_route("/queues/stream", _stream_route)
     logger.info("Queues admin routes registered (in-process bus)")

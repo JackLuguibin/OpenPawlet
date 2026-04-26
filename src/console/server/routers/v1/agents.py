@@ -63,9 +63,7 @@ def _load_agent_file_dicts(bot_id: str) -> list[dict[str, Any]]:
         row = load_json_file(path, None)
         if isinstance(row, dict):
             rows.append(row)
-    rows.sort(
-        key=lambda d: (str(d.get("created_at", "") or ""), str(d.get("id", "") or ""))
-    )
+    rows.sort(key=lambda d: (str(d.get("created_at", "") or ""), str(d.get("id", "") or "")))
     return rows
 
 
@@ -83,9 +81,7 @@ def _migrate_legacy_agents_in_file(
         p = agent_workspace_json_path(bot_id, agent.id)
         save_json_file(p, agent.model_dump(mode="json"))
     meta = {
-        "categories": data.get("categories")
-        if isinstance(data.get("categories"), list)
-        else [],
+        "categories": data.get("categories") if isinstance(data.get("categories"), list) else [],
         "category_overrides": data.get("category_overrides")
         if isinstance(data.get("category_overrides"), dict)
         else {},
@@ -165,10 +161,7 @@ def _attach_team_memberships(bot_id: str, agents: list[Agent]) -> list[Agent]:
     memberships = _load_team_memberships(bot_id)
     if not memberships:
         return agents
-    return [
-        a.model_copy(update={"team_ids": memberships.get(a.id, [])})
-        for a in agents
-    ]
+    return [a.model_copy(update={"team_ids": memberships.get(a.id, [])}) for a in agents]
 
 
 def _parse_categories(raw_list: list[Any]) -> list[CategoryInfo]:
@@ -325,11 +318,7 @@ async def remove_category(
     agents = _parse_agents(raw["agents"])
     prev_cats = _parse_categories(raw["categories"])
     categories = [c for c in prev_cats if c.key != category_key]
-    overrides = {
-        aid: ck
-        for aid, ck in raw["category_overrides"].items()
-        if ck != category_key
-    }
+    overrides = {aid: ck for aid, ck in raw["category_overrides"].items() if ck != category_key}
     _save_full_state(
         bot_id,
         agents=agents,
@@ -365,9 +354,7 @@ async def create_agent(bot_id: str, body: AgentCreateRequest) -> DataResponse[Ag
         system_prompt=body.system_prompt,
         skills=list(body.skills) if body.skills is not None else [],
         topics=list(body.topics) if body.topics is not None else [],
-        collaborators=(
-            list(body.collaborators) if body.collaborators is not None else []
-        ),
+        collaborators=(list(body.collaborators) if body.collaborators is not None else []),
         enabled=True if body.enabled is None else body.enabled,
         created_at=iso_now(),
     )
@@ -452,11 +439,7 @@ async def delete_agent(bot_id: str, agent_id: str) -> DataResponse[OkBody]:
     if len(agents) == len(_parse_agents(raw["agents"])):
         raise HTTPException(status_code=404, detail="Agent not found")
     categories = _parse_categories(raw["categories"])
-    overrides = {
-        aid: ck
-        for aid, ck in raw["category_overrides"].items()
-        if aid != agent_id
-    }
+    overrides = {aid: ck for aid, ck in raw["category_overrides"].items() if aid != agent_id}
     _save_full_state(
         bot_id,
         agents=agents,
@@ -522,9 +505,7 @@ async def delegate_task(
 ) -> DataResponse[DelegateTaskResponse]:
     """Delegate task to another agent (not wired to a live runtime)."""
     _ = bot_id, agent_id
-    return DataResponse(
-        data=DelegateTaskResponse(correlation_id="stub", response=None)
-    )
+    return DataResponse(data=DelegateTaskResponse(correlation_id="stub", response=None))
 
 
 @router.post("/{agent_id}/broadcast", response_model=DataResponse[OkWithTopic])

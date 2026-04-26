@@ -2,7 +2,7 @@
 
 import subprocess
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
 import pytest
@@ -54,7 +54,7 @@ class TestLineAges:
         (tmp_path / "MEMORY.md").write_text("## A\n- x\n", encoding="utf-8")
         git.auto_commit("initial")
 
-        future_now = datetime.now(tz=timezone.utc) + timedelta(days=30)
+        future_now = datetime.now(tz=UTC) + timedelta(days=30)
         with patch("nanobot.utils.gitstore.local_now", return_value=future_now):
             ages = git.line_ages("MEMORY.md")
 

@@ -19,12 +19,12 @@ from nanobot.bus.envelope import (
     KEY_SOURCE_SESSION_KEY,
     KEY_TARGET_SESSION_KEY,
     TARGET_BROADCAST,
+    TOPIC_AGENT_REQUEST_REPLY,
     build_dedupe_key,
     new_message_id,
     new_trace_id,
     produced_at,
     target_for_agent,
-    TOPIC_AGENT_REQUEST_REPLY,
 )
 
 
@@ -176,9 +176,7 @@ def should_handle_direct_for_session(ev: AgentEvent, session_key: str | None) ->
     return True
 
 
-def render_agent_event_for_llm(
-    ev: AgentEvent, *, max_body_chars: int | None = None
-) -> str:
+def render_agent_event_for_llm(ev: AgentEvent, *, max_body_chars: int | None = None) -> str:
     """Format *ev* as system-visible text for agent loops (subscribe / team)."""
     try:
         body = json.dumps(ev.payload, ensure_ascii=False, indent=2)

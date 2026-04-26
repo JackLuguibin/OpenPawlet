@@ -26,12 +26,20 @@ def test_merge_team_transcript_sorts_by_timestamp() -> None:
     def fake_load(_bot_id: str | None, session_key: str) -> list[dict]:
         if session_key == sk1:
             return [
-                {"role": "assistant", "content": "second", "timestamp": "2026-01-02T00:00:00+00:00"},
+                {
+                    "role": "assistant",
+                    "content": "second",
+                    "timestamp": "2026-01-02T00:00:00+00:00",
+                },
                 {"role": "user", "content": "first", "timestamp": "2026-01-01T00:00:00+00:00"},
             ]
         if session_key == sk2:
             return [
-                {"role": "assistant", "content": "middle", "timestamp": "2026-01-01T12:00:00+00:00"},
+                {
+                    "role": "assistant",
+                    "content": "middle",
+                    "timestamp": "2026-01-01T12:00:00+00:00",
+                },
             ]
         return []
 

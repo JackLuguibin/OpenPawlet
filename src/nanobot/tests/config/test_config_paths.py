@@ -1,8 +1,6 @@
 import time
 from pathlib import Path
 
-from nanobot.utils.helpers import safe_filename
-
 from nanobot.config.paths import (
     get_bridge_install_dir,
     get_cli_history_path,
@@ -16,6 +14,7 @@ from nanobot.config.paths import (
     is_default_workspace,
     observability_jsonl_path_for_session,
 )
+from nanobot.utils.helpers import safe_filename
 
 
 def test_runtime_dirs_follow_config_path(monkeypatch, tmp_path: Path) -> None:
@@ -67,5 +66,9 @@ def test_observability_jsonl_path_uses_workspace_per_session(monkeypatch, tmp_pa
     assert observability_jsonl_path_for_session(sk) == (
         ws / "observability" / "sessions" / safe / f"events_{day}.jsonl"
     )
-    assert observability_jsonl_path_for_session(None) == ws / "observability" / f"events_{day}.jsonl"
-    assert observability_jsonl_path_for_session("  ") == ws / "observability" / f"events_{day}.jsonl"
+    assert (
+        observability_jsonl_path_for_session(None) == ws / "observability" / f"events_{day}.jsonl"
+    )
+    assert (
+        observability_jsonl_path_for_session("  ") == ws / "observability" / f"events_{day}.jsonl"
+    )

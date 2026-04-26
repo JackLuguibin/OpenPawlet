@@ -72,7 +72,7 @@ def test_lifespan_brings_up_and_tears_down_subsystems(
         session_manager = _FakeSessions()
 
         @classmethod
-        def from_environment(cls, **_kw: Any) -> "_FakeEmbedded":
+        def from_environment(cls, **_kw: Any) -> _FakeEmbedded:
             return cls()
 
         async def start(self) -> None:
@@ -108,6 +108,7 @@ def test_cors_middleware_applied(app_no_embed) -> None:
 
 def test_validation_error_envelope(app_no_embed) -> None:
     """OpenAI handler returns a JSON error envelope on bad payloads."""
+
     # Wire a fake agent so the handler reaches the JSON parser path.
     class _FakeAgent:
         async def process_direct(self, **_kw: Any) -> Any:  # pragma: no cover
@@ -151,9 +152,7 @@ def test_v1_models_endpoint(app_no_embed) -> None:
     assert any(m["id"] for m in payload["data"])
 
 
-def test_v1_chat_completions_json_path(
-    monkeypatch: pytest.MonkeyPatch, app_no_embed
-) -> None:
+def test_v1_chat_completions_json_path(monkeypatch: pytest.MonkeyPatch, app_no_embed) -> None:
     """Non-streaming JSON body returns OpenAI-shaped response."""
 
     class _FakeResponse:
@@ -182,9 +181,7 @@ def test_v1_chat_completions_json_path(
     assert body["model"] == "fake-model"
 
 
-def test_v1_chat_completions_sse_path(
-    monkeypatch: pytest.MonkeyPatch, app_no_embed
-) -> None:
+def test_v1_chat_completions_sse_path(monkeypatch: pytest.MonkeyPatch, app_no_embed) -> None:
     """Streaming returns SSE chunks ending with ``data: [DONE]``."""
 
     class _FakeAgent:
@@ -312,9 +309,7 @@ def test_signal_handlers_install_cross_platform_fallback(
             raise NotImplementedError
 
     fallbacks: list[int] = []
-    monkeypatch.setattr(
-        signals.signal, "signal", lambda sig, _cb: fallbacks.append(sig)
-    )
+    monkeypatch.setattr(signals.signal, "signal", lambda sig, _cb: fallbacks.append(sig))
 
     loop = _DummyLoop()
 

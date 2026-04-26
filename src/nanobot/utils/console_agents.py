@@ -94,7 +94,7 @@ def disabled_skills_for_allowlist(
 
 
 def resolve_gateway_identity_overrides(
-    config: "Config",
+    config: Config,
     workspace: Path,
     *,
     logical_agent_id: str | None,

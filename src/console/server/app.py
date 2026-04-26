@@ -39,6 +39,20 @@ _ERR_VALIDATION_MSG = "Request validation failed"
 _ERR_INTERNAL_CODE = "INTERNAL_ERROR"
 _ERR_INTERNAL_MSG = "An unexpected error occurred"
 
+# Truthy environment-variable values, normalized to lowercase. Mirrors what
+# the nanobot CLI accepts so console env flags behave the same way.
+_TRUTHY_ENV_VALUES = frozenset({"1", "true", "yes", "on"})
+
+_EMBEDDED_DISABLE_ENV = "OPENPAWLET_DISABLE_EMBEDDED"
+
+
+def _env_flag(name: str, default: bool = False) -> bool:
+    """Return True when ``$NAME`` is set to a truthy value."""
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in _TRUTHY_ENV_VALUES
+
 
 def _embedded_disabled() -> bool:
     """Return True when the embedded nanobot runtime should not be started.
@@ -46,12 +60,39 @@ def _embedded_disabled() -> bool:
     Tests use this escape hatch to mount the FastAPI app without paying
     the cost of constructing the full agent + channels graph.
     """
-    return os.environ.get("OPENPAWLET_DISABLE_EMBEDDED", "").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
+    return _env_flag(_EMBEDDED_DISABLE_ENV)
+
+
+async def _start_embedded_runtime(app: FastAPI) -> Any | None:
+    """Construct and start the embedded nanobot runtime.
+
+    Returns the ``EmbeddedNanobot`` on success, or ``None`` if the runtime
+    could not be built or failed to start.  Either failure mode is logged
+    and leaves the FastAPI app in degraded mode (HTTP keeps serving so the
+    UI can still surface errors to the operator).
+    """
+    try:
+        from nanobot.runtime.embedded import EmbeddedNanobot
+
+        embedded = EmbeddedNanobot.from_environment()
+    except Exception:  # noqa: BLE001 - degraded mode keeps the UI usable
+        logger.exception(
+            "Failed to construct embedded nanobot runtime; console will start in degraded mode"
+        )
+        return None
+
+    try:
+        await embedded.start()
+    except Exception:  # noqa: BLE001 - keep API alive even if runtime fails
+        logger.exception("Embedded nanobot runtime failed to start; degraded mode")
+        return None
+
+    app.state.embedded = embedded
+    app.state.agent_loop = embedded.agent
+    app.state.message_bus = embedded.message_bus
+    app.state.session_manager = embedded.session_manager
+    app.state.model_name = embedded.agent.model
+    return embedded
 
 
 @asynccontextmanager
@@ -66,30 +107,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     )
     app.state.started_at_perf = time.perf_counter()
 
-    embedded = None
-    if not _embedded_disabled():
-        try:
-            from nanobot.runtime.embedded import EmbeddedNanobot
-
-            embedded = EmbeddedNanobot.from_environment()
-        except Exception:  # noqa: BLE001 - degraded mode keeps the UI usable
-            logger.exception(
-                "Failed to construct embedded nanobot runtime; "
-                "console will start in degraded mode"
-            )
-        else:
-            try:
-                await embedded.start()
-                app.state.embedded = embedded
-                app.state.agent_loop = embedded.agent
-                app.state.message_bus = embedded.message_bus
-                app.state.session_manager = embedded.session_manager
-                app.state.model_name = embedded.agent.model
-            except Exception:  # noqa: BLE001 - keep API alive even if runtime fails
-                logger.exception(
-                    "Embedded nanobot runtime failed to start; degraded mode"
-                )
-                embedded = None
+    embedded = None if _embedded_disabled() else await _start_embedded_runtime(app)
 
     try:
         yield
@@ -155,8 +173,7 @@ def _mount_spa(app: FastAPI) -> bool:
     index = dist / "index.html"
     if not index.is_file():
         logger.warning(
-            "[spa] dist not found at {}; run "
-            "'npm --prefix src/console/web run build' first.",
+            "[spa] dist not found at {}; run 'npm --prefix src/console/web run build' first.",
             dist,
         )
         return False
@@ -192,6 +209,18 @@ def _ws_close_label(exc: BaseException) -> str:
     if code is None:
         return type(exc).__name__
     return f"code={code} reason={reason!r}" if reason else f"code={code}"
+
+
+async def _safe_ws_close(websocket: WebSocket, code: int = 1000) -> None:
+    """Close *websocket* swallowing any error.
+
+    Used during proxy teardown where the underlying transport may already
+    be torn down; we never want close failures to mask the original cause.
+    """
+    try:
+        await websocket.close(code=code)
+    except Exception:  # pragma: no cover - best-effort cleanup
+        pass
 
 
 async def _nanobot_ws_proxy(
@@ -243,9 +272,7 @@ async def _nanobot_ws_proxy(
                 except websockets.exceptions.ConnectionClosed:
                     pass
                 except Exception as exc:  # noqa: BLE001 - close both sides
-                    logger.warning(
-                        "[nanobot-ws-proxy] client->gateway error: {}", exc
-                    )
+                    logger.warning("[nanobot-ws-proxy] client->gateway error: {}", exc)
                 finally:
                     await remote_ws.close()
 
@@ -259,14 +286,9 @@ async def _nanobot_ws_proxy(
                 except websockets.exceptions.ConnectionClosed:
                     pass
                 except Exception as exc:  # noqa: BLE001
-                    logger.warning(
-                        "[nanobot-ws-proxy] gateway->client error: {}", exc
-                    )
+                    logger.warning("[nanobot-ws-proxy] gateway->client error: {}", exc)
                 finally:
-                    try:
-                        await websocket.close()
-                    except Exception:  # pragma: no cover
-                        pass
+                    await _safe_ws_close(websocket)
 
             tasks = [
                 asyncio.create_task(_client_to_remote()),
@@ -290,23 +312,13 @@ async def _nanobot_ws_proxy(
             target_path,
             exc,
         )
-        try:
-            await websocket.close(code=1014)
-        except Exception:  # pragma: no cover
-            pass
+        await _safe_ws_close(websocket, code=1014)
     except Exception as exc:  # noqa: BLE001
-        logger.exception(
-            "[nanobot-ws-proxy] unexpected proxy error: {}", exc
-        )
-        try:
-            await websocket.close(code=1011)
-        except Exception:  # pragma: no cover
-            pass
+        logger.exception("[nanobot-ws-proxy] unexpected proxy error: {}", exc)
+        await _safe_ws_close(websocket, code=1011)
 
 
-def _mount_nanobot_ws_proxy(
-    app: FastAPI, gateway_host: str, gateway_port: int
-) -> None:
+def _mount_nanobot_ws_proxy(app: FastAPI, gateway_host: str, gateway_port: int) -> None:
     """Register the ``/nanobot-ws/`` WebSocket reverse-proxy route on *app*."""
 
     @app.websocket("/nanobot-ws/{rest_path:path}")
@@ -369,9 +381,7 @@ def create_app(
     # The "gateway" now lives in the same process via EmbeddedNanobot, but the
     # underlying WebSocketChannel still binds a loopback port for protocol
     # fidelity, so we proxy same-origin to it.
-    _mount_nanobot_ws_proxy(
-        app, settings.nanobot_gateway_host, settings.nanobot_gateway_port
-    )
+    _mount_nanobot_ws_proxy(app, settings.nanobot_gateway_host, settings.nanobot_gateway_port)
 
     spa_mounted = _mount_spa(app) if mount_spa else False
 

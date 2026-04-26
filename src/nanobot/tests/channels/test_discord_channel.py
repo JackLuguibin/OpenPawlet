@@ -21,7 +21,7 @@ from nanobot.command.builtin import build_help_text
 
 # Minimal Discord client test double used to control startup/readiness behavior.
 class _FakeDiscordClient:
-    instances: list["_FakeDiscordClient"] = []
+    instances: list[_FakeDiscordClient] = []
     start_error: Exception | None = None
 
     def __init__(self, owner, *, intents, proxy=None, proxy_auth=None) -> None:
@@ -938,6 +938,7 @@ async def test_start_no_proxy_auth_when_only_password(monkeypatch) -> None:
 # ---------------------------------------------------------------------------
 # Tests for the send() exception propagation fix
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_send_re_raises_network_error() -> None:

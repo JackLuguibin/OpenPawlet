@@ -36,9 +36,7 @@ def _write_team(workspace: Path, team_id: str, team_skills: list[str]) -> None:
 def test_team_skills_merges_disabled_with_defaults(tmp_path: Path) -> None:
     _write_team(tmp_path, "tm1", ["skill-a"])
     cfg = Config(
-        agents=AgentsConfig(
-            defaults=AgentDefaults(workspace=str(tmp_path), disabled_skills=["z1"])
-        )
+        agents=AgentsConfig(defaults=AgentDefaults(workspace=str(tmp_path), disabled_skills=["z1"]))
     )
     with patch(
         "nanobot.utils.console_agents.disabled_skills_for_allowlist",
@@ -73,9 +71,7 @@ def test_team_skills_intersects_with_agent_allowlist(
             {"d1", "d2"},
             {"d3", "d4"},
         ]
-        resolve_gateway_identity_overrides(
-            cfg, tmp_path, logical_agent_id="agent1", team_id="tm1"
-        )
+        resolve_gateway_identity_overrides(cfg, tmp_path, logical_agent_id="agent1", team_id="tm1")
     assert m_deny.call_count == 2
     calls = m_deny.call_args_list
     assert list(calls[0].args[1]) == ["a", "b"]  # allowlist

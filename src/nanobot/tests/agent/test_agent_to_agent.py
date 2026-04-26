@@ -55,9 +55,7 @@ async def test_main_and_sub_agents_can_direct_message_each_other() -> None:
         bus=bus, default_agent_id=main_id, inject_inbound=_main_inject
     )
     main_sub_tool.set_context(agent_id=main_id, session_key="test:1")
-    sub_sub_tool = SubscribeEventTool(
-        bus=bus, default_agent_id=sub_id, inject_inbound=_sub_inject
-    )
+    sub_sub_tool = SubscribeEventTool(bus=bus, default_agent_id=sub_id, inject_inbound=_sub_inject)
     sub_sub_tool.set_context(agent_id=sub_id, session_key="test:1")
 
     # Both agents install background subscriptions so direct messages
@@ -165,9 +163,7 @@ async def test_send_to_agent_wait_reply_closed_loop_subscribe_inject_path() -> N
     wait_tool.set_context(alice_id, "console:alice")
     reply_tool = ReplyToAgentRequestTool(bus=bus, default_source_agent=bob_id)
     reply_tool.set_context(bob_id, "console:bob")
-    bob_sub_tool = SubscribeEventTool(
-        bus=bus, default_agent_id=bob_id, inject_inbound=_bob_inject
-    )
+    bob_sub_tool = SubscribeEventTool(bus=bus, default_agent_id=bob_id, inject_inbound=_bob_inject)
     bob_sub_tool.set_context(agent_id=bob_id, session_key="test:chain")
     await bob_sub_tool.execute(topics=[])
 

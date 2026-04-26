@@ -45,9 +45,7 @@ def bus() -> MagicMock:
     return b
 
 
-async def _http_get(
-    url: str, headers: dict[str, str] | None = None
-) -> httpx.Response:
+async def _http_get(url: str, headers: dict[str, str] | None = None) -> httpx.Response:
     return await asyncio.to_thread(
         functools.partial(httpx.get, url, headers=headers or {}, timeout=5.0)
     )
@@ -72,9 +70,7 @@ def _seed_many(workspace: Path, keys: list[str]) -> SessionManager:
 
 
 @pytest.mark.asyncio
-async def test_bootstrap_returns_token_for_localhost(
-    bus: MagicMock, tmp_path: Path
-) -> None:
+async def test_bootstrap_returns_token_for_localhost(bus: MagicMock, tmp_path: Path) -> None:
     sm = _seed_session(tmp_path)
     channel = _ch(bus, session_manager=sm, port=29921)
     server_task = asyncio.create_task(channel.start())
@@ -93,9 +89,7 @@ async def test_bootstrap_returns_token_for_localhost(
 
 
 @pytest.mark.asyncio
-async def test_sessions_routes_require_bearer_token(
-    bus: MagicMock, tmp_path: Path
-) -> None:
+async def test_sessions_routes_require_bearer_token(bus: MagicMock, tmp_path: Path) -> None:
     sm = _seed_session(tmp_path, key="websocket:abc")
     channel = _ch(bus, session_manager=sm, port=29922)
     server_task = asyncio.create_task(channel.start())
@@ -149,9 +143,7 @@ async def test_sessions_list_only_returns_websocket_sessions_by_default(
         token = boot.json()["token"]
         auth = {"Authorization": f"Bearer {token}"}
 
-        listing = await _http_get(
-            "http://127.0.0.1:29923/api/sessions", headers=auth
-        )
+        listing = await _http_get("http://127.0.0.1:29923/api/sessions", headers=auth)
         assert listing.status_code == 200
         keys = {s["key"] for s in listing.json()["sessions"]}
         assert keys == {"websocket:alpha", "websocket:beta"}
@@ -220,9 +212,7 @@ async def test_session_routes_accept_percent_encoded_websocket_keys(
 
 
 @pytest.mark.asyncio
-async def test_session_routes_reject_non_websocket_keys(
-    bus: MagicMock, tmp_path: Path
-) -> None:
+async def test_session_routes_reject_non_websocket_keys(bus: MagicMock, tmp_path: Path) -> None:
     sm = _seed_many(
         tmp_path,
         [
@@ -259,9 +249,7 @@ async def test_session_routes_reject_non_websocket_keys(
 
 
 @pytest.mark.asyncio
-async def test_session_routes_reject_invalid_key(
-    bus: MagicMock, tmp_path: Path
-) -> None:
+async def test_session_routes_reject_invalid_key(bus: MagicMock, tmp_path: Path) -> None:
     sm = _seed_session(tmp_path)
     channel = _ch(bus, session_manager=sm, port=29927)
     server_task = asyncio.create_task(channel.start())

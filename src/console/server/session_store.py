@@ -20,6 +20,7 @@ def _session_manager(bot_id: str | None) -> SessionManager:
         timezone=read_default_timezone(path),
     )
 
+
 _VALID_TRANSCRIPT_ROLES = frozenset({"user", "assistant", "system", "tool"})
 
 

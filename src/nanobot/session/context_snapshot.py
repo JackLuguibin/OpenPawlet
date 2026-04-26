@@ -17,7 +17,6 @@ from typing import Any
 
 from nanobot.utils.helpers import ensure_dir, safe_filename, timestamp
 
-
 _CONTEXT_DIR_NAME = "context"
 
 
@@ -72,8 +71,7 @@ def _render_messages_text(messages: list[dict[str, Any]]) -> str:
         if tool_calls:
             try:
                 body_parts.append(
-                    "tool_calls: "
-                    + json.dumps(tool_calls, ensure_ascii=False, indent=2)
+                    "tool_calls: " + json.dumps(tool_calls, ensure_ascii=False, indent=2)
                 )
             except (TypeError, ValueError):
                 body_parts.append(f"tool_calls: {tool_calls!r}")
@@ -130,7 +128,9 @@ class SessionContextWriter:
         extra: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Build the JSONL record representing *messages* sent to the LLM."""
-        sanitized: list[dict[str, Any]] = [_sanitize_message(m) for m in messages if isinstance(m, dict)]
+        sanitized: list[dict[str, Any]] = [
+            _sanitize_message(m) for m in messages if isinstance(m, dict)
+        ]
 
         system_text = ""
         if sanitized and sanitized[0].get("role") == "system":
