@@ -694,6 +694,65 @@ export async function restartBot(botId?: string | null): Promise<{ status: strin
 }
 
 // ====================
+// Runtime Agent Manager (main + sub agents)
+// ====================
+
+export async function listRuntimeAgents(): Promise<
+  import('./types_runtime').RuntimeAgentStatus[]
+> {
+  return fetchJson<import('./types_runtime').RuntimeAgentStatus[]>(
+    `${API_BASE}/control/agents/status`,
+  );
+}
+
+export async function getRuntimeAgentStatus(
+  agentId: string,
+): Promise<import('./types_runtime').RuntimeAgentStatus> {
+  return fetchJson<import('./types_runtime').RuntimeAgentStatus>(
+    `${API_BASE}/control/agents/${encodeURIComponent(agentId)}/status`,
+  );
+}
+
+export async function startMainAgent(): Promise<
+  import('./types_runtime').RuntimeControlResult
+> {
+  return fetchJson<import('./types_runtime').RuntimeControlResult>(
+    `${API_BASE}/control/agents/main/start`,
+    { method: 'POST' },
+  );
+}
+
+export async function stopMainAgent(): Promise<
+  import('./types_runtime').RuntimeControlResult
+> {
+  return fetchJson<import('./types_runtime').RuntimeControlResult>(
+    `${API_BASE}/control/agents/main/stop`,
+    { method: 'POST' },
+  );
+}
+
+export async function startRuntimeSubagent(
+  body: import('./types_runtime').RuntimeSubagentStartBody,
+): Promise<import('./types_runtime').RuntimeControlResult> {
+  return fetchJson<import('./types_runtime').RuntimeControlResult>(
+    `${API_BASE}/control/agents/sub/start`,
+    {
+      method: 'POST',
+      body: JSON.stringify(body),
+    },
+  );
+}
+
+export async function stopRuntimeSubagent(
+  agentId: string,
+): Promise<import('./types_runtime').RuntimeControlResult> {
+  return fetchJson<import('./types_runtime').RuntimeControlResult>(
+    `${API_BASE}/control/agents/sub/${encodeURIComponent(agentId)}/stop`,
+    { method: 'POST' },
+  );
+}
+
+// ====================
 // Health Check
 // ====================
 

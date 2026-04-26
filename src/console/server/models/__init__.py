@@ -16,6 +16,11 @@ from console.server.models.agents import (
     DelegateTaskRequest,
     DelegateTaskResponse,
 )
+from console.server.models.agent_runtime import (
+    RuntimeAgentStatus,
+    RuntimeControlResult,
+    RuntimeSubagentStartBody,
+)
 from console.server.models.alerts import Alert
 from console.server.models.base import (
     BaseResponse,
@@ -154,6 +159,9 @@ __all__ = [
     "OkWithPath",
     "OkWithTopic",
     "RegistrySearchItem",
+    "RuntimeAgentStatus",
+    "RuntimeControlResult",
+    "RuntimeSubagentStartBody",
     "RuntimeLogChunk",
     "RuntimeLogsData",
     "SessionContextEntry",

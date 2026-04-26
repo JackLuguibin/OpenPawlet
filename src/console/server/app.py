@@ -72,6 +72,7 @@ async def _start_embedded_runtime(app: FastAPI) -> Any | None:
     UI can still surface errors to the operator).
     """
     try:
+        from nanobot.runtime.agent_manager import UnifiedAgentManager
         from nanobot.runtime.embedded import EmbeddedNanobot
 
         settings: ServerSettings = app.state.settings
@@ -98,6 +99,7 @@ async def _start_embedded_runtime(app: FastAPI) -> Any | None:
     app.state.message_bus = embedded.message_bus
     app.state.session_manager = embedded.session_manager
     app.state.model_name = embedded.agent.model
+    app.state.agent_manager = UnifiedAgentManager(embedded)
     return embedded
 
 

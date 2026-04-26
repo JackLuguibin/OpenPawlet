@@ -30,6 +30,7 @@ import {
   Activity,
   LineChart,
   Cable,
+  Cpu,
 } from 'lucide-react';
 
 import WebSocketDebugPanel from './WebSocketDebugPanel';
@@ -51,6 +52,7 @@ const LOCK_PAGE_SCROLL_PATHS = new Set([
   '/teams',
   '/logs',
   '/queues',
+  '/runtime',
 ]);
 
 interface LayoutProps {
@@ -97,6 +99,7 @@ export default function Layout({ children }: LayoutProps) {
       {
         title: t('layout.sectionControl'),
         items: [
+          { path: '/runtime', label: t('layout.navRuntime'), icon: Cpu },
           { path: '/channels', label: t('layout.navChannels'), icon: Smartphone },
           { path: '/sessions', label: t('layout.navSessions'), icon: FolderOpen },
           { path: '/cron', label: t('layout.navCron'), icon: Clock },

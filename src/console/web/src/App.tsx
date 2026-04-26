@@ -26,6 +26,7 @@ const Observability = lazy(() => import('./pages/Observability'));
 const Workspace = lazy(() => import('./pages/Workspace'));
 const Activity = lazy(() => import('./pages/Activity'));
 const Queues = lazy(() => import('./pages/Queues'));
+const Runtime = lazy(() => import('./pages/Runtime'));
 
 function resolveIsDark(theme: 'light' | 'dark' | 'system'): boolean {
   if (theme === 'dark') return true;
@@ -73,6 +74,7 @@ function AppRoutes() {
             <Route path="/logs" element={<Logs />} />
             <Route path="/activity" element={<Activity />} />
             <Route path="/queues" element={<Queues />} />
+            <Route path="/runtime" element={<Runtime />} />
           </Routes>
         </Suspense>
       </Layout>

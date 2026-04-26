@@ -49,6 +49,12 @@ class SubagentStatus:
     usage: dict = field(default_factory=dict)  # token usage
     stop_reason: str | None = None
     error: str | None = None
+    parent_agent_id: str | None = None
+    team_id: str | None = None
+    origin_channel: str | None = None
+    origin_chat_id: str | None = None
+    session_key: str | None = None
+    completed_at: float | None = None
 
 
 class _SubagentHook(AgentHook):
@@ -111,6 +117,7 @@ class SubagentManager:
         self._running_tasks: dict[str, asyncio.Task[None]] = {}
         self._task_statuses: dict[str, SubagentStatus] = {}
         self._session_tasks: dict[str, set[str]] = {}  # session_key -> {task_id, ...}
+        self._task_history_limit = 200
 
     async def spawn(
         self,
@@ -119,8 +126,36 @@ class SubagentManager:
         origin_channel: str = "cli",
         origin_chat_id: str = "direct",
         session_key: str | None = None,
+        parent_agent_id: str | None = None,
+        team_id: str | None = None,
     ) -> str:
         """Spawn a subagent to execute a task in the background."""
+        task_id = await self.spawn_task(
+            task=task,
+            label=label,
+            origin_channel=origin_channel,
+            origin_chat_id=origin_chat_id,
+            session_key=session_key,
+            parent_agent_id=parent_agent_id,
+            team_id=team_id,
+        )
+        display_label = (label or task[:30]).strip() or task_id
+        if len(display_label) > 30:
+            display_label = f"{display_label[:30]}..."
+        return f"Subagent [{display_label}] started (id: {task_id}). I'll notify you when it completes."
+
+    async def spawn_task(
+        self,
+        *,
+        task: str,
+        label: str | None = None,
+        origin_channel: str = "cli",
+        origin_chat_id: str = "direct",
+        session_key: str | None = None,
+        parent_agent_id: str | None = None,
+        team_id: str | None = None,
+    ) -> str:
+        """Spawn a subagent task and return the generated task id."""
         task_id = str(uuid.uuid4())[:8]
         display_label = label or task[:30] + ("..." if len(task) > 30 else "")
         origin = {"channel": origin_channel, "chat_id": origin_chat_id, "session_key": session_key}
@@ -130,6 +165,11 @@ class SubagentManager:
             label=display_label,
             task_description=task,
             started_at=time.monotonic(),
+            parent_agent_id=parent_agent_id or self.parent_agent_id or None,
+            team_id=team_id,
+            origin_channel=origin_channel,
+            origin_chat_id=origin_chat_id,
+            session_key=session_key,
         )
         self._task_statuses[task_id] = status
 
@@ -142,16 +182,27 @@ class SubagentManager:
 
         def _cleanup(_: asyncio.Task) -> None:
             self._running_tasks.pop(task_id, None)
-            self._task_statuses.pop(task_id, None)
+            st = self._task_statuses.get(task_id)
+            if st is not None and st.completed_at is None:
+                st.completed_at = time.monotonic()
+                if _.cancelled() and st.phase not in {"done", "error"}:
+                    st.phase = "cancelled"
             if session_key and (ids := self._session_tasks.get(session_key)):
                 ids.discard(task_id)
                 if not ids:
                     del self._session_tasks[session_key]
+            if len(self._task_statuses) > self._task_history_limit:
+                stale = sorted(
+                    self._task_statuses.values(),
+                    key=lambda item: item.completed_at or item.started_at,
+                )[: max(0, len(self._task_statuses) - self._task_history_limit)]
+                for row in stale:
+                    self._task_statuses.pop(row.task_id, None)
 
         bg_task.add_done_callback(_cleanup)
 
         logger.info("Spawned subagent [{}]: {}", task_id, display_label)
-        return f"Subagent [{display_label}] started (id: {task_id}). I'll notify you when it completes."
+        return task_id
 
     async def _run_subagent(
         self,
@@ -250,6 +301,7 @@ class SubagentManager:
             )
             status.phase = "done"
             status.stop_reason = result.stop_reason
+            status.completed_at = time.monotonic()
 
             if result.stop_reason == "tool_error":
                 status.tool_events = list(result.tool_events)
@@ -280,6 +332,7 @@ class SubagentManager:
         except Exception as e:
             status.phase = "error"
             status.error = str(e)
+            status.completed_at = time.monotonic()
             logger.error("Subagent [{}] failed: {}", task_id, e)
             await self._announce_result(task_id, label, task, f"Error: {e}", origin, "error")
 
@@ -400,6 +453,19 @@ class SubagentManager:
             await asyncio.gather(*tasks, return_exceptions=True)
         return len(tasks)
 
+    async def cancel_task(self, task_id: str) -> bool:
+        """Cancel one running subagent by task id."""
+        task = self._running_tasks.get(task_id)
+        if task is None or task.done():
+            return False
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        status = self._task_statuses.get(task_id)
+        if status is not None:
+            status.phase = "cancelled"
+            status.completed_at = time.monotonic()
+        return True
+
     def get_running_count(self) -> int:
         """Return the number of currently running subagents."""
         return len(self._running_tasks)
@@ -410,3 +476,20 @@ class SubagentManager:
         return sum(
             1 for tid in tids if tid in self._running_tasks and not self._running_tasks[tid].done()
         )
+
+    def get_task_status(self, task_id: str) -> SubagentStatus | None:
+        """Return one subagent status by task id."""
+        return self._task_statuses.get(task_id)
+
+    def is_task_running(self, task_id: str) -> bool:
+        """Return True when a tracked subagent task is still active."""
+        task = self._running_tasks.get(task_id)
+        return task is not None and not task.done()
+
+    def list_task_statuses(self, *, include_finished: bool = True) -> list[SubagentStatus]:
+        """Return tracked subagent statuses ordered by start time (newest first)."""
+        rows = list(self._task_statuses.values())
+        if not include_finished:
+            rows = [row for row in rows if self.is_task_running(row.task_id)]
+        rows.sort(key=lambda row: row.started_at, reverse=True)
+        return rows
