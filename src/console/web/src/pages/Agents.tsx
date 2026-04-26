@@ -7,7 +7,6 @@ import {
   Input,
   Form,
   Select,
-  Tag,
   Tooltip,
   Empty,
   Popconfirm,
@@ -28,7 +27,6 @@ import {
   DownloadOutlined,
   EyeInvisibleOutlined,
 } from '@ant-design/icons';
-import { Bot } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store';
 import { PageLayout } from '../components/PageLayout';
@@ -59,14 +57,6 @@ type TopicNormalizeResult = {
   dedupedCount: number;
   overflowed: boolean;
 };
-
-function findCategoryConfig(key: string, builtin: CategoryDef[], custom: CategoryDef[]): CategoryDef {
-  const built = builtin.find((c) => c.key === key);
-  if (built) return { ...built };
-  const c = custom.find((x) => x.key === key);
-  if (c) return c;
-  return { ...builtin[1] };
-}
 
 // Infer category from agent name or description
 function getAgentCategory(agent: Agent): string {
@@ -627,7 +617,7 @@ export default function Agents({ embedded = false }: { embedded?: boolean } = {}
       </div>
 
       {/* Content */}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
+      <div className="mt-4 flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
       {isLoading ? (
         <div className="flex justify-center py-12">
           <Spin size="large" />
@@ -645,147 +635,98 @@ export default function Agents({ embedded = false }: { embedded?: boolean } = {}
           />
         </div>
       ) : (
-        <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+        <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
           {filteredAgents.map((agent) => {
-            const category = resolveAgentCategory(agent, categoryOverrides);
-            const categoryConfig = findCategoryConfig(category, builtinCategories, customCategories);
             const isSelected = selectedAgents.has(agent.id);
             
             return (
               <Card
                 key={agent.id}
-                className="group relative overflow-hidden rounded-2xl border border-gray-200/80 bg-white shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl dark:border-gray-700/60 dark:bg-gray-800/60"
+                className="group relative overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-gray-300 hover:shadow-md dark:border-gray-700 dark:bg-gray-800"
                 styles={{ body: { padding: 0 } }}
                 hoverable
               >
-                <div
-                  className="absolute inset-x-0 top-0 h-[74px] opacity-90"
-                  style={{
-                    background: `linear-gradient(135deg, ${categoryConfig.color}26 0%, ${categoryConfig.color}0f 50%, transparent 100%)`,
-                  }}
-                />
-                <div
-                  className="absolute left-0 right-0 top-0 h-1.5 z-[1]"
-                  style={{ backgroundColor: categoryConfig.color }}
-                />
-
-                <div className="relative z-0 flex min-h-[220px] flex-col p-3.5">
-                  <div className="mb-3 flex items-start justify-between gap-2">
-                    <div className="flex min-w-0 items-start gap-2.5">
-                      <div
-                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/70 shadow-sm transition-transform group-hover:scale-105 dark:border-gray-700/60"
-                        style={{ backgroundColor: `${categoryConfig.color}1f` }}
-                      >
-                        <Bot className="h-[18px] w-[18px]" style={{ color: categoryConfig.color }} />
-                      </div>
-                      <div className="min-w-0 pt-0.5">
-                        <h3 className="line-clamp-1 break-words text-[15px] font-semibold leading-snug text-gray-900 dark:text-gray-100">
-                          {agent.name}
-                        </h3>
-                        <p className="mt-0.5 text-[11px] leading-none text-gray-400 dark:text-gray-500">
-                          ID: {agent.id.slice(0, 8)}
-                        </p>
-                      </div>
+                <div className="relative flex flex-col gap-1 p-2.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <h3 className="line-clamp-1 break-words text-sm font-medium text-gray-900 dark:text-gray-100">
+                        {agent.name}
+                      </h3>
                     </div>
                     <Checkbox
                       checked={isSelected}
                       onChange={() => handleToggleSelect(agent.id)}
                       onClick={(e) => e.stopPropagation()}
-                      className="mt-0.5 shrink-0"
+                      className="shrink-0"
                     />
                   </div>
 
-                  <div className="mb-2 flex flex-wrap items-center gap-1.5">
-                    <Tag
-                      className="!m-0 rounded-full border-0 px-2 py-0.5 text-[11px] leading-none"
-                      style={{
-                        backgroundColor: `${categoryConfig.color}20`,
-                        color: categoryConfig.color,
-                      }}
-                    >
-                      {categoryConfig.label}
-                    </Tag>
-                    {agent.enabled && (
-                      <Tag
-                        className="!m-0 rounded-full border-0 bg-violet-50 px-2 py-0.5 text-[11px] leading-none text-violet-600 dark:!bg-violet-900/30 dark:!text-violet-300"
-                      >
-                        {t('agents.tagSys')}
-                      </Tag>
-                    )}
-                    {(agent.team_ids || []).map((tid) => (
-                      <Tag
-                        key={`${agent.id}-${tid}`}
-                        className="!m-0 rounded-full border-0 bg-purple-50 px-2 py-0.5 text-[11px] leading-none text-purple-600 dark:!bg-purple-900/30 dark:!text-purple-300"
-                      >
-                        team:{tid}
-                      </Tag>
-                    ))}
-                  </div>
-
-                  <div className="rounded-lg border border-gray-100 bg-white/75 px-2.5 py-2 dark:border-gray-700/70 dark:bg-gray-800/60">
-                    <p className="min-h-[34px] text-xs leading-snug text-gray-500 line-clamp-2 dark:text-gray-400">
-                      {agent.description || t('agents.descriptionPlaceholder')}
-                    </p>
-                  </div>
-
-                  {/* Action buttons */}
-                  <div className="mt-auto pt-3">
-                    <div className="flex items-center justify-end gap-1 rounded-lg border border-gray-100 bg-gray-50/80 px-1.5 py-1 dark:border-gray-700/70 dark:bg-gray-900/30">
-                    <Tooltip title={t('agents.tooltipEdit')}>
-                      <Button
-                        type="text"
-                        size="small"
-                        icon={<EditOutlined />}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleEdit(agent);
-                        }}
-                        className="rounded-md text-gray-500 hover:bg-blue-50 hover:text-blue-500 dark:text-gray-400 dark:hover:bg-blue-900/20 dark:hover:text-blue-400 !px-1.5"
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex min-w-0 items-center gap-2 text-[11px] text-gray-500 dark:text-gray-400">
+                      <span
+                        className={`h-1.5 w-1.5 shrink-0 rounded-full ${agent.enabled ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'}`}
                       />
-                    </Tooltip>
-                    <Tooltip title={t('common.export')}>
-                      <Button
-                        type="text"
-                        size="small"
-                        icon={<DownloadOutlined />}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const dataStr = JSON.stringify(agent, null, 2);
-                          const dataBlob = new Blob([dataStr], { type: 'application/json' });
-                          const url = URL.createObjectURL(dataBlob);
-                          const link = document.createElement('a');
-                          link.href = url;
-                          link.download = `agent-${agent.id}.json`;
-                          document.body.appendChild(link);
-                          link.click();
-                          document.body.removeChild(link);
-                          URL.revokeObjectURL(url);
-                          addToast({ type: 'success', message: t('agents.exportOk') });
-                        }}
-                        className="rounded-md text-gray-500 hover:bg-emerald-50 hover:text-emerald-500 dark:text-gray-400 dark:hover:bg-emerald-900/20 dark:hover:text-emerald-400 !px-1.5"
-                      />
-                    </Tooltip>
-                    <Popconfirm
-                      title={t('agents.hideConfirmTitle')}
-                      description={t('agents.hideConfirmDescription')}
-                      onConfirm={(e) => {
-                        e?.stopPropagation();
-                        disableMutation.mutate(agent.id);
-                      }}
-                      okText={t('agents.hide')}
-                      cancelText={t('common.cancel')}
-                      okButtonProps={{ danger: true }}
-                    >
-                      <Tooltip title={t('agents.hide')}>
+                      <span className="shrink-0">{agent.enabled ? t('common.enabled') : t('agents.hide')}</span>
+                      <span className="truncate text-[10px] text-gray-400 dark:text-gray-500">
+                        ID: {agent.id.slice(0, 8)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-end gap-0.5 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
+                      <Tooltip title={t('agents.tooltipEdit')}>
                         <Button
                           type="text"
                           size="small"
-                          icon={<EyeInvisibleOutlined />}
-                          onClick={(e) => e.stopPropagation()}
-                          className="rounded-md text-gray-500 hover:bg-orange-50 hover:text-orange-500 dark:text-gray-400 dark:hover:bg-orange-900/20 dark:hover:text-orange-400 !px-1.5"
+                          icon={<EditOutlined />}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEdit(agent);
+                          }}
+                          className="rounded-md text-gray-500 hover:bg-blue-50 hover:text-blue-500 dark:text-gray-400 dark:hover:bg-blue-900/20 dark:hover:text-blue-400 !px-1"
                         />
                       </Tooltip>
-                    </Popconfirm>
+                      <Tooltip title={t('common.export')}>
+                        <Button
+                          type="text"
+                          size="small"
+                          icon={<DownloadOutlined />}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const dataStr = JSON.stringify(agent, null, 2);
+                            const dataBlob = new Blob([dataStr], { type: 'application/json' });
+                            const url = URL.createObjectURL(dataBlob);
+                            const link = document.createElement('a');
+                            link.href = url;
+                            link.download = `agent-${agent.id}.json`;
+                            document.body.appendChild(link);
+                            link.click();
+                            document.body.removeChild(link);
+                            URL.revokeObjectURL(url);
+                            addToast({ type: 'success', message: t('agents.exportOk') });
+                          }}
+                          className="rounded-md text-gray-500 hover:bg-emerald-50 hover:text-emerald-500 dark:text-gray-400 dark:hover:bg-emerald-900/20 dark:hover:text-emerald-400 !px-1"
+                        />
+                      </Tooltip>
+                      <Popconfirm
+                        title={t('agents.hideConfirmTitle')}
+                        description={t('agents.hideConfirmDescription')}
+                        onConfirm={(e) => {
+                          e?.stopPropagation();
+                          disableMutation.mutate(agent.id);
+                        }}
+                        okText={t('agents.hide')}
+                        cancelText={t('common.cancel')}
+                        okButtonProps={{ danger: true }}
+                      >
+                        <Tooltip title={t('agents.hide')}>
+                          <Button
+                            type="text"
+                            size="small"
+                            icon={<EyeInvisibleOutlined />}
+                            onClick={(e) => e.stopPropagation()}
+                            className="rounded-md text-gray-500 hover:bg-orange-50 hover:text-orange-500 dark:text-gray-400 dark:hover:bg-orange-900/20 dark:hover:text-orange-400 !px-1"
+                          />
+                        </Tooltip>
+                      </Popconfirm>
                     </div>
                   </div>
                 </div>
