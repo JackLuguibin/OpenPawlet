@@ -216,6 +216,46 @@ def test_get_history_preserves_reasoning_content():
     ]
 
 
+def test_get_history_keeps_channel_delivery_anchor_before_user_reply():
+    """A proactive assistant delivery (e.g. heartbeat/cron) immediately before a
+    user reply must stay in context — otherwise the model has no idea what the
+    user is responding to. With a small window that would otherwise land on the
+    user reply, the prior _channel_delivery assistant turn must be kept too."""
+    session = Session(key="telegram:1")
+    # Tail will be the proactive delivery + user reply only (window=2).
+    session.messages.append({"role": "user", "content": "older"})
+    session.messages.append({"role": "assistant", "content": "older reply"})
+    session.messages.append(
+        {
+            "role": "assistant",
+            "content": "Heads up: meeting at 3pm.",
+            "_channel_delivery": True,
+        }
+    )
+    session.messages.append({"role": "user", "content": "Sure"})
+
+    history = session.get_history(max_messages=2)
+
+    assert [m["role"] for m in history] == ["assistant", "user"]
+    assert "meeting" in history[0]["content"]
+    assert history[1]["content"] == "Sure"
+
+
+def test_get_history_strips_plain_assistant_anchor_when_window_lands_on_user():
+    """Without the _channel_delivery flag, an assistant turn at the boundary is
+    still trimmed — the new behavior only fires for proactive deliveries."""
+    session = Session(key="telegram:2")
+    session.messages.append({"role": "user", "content": "older"})
+    session.messages.append({"role": "assistant", "content": "older reply"})
+    session.messages.append({"role": "assistant", "content": "Plain assistant note."})
+    session.messages.append({"role": "user", "content": "Sure"})
+
+    history = session.get_history(max_messages=2)
+
+    assert [m["role"] for m in history] == ["user"]
+    assert history[0]["content"] == "Sure"
+
+
 # --- Window cuts mid-group: assistant present but some tool results orphaned ---
 
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -12,6 +13,7 @@ from typing import Any
 from loguru import logger
 
 from nanobot.agent.hook import AgentHook, AgentHookContext
+from nanobot.agent.tools.ask import AskUserInterrupt
 from nanobot.agent.tools.registry import ToolRegistry
 from nanobot.observability.telemetry import (
     agent_run_context,
@@ -88,6 +90,7 @@ class AgentRunSpec:
     retry_wait_callback: Any | None = None
     checkpoint_callback: Any | None = None
     injection_callback: Any | None = None
+    llm_timeout_s: float | None = None
 
 
 @dataclass(slots=True)
@@ -291,17 +294,28 @@ class AgentRunner:
             self._accumulate_usage(usage, raw_usage)
 
             if response.should_execute_tools:
+                # ask_user is a hard interrupt: any tool calls scheduled
+                # *after* it in the same response are dropped, since the
+                # turn pauses for user input.
+                tool_calls = list(response.tool_calls)
+                ask_index = next(
+                    (i for i, tc in enumerate(tool_calls) if tc.name == "ask_user"),
+                    None,
+                )
+                if ask_index is not None:
+                    tool_calls = tool_calls[: ask_index + 1]
+                context.tool_calls = list(tool_calls)
                 if hook.wants_streaming():
                     await hook.on_stream_end(context, resuming=True)
 
                 assistant_message = build_assistant_message(
                     response.content or "",
-                    tool_calls=[tc.to_openai_tool_call() for tc in response.tool_calls],
+                    tool_calls=[tc.to_openai_tool_call() for tc in tool_calls],
                     reasoning_content=response.reasoning_content,
                     thinking_blocks=response.thinking_blocks,
                 )
                 messages.append(assistant_message)
-                tools_used.extend(tc.name for tc in response.tool_calls)
+                tools_used.extend(tc.name for tc in tool_calls)
                 await self._emit_checkpoint(
                     spec,
                     {
@@ -311,7 +325,7 @@ class AgentRunner:
                         "assistant_message": assistant_message,
                         "completed_tool_results": [],
                         "pending_tool_calls": [
-                            tc.to_openai_tool_call() for tc in response.tool_calls
+                            tc.to_openai_tool_call() for tc in tool_calls
                         ],
                     },
                 )
@@ -320,7 +334,7 @@ class AgentRunner:
 
                 results, new_events, fatal_error = await self._execute_tools(
                     spec,
-                    response.tool_calls,
+                    tool_calls,
                     external_lookup_counts,
                     iteration,
                 )
@@ -328,7 +342,15 @@ class AgentRunner:
                 context.tool_results = list(results)
                 context.tool_events = list(new_events)
                 completed_tool_results: list[dict[str, Any]] = []
-                for tool_call, result in zip(response.tool_calls, results):
+                for tool_call, result in zip(tool_calls, results):
+                    # The ask_user "result" is the user's reply, which
+                    # arrives in the *next* turn; never write a synthetic
+                    # tool message here.
+                    if (
+                        isinstance(fatal_error, AskUserInterrupt)
+                        and tool_call.name == "ask_user"
+                    ):
+                        continue
                     tool_message = {
                         "role": "tool",
                         "tool_call_id": tool_call.id,
@@ -343,6 +365,19 @@ class AgentRunner:
                     messages.append(tool_message)
                     completed_tool_results.append(tool_message)
                 if fatal_error is not None:
+                    if isinstance(fatal_error, AskUserInterrupt):
+                        # Pause the turn — the question becomes the
+                        # outbound content; the loop will resume on the
+                        # next inbound user message via
+                        # ``ask_user_tool_result_messages``.
+                        final_content = fatal_error.question
+                        stop_reason = "ask_user"
+                        context.final_content = final_content
+                        context.stop_reason = stop_reason
+                        if hook.wants_streaming():
+                            await hook.on_stream_end(context, resuming=False)
+                        await hook.after_iteration(context)
+                        break
                     error = f"Error: {type(fatal_error).__name__}: {fatal_error}"
                     final_content = error
                     stop_reason = "tool_error"
@@ -630,6 +665,16 @@ class AgentRunner:
         hook: AgentHook,
         context: AgentHookContext,
     ):
+        timeout_s: float | None = spec.llm_timeout_s
+        if timeout_s is None:
+            raw = os.environ.get("NANOBOT_LLM_TIMEOUT_S", "300").strip()
+            try:
+                timeout_s = float(raw)
+            except (TypeError, ValueError):
+                timeout_s = 300.0
+        if timeout_s is not None and timeout_s <= 0:
+            timeout_s = None
+
         kwargs = self._build_request_kwargs(
             spec,
             messages,
@@ -648,12 +693,23 @@ class AgentRunner:
                 async def _stream(delta: str) -> None:
                     await hook.on_stream(context, delta)
 
-                response = await self.provider.chat_stream_with_retry(
+                llm_call = self.provider.chat_stream_with_retry(
                     **kwargs,
                     on_content_delta=_stream,
                 )
             else:
-                response = await self.provider.chat_with_retry(**kwargs)
+                llm_call = self.provider.chat_with_retry(**kwargs)
+            if timeout_s is None:
+                response = await llm_call
+            else:
+                try:
+                    response = await asyncio.wait_for(llm_call, timeout=timeout_s)
+                except asyncio.TimeoutError:
+                    response = LLMResponse(
+                        content=f"Error calling LLM: timed out after {timeout_s:g}s",
+                        finish_reason="error",
+                        error_kind="timeout",
+                    )
         wall_ms = (time.perf_counter() - t0) * 1000.0
         log_llm_response(
             kind="chat",
@@ -726,19 +782,25 @@ class AgentRunner:
         tool_results: list[tuple[Any, dict[str, str], BaseException | None]] = []
         for batch in batches:
             if spec.concurrent_tools and len(batch) > 1:
-                tool_results.extend(
-                    await asyncio.gather(
-                        *(
-                            self._run_tool(spec, tool_call, external_lookup_counts, iteration)
-                            for tool_call in batch
-                        )
+                batch_results = await asyncio.gather(
+                    *(
+                        self._run_tool(spec, tool_call, external_lookup_counts, iteration)
+                        for tool_call in batch
                     )
                 )
+                tool_results.extend(batch_results)
             else:
+                batch_results = []
                 for tool_call in batch:
-                    tool_results.append(
-                        await self._run_tool(spec, tool_call, external_lookup_counts, iteration),
-                    )
+                    out = await self._run_tool(spec, tool_call, external_lookup_counts, iteration)
+                    tool_results.append(out)
+                    batch_results.append(out)
+                    # Stop further calls in this batch on ask_user so the
+                    # turn pauses cleanly without queuing new work.
+                    if isinstance(out[2], AskUserInterrupt):
+                        break
+            if any(isinstance(error, AskUserInterrupt) for _, _, error in batch_results):
+                break
 
         results: list[Any] = []
         events: list[dict[str, str]] = []
@@ -824,6 +886,17 @@ class AgentRunner:
                 result = await spec.tools.execute(tool_call.name, params)
         except asyncio.CancelledError:
             raise
+        except AskUserInterrupt as exc:
+            # ask_user is not an error: it pauses the turn so the next
+            # inbound user message can be supplied as the missing tool
+            # result. Always bubble the interrupt up, regardless of
+            # ``fail_on_tool_error``, so the runner can stop cleanly.
+            event = {
+                "name": tool_call.name,
+                "status": "waiting",
+                "detail": exc.question[:120],
+            }
+            return "", event, exc
         except BaseException as exc:
             event = {
                 "name": tool_call.name,

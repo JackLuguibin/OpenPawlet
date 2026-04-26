@@ -70,6 +70,7 @@ class ConversationRef:
     activity_id: str | None = None
     conversation_type: str | None = None
     tenant_id: str | None = None
+    updated_at: float | None = None  # epoch seconds; used to prune stale refs
 
 
 class MSTeamsChannel(BaseChannel):
@@ -218,11 +219,13 @@ class MSTeamsChannel(BaseChannel):
             raise RuntimeError(f"MSTeams conversation ref not found for chat_id={msg.chat_id}")
 
         token = await self._get_access_token()
-        base_url = (
-            f"{ref.service_url.rstrip('/')}/v3/conversations/{ref.conversation_id}/activities"
-        )
+        # Always POST to the conversation activities collection.  When the
+        # caller asked for a threaded reply, the Bot Framework expects the
+        # parent activity id to be carried inside the payload as
+        # ``replyToId`` rather than appended to the URL — POSTing to
+        # ``.../activities/{id}`` returns 405 on production endpoints.
+        url = f"{ref.service_url.rstrip('/')}/v3/conversations/{ref.conversation_id}/activities"
         use_thread_reply = self.config.reply_in_thread and bool(ref.activity_id)
-        url = f"{base_url}/{ref.activity_id}" if use_thread_reply else base_url
         headers = {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
@@ -292,6 +295,7 @@ class MSTeamsChannel(BaseChannel):
             activity_id=activity_id or None,
             conversation_type=conversation_type or None,
             tenant_id=str((channel_data.get("tenant") or {}).get("id") or "") or None,
+            updated_at=time.time(),
         )
         self._save_refs()
 
@@ -313,10 +317,12 @@ class MSTeamsChannel(BaseChannel):
         """Extract the user-authored text from a Teams activity."""
         text = str(activity.get("text") or "")
         text = self._strip_possible_bot_mention(text)
+        text = self._normalize_html_whitespace(text)
 
         channel_data = activity.get("channelData") or {}
         reply_to_id = str(activity.get("replyToId") or "").strip()
         normalized_preview = html.unescape(text).replace("&rsquo", "’").strip()
+        normalized_preview = normalized_preview.replace("\xa0", " ")
         normalized_preview = normalized_preview.replace("\r\n", "\n").replace("\r", "\n")
         preview_lines = [line.strip() for line in normalized_preview.split("\n")]
         while preview_lines and not preview_lines[0]:
@@ -338,9 +344,16 @@ class MSTeamsChannel(BaseChannel):
         cleaned = re.sub(r"(?:\r?\n){3,}", "\n\n", cleaned)
         return cleaned.strip()
 
+    def _normalize_html_whitespace(self, text: str) -> str:
+        """Normalize common HTML whitespace/entities (incl. ``&nbsp;``) from
+        Teams into plain text spacing."""
+        normalized = html.unescape(text).replace("&rsquo", "’")
+        normalized = normalized.replace("\xa0", " ")
+        return normalized
+
     def _normalize_teams_reply_quote(self, text: str) -> str:
         """Normalize Teams quoted replies into a compact structured form."""
-        cleaned = html.unescape(text).replace("&rsquo", "’").strip()
+        cleaned = self._normalize_html_whitespace(text).strip()
         if not cleaned:
             return ""
 
@@ -482,23 +495,63 @@ class MSTeamsChannel(BaseChannel):
         self._botframework_jwks_expires_at = now + 3600
         return self._botframework_jwks
 
+    # Refs older than this are pruned on the next save. Teams Bot Framework
+    # access tokens for inactive conversations expire well before this; a
+    # stored ref past this age is almost always unusable.
+    _REF_MAX_AGE_S = 30 * 24 * 60 * 60
+
+    def _is_stale_or_unsupported_ref(self, ref: ConversationRef) -> bool:
+        """Reject unsupported refs (Web Chat tester, group/channel) and prune old ones."""
+        service_url = (ref.service_url or "").strip().lower()
+        conversation_type = (ref.conversation_type or "").strip().lower()
+        updated_at = ref.updated_at or 0.0
+
+        # Web Chat tester sends activities through botframework's emulator host
+        # that we cannot reply to with normal bot credentials; drop them so we
+        # don't keep retrying forever.
+        if "webchat.botframework.com" in service_url:
+            return True
+        # Only personal (DM) conversations are currently supported.
+        if conversation_type and conversation_type != "personal":
+            return True
+        if updated_at and updated_at < time.time() - self._REF_MAX_AGE_S:
+            return True
+        return False
+
     def _load_refs(self) -> dict[str, ConversationRef]:
-        """Load stored conversation references."""
+        """Load stored conversation references.
+
+        Tolerant of older on-disk records that don't carry ``updated_at`` — any
+        unknown keys are silently dropped so a schema bump doesn't strand an
+        upgrade behind a manual file delete.
+        """
         if not self._refs_path.exists():
             return {}
         try:
             data = json.loads(self._refs_path.read_text(encoding="utf-8"))
             out: dict[str, ConversationRef] = {}
+            allowed = {f for f in ConversationRef.__dataclass_fields__}
             for key, value in data.items():
-                out[key] = ConversationRef(**value)
+                if not isinstance(value, dict):
+                    continue
+                clean = {k: v for k, v in value.items() if k in allowed}
+                out[key] = ConversationRef(**clean)
             return out
         except Exception as e:
             logger.warning("Failed to load MSTeams conversation refs: {}", e)
             return {}
 
     def _save_refs(self) -> None:
-        """Persist conversation references."""
+        """Persist conversation references, pruning stale or unsupported ones first."""
         try:
+            stale_keys = [
+                key
+                for key, ref in self._conversation_refs.items()
+                if self._is_stale_or_unsupported_ref(ref)
+            ]
+            for key in stale_keys:
+                self._conversation_refs.pop(key, None)
+
             data = {
                 key: {
                     "service_url": ref.service_url,
@@ -507,6 +560,7 @@ class MSTeamsChannel(BaseChannel):
                     "activity_id": ref.activity_id,
                     "conversation_type": ref.conversation_type,
                     "tenant_id": ref.tenant_id,
+                    "updated_at": ref.updated_at,
                 }
                 for key, ref in self._conversation_refs.items()
             }

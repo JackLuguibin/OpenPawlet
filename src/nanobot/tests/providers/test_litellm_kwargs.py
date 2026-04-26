@@ -605,6 +605,87 @@ def test_openai_compat_preserves_message_level_reasoning_fields() -> None:
     }
 
 
+def _deepseek_kwargs(messages: list[dict]) -> dict:
+    with patch("nanobot.providers.openai_compat_provider.AsyncOpenAI"):
+        provider = OpenAICompatProvider(
+            api_key="sk-test",
+            default_model="deepseek-v4-flash",
+            spec=find_by_name("deepseek"),
+        )
+
+    return provider._build_kwargs(
+        messages=messages,
+        tools=None,
+        model="deepseek-v4-flash",
+        max_tokens=1024,
+        temperature=0.7,
+        reasoning_effort="high",
+        tool_choice=None,
+    )
+
+
+def _tool_call(call_id: str) -> dict:
+    return {
+        "id": call_id,
+        "type": "function",
+        "function": {"name": "my", "arguments": "{}"},
+    }
+
+
+def test_deepseek_thinking_drops_tool_history_missing_reasoning_content() -> None:
+    kwargs = _deepseek_kwargs(
+        [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "can we use wechat?"},
+            {"role": "assistant", "content": "", "tool_calls": [_tool_call("call_bad")]},
+            {"role": "tool", "tool_call_id": "call_bad", "name": "my", "content": "channels"},
+            {"role": "user", "content": "continue"},
+        ]
+    )
+
+    assert kwargs["messages"] == [
+        {"role": "system", "content": "system"},
+        {"role": "user", "content": "continue"},
+    ]
+
+
+def test_deepseek_thinking_keeps_tool_history_with_reasoning_content() -> None:
+    kwargs = _deepseek_kwargs(
+        [
+            {"role": "user", "content": "can we use wechat?"},
+            {
+                "role": "assistant",
+                "content": "",
+                "reasoning_content": "I should inspect supported channels.",
+                "tool_calls": [_tool_call("call_good")],
+            },
+            {"role": "tool", "tool_call_id": "call_good", "name": "my", "content": "channels"},
+            {"role": "user", "content": "continue"},
+        ]
+    )
+
+    assistant = kwargs["messages"][1]
+    assert assistant["role"] == "assistant"
+    assert assistant["reasoning_content"] == "I should inspect supported channels."
+    assert kwargs["messages"][2]["role"] == "tool"
+
+
+def test_deepseek_thinking_drops_current_bad_tool_turn_without_followup_user() -> None:
+    kwargs = _deepseek_kwargs(
+        [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "can we use wechat?"},
+            {"role": "assistant", "content": "", "tool_calls": [_tool_call("call_bad")]},
+            {"role": "tool", "tool_call_id": "call_bad", "name": "my", "content": "channels"},
+        ]
+    )
+
+    assert kwargs["messages"] == [
+        {"role": "system", "content": "system"},
+        {"role": "user", "content": "can we use wechat?"},
+    ]
+
+
 def test_openai_compat_keeps_tool_calls_after_consecutive_assistant_messages() -> None:
     with patch("nanobot.providers.openai_compat_provider.AsyncOpenAI"):
         provider = OpenAICompatProvider()
@@ -824,6 +905,84 @@ def test_byteplus_thinking_disabled_for_minimal() -> None:
 def test_byteplus_no_extra_body_when_reasoning_effort_none() -> None:
     kw = _build_kwargs_for("byteplus", "doubao-seed-2-0-pro", reasoning_effort=None)
     assert "extra_body" not in kw
+
+
+def test_deepseek_thinking_enabled() -> None:
+    kw = _build_kwargs_for("deepseek", "deepseek-v4-pro", reasoning_effort="high")
+    assert kw["extra_body"] == {"thinking": {"type": "enabled"}}
+
+
+def test_deepseek_thinking_disabled_for_minimal() -> None:
+    kw = _build_kwargs_for("deepseek", "deepseek-v4-pro", reasoning_effort="minimal")
+    assert kw["extra_body"] == {"thinking": {"type": "disabled"}}
+
+
+def test_deepseek_no_extra_body_when_reasoning_effort_none() -> None:
+    kw = _build_kwargs_for("deepseek", "deepseek-chat", reasoning_effort=None)
+    assert "extra_body" not in kw
+
+
+def test_deepseek_backfills_reasoning_content_on_legacy_tool_call_messages() -> None:
+    spec = find_by_name("deepseek")
+    with patch("nanobot.providers.openai_compat_provider.AsyncOpenAI"):
+        p = OpenAICompatProvider(api_key="k", default_model="deepseek-v4-pro", spec=spec)
+    messages = [
+        {"role": "user", "content": "search for news"},
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {"id": "tc1", "type": "function", "function": {"name": "web_search", "arguments": "{}"}}
+            ],
+        },
+        {"role": "tool", "tool_call_id": "tc1", "content": "result"},
+        {"role": "assistant", "content": "Here are the results."},
+        {"role": "user", "content": "hi"},
+    ]
+    kw = p._build_kwargs(
+        messages=messages,
+        tools=None,
+        model="deepseek-v4-pro",
+        max_tokens=1024,
+        temperature=0.7,
+        reasoning_effort="high",
+        tool_choice=None,
+    )
+    for msg in kw["messages"]:
+        if msg.get("role") == "assistant":
+            assert "reasoning_content" in msg
+            assert msg["reasoning_content"] == ""
+
+
+def test_backfill_does_not_touch_messages_when_thinking_off() -> None:
+    spec = find_by_name("deepseek")
+    with patch("nanobot.providers.openai_compat_provider.AsyncOpenAI"):
+        p = OpenAICompatProvider(api_key="k", default_model="deepseek-v4-pro", spec=spec)
+    messages = [
+        {"role": "user", "content": "hi"},
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {"id": "tc1", "type": "function", "function": {"name": "web_search", "arguments": "{}"}}
+            ],
+        },
+        {"role": "tool", "tool_call_id": "tc1", "content": "result"},
+        {"role": "user", "content": "thanks"},
+    ]
+    for effort in (None, "minimal"):
+        kw = p._build_kwargs(
+            messages=list(messages),
+            tools=None,
+            model="deepseek-v4-pro",
+            max_tokens=1024,
+            temperature=0.7,
+            reasoning_effort=effort,
+            tool_choice=None,
+        )
+        for msg in kw["messages"]:
+            if msg.get("role") == "assistant" and msg.get("tool_calls"):
+                assert "reasoning_content" not in msg
 
 
 def test_openai_no_thinking_extra_body() -> None:

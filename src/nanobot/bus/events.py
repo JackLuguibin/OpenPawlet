@@ -76,6 +76,12 @@ class OutboundMessage:
     reply_to: str | None = None
     media: list[str] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
+    # Optional layout-preserving button labels (one row per outer list).
+    # Channels that support inline keyboards can render them natively;
+    # other channels splice the labels back into the message text so the
+    # user always sees the available options. ``[]`` means "no buttons" —
+    # all existing channels are unaffected when this stays at default.
+    buttons: list[list[str]] = field(default_factory=list)
     # Envelope fields - excluded from equality, see InboundMessage.
     message_id: str = field(default_factory=new_message_id, compare=False)
     dedupe_key: str | None = field(default=None, compare=False)

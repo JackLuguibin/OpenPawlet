@@ -201,12 +201,74 @@ def test_reply_message_sync_returns_false_on_exception() -> None:
     assert ok is False
 
 
+def test_reply_message_sync_default_does_not_request_thread() -> None:
+    """Default ``reply_in_thread=False`` keeps the legacy non-threaded shape."""
+    from lark_oapi.api.im.v1 import ReplyMessageRequestBody
+
+    channel = _make_feishu_channel()
+    resp = MagicMock()
+    resp.success.return_value = True
+    channel._client.im.v1.message.reply.return_value = resp
+
+    body_thread_calls: list[bool] = []
+    real_builder = ReplyMessageRequestBody.builder
+
+    def _spy_builder(*args, **kwargs):
+        builder = real_builder(*args, **kwargs)
+        original = builder.reply_in_thread
+
+        def _wrapped(value):
+            body_thread_calls.append(value)
+            return original(value)
+
+        builder.reply_in_thread = _wrapped
+        return builder
+
+    with patch.object(ReplyMessageRequestBody, "builder", staticmethod(_spy_builder)):
+        ok = channel._reply_message_sync("om_parent", "text", '{"text":"hi"}')
+
+    assert ok is True
+    assert body_thread_calls == []  # never opted in to threaded reply
+
+
+def test_reply_message_sync_opts_in_to_thread_when_requested() -> None:
+    """``reply_in_thread=True`` flows through to the SDK builder."""
+    from lark_oapi.api.im.v1 import ReplyMessageRequestBody
+
+    channel = _make_feishu_channel()
+    resp = MagicMock()
+    resp.success.return_value = True
+    channel._client.im.v1.message.reply.return_value = resp
+
+    body_thread_calls: list[bool] = []
+    real_builder = ReplyMessageRequestBody.builder
+
+    def _spy_builder(*args, **kwargs):
+        builder = real_builder(*args, **kwargs)
+        original = builder.reply_in_thread
+
+        def _wrapped(value):
+            body_thread_calls.append(value)
+            return original(value)
+
+        builder.reply_in_thread = _wrapped
+        return builder
+
+    with patch.object(ReplyMessageRequestBody, "builder", staticmethod(_spy_builder)):
+        ok = channel._reply_message_sync(
+            "om_parent", "text", '{"text":"hi"}', reply_in_thread=True
+        )
+
+    assert ok is True
+    assert body_thread_calls == [True]
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("filename", "expected_msg_type"),
     [
         ("voice.opus", "audio"),
-        ("clip.mp4", "video"),
+        ("clip.mp4", "media"),
         ("report.pdf", "file"),
     ],
 )
@@ -460,3 +522,115 @@ async def test_on_message_no_extra_api_call_when_no_parent_id() -> None:
 
     channel._client.im.v1.message.get.assert_not_called()
     assert len(captured) == 1
+
+
+# ---------------------------------------------------------------------------
+# _on_message — thread-scoped session_key
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_group_thread_reply_gets_scoped_session_key() -> None:
+    """Group thread replies (root_id != message_id) get an isolated session key."""
+    channel = _make_feishu_channel()
+    channel._processed_message_ids.clear()
+
+    captured = []
+
+    async def _capture(**kwargs):
+        captured.append(kwargs)
+
+    channel._handle_message = _capture
+
+    with (
+        patch.object(channel, "_add_reaction", return_value=None),
+        patch.object(channel, "_is_group_message_for_bot", return_value=True),
+    ):
+        await channel._on_message(
+            _make_feishu_event(
+                chat_type="group",
+                message_id="om_reply",
+                root_id="om_thread_root",
+            )
+        )
+
+    assert len(captured) == 1
+    assert captured[0]["session_key"] == "feishu:oc_abc:om_thread_root"
+
+
+@pytest.mark.asyncio
+async def test_group_top_level_message_keeps_default_session_key() -> None:
+    """Group top-level messages (no root_id) must NOT get a thread-scoped key."""
+    channel = _make_feishu_channel()
+    channel._processed_message_ids.clear()
+
+    captured = []
+
+    async def _capture(**kwargs):
+        captured.append(kwargs)
+
+    channel._handle_message = _capture
+
+    with (
+        patch.object(channel, "_add_reaction", return_value=None),
+        patch.object(channel, "_is_group_message_for_bot", return_value=True),
+    ):
+        await channel._on_message(_make_feishu_event(chat_type="group"))
+
+    assert len(captured) == 1
+    assert captured[0]["session_key"] is None
+
+
+@pytest.mark.asyncio
+async def test_private_chat_thread_keeps_default_session_key() -> None:
+    """Private chats never get a thread-scoped key, even with root_id set."""
+    channel = _make_feishu_channel()
+    channel._processed_message_ids.clear()
+
+    captured = []
+
+    async def _capture(**kwargs):
+        captured.append(kwargs)
+
+    channel._handle_message = _capture
+
+    with patch.object(channel, "_add_reaction", return_value=None):
+        await channel._on_message(
+            _make_feishu_event(
+                chat_type="p2p",
+                message_id="om_reply",
+                root_id="om_thread_root",
+            )
+        )
+
+    assert len(captured) == 1
+    assert captured[0]["session_key"] is None
+
+
+@pytest.mark.asyncio
+async def test_self_reply_in_group_keeps_default_session_key() -> None:
+    """Edge case: root_id == message_id (the message is its own root, not a reply)."""
+    channel = _make_feishu_channel()
+    channel._processed_message_ids.clear()
+
+    captured = []
+
+    async def _capture(**kwargs):
+        captured.append(kwargs)
+
+    channel._handle_message = _capture
+
+    with (
+        patch.object(channel, "_add_reaction", return_value=None),
+        patch.object(channel, "_is_group_message_for_bot", return_value=True),
+    ):
+        await channel._on_message(
+            _make_feishu_event(
+                chat_type="group",
+                message_id="om_001",
+                root_id="om_001",
+            )
+        )
+
+    assert len(captured) == 1
+    assert captured[0]["session_key"] is None

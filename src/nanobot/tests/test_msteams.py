@@ -121,6 +121,78 @@ async def test_handle_activity_personal_message_publishes_and_stores_ref(make_ch
     )
     assert saved["conv-123"]["conversation_id"] == "conv-123"
     assert saved["conv-123"]["tenant_id"] == "tenant-id"
+    # Prune-related metadata is now persisted alongside the rest of the ref.
+    assert "updated_at" in saved["conv-123"]
+
+
+def test_save_refs_prunes_stale_and_unsupported_refs(make_channel, tmp_path):
+    """`_save_refs` should drop emulator/non-personal/expired refs from disk."""
+    import time
+
+    ch = make_channel()
+
+    ch._conversation_refs = {
+        "ok": ConversationRef(
+            service_url="https://smba.trafficmanager.net/amer/",
+            conversation_id="ok",
+            conversation_type="personal",
+            updated_at=time.time(),
+        ),
+        "emulator": ConversationRef(
+            service_url="https://webchat.botframework.com/v3",
+            conversation_id="emulator",
+            conversation_type="personal",
+            updated_at=time.time(),
+        ),
+        "group": ConversationRef(
+            service_url="https://smba.trafficmanager.net/amer/",
+            conversation_id="group",
+            conversation_type="channel",
+            updated_at=time.time(),
+        ),
+        "old": ConversationRef(
+            service_url="https://smba.trafficmanager.net/amer/",
+            conversation_id="old",
+            conversation_type="personal",
+            updated_at=time.time() - (60 * 24 * 60 * 60),  # 60 days ago
+        ),
+    }
+    ch._save_refs()
+
+    # In-memory state was pruned in place.
+    assert set(ch._conversation_refs) == {"ok"}
+
+    # Persisted file matches the in-memory state.
+    saved = json.loads(
+        (tmp_path / "state" / "msteams_conversations.json").read_text(encoding="utf-8")
+    )
+    assert set(saved) == {"ok"}
+
+
+def test_load_refs_tolerates_legacy_records_without_updated_at(make_channel, tmp_path):
+    """Older on-disk records (no `updated_at`) must still load cleanly."""
+    refs_path = tmp_path / "state" / "msteams_conversations.json"
+    refs_path.parent.mkdir(parents=True, exist_ok=True)
+    refs_path.write_text(
+        json.dumps(
+            {
+                "legacy": {
+                    "service_url": "https://smba.trafficmanager.net/amer/",
+                    "conversation_id": "legacy",
+                    "bot_id": "28:bot-id",
+                    "activity_id": "act-1",
+                    "conversation_type": "personal",
+                    "tenant_id": "tenant-id",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    ch = make_channel()
+
+    assert "legacy" in ch._conversation_refs
+    assert ch._conversation_refs["legacy"].updated_at is None
 
 
 @pytest.mark.asyncio
@@ -255,6 +327,12 @@ def test_strip_possible_bot_mention_removes_generic_at_tags(make_channel):
     assert ch._strip_possible_bot_mention("hi <at>Some Bot</at> there") == "hi there"
 
 
+def test_sanitize_inbound_text_normalizes_nbsp_entities(make_channel):
+    ch = make_channel()
+    activity = {"text": "Hello&nbsp;from&nbsp;Teams", "channelData": {}}
+    assert ch._sanitize_inbound_text(activity) == "Hello from Teams"
+
+
 def test_sanitize_inbound_text_keeps_normal_inline_message(make_channel):
     ch = make_channel()
 
@@ -379,7 +457,13 @@ async def test_get_access_token_uses_configured_tenant(make_channel):
 
 
 @pytest.mark.asyncio
-async def test_send_replies_to_activity_when_reply_in_thread_enabled(make_channel):
+async def test_send_posts_to_conversation_with_reply_to_id_when_reply_in_thread_enabled(
+    make_channel,
+):
+    """With ``reply_in_thread=True``, the threaded reply is delivered by
+    POSTing to the conversation activities collection and carrying the
+    parent ``activity_id`` inside ``replyToId``.  Posting to
+    ``.../activities/{activity_id}`` returns 405 on production endpoints."""
     ch = make_channel(replyInThread=True)
     fake_http = FakeHttpClient()
     ch._http = fake_http
@@ -395,10 +479,7 @@ async def test_send_replies_to_activity_when_reply_in_thread_enabled(make_channe
 
     assert len(fake_http.calls) == 1
     url, kwargs = fake_http.calls[0]
-    assert (
-        url
-        == "https://smba.trafficmanager.net/amer/v3/conversations/conv-123/activities/activity-1"
-    )
+    assert url == "https://smba.trafficmanager.net/amer/v3/conversations/conv-123/activities"
     assert kwargs["headers"]["Authorization"] == "Bearer tok"
     assert kwargs["json"]["text"] == "Reply text"
     assert kwargs["json"]["replyToId"] == "activity-1"

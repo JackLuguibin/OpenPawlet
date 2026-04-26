@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import inspect
 import json
 import os
 import re
@@ -24,6 +25,13 @@ from nanobot.agent.memory import Consolidator, Dream
 from nanobot.agent.runner import _MAX_INJECTIONS_PER_TURN, AgentRunner, AgentRunSpec
 from nanobot.agent.skills import BUILTIN_SKILLS_DIR
 from nanobot.agent.subagent import SubagentManager
+from nanobot.agent.tools.ask import (
+    AskUserTool,
+    ask_user_options_from_messages,
+    ask_user_outbound,
+    ask_user_tool_result_messages,
+    pending_ask_user_id,
+)
 from nanobot.agent.tools.cron import CronTool
 from nanobot.agent.tools.events import (
     ListEventSubscribersTool,
@@ -140,7 +148,13 @@ class _LoopHook(AgentHook):
                 if thought:
                     await self._on_progress(thought)
             tool_hint = self._loop._strip_think(self._loop._tool_hint(context.tool_calls))
-            await self._on_progress(tool_hint, tool_hint=True)
+            tool_events = [self._loop._tool_event_start_payload(tc) for tc in context.tool_calls]
+            await self._loop._invoke_on_progress(
+                self._on_progress,
+                tool_hint,
+                tool_hint=True,
+                tool_events=tool_events,
+            )
         if self._on_tool_event:
             await self._on_tool_event(
                 tool_calls=[tc.to_openai_tool_call() for tc in context.tool_calls],
@@ -154,6 +168,20 @@ class _LoopHook(AgentHook):
         self._loop._set_tool_context(self._channel, self._chat_id, self._message_id)
 
     async def after_iteration(self, context: AgentHookContext) -> None:
+        if (
+            self._on_progress
+            and context.tool_calls
+            and context.tool_events
+            and self._loop._on_progress_accepts_tool_events(self._on_progress)
+        ):
+            tool_events = self._loop._tool_event_finish_payloads(context)
+            if tool_events:
+                await self._loop._invoke_on_progress(
+                    self._on_progress,
+                    "",
+                    tool_hint=False,
+                    tool_events=tool_events,
+                )
         tr, tc = context.tool_results, context.tool_calls
         if tr and len(tr) == len(tc):
             tail = context.messages[-len(tr) :]
@@ -264,6 +292,7 @@ class AgentLoop:
         channels_config: ChannelsConfig | None = None,
         timezone: str | None = None,
         session_ttl_minutes: int = 0,
+        consolidation_ratio: float = 0.5,
         hooks: list[AgentHook] | None = None,
         unified_session: bool = False,
         disabled_skills: list[str] | None = None,
@@ -388,6 +417,7 @@ class AgentLoop:
             build_messages=self.context.build_messages,
             get_tool_definitions=self.tools.get_definitions,
             max_completion_tokens=provider.generation.max_tokens,
+            consolidation_ratio=consolidation_ratio,
         )
         self._session_transcript: SessionTranscriptWriter | None = None
         if persist_session_transcript:
@@ -574,6 +604,7 @@ class AgentLoop:
             )
             self.tools.register(WebFetchTool(proxy=self.web_config.proxy))
         self.tools.register(MessageTool(send_callback=self.bus.publish_outbound))
+        self.tools.register(AskUserTool())
         self.tools.register(SpawnTool(manager=self.subagents))
         # Events tools: agent-to-agent / pub-sub.  SubscribeEventTool
         # forwards background events to the loop as InboundMessage so the
@@ -713,6 +744,81 @@ class AgentLoop:
                 pass
         sub_cancelled = await self.subagents.cancel_by_session(key)
         return cancelled + sub_cancelled
+
+    @staticmethod
+    def _on_progress_accepts_tool_events(cb: Callable[..., Any]) -> bool:
+        try:
+            sig = inspect.signature(cb)
+        except (TypeError, ValueError):
+            return False
+        if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
+            return True
+        return "tool_events" in sig.parameters
+
+    @staticmethod
+    async def _invoke_on_progress(
+        on_progress: Callable[..., Awaitable[None]],
+        content: str,
+        *,
+        tool_hint: bool = False,
+        tool_events: list[dict[str, Any]] | None = None,
+    ) -> None:
+        if tool_events and AgentLoop._on_progress_accepts_tool_events(on_progress):
+            await on_progress(content, tool_hint=tool_hint, tool_events=tool_events)
+        else:
+            await on_progress(content, tool_hint=tool_hint)
+
+    @staticmethod
+    def _tool_event_start_payload(tool_call: Any) -> dict[str, Any]:
+        return {
+            "version": 1,
+            "phase": "start",
+            "call_id": str(getattr(tool_call, "id", "") or ""),
+            "name": getattr(tool_call, "name", ""),
+            "arguments": getattr(tool_call, "arguments", {}) or {},
+            "result": None,
+            "error": None,
+            "files": [],
+            "embeds": [],
+        }
+
+    @staticmethod
+    def _tool_event_result_extras(result: Any) -> tuple[list[Any], list[Any]]:
+        if not isinstance(result, dict):
+            return [], []
+        files = result.get("files") if isinstance(result.get("files"), list) else []
+        embeds = result.get("embeds") if isinstance(result.get("embeds"), list) else []
+        return files, embeds
+
+    @classmethod
+    def _tool_event_finish_payloads(cls, context: AgentHookContext) -> list[dict[str, Any]]:
+        payloads: list[dict[str, Any]] = []
+        count = min(len(context.tool_calls), len(context.tool_results), len(context.tool_events))
+        for idx in range(count):
+            tool_call = context.tool_calls[idx]
+            result = context.tool_results[idx]
+            event = context.tool_events[idx] if isinstance(context.tool_events[idx], dict) else {}
+            status = event.get("status")
+            phase = "end" if status == "ok" else "error"
+            files, embeds = cls._tool_event_result_extras(result)
+            payload = {
+                "version": 1,
+                "phase": phase,
+                "call_id": str(getattr(tool_call, "id", "") or ""),
+                "name": getattr(tool_call, "name", ""),
+                "arguments": getattr(tool_call, "arguments", {}) or {},
+                "result": result if phase == "end" else None,
+                "error": None,
+                "files": files,
+                "embeds": embeds,
+            }
+            if phase == "error":
+                if isinstance(result, str) and result.strip():
+                    payload["error"] = result.strip()
+                else:
+                    payload["error"] = str(event.get("detail") or "Tool execution failed")
+            payloads.append(payload)
+        return payloads
 
     def _effective_session_key(self, msg: InboundMessage) -> str:
         """Return the session key used for task routing and mid-turn injections."""
@@ -1255,7 +1361,7 @@ class AgentLoop:
                 chat_id=chat_id,
                 source="system_turn",
             )
-            final_content, _, all_msgs, _, _ = await self._run_agent_loop(
+            final_content, _, all_msgs, stop_reason, _ = await self._run_agent_loop(
                 messages,
                 session=session,
                 channel=channel,
@@ -1273,11 +1379,20 @@ class AgentLoop:
             meta_sys: dict[str, Any] = {}
             if turn_reasoning and self._should_attach_reasoning_to_outbound():
                 meta_sys["reasoning_content"] = turn_reasoning
+            sys_options = (
+                ask_user_options_from_messages(all_msgs) if stop_reason == "ask_user" else []
+            )
+            sys_content, sys_buttons = ask_user_outbound(
+                final_content or "Background task completed.",
+                sys_options,
+                channel,
+            )
             return OutboundMessage(
                 channel=channel,
                 chat_id=chat_id,
-                content=final_content or "Background task completed.",
+                content=sys_content,
                 metadata=meta_sys,
+                buttons=sys_buttons,
             )
 
         # Extract document text from media at the processing boundary so all
@@ -1316,14 +1431,26 @@ class AgentLoop:
 
         history = session.get_history(max_messages=0)
 
-        initial_messages = self.context.build_messages(
-            history=history,
-            current_message=msg.content,
-            session_summary=pending,
-            media=msg.media if msg.media else None,
-            channel=msg.channel,
-            chat_id=msg.chat_id,
-        )
+        # If the previous turn ended on an ``ask_user`` interrupt, treat
+        # this inbound message as the user's answer and feed it back as
+        # the missing tool result rather than starting a fresh user turn.
+        pending_ask_id = pending_ask_user_id(history)
+        if pending_ask_id:
+            initial_messages = ask_user_tool_result_messages(
+                self.context.build_system_prompt(channel=msg.channel),
+                history,
+                pending_ask_id,
+                msg.content,
+            )
+        else:
+            initial_messages = self.context.build_messages(
+                history=history,
+                current_message=msg.content,
+                session_summary=pending,
+                media=msg.media if msg.media else None,
+                channel=msg.channel,
+                chat_id=msg.chat_id,
+            )
         self._snapshot_turn_context(
             session.key,
             initial_messages,
@@ -1361,7 +1488,15 @@ class AgentLoop:
         # the user's prompt is silently lost on recovery. Saving it up front
         # makes recovery possible from the session log alone.
         user_persisted_early = False
-        if isinstance(msg.content, str) and msg.content.strip():
+        # When resolving a pending ask_user, the inbound text is the
+        # tool answer — recording it as a user turn would corrupt the
+        # session into ``user → user → tool`` and make the LLM see the
+        # answer twice (once as user, once as tool result).
+        if (
+            not pending_ask_id
+            and isinstance(msg.content, str)
+            and msg.content.strip()
+        ):
             session.add_message("user", msg.content)
             self._mark_pending_user_turn(session)
             _tr = getattr(self, "_session_transcript", None)
@@ -1370,8 +1505,16 @@ class AgentLoop:
             self.sessions.save(session)
             user_persisted_early = True
 
-        async def _bus_progress(content: str, *, tool_hint: bool = False) -> None:
-            await _publish(content=content, _progress=True, _tool_hint=tool_hint)
+        async def _bus_progress(
+            content: str,
+            *,
+            tool_hint: bool = False,
+            tool_events: list[dict[str, Any]] | None = None,
+        ) -> None:
+            extra: dict[str, Any] = {"content": content, "_progress": True, "_tool_hint": tool_hint}
+            if tool_events:
+                extra["_tool_events"] = tool_events
+            await _publish(**extra)
 
         async def _bus_tool_event(
             *,
@@ -1430,7 +1573,17 @@ class AgentLoop:
             logger.info("Response to {}:{}: {}", msg.channel, msg.sender_id, preview)
 
         meta = dict(msg.metadata or {})
-        if on_stream is not None and stop_reason != "error":
+        # When the turn paused on ask_user, render the question and any
+        # provided options as either native buttons (Telegram) or a
+        # numbered list spliced into the body.
+        outbound_buttons: list[list[str]] = []
+        if stop_reason == "ask_user":
+            final_content, outbound_buttons = ask_user_outbound(
+                final_content,
+                ask_user_options_from_messages(all_msgs),
+                msg.channel,
+            )
+        if on_stream is not None and stop_reason not in {"ask_user", "error"}:
             meta["_streamed"] = True
         turn_reasoning = self._collect_turn_reasoning_from_new_messages(
             all_msgs[len(initial_messages) :]
@@ -1442,6 +1595,7 @@ class AgentLoop:
             chat_id=msg.chat_id,
             content=final_content,
             metadata=meta,
+            buttons=outbound_buttons,
         )
 
     def _should_attach_reasoning_to_outbound(self) -> bool:

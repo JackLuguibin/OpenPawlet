@@ -177,6 +177,7 @@ class EmbeddedNanobot:
             disabled_skills=gw_disabled,
             console_system_prompt=gw_console_prompt,
             session_ttl_minutes=config.agents.defaults.session_ttl_minutes,
+            consolidation_ratio=config.agents.defaults.consolidation_ratio,
             tools_config=config.tools,
             persist_session_transcript=config.agents.defaults.persist_session_transcript,
             transcript_include_full_tool_results=(
@@ -199,6 +200,18 @@ class EmbeddedNanobot:
 
         # Wire cron callback (depends on agent + bus + provider).
         self.cron.on_job = self._on_cron_job
+
+        # Route MessageTool sends through the gateway delivery helper so that
+        # proactive deliveries (cron/heartbeat) are mirrored into the target
+        # channel session for reply continuity.  Normal user-turn sends keep
+        # the existing behavior — _deliver_to_channel only records when the
+        # outbound carries the _record_channel_delivery flag (set by
+        # MessageTool while inside cron) or the caller passes record=True.
+        from nanobot.agent.tools.message import MessageTool as _MessageTool
+
+        message_tool = self.agent.tools.get("message")
+        if isinstance(message_tool, _MessageTool):
+            message_tool.set_send_callback(self._deliver_to_channel)
 
         # Channels (need a fully built agent so they can resolve busy state).
         self.channels = ChannelManager(
@@ -422,6 +435,7 @@ class EmbeddedNanobot:
             disabled_skills=m_ds,
             console_system_prompt=m_prompt,
             session_ttl_minutes=cfg.agents.defaults.session_ttl_minutes,
+            consolidation_ratio=cfg.agents.defaults.consolidation_ratio,
             tools_config=cfg.tools,
             persist_session_transcript=cfg.agents.defaults.persist_session_transcript,
             transcript_include_full_tool_results=(
@@ -558,6 +572,72 @@ class EmbeddedNanobot:
                 last_mtime_ns = -2
             await asyncio.sleep(2.0)
 
+    # ---- delivery helpers ------------------------------------------------
+    def _channel_session_key(self, channel: str, chat_id: str) -> str:
+        """Resolve the session key the channel writes its turns into.
+
+        Mirrors :meth:`AgentLoop._effective_session_key` so a proactive
+        delivery lands in the same session a user reply would.
+        """
+        from nanobot.agent.loop import UNIFIED_SESSION_KEY
+
+        if self._config.agents.defaults.unified_session:
+            return UNIFIED_SESSION_KEY
+        return f"{channel}:{chat_id}"
+
+    async def _deliver_to_channel(self, msg: Any, *, record: bool = False) -> None:
+        """Publish *msg* and mirror it into the target channel session when proactive.
+
+        ``record`` may be set explicitly by the caller (cron/heartbeat) or
+        carried by the message itself via ``metadata["_record_channel_delivery"]``
+        (set by :class:`MessageTool` while running under a cron context).
+
+        The metadata flag is stripped before publishing so it never leaks
+        outside the runtime.  Default behavior (no flag, ``record=False``)
+        only forwards to the bus, matching the legacy
+        ``bus.publish_outbound`` path.
+        """
+        from nanobot.bus.events import OutboundMessage
+
+        metadata = dict(msg.metadata or {})
+        record = bool(record or metadata.pop("_record_channel_delivery", False))
+        if metadata != (msg.metadata or {}):
+            kwargs: dict[str, Any] = {
+                "channel": msg.channel,
+                "chat_id": msg.chat_id,
+                "content": msg.content,
+                "reply_to": getattr(msg, "reply_to", None),
+                "media": getattr(msg, "media", None) or [],
+                "metadata": metadata,
+            }
+            buttons_val = getattr(msg, "buttons", None)
+            if buttons_val:
+                kwargs["buttons"] = buttons_val
+            msg = OutboundMessage(**kwargs)
+
+        if (
+            record
+            and msg.channel
+            and msg.channel != "cli"
+            and isinstance(msg.content, str)
+            and msg.content.strip()
+        ):
+            try:
+                target_key = self._channel_session_key(msg.channel, msg.chat_id)
+                target_session = self.session_manager.get_or_create(target_key)
+                target_session.add_message(
+                    "assistant", msg.content, _channel_delivery=True
+                )
+                self.session_manager.save(target_session)
+            except Exception:  # pragma: no cover - best-effort mirror
+                logger.exception(
+                    "Failed to mirror proactive delivery into session for {}:{}",
+                    msg.channel,
+                    msg.chat_id,
+                )
+
+        await self.message_bus.publish_outbound(msg)
+
     # ---- callbacks ------------------------------------------------------
     async def _on_cron_job(self, job: Any) -> str | None:
         """Execute a cron job through the agent (broadcast + dream + reminder)."""
@@ -608,6 +688,14 @@ class EmbeddedNanobot:
         if isinstance(cron_tool, CronTool):
             cron_token = cron_tool.set_cron_context(True)
 
+        # Mark MessageTool sends from this cron run as proactive deliveries
+        # so they get mirrored into the target channel session.  Normal
+        # user-turn sends are unaffected.
+        message_tool = self.agent.tools.get("message")
+        message_record_token = None
+        if isinstance(message_tool, MessageTool):
+            message_record_token = message_tool.set_record_channel_delivery(True)
+
         async def _silent(*_args: Any, **_kwargs: Any) -> None:
             return None
 
@@ -622,10 +710,11 @@ class EmbeddedNanobot:
         finally:
             if isinstance(cron_tool, CronTool) and cron_token is not None:
                 cron_tool.reset_cron_context(cron_token)
+            if isinstance(message_tool, MessageTool) and message_record_token is not None:
+                message_tool.reset_record_channel_delivery(message_record_token)
 
         response = resp.content if resp else ""
 
-        message_tool = self.agent.tools.get("message")
         if (
             job.payload.deliver
             and isinstance(message_tool, MessageTool)
@@ -638,12 +727,13 @@ class EmbeddedNanobot:
                 response, reminder_note, self.provider, self.agent.model
             )
             if should_notify:
-                await self.message_bus.publish_outbound(
+                await self._deliver_to_channel(
                     OutboundMessage(
                         channel=job.payload.channel or "cli",
                         chat_id=job.payload.to,
                         content=response,
-                    )
+                    ),
+                    record=True,
                 )
         return response
 
@@ -690,8 +780,9 @@ class EmbeddedNanobot:
         channel, chat_id = self._pick_heartbeat_target()
         if channel == "cli":
             return
-        await self.message_bus.publish_outbound(
-            OutboundMessage(channel=channel, chat_id=chat_id, content=response)
+        await self._deliver_to_channel(
+            OutboundMessage(channel=channel, chat_id=chat_id, content=response),
+            record=True,
         )
 
     @property

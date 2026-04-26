@@ -69,10 +69,15 @@ class Session:
         unconsolidated = self.messages[self.last_consolidated :]
         sliced = unconsolidated[-max_messages:]
 
-        # Avoid starting mid-turn when possible.
+        # Avoid starting mid-turn when possible, except for proactive
+        # assistant deliveries (heartbeat/cron/message-tool) that the user
+        # may be replying to — keep them as immediate context.
         for i, message in enumerate(sliced):
             if message.get("role") == "user":
-                sliced = sliced[i:]
+                start = i
+                if i > 0 and sliced[i - 1].get("_channel_delivery"):
+                    start = i - 1
+                sliced = sliced[start:]
                 break
 
         # Drop orphan tool results at the front.

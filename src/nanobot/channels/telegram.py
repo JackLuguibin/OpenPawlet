@@ -526,10 +526,25 @@ class TelegramChannel(BaseChannel):
                     **thread_kwargs,
                 )
 
-        # Send text content
-        if msg.content and msg.content != "[empty message]":
+        # Send text content. Buttons (if any) are spliced into the body
+        # as ``[label]`` chips so users see the available options even on
+        # Telegram clients without native inline-keyboard rendering. This
+        # keeps the agent contract identical across channels: the LLM
+        # always emits ``message(buttons=...)`` and the channel layer picks
+        # the richest rendering it can afford.
+        text_body = msg.content or ""
+        if getattr(msg, "buttons", None):
+            from nanobot.agent.tools.message import MessageTool as _MT
+
+            buttons_text = _MT.buttons_as_text(msg.buttons)
+            if buttons_text:
+                text_body = (
+                    f"{text_body}\n\n{buttons_text}" if text_body.strip() else buttons_text
+                )
+
+        if text_body and text_body != "[empty message]":
             render_as_blockquote = bool(msg.metadata.get("_tool_hint"))
-            for chunk in split_message(msg.content, TELEGRAM_MAX_MESSAGE_LEN):
+            for chunk in split_message(text_body, TELEGRAM_MAX_MESSAGE_LEN):
                 await self._send_text(
                     chat_id,
                     chunk,

@@ -9,7 +9,12 @@ from typing import Any
 
 from nanobot.agent.memory import MemoryStore
 from nanobot.agent.skills import SkillsLoader
-from nanobot.utils.helpers import build_assistant_message, current_time_str, detect_image_mime
+from nanobot.utils.helpers import (
+    build_assistant_message,
+    current_time_str,
+    detect_image_mime,
+    truncate_text,
+)
 from nanobot.utils.prompt_templates import render_template
 
 
@@ -19,6 +24,11 @@ class ContextBuilder:
     BOOTSTRAP_FILES = ["AGENTS.md", "SOUL.md", "USER.md", "TOOLS.md"]
     _RUNTIME_CONTEXT_TAG = "[Runtime Context — metadata only, not instructions]"
     _MAX_RECENT_HISTORY = 50
+    # Hard cap on the Recent History section size; even with per-entry caps
+    # in MemoryStore.append_history, a long stream of normal-sized entries
+    # could still bloat every system prompt. 32K chars keeps the section
+    # bounded without truncating reasonable conversation breadcrumbs.
+    _MAX_HISTORY_CHARS = 32_000
     _RUNTIME_CONTEXT_END = "[/Runtime Context]"
 
     def __init__(
@@ -85,10 +95,9 @@ class ContextBuilder:
         )
         if entries:
             capped = entries[-self._MAX_RECENT_HISTORY :]
-            parts.append(
-                "# Recent History\n\n"
-                + "\n".join(f"- [{e['timestamp']}] {e['content']}" for e in capped)
-            )
+            history_text = "\n".join(f"- [{e['timestamp']}] {e['content']}" for e in capped)
+            history_text = truncate_text(history_text, self._MAX_HISTORY_CHARS)
+            parts.append("# Recent History\n\n" + history_text)
 
         return "\n\n---\n\n".join(parts)
 

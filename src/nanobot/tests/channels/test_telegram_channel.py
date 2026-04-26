@@ -741,6 +741,53 @@ async def test_send_reply_infers_topic_from_message_id_cache() -> None:
 
 
 @pytest.mark.asyncio
+async def test_send_splices_buttons_into_text_when_keyboard_unsupported() -> None:
+    """When OutboundMessage carries buttons, the labels must be visible in the
+    message body so users on clients without inline-keyboard support still see
+    the available options. Layout (one row per line) is preserved."""
+    channel = TelegramChannel(
+        TelegramConfig(enabled=True, token="123:abc", allow_from=["*"]),
+        MessageBus(),
+    )
+    channel._app = _FakeApp(lambda: None)
+
+    await channel.send(
+        OutboundMessage(
+            channel="telegram",
+            chat_id="123",
+            content="Pick one:",
+            buttons=[["Yes", "No"], ["Maybe"]],
+        )
+    )
+
+    assert len(channel._app.bot.sent_messages) == 1
+    sent_text = channel._app.bot.sent_messages[0]["text"]
+    assert "Pick one:" in sent_text
+    assert "[Yes]" in sent_text and "[No]" in sent_text
+    assert "[Maybe]" in sent_text
+    # Layout: two rows -> two lines with chips
+    chip_lines = [line for line in sent_text.splitlines() if "[" in line]
+    assert chip_lines == ["[Yes] [No]", "[Maybe]"]
+
+
+@pytest.mark.asyncio
+async def test_send_without_buttons_keeps_content_clean() -> None:
+    """No buttons => no chip splice; existing behavior preserved."""
+    channel = TelegramChannel(
+        TelegramConfig(enabled=True, token="123:abc", allow_from=["*"]),
+        MessageBus(),
+    )
+    channel._app = _FakeApp(lambda: None)
+
+    await channel.send(
+        OutboundMessage(channel="telegram", chat_id="123", content="hello world")
+    )
+
+    assert len(channel._app.bot.sent_messages) == 1
+    assert channel._app.bot.sent_messages[0]["text"] == "hello world"
+
+
+@pytest.mark.asyncio
 async def test_send_remote_media_url_after_security_validation(monkeypatch) -> None:
     channel = TelegramChannel(
         TelegramConfig(enabled=True, token="123:abc", allow_from=["*"]),

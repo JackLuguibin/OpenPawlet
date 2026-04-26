@@ -5,7 +5,11 @@ from datetime import datetime
 
 import pytest
 
-from nanobot.agent.memory import MemoryStore
+from nanobot.agent.memory import (
+    _HISTORY_ENTRY_HARD_CAP,
+    _RAW_ARCHIVE_MAX_CHARS,
+    MemoryStore,
+)
 
 
 @pytest.fixture
@@ -313,3 +317,42 @@ class TestLegacyHistoryMigration:
         assert entries[0]["timestamp"] == "2026-04-01 10:00"
         assert "Broken" in entries[0]["content"]
         assert "migration." in entries[0]["content"]
+
+
+class TestAppendHistoryHardCap:
+    """append_history has a defensive cap that catches new callers who forgot
+    to set their own tighter cap. Normal-sized entries must never trip it."""
+
+    def test_oversized_entry_is_truncated(self, store):
+        huge = "x" * (_HISTORY_ENTRY_HARD_CAP + 10_000)
+        store.append_history(huge)
+        entry = store.read_unprocessed_history(since_cursor=0)[0]
+        assert len(entry["content"]) <= _HISTORY_ENTRY_HARD_CAP + 50
+
+    def test_custom_max_chars_overrides_default(self, store):
+        store.append_history("a" * 500, max_chars=100)
+        entry = store.read_unprocessed_history(since_cursor=0)[0]
+        assert len(entry["content"]) <= 150  # 100 + truncation suffix
+
+    def test_normal_sized_entries_unaffected(self, store):
+        msg = "normal short entry"
+        store.append_history(msg)
+        entry = store.read_unprocessed_history(since_cursor=0)[0]
+        assert entry["content"] == msg
+
+
+class TestRawArchiveTruncation:
+    """raw_archive() must cap entry size to avoid bloating history.jsonl."""
+
+    def test_raw_archive_truncates_large_content(self, store):
+        big = "x" * 50_000
+        store.raw_archive([{"role": "user", "content": big}])
+        entries = store.read_unprocessed_history(since_cursor=0)
+        assert len(entries) == 1
+        assert "[RAW]" in entries[0]["content"]
+        assert len(entries[0]["content"]) <= _RAW_ARCHIVE_MAX_CHARS + 500
+
+    def test_raw_archive_preserves_small_content(self, store):
+        store.raw_archive([{"role": "user", "content": "hello"}])
+        entries = store.read_unprocessed_history(since_cursor=0)
+        assert "hello" in entries[0]["content"]

@@ -1100,17 +1100,34 @@ class FeishuChannel(BaseChannel):
             logger.debug("Feishu: error fetching parent message {}: {}", message_id, e)
             return None
 
-    def _reply_message_sync(self, parent_message_id: str, msg_type: str, content: str) -> bool:
-        """Reply to an existing Feishu message using the Reply API (synchronous)."""
+    def _reply_message_sync(
+        self,
+        parent_message_id: str,
+        msg_type: str,
+        content: str,
+        *,
+        reply_in_thread: bool = False,
+    ) -> bool:
+        """Reply to an existing Feishu message using the Reply API (synchronous).
+
+        Args:
+            reply_in_thread: when ``True``, render the reply as a visual
+                topic / thread in the Feishu client.  Used to group all
+                bot responses to a single user turn under one topic
+                instead of scattering them in the channel timeline.
+        """
         from lark_oapi.api.im.v1 import ReplyMessageRequest, ReplyMessageRequestBody
 
         try:
+            body_builder = (
+                ReplyMessageRequestBody.builder().msg_type(msg_type).content(content)
+            )
+            if reply_in_thread:
+                body_builder = body_builder.reply_in_thread(True)
             request = (
                 ReplyMessageRequest.builder()
                 .message_id(parent_message_id)
-                .request_body(
-                    ReplyMessageRequestBody.builder().msg_type(msg_type).content(content).build()
-                )
+                .request_body(body_builder.build())
                 .build()
             )
             response = self._client.im.v1.message.reply(request)
@@ -1430,11 +1447,22 @@ class FeishuChannel(BaseChannel):
             first_send = True  # tracks whether the reply has already been used
 
             def _do_send(m_type: str, content: str) -> None:
-                """Send via reply (first message) or create (subsequent)."""
+                """Send via reply (first message) or create (subsequent).
+
+                When ``reply_to_message`` is enabled, the first reply uses
+                ``reply_in_thread=True`` to create a visual topic so all
+                follow-up chunks render under one thread in the Feishu
+                client.  Subsequent chunks fall back to plain create.
+                """
                 nonlocal first_send
                 if reply_message_id and first_send:
                     first_send = False
-                    ok = self._reply_message_sync(reply_message_id, m_type, content)
+                    ok = self._reply_message_sync(
+                        reply_message_id,
+                        m_type,
+                        content,
+                        reply_in_thread=self.config.reply_to_message,
+                    )
                     if ok:
                         return
                     # Fall back to regular send if reply fails
@@ -1457,13 +1485,13 @@ class FeishuChannel(BaseChannel):
                 else:
                     key = await loop.run_in_executor(None, self._upload_file_sync, file_path)
                     if key:
-                        # Use msg_type "audio" for audio, "video" for video, "file" for documents.
+                        # Feishu's OpenAPI names video messages "media".
+                        # Use "audio" for audio, "media" for video, "file" for documents.
                         # Feishu requires these specific msg_types for inline playback.
-                        # Note: "media" is only valid as a tag inside "post" messages, not as a standalone msg_type.
                         if ext in self._AUDIO_EXTS:
                             media_type = "audio"
                         elif ext in self._VIDEO_EXTS:
-                            media_type = "video"
+                            media_type = "media"
                         else:
                             media_type = "file"
                         await loop.run_in_executor(
@@ -1543,8 +1571,13 @@ class FeishuChannel(BaseChannel):
                 logger.debug("Feishu: skipping group message (not mentioned)")
                 return
 
-            # Add reaction
-            reaction_id = await self._add_reaction(message_id, self.config.react_emoji)
+            # Add reaction (non-blocking — fire and forget).  Removing one
+            # API round-trip from the critical path lets the agent start
+            # processing immediately; the reaction emoji shows up shortly.
+            # ``reaction_id`` stays None so the stream-end cleanup gracefully
+            # skips the remove (a leftover emoji is harmless in practice).
+            reaction_id = None
+            asyncio.create_task(self._add_reaction(message_id, self.config.react_emoji))
 
             # Parse content
             content_parts = []
@@ -1624,6 +1657,16 @@ class FeishuChannel(BaseChannel):
             if not content and not media_paths:
                 return
 
+            # Build topic-scoped session key for conversation isolation.
+            # Group chat: thread replies (root_id != message_id) get a scoped
+            # session so each Feishu thread has its own conversation context.
+            # Top-level group messages and all private chats keep the default
+            # session key (no override) — same behavior as Telegram/Slack.
+            if chat_type == "group" and root_id and root_id != message_id:
+                session_key = f"feishu:{chat_id}:{root_id}"
+            else:
+                session_key = None
+
             # Forward to message bus
             reply_to = chat_id if chat_type == "group" else sender_id
             await self._handle_message(
@@ -1640,6 +1683,7 @@ class FeishuChannel(BaseChannel):
                     "root_id": root_id,
                     "thread_id": thread_id,
                 },
+                session_key=session_key,
             )
 
         except Exception as e:

