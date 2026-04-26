@@ -99,6 +99,89 @@ def save_full_config(path: Path, merged: dict[str, Any]) -> None:
         json.dump(full, f, indent=2, ensure_ascii=False)
 
 
+def _default_core_config() -> dict[str, Any]:
+    """Return a fresh dump of nanobot ``Config`` defaults (camelCase aliases)."""
+    return Config().model_dump(mode="json", by_alias=True)
+
+
+def ensure_full_config(path: Path) -> bool:
+    """Auto-fill any nanobot core fields missing from the on-disk config.
+
+    Reads the user's ``config.json``, deep-merges it on top of the current
+    :class:`Config` defaults, and writes the result back **only when the
+    file content would actually change**. This keeps user-provided values
+    intact (including unknown extras like ``skills``) while making sure new
+    schema fields introduced by upstream nanobot upgrades show up in the
+    file on the next run instead of silently inheriting defaults.
+
+    The file is not auto-created when missing — that aligns with the
+    broader "config is opt-in" policy and avoids touching ``~/.nanobot/``
+    during test runs that never asked for a config file.
+
+    Returns ``True`` when the file was rewritten, ``False`` otherwise.
+
+    Failures are non-fatal: if validation fails (e.g. user wrote an invalid
+    value) we log and leave the file untouched so the surrounding startup
+    code can still surface the original error.
+    """
+    if not path.exists():
+        return False
+
+    try:
+        defaults = _default_core_config()
+        raw = load_raw_config(path)
+
+        # Build merged: defaults first, then user values override + extras kept.
+        merged_core: dict[str, Any] = {}
+        for key in CONFIG_ROOT_KEYS:
+            base = defaults.get(key, {})
+            user = raw.get(key)
+            if isinstance(base, dict) and isinstance(user, dict):
+                merged_core[key] = deep_merge(base, user)
+            elif user is not None:
+                merged_core[key] = user
+            else:
+                merged_core[key] = base
+
+        try:
+            cfg = Config.model_validate(merged_core)
+        except ValidationError as exc:
+            logger.warning(
+                "[config] Skip auto-fill for {} due to validation error: {}",
+                path,
+                exc,
+            )
+            return False
+        normalized_core = cfg.model_dump(mode="json", by_alias=True)
+
+        extras = {k: v for k, v in raw.items() if k not in CONFIG_ROOT_KEYS}
+        full = {**normalized_core, **extras}
+
+        # Compare against the current on-disk JSON (raw bytes -> dict) so we
+        # only write when there's a real difference. ``load_raw_config`` runs
+        # ``migrate_config`` which itself may rewrite legacy keys; we treat
+        # that migration as a desired auto-fix and write it back here.
+        existing_raw: dict[str, Any] = {}
+        try:
+            with path.open(encoding="utf-8") as f:
+                loaded = json.load(f)
+            if isinstance(loaded, dict):
+                existing_raw = loaded
+        except (OSError, json.JSONDecodeError):
+            existing_raw = {}
+
+        if existing_raw == full:
+            return False
+
+        with path.open("w", encoding="utf-8") as f:
+            json.dump(full, f, indent=2, ensure_ascii=False)
+        logger.info("[config] Auto-filled missing fields in {}", path)
+        return True
+    except OSError as exc:
+        logger.warning("[config] ensure_full_config({}) failed: {}", path, exc)
+        return False
+
+
 def _build_config_response_uncached(path: Path) -> dict[str, Any]:
     """Slow-path implementation; ``build_config_response`` adds an mtime cache."""
     if not path.exists():

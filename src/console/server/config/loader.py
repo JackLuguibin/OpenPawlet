@@ -104,6 +104,73 @@ def write_default_config(config_path: Path | None = None) -> Path:
     return path
 
 
+def _server_defaults() -> dict[str, Any]:
+    """Return a fresh snapshot of :class:`ServerSettings` field defaults."""
+    defaults: dict[str, Any] = {}
+    for name, field in ServerSettings.model_fields.items():
+        if field.default_factory is not None:
+            defaults[name] = field.default_factory()
+        else:
+            defaults[name] = field.default
+    return defaults
+
+
+def ensure_server_config(config_path: Path | None = None) -> bool:
+    """Auto-fill any missing fields in an existing ``nanobot_web.json``.
+
+    The file is **not** created when it doesn't already exist: that matches
+    the broader "settings JSON is opt-in" policy (the user has to run
+    ``console init-config`` once to materialize it). When the file does
+    exist, schema defaults are merged in for any missing keys and the file
+    is rewritten only if the merge would actually change its content.
+
+    Returns ``True`` when the file was rewritten, ``False`` otherwise.
+    """
+    path = config_path if config_path is not None else find_config_file()
+    if not path.exists():
+        return False
+
+    try:
+        with path.open(encoding="utf-8") as f:
+            loaded = json.load(f)
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning(
+            "[config] Could not read {}: {}; auto-fill skipped",
+            path,
+            exc,
+        )
+        return False
+
+    if not isinstance(loaded, dict):
+        return False
+
+    raw = loaded
+    server_section = raw.get(_SERVER_KEY)
+    if not isinstance(server_section, dict):
+        server_section = {}
+
+    defaults = _server_defaults()
+    # Defaults first, then user overrides; unknown keys preserved so future
+    # rollbacks don't lose data.
+    merged_server = {**defaults, **server_section}
+
+    full = dict(raw)
+    full[_SERVER_KEY] = merged_server
+
+    if raw == full:
+        return False
+
+    try:
+        with path.open("w", encoding="utf-8") as f:
+            json.dump(full, f, indent=4, ensure_ascii=False)
+    except OSError as exc:
+        logger.warning("[config] ensure_server_config({}) failed: {}", path, exc)
+        return False
+
+    logger.info("[config] Auto-filled missing fields in {}", path)
+    return True
+
+
 @lru_cache(maxsize=1)
 def get_settings() -> ServerSettings:
     """Return a cached :class:`ServerSettings` singleton.

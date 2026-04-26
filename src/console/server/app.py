@@ -72,6 +72,10 @@ async def _start_embedded_runtime(app: FastAPI) -> Any | None:
     UI can still surface errors to the operator).
     """
     try:
+        from console.server.nanobot_user_config import (
+            ensure_full_config,
+            resolve_config_path,
+        )
         from nanobot.config.loader import set_config_path as _set_nanobot_config_path
         from nanobot.runtime.agent_manager import UnifiedAgentManager
         from nanobot.runtime.embedded import EmbeddedNanobot
@@ -90,6 +94,15 @@ async def _start_embedded_runtime(app: FastAPI) -> Any | None:
                 row = get_registry().get(active_bot_id)
                 if row is not None:
                     _set_nanobot_config_path(Path(str(row["config_path"])))
+
+        # Auto-fill any newly-introduced fields in the active bot's
+        # ``config.json`` so users on freshly upgraded builds don't need to
+        # hand-edit their files to pick up new defaults.  Failures are
+        # logged inside ``ensure_full_config`` and never block startup.
+        try:
+            ensure_full_config(resolve_config_path(active_bot_id))
+        except Exception:  # noqa: BLE001 - never block runtime over auto-fill
+            logger.exception("[config] auto-fill of nanobot config failed; continuing")
 
         embedded = EmbeddedNanobot.from_environment(
             websocket_host=settings.nanobot_gateway_host,
@@ -168,6 +181,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             app.state.active_bot_id = get_registry().default_id()
         except Exception:  # pragma: no cover - registry should not raise
             app.state.active_bot_id = "default"
+
+    # Auto-fill any newly-introduced fields in ``nanobot_web.json`` once per
+    # boot. Done here (not in ``create_app``) so test setups that build the
+    # app without a real lifespan don't accidentally touch the user's home
+    # directory.
+    try:
+        from console.server.config import ensure_server_config
+
+        ensure_server_config()
+    except Exception:  # noqa: BLE001 - server settings already resolved above
+        logger.exception("[config] auto-fill of nanobot_web.json failed; continuing")
 
     if not _embedded_disabled():
         await _start_embedded_runtime(app)
