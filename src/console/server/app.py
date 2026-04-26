@@ -74,7 +74,13 @@ async def _start_embedded_runtime(app: FastAPI) -> Any | None:
     try:
         from nanobot.runtime.embedded import EmbeddedNanobot
 
-        embedded = EmbeddedNanobot.from_environment()
+        settings: ServerSettings = app.state.settings
+        embedded = EmbeddedNanobot.from_environment(
+            websocket_host=settings.nanobot_gateway_host,
+            websocket_port=settings.nanobot_gateway_port,
+            websocket_path="/",
+            websocket_requires_token=False,
+        )
     except Exception:  # noqa: BLE001 - degraded mode keeps the UI usable
         logger.exception(
             "Failed to construct embedded nanobot runtime; console will start in degraded mode"

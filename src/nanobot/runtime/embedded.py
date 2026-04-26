@@ -251,11 +251,27 @@ class EmbeddedNanobot:
         config_path: str | None = None,
         workspace: str | None = None,
         verbose: bool = False,
+        websocket_host: str | None = None,
+        websocket_port: int | None = None,
+        websocket_path: str = "/",
+        websocket_requires_token: bool = False,
     ) -> EmbeddedNanobot:
         """Build an instance from on-disk config (matches legacy ``nanobot gateway``)."""
         from nanobot.cli.commands import _load_runtime_config
 
         cfg = _load_runtime_config(config_path, workspace)
+        # Unified console mode always relies on the in-process websocket channel.
+        # Ensure it is enabled and aligned with the reverse-proxy target.
+        ws_cfg_raw = getattr(cfg.channels, "websocket", None)
+        ws_cfg: dict[str, Any] = dict(ws_cfg_raw) if isinstance(ws_cfg_raw, dict) else {}
+        ws_cfg["enabled"] = True
+        if websocket_host is not None:
+            ws_cfg["host"] = websocket_host
+        if websocket_port is not None:
+            ws_cfg["port"] = websocket_port
+        ws_cfg["path"] = websocket_path
+        ws_cfg["websocket_requires_token"] = websocket_requires_token
+        setattr(cfg.channels, "websocket", ws_cfg)
         return cls(config=cfg, verbose=verbose)
 
     async def start(self) -> None:
