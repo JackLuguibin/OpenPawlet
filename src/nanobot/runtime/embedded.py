@@ -299,6 +299,13 @@ class EmbeddedNanobot:
         self._start_perf = time.perf_counter()
         logger.info("{} Starting embedded nanobot runtime version {}", __logo__, __version__)
 
+        # Publish our SessionManager so the in-process console can route
+        # cache-affecting mutations (e.g. DELETE /sessions/:key) to the
+        # live agent-loop cache rather than mutating only on-disk state.
+        from nanobot.session.manager import _register_runtime_manager
+
+        _register_runtime_manager(self.session_manager)
+
         await self._ensure_team_runtime()
         self._reconciler_task = asyncio.create_task(
             self._team_runtime_reconciler(), name="team-runtime-reconciler"
@@ -377,6 +384,15 @@ class EmbeddedNanobot:
                 logger.info("Shutdown: flushed {} session(s) to disk", flushed)
         except Exception:  # pragma: no cover
             logger.exception("Session flush on shutdown failed")
+
+        # Drop the runtime cache from the cross-module registry so a future
+        # console request can no longer reach this instance after shutdown.
+        try:
+            from nanobot.session.manager import _unregister_runtime_manager
+
+            _unregister_runtime_manager(self.session_manager)
+        except Exception:  # pragma: no cover - defensive
+            logger.exception("Session manager unregister failed")
 
     async def run_forever(self) -> None:
         """Convenience helper that mirrors the legacy gateway behaviour."""

@@ -1325,13 +1325,18 @@ export default function Chat() {
 
   const onBareNanobotChatRoute =
     useNanobotChannel && paramSessionKey === undefined;
+  // Bare `/chat` should not eagerly open a WebSocket: doing so makes the
+  // nanobot agent loop materialize an in-memory Session on the very first
+  // `/status` poll triggered after `ready`, which the SessionManager later
+  // flushes to disk as an empty `sessions/*.jsonl` file (visible as a
+  // ghost row in the sidebar after every backend restart). Only connect
+  // when the user has explicitly opted into a new chat or when an
+  // existing route is being resumed (`/chat/:key`).
   const nanobotChannelWsEnabled =
     useNanobotChannel &&
     (!onBareNanobotChatRoute ||
       (!sessionsListPending &&
-        (sessionsListError ||
-          (sessions?.length ?? 0) === 0 ||
-          readNanobotChatNewIntent())));
+        (sessionsListError || readNanobotChatNewIntent())));
 
   useEffect(() => {
     if (paramSessionKey === undefined) {
@@ -2846,6 +2851,15 @@ export default function Chat() {
         // starts, mark activation and materialize the server session on `ready`.
         draftSessionActivationRequestedRef.current = true;
         setDraftSessionActivationTick((n) => n + 1);
+        // Opt-in flag to let `nanobotChannelWsEnabled` open the socket on the
+        // bare `/chat` route. Without this, an empty sessions list keeps the
+        // WS closed (avoiding the empty-session ghost on backend restart) and
+        // pending messages would never reach the server.
+        try {
+          sessionStorage.setItem(NANOBOT_CHAT_NEW_INTENT_STORAGE_KEY, "1");
+        } catch {
+          // ignore quota / private mode
+        }
         pendingNanobotOutboundRef.current = userMessage;
         if (nanobotWsReady) {
           try {

@@ -9,7 +9,7 @@ from typing import Any
 
 from console.server.bot_workspace import workspace_root
 from console.server.nanobot_user_config import read_default_timezone, resolve_config_path
-from nanobot.session.manager import Session, SessionManager
+from nanobot.session.manager import Session, SessionManager, get_runtime_manager
 from nanobot.utils.helpers import safe_filename
 
 
@@ -366,5 +366,12 @@ def delete_session_files(bot_id: str | None, session_key: str) -> bool:
         )
         if obs_sess.is_dir():
             shutil.rmtree(obs_sess)
+    # The throwaway ``mgr`` above has an empty cache; the agent loop owns
+    # the long-lived SessionManager that may still hold this session in
+    # memory. Without this hand-off the entry would be re-flushed on
+    # shutdown, resurrecting the session the user just deleted.
     mgr.invalidate(session_key)
+    runtime_mgr = get_runtime_manager(workspace_root(bot_id))
+    if runtime_mgr is not None and runtime_mgr is not mgr:
+        runtime_mgr.invalidate(session_key)
     return removed

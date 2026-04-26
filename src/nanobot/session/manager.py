@@ -147,6 +147,42 @@ class Session:
         self.updated_at = local_now(self.agent_timezone)
 
 
+"""Process-wide registry of live SessionManager instances keyed by workspace.
+
+The console HTTP layer constructs a throwaway ``SessionManager`` per request
+to read/write JSONL files, but the embedded nanobot runtime keeps its **own**
+long-lived ``SessionManager`` whose ``_cache`` holds the agent-loop's view of
+each session. Mutations performed by the console (notably session delete)
+must invalidate the runtime cache too; otherwise a still-cached in-memory
+copy gets re-flushed to disk on shutdown, resurrecting the row the user just
+removed. Runtimes register themselves via :func:`_register_runtime_manager`
+on start; console code looks them up with :func:`get_runtime_manager`.
+"""
+_runtime_managers: dict[Path, "SessionManager"] = {}
+
+
+def _register_runtime_manager(manager: "SessionManager") -> None:
+    """Publish *manager* as the live runtime cache for its workspace."""
+    _runtime_managers[manager.workspace.resolve()] = manager
+
+
+def _unregister_runtime_manager(manager: "SessionManager") -> None:
+    """Remove *manager* from the registry on runtime shutdown."""
+    key = manager.workspace.resolve()
+    if _runtime_managers.get(key) is manager:
+        _runtime_managers.pop(key, None)
+
+
+def get_runtime_manager(workspace: Path) -> "SessionManager | None":
+    """Return the runtime ``SessionManager`` for *workspace*, if one is live.
+
+    The console process uses this to forward cache-affecting mutations to
+    the embedded nanobot runtime without taking a hard import dependency on
+    the runtime module (avoids a circular import with ``nanobot.runtime``).
+    """
+    return _runtime_managers.get(workspace.resolve())
+
+
 class SessionManager:
     """
     Manages conversation sessions.
@@ -390,11 +426,14 @@ class SessionManager:
         tmp_path = path.with_suffix(".jsonl.tmp")
         legacy_path = self._get_legacy_session_path(session.key)
 
-        # If a previously persisted session is externally deleted (console API / another process),
-        # do not allow stale in-memory history to recreate the deleted transcript on the next save.
+        # If a previously persisted session was externally deleted (console
+        # DELETE /sessions, another process, etc.), do not resurrect it from
+        # the still-cached in-memory copy. Drop the cache entry and skip the
+        # write entirely, so the deletion is honored on shutdown flush as
+        # well as during regular per-turn saves.
         if session._disk_anchored and (not path.is_file()) and (not legacy_path.is_file()):
-            session.clear()
-            session.metadata = {}
+            self._cache.pop(session.key, None)
+            return
 
         try:
             with open(tmp_path, "w", encoding="utf-8") as f:
@@ -438,12 +477,37 @@ class SessionManager:
     def flush_all(self) -> int:
         """Re-save every cached session with fsync for durable shutdown.
 
+        Sessions that carry no messages **and** no metadata are skipped:
+        these typically come from short-lived interactions (a new
+        WebSocket client opening a chat and only running ``/status``,
+        the heartbeat probe, or a console session that the user just
+        deleted) where flushing them would resurrect a ghost row in the
+        sidebar on every restart.  When such a session is also missing
+        on disk we drop it from the in-memory cache too, so subsequent
+        ``get_or_create`` reloads start clean.
+
         Returns the number of sessions flushed.  Errors on individual
         sessions are logged but do not prevent other sessions from being
         flushed.
         """
         flushed = 0
         for key, session in list(self._cache.items()):
+            path = self._get_session_path(key)
+            file_exists = path.is_file()
+            # Fully empty + never persisted → drop without writing. Catches
+            # short-lived caches such as a `/status` poll on a brand-new WS
+            # client that the user never actually chatted in.
+            if not session.messages and not session.metadata:
+                if not file_exists:
+                    self._cache.pop(key, None)
+                continue
+            # Disk-anchored but the file is gone (console DELETE / external
+            # rm). ``save`` will honour this by dropping the cache entry,
+            # but we must skip the flush counter and ``save`` invocation
+            # cleanly so we don't surface a write that was actually a noop.
+            if session._disk_anchored and not file_exists:
+                self._cache.pop(key, None)
+                continue
             try:
                 self.save(session, fsync=True)
                 flushed += 1
