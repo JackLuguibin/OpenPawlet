@@ -28,20 +28,21 @@ BOT_ID_DESCRIPTION = (
 def resolve_config_path(bot_id: str | None) -> Path:
     """Return ``config.json`` path for the given bot.
 
-    Per-bot paths are **reserved** for a future multi-instance storage layout;
-    today the console is single-instance and always resolves to
-    :func:`nanobot.config.loader.get_config_path` (``~/.nanobot/config.json``).
+    Resolves through :func:`console.server.bots_registry.get_registry` so
+    callers transparently get the right per-bot file when multi-instance
+    is in use.  Falls back to the legacy ``~/.nanobot/config.json`` when
+    *bot_id* is unset or unknown so single-bot deployments work without
+    any migration.
 
     Args:
-        bot_id: Optional bot identifier (ignored; see ``BOT_ID_DESCRIPTION``).
+        bot_id: Optional bot identifier; ``None`` selects the default.
 
     Returns:
         Absolute path to the JSON config file.
     """
-    from nanobot.config.loader import get_config_path
+    from console.server.bots_registry import get_registry
 
-    _ = bot_id
-    return get_config_path()
+    return get_registry().resolve_config_path(bot_id)
 
 
 def deep_merge(base: dict[str, Any], update: dict[str, Any]) -> dict[str, Any]:
@@ -98,8 +99,8 @@ def save_full_config(path: Path, merged: dict[str, Any]) -> None:
         json.dump(full, f, indent=2, ensure_ascii=False)
 
 
-def build_config_response(path: Path) -> dict[str, Any]:
-    """Build the GET ``/config`` payload: validated core + extra top-level keys."""
+def _build_config_response_uncached(path: Path) -> dict[str, Any]:
+    """Slow-path implementation; ``build_config_response`` adds an mtime cache."""
     if not path.exists():
         return Config().model_dump(mode="json", by_alias=True)
     raw = load_raw_config(path)
@@ -114,6 +115,18 @@ def build_config_response(path: Path) -> dict[str, Any]:
     base = cfg.model_dump(mode="json", by_alias=True)
     extras = {k: v for k, v in raw.items() if k not in CONFIG_ROOT_KEYS}
     return {**base, **extras}
+
+
+def build_config_response(path: Path) -> dict[str, Any]:
+    """Build the GET ``/config`` payload: validated core + extra top-level keys.
+
+    Cached by ``(path, mtime_ns)`` because the same config is read many
+    times per status / dashboard request and pydantic validation is the
+    dominant cost.
+    """
+    from console.server.cache import config_cache
+
+    return config_cache().get_or_load(path, _build_config_response_uncached)
 
 
 def validate_core_config(merged: dict[str, Any]) -> tuple[bool, list[str]]:

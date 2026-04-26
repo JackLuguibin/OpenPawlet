@@ -105,11 +105,23 @@ def _snapshot(
     }
 
 
-def _disabled(message: str) -> JSONResponse:
+def _gone(message: str) -> JSONResponse:
+    """Return 410 Gone for endpoints removed in the in-process layout.
+
+    The earlier code returned 409 for these handlers, which any existing
+    SPA build interpreted as a transient error worth surfacing to the
+    user.  410 is the correct semantic - "this resource will not return
+    in this layout" - and lets the SPA gate the affected buttons.
+    """
     return JSONResponse(
         {"error": message, "mode": _MODE_TAG},
-        status_code=409,
+        status_code=410,
     )
+
+
+# Backwards-compatible alias kept so existing tests that imported the
+# pre-410 helper name (``_disabled``) keep working without churn.
+_disabled = _gone
 
 
 async def _snapshot_route(request: Request) -> Response:
@@ -130,21 +142,21 @@ async def _health_route(request: Request) -> Response:
 
 
 async def _pause_route(_request: Request) -> Response:
-    return _disabled(
+    return _gone(
         "pause/resume is unavailable for the in-process MessageBus; "
         "remove the QueueManager dependency or run a dedicated broker."
     )
 
 
 async def _replay_route(_request: Request) -> Response:
-    return _disabled(
+    return _gone(
         "message replay requires a persistent broker; the in-process "
         "MessageBus does not retain published frames."
     )
 
 
 async def _clear_dedupe_route(_request: Request) -> Response:
-    return _disabled(
+    return _gone(
         "dedupe is not maintained by the in-process MessageBus; this "
         "endpoint is a no-op in the consolidated single-process layout."
     )

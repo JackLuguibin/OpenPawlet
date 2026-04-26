@@ -159,8 +159,10 @@ class DashboardMetrics:
     history: list[UsageHistoryItem]
 
 
-def collect_dashboard_metrics(bot_id: str | None, *, history_days: int = 14) -> DashboardMetrics:
-    """Scan session files for session counts, today's stats, and daily token history."""
+def _collect_dashboard_metrics_uncached(
+    bot_id: str | None, *, history_days: int = 14
+) -> DashboardMetrics:
+    """Slow-path implementation; ``collect_dashboard_metrics`` adds TTL caching."""
     cfg_path = resolve_config_path(bot_id)
     default_model = read_default_model(cfg_path) or "unknown"
     iana_tz = read_default_timezone(cfg_path)
@@ -297,4 +299,20 @@ def collect_dashboard_metrics(bot_id: str | None, *, history_days: int = 14) -> 
         token_usage_today=token_usage_today,
         model_token_totals=model_token_totals,
         history=history,
+    )
+
+
+def collect_dashboard_metrics(bot_id: str | None, *, history_days: int = 14) -> DashboardMetrics:
+    """Cached wrapper around :func:`_collect_dashboard_metrics_uncached`.
+
+    ``/api/v1/status`` polls every few seconds; recomputing the same
+    aggregate from disk on each call is wasteful and can hit O(n) IO on
+    large session archives.  A 5 s TTL gives the dashboard near-realtime
+    feel while collapsing back-to-back polls into a single scan.
+    """
+    from console.server.cache import dashboard_cache
+
+    return dashboard_cache().get_or_load(
+        ("dashboard_metrics", bot_id, history_days),
+        lambda: _collect_dashboard_metrics_uncached(bot_id, history_days=history_days),
     )

@@ -46,6 +46,69 @@ def _read_utf8_file(path: Path) -> str | None:
         return None
 
 
+def _session_meta_path(ws: Path) -> Path:
+    """Path to ``<workspace>/sessions/.meta.json`` (session display metadata)."""
+    return ws / "sessions" / ".meta.json"
+
+
+def _load_session_meta(bot_id: str | None) -> dict[str, Any]:
+    """Read session display metadata map from disk."""
+    path = _session_meta_path(workspace_root(bot_id))
+    text = _read_utf8_file(path)
+    if text is None:
+        return {}
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return data
+
+
+def _save_session_meta(bot_id: str | None, data: dict[str, Any]) -> None:
+    """Persist session display metadata map."""
+    path = _session_meta_path(workspace_root(bot_id))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+
+
+def get_session_custom_title(bot_id: str | None, session_key: str) -> str | None:
+    """Return user-defined title from ``sessions/.meta.json`` if present."""
+    meta = _load_session_meta(bot_id)
+    row = meta.get(session_key)
+    if not isinstance(row, dict):
+        return None
+    title = row.get("title")
+    if not isinstance(title, str):
+        return None
+    title = title.strip()
+    return title or None
+
+
+def set_session_custom_title(
+    bot_id: str | None,
+    session_key: str,
+    title: str | None,
+) -> None:
+    """Set or clear user-defined title for one session."""
+    meta = _load_session_meta(bot_id)
+    normalized = (title or "").strip()
+    if normalized:
+        row = meta.get(session_key)
+        if not isinstance(row, dict):
+            row = {}
+        row["title"] = normalized
+        meta[session_key] = row
+    else:
+        if session_key in meta:
+            meta.pop(session_key, None)
+    _save_session_meta(bot_id, meta)
+
+
 def _parse_transcript_jsonl_text(text: str) -> list[dict[str, Any]]:
     """Parse transcript JSONL text into message dicts in line order (see ``parse_transcript_jsonl``)."""
     out: list[dict[str, Any]] = []
@@ -117,6 +180,75 @@ def _count_jsonl_messages(path: Path) -> int:
     return len(lines)
 
 
+def _coerce_message_content(raw: Any) -> str:
+    """Convert a JSONL message ``content`` field to displayable text."""
+    if isinstance(raw, str):
+        return raw.strip()
+    if raw is None:
+        return ""
+    return str(raw).strip()
+
+
+def _collect_message_preview_from_text(
+    text: str,
+) -> tuple[str | None, str | None]:
+    """Return ``(title, last_message)`` from transcript/session JSONL text.
+
+    Title uses the first non-empty user message (mainstream chat UX). Last message
+    uses the latest non-empty user/assistant/system/tool message.
+    """
+    title: str | None = None
+    last_message: str | None = None
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            data = json.loads(stripped)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(data, dict):
+            continue
+        if data.get("_event"):
+            continue
+        if data.get("_type") == "metadata":
+            continue
+        role = data.get("role")
+        if role not in _VALID_TRANSCRIPT_ROLES:
+            continue
+        content = _coerce_message_content(data.get("content"))
+        if not content:
+            continue
+        if role == "user" and title is None:
+            # Keep the first line concise for sidebar readability.
+            first_line = content.splitlines()[0].strip()
+            title = first_line[:80] if len(first_line) > 80 else first_line
+        last_message = content
+    return title, last_message
+
+
+def load_session_preview(bot_id: str | None, session_key: str) -> tuple[str | None, str | None]:
+    """Resolve sidebar preview metadata for one session.
+
+    Prefers append-only transcript JSONL when present (new runtime path), then
+    falls back to the session JSONL file.
+    """
+    custom_title = get_session_custom_title(bot_id, session_key)
+    ws = workspace_root(bot_id)
+    tr_path = _transcript_file_path(ws, session_key)
+    tr_text = _read_utf8_file(tr_path)
+    if tr_text is not None:
+        title, last_message = _collect_message_preview_from_text(tr_text)
+        return custom_title or title, last_message
+    mgr = _session_manager(bot_id)
+    for path in _primary_and_legacy_paths(mgr, session_key):
+        text = _read_utf8_file(path)
+        if text is not None:
+            title, last_message = _collect_message_preview_from_text(text)
+            return custom_title or title, last_message
+    return custom_title, None
+
+
 def list_session_rows(bot_id: str | None) -> list[dict[str, Any]]:
     """Return session list entries with keys, timestamps, and message counts."""
     mgr = _session_manager(bot_id)
@@ -124,12 +256,16 @@ def list_session_rows(bot_id: str | None) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for row in rows:
         path = Path(row["path"])
+        key = str(row["key"])
+        title, last_message = load_session_preview(bot_id, key)
         out.append(
             {
-                "key": row["key"],
+                "key": key,
                 "created_at": row.get("created_at"),
                 "updated_at": row.get("updated_at"),
                 "message_count": _count_jsonl_messages(path),
+                "title": title,
+                "last_message": last_message,
             }
         )
     return out
@@ -215,6 +351,7 @@ def delete_session_files(bot_id: str | None, session_key: str) -> bool:
             path.unlink()
             removed = True
     if removed:
+        set_session_custom_title(bot_id, session_key, None)
         tr_path = _transcript_file_path(workspace_root(bot_id), session_key)
         if tr_path.is_file():
             tr_path.unlink()

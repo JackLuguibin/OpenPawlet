@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, Query
 from console.server.bot_workspace import (
     iter_workspace_skill_dirs,
     read_text,
+    safe_join,
     skill_description_preview,
     validate_skill_bundle_dir_rel_path,
     validate_skill_bundle_rel_path,
@@ -193,11 +194,7 @@ async def update_skill_bundle(
             seen_del.add(rel)
             normalized_deletes.append(rel)
         for rel in sorted(normalized_deletes, key=len, reverse=True):
-            target = (skill_root / rel).resolve()
-            try:
-                target.relative_to(skill_root)
-            except ValueError as exc:
-                raise HTTPException(status_code=400, detail="Path escapes skill folder") from exc
+            target = safe_join(skill_root, rel, must_exist=False)
             if not target.exists():
                 continue
             if target.is_dir():
@@ -227,19 +224,11 @@ async def update_skill_bundle(
         raise HTTPException(status_code=400, detail="Path is both file and directory")
 
     for d in sorted(dir_set, key=len):
-        target = (skill_root / d).resolve()
-        try:
-            target.relative_to(skill_root)
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail="Path escapes skill folder") from exc
+        target = safe_join(skill_root, d, must_exist=False)
         target.mkdir(parents=True, exist_ok=True)
 
     for rel, file_content in file_map.items():
-        target = (skill_root / rel).resolve()
-        try:
-            target.relative_to(skill_root)
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail="Path escapes skill folder") from exc
+        target = safe_join(skill_root, rel, must_exist=False)
         write_text(target, file_content)
 
     write_text(wpath, body.content)
@@ -282,19 +271,11 @@ async def create_skill(
         raise HTTPException(status_code=400, detail="Path is both file and directory")
 
     for d in sorted(dir_set, key=len):
-        target = (skill_root / d).resolve()
-        try:
-            target.relative_to(skill_root)
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail="Path escapes skill folder") from exc
+        target = safe_join(skill_root, d, must_exist=False)
         target.mkdir(parents=True, exist_ok=True)
 
     for rel, file_content in file_map.items():
-        target = (skill_root / rel).resolve()
-        try:
-            target.relative_to(skill_root)
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail="Path escapes skill folder") from exc
+        target = safe_join(skill_root, rel, must_exist=False)
         write_text(target, file_content)
     return DataResponse(data=OkWithName(name=name))
 

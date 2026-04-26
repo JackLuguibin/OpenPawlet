@@ -352,6 +352,12 @@ export default function Queues() {
           </Card>
 
           <Card className={QUEUE_CARD_CLS} title={t('queues.adminTitle')} size="small">
+            <Alert
+              type="info"
+              showIcon
+              className="mb-3"
+              message="In-process bus: pause / replay / dedupe controls are read-only in this layout (server returns 410 Gone)."
+            />
             <Descriptions
               size="small"
               bordered
@@ -391,7 +397,8 @@ export default function Queues() {
                 title={t('queues.pauseTitle')}
                 className="border-gray-200/90 bg-gray-50/50 dark:border-gray-700/60 dark:bg-gray-800/30"
               >
-                <div className="flex flex-col gap-2">
+                {/* In-process bus: pause/resume is server-side disabled (410 Gone). */}
+                <div className="flex flex-col gap-2 opacity-60 pointer-events-none">
                   <div className="flex items-center justify-between gap-2 rounded-md border border-gray-200/80 bg-white px-3 py-2 dark:border-gray-600/50 dark:bg-gray-900/40">
                     <Text strong className="shrink-0">
                       {t('queues.inbound')}
@@ -468,10 +475,13 @@ export default function Queues() {
                 title={t('queues.dedupeClearTitle')}
                 className="border-gray-200/90 bg-gray-50/50 dark:border-gray-700/60 dark:bg-gray-800/30"
               >
-                <ReplayAndClearForm
-                  onReplay={confirmReplay}
-                  onClear={confirmClear}
-                />
+                {/* In-process bus: replay + dedupe clear are server-side disabled (410 Gone). */}
+                <div className="opacity-60 pointer-events-none">
+                  <ReplayAndClearForm
+                    onReplay={confirmReplay}
+                    onClear={confirmClear}
+                  />
+                </div>
               </Card>
             </div>
           </Card>

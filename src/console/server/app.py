@@ -20,7 +20,7 @@ from typing import Any
 
 import websockets
 import websockets.exceptions
-from fastapi import FastAPI, Request, WebSocket, status
+from fastapi import FastAPI, HTTPException, Request, WebSocket, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
@@ -72,10 +72,25 @@ async def _start_embedded_runtime(app: FastAPI) -> Any | None:
     UI can still surface errors to the operator).
     """
     try:
+        from nanobot.config.loader import set_config_path as _set_nanobot_config_path
         from nanobot.runtime.agent_manager import UnifiedAgentManager
         from nanobot.runtime.embedded import EmbeddedNanobot
 
         settings: ServerSettings = app.state.settings
+
+        # When the console has an "active" non-default bot, retarget the
+        # nanobot config loader at its per-bot config.json before
+        # constructing the runtime.  Falling back to the default keeps
+        # single-bot installs untouched.
+        active_bot_id = getattr(app.state, "active_bot_id", None)
+        if active_bot_id:
+            from console.server.bots_registry import DEFAULT_BOT_ID, get_registry
+
+            if active_bot_id != DEFAULT_BOT_ID:
+                row = get_registry().get(active_bot_id)
+                if row is not None:
+                    _set_nanobot_config_path(Path(str(row["config_path"])))
+
         embedded = EmbeddedNanobot.from_environment(
             websocket_host=settings.nanobot_gateway_host,
             websocket_port=settings.nanobot_gateway_port,
@@ -103,6 +118,35 @@ async def _start_embedded_runtime(app: FastAPI) -> Any | None:
     return embedded
 
 
+async def swap_runtime(app: FastAPI, bot_id: str) -> bool:
+    """Stop the current embedded runtime and start a fresh one for *bot_id*.
+
+    The console runs at most one runtime at a time (per-bot pooling
+    requires multiple WebSocketChannel ports / cron stores; we use a
+    main-vs-standby model for now to avoid that complexity).  Callers
+    should treat this as a brief restart: in-flight WS connections are
+    closed and any subagent state on the previous runtime is discarded.
+
+    Returns ``True`` when the new runtime started, ``False`` when the
+    swap left the app in degraded mode.
+    """
+    lock: asyncio.Lock = getattr(app.state, "runtime_swap_lock", None) or asyncio.Lock()
+    app.state.runtime_swap_lock = lock
+    async with lock:
+        previous = getattr(app.state, "embedded", None)
+        if previous is not None:
+            try:
+                await previous.stop()
+            except Exception:  # pragma: no cover - best-effort teardown
+                logger.exception("previous embedded runtime stop failed")
+        for attr in ("embedded", "agent_loop", "message_bus", "session_manager", "agent_manager"):
+            if hasattr(app.state, attr):
+                delattr(app.state, attr)
+        app.state.active_bot_id = bot_id
+        new_runtime = await _start_embedded_runtime(app)
+        return new_runtime is not None
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Bring the embedded nanobot runtime up alongside the HTTP server."""
@@ -114,12 +158,24 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         port=settings.port,
     )
     app.state.started_at_perf = time.perf_counter()
+    # Track which bot the active runtime belongs to so the bots router
+    # can refuse redundant ``/activate`` calls and surface accurate
+    # per-bot status to the SPA.
+    if not hasattr(app.state, "active_bot_id"):
+        from console.server.bots_registry import get_registry
 
-    embedded = None if _embedded_disabled() else await _start_embedded_runtime(app)
+        try:
+            app.state.active_bot_id = get_registry().default_id()
+        except Exception:  # pragma: no cover - registry should not raise
+            app.state.active_bot_id = "default"
+
+    if not _embedded_disabled():
+        await _start_embedded_runtime(app)
 
     try:
         yield
     finally:
+        embedded = getattr(app.state, "embedded", None)
         if embedded is not None:
             try:
                 await embedded.stop()
@@ -144,11 +200,50 @@ def _error_json(
     )
 
 
+_HTTP_STATUS_CODE_MAP: dict[int, str] = {
+    400: "BAD_REQUEST",
+    401: "UNAUTHORIZED",
+    403: "FORBIDDEN",
+    404: "NOT_FOUND",
+    405: "METHOD_NOT_ALLOWED",
+    409: "CONFLICT",
+    410: "GONE",
+    413: "PAYLOAD_TOO_LARGE",
+    415: "UNSUPPORTED_MEDIA_TYPE",
+    422: "VALIDATION_ERROR",
+    429: "RATE_LIMITED",
+    500: "INTERNAL_ERROR",
+    501: "NOT_IMPLEMENTED",
+    503: "SERVICE_UNAVAILABLE",
+    504: "GATEWAY_TIMEOUT",
+}
+
+
+def _is_openai_compat_path(request: Request) -> bool:
+    """OpenAI-compatible routes keep their own error envelope.
+
+    External clients expect the ``{error: {message, type, code}}`` shape
+    documented by OpenAI; rewriting it would break SDKs.
+    """
+    return request.url.path.startswith("/v1/")
+
+
 async def validation_exception_handler(
-    _request: Request,
+    request: Request,
     exc: RequestValidationError,
 ) -> JSONResponse:
     """422 for request body / parameter validation failures."""
+    if _is_openai_compat_path(request):
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            content={
+                "error": {
+                    "message": _ERR_VALIDATION_MSG,
+                    "type": "invalid_request_error",
+                    "code": status.HTTP_422_UNPROCESSABLE_ENTITY,
+                }
+            },
+        )
     return _error_json(
         status.HTTP_422_UNPROCESSABLE_ENTITY,
         code=_ERR_VALIDATION_CODE,
@@ -157,12 +252,62 @@ async def validation_exception_handler(
     )
 
 
+async def http_exception_handler(
+    request: Request,
+    exc: HTTPException,
+) -> JSONResponse:
+    """Wrap ``HTTPException`` in the standard ``ErrorResponse`` envelope.
+
+    Without this, FastAPI emits ``{detail: "..."}`` and the front-end
+    has to special-case both shapes; centralising the wrapping ensures
+    every console error follows the same contract.  OpenAI compat paths
+    are passed through their own format below.
+    """
+    code = _HTTP_STATUS_CODE_MAP.get(exc.status_code, f"HTTP_{exc.status_code}")
+    detail = exc.detail
+    if _is_openai_compat_path(request):
+        msg = detail if isinstance(detail, str) else "Request failed"
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={
+                "error": {
+                    "message": msg,
+                    "type": "invalid_request_error",
+                    "code": exc.status_code,
+                }
+            },
+        )
+    if isinstance(detail, str):
+        message = detail
+        detail_payload: dict[str, Any] | None = None
+    else:
+        message = code.replace("_", " ").title()
+        detail_payload = {"detail": detail}
+    return _error_json(
+        exc.status_code,
+        code=code,
+        message=message,
+        detail=detail_payload,
+    )
+
+
 async def unhandled_exception_handler(
-    _request: Request,
+    request: Request,
     _exc: Exception,
 ) -> JSONResponse:
     """500 for uncaught exceptions."""
     logger.exception("Unhandled exception")
+    if _is_openai_compat_path(request):
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={
+                "error": {
+                    "message": _ERR_INTERNAL_MSG,
+                    "type": "server_error",
+                    "code": status.HTTP_500_INTERNAL_SERVER_ERROR,
+                }
+            },
+        )
     return _error_json(
         status.HTTP_500_INTERNAL_SERVER_ERROR,
         code=_ERR_INTERNAL_CODE,
@@ -231,22 +376,111 @@ async def _safe_ws_close(websocket: WebSocket, code: int = 1000) -> None:
         pass
 
 
+# WebSocket reverse-proxy hardening knobs.  The values are intentionally
+# generous for legitimate UI use but cap obvious abuse; tighten via
+# ``app.state.ws_limits`` if your channel needs different ceilings.
+_WS_MAX_TEXT_BYTES = 64 * 1024
+_WS_MAX_BINARY_BYTES = 256 * 1024
+_WS_MAX_FRAMES_PER_S = 100
+_WS_MAX_BYTES_PER_S = 1 * 1024 * 1024
+# Forwarded query keys for the nanobot WS handshake. ``client_id`` and ``chat_id``
+# are critical: the embedded nanobot ``WebSocketChannel`` uses them to identify
+# the sender (allow_from check) and to resume the right per-chat ``chat_id`` so
+# follow-up messages append to the same ``sessions/<key>.jsonl`` file. Without
+# them the gateway falls back to ``anon-...`` + a freshly generated UUID, which
+# manifests as "a brand-new session is created on every send" in the console UI.
+_WS_QUERY_ALLOWLIST = frozenset({"session_id", "token", "client_id", "chat_id"})
+
+# WebSocket close codes used by the proxy.
+_WS_CLOSE_POLICY_VIOLATION = 1008
+_WS_CLOSE_TOO_BIG = 1009
+
+
+def _origin_is_allowed(origin: str | None, cors_origins: list[str]) -> bool:
+    """True if *origin* is permitted to open a /nanobot-ws/* connection.
+
+    Same-origin browser clients always pass; non-browser tools (which omit
+    Origin) are also accepted because the underlying console has no auth
+    today and the original protocol contract did not require it.  When a
+    wildcard CORS rule is configured we honour it for parity with the
+    HTTP surface.
+    """
+    if origin is None or origin == "":
+        return True
+    if any(o.strip() == "*" for o in cors_origins):
+        return True
+    return any(origin == o.strip() for o in cors_origins)
+
+
+def _filter_query_string(raw: bytes | str) -> str:
+    """Drop unknown query keys so callers cannot smuggle channel options."""
+    if isinstance(raw, bytes):
+        decoded = raw.decode("utf-8", errors="replace")
+    else:
+        decoded = str(raw)
+    if not decoded:
+        return ""
+    kept: list[str] = []
+    for chunk in decoded.split("&"):
+        if not chunk:
+            continue
+        key = chunk.split("=", 1)[0]
+        if key in _WS_QUERY_ALLOWLIST:
+            kept.append(chunk)
+    return "&".join(kept)
+
+
+class _RateLimiter:
+    """Simple frame + byte rate limiter using a 1s sliding window.
+
+    Updated by the proxy reader on every inbound frame; ``allow`` returns
+    False once the per-second ceilings are crossed so the caller can close
+    the connection with 1008.
+    """
+
+    def __init__(self, max_frames: int, max_bytes: int) -> None:
+        self._max_frames = max_frames
+        self._max_bytes = max_bytes
+        self._window_start = 0.0
+        self._frames = 0
+        self._bytes = 0
+
+    def allow(self, frame_bytes: int) -> bool:
+        now = time.monotonic()
+        if now - self._window_start >= 1.0:
+            self._window_start = now
+            self._frames = 0
+            self._bytes = 0
+        self._frames += 1
+        self._bytes += frame_bytes
+        return self._frames <= self._max_frames and self._bytes <= self._max_bytes
+
+
 async def _nanobot_ws_proxy(
     websocket: WebSocket,
     rest_path: str,
     gateway_host: str,
     gateway_port: int,
+    cors_origins: list[str],
 ) -> None:
     """Bidirectionally proxy a WebSocket connection to the in-process nanobot WS channel.
 
     The embedded ``WebSocketChannel`` listens on a loopback port inside
     the same process and event loop, so this is a same-origin hop rather
-    than a cross-process round trip.
+    than a cross-process round trip.  We enforce origin/query/frame-size
+    restrictions before forwarding anything because the upstream channel
+    is implicitly trusted.
     """
+    headers = {k.decode().lower(): v.decode() for k, v in websocket.scope.get("headers", [])}
+    origin = headers.get("origin")
+    if not _origin_is_allowed(origin, cors_origins):
+        logger.warning("[nanobot-ws-proxy] reject origin={!r}", origin)
+        await websocket.close(code=_WS_CLOSE_POLICY_VIOLATION)
+        return
+
     await websocket.accept()
 
-    raw_qs = websocket.scope.get("query_string", b"")
-    query_string = raw_qs.decode() if isinstance(raw_qs, bytes) else str(raw_qs)
+    query_string = _filter_query_string(websocket.scope.get("query_string", b""))
     target_path = f"/{rest_path}" if rest_path else "/"
     target_url = f"ws://{gateway_host}:{gateway_port}{target_path}"
     if query_string:
@@ -261,6 +495,8 @@ async def _nanobot_ws_proxy(
         target_path,
     )
 
+    rate_limiter = _RateLimiter(_WS_MAX_FRAMES_PER_S, _WS_MAX_BYTES_PER_S)
+
     try:
         async with websockets.connect(target_url) as remote_ws:
 
@@ -273,9 +509,34 @@ async def _nanobot_ws_proxy(
                         text = frame.get("text")
                         data = frame.get("bytes")
                         if text is not None:
+                            text_bytes = len(text.encode("utf-8", errors="replace"))
+                            if text_bytes > _WS_MAX_TEXT_BYTES:
+                                logger.warning(
+                                    "[nanobot-ws-proxy] text frame {} > {} bytes; closing",
+                                    text_bytes,
+                                    _WS_MAX_TEXT_BYTES,
+                                )
+                                await websocket.close(code=_WS_CLOSE_TOO_BIG)
+                                break
+                            if not rate_limiter.allow(text_bytes):
+                                logger.warning("[nanobot-ws-proxy] rate-limit hit; closing")
+                                await websocket.close(code=_WS_CLOSE_POLICY_VIOLATION)
+                                break
                             tagged = tag_inbound_text_frame(text)
                             await remote_ws.send(tagged)
                         elif data is not None:
+                            if len(data) > _WS_MAX_BINARY_BYTES:
+                                logger.warning(
+                                    "[nanobot-ws-proxy] binary frame {} > {} bytes; closing",
+                                    len(data),
+                                    _WS_MAX_BINARY_BYTES,
+                                )
+                                await websocket.close(code=_WS_CLOSE_TOO_BIG)
+                                break
+                            if not rate_limiter.allow(len(data)):
+                                logger.warning("[nanobot-ws-proxy] rate-limit hit; closing")
+                                await websocket.close(code=_WS_CLOSE_POLICY_VIOLATION)
+                                break
                             await remote_ws.send(data)
                 except websockets.exceptions.ConnectionClosed:
                     pass
@@ -326,12 +587,23 @@ async def _nanobot_ws_proxy(
         await _safe_ws_close(websocket, code=1011)
 
 
-def _mount_nanobot_ws_proxy(app: FastAPI, gateway_host: str, gateway_port: int) -> None:
+def _mount_nanobot_ws_proxy(
+    app: FastAPI,
+    gateway_host: str,
+    gateway_port: int,
+    cors_origins: list[str],
+) -> None:
     """Register the ``/nanobot-ws/`` WebSocket reverse-proxy route on *app*."""
 
     @app.websocket("/nanobot-ws/{rest_path:path}")
     async def nanobot_ws_proxy_route(websocket: WebSocket, rest_path: str) -> None:
-        await _nanobot_ws_proxy(websocket, rest_path, gateway_host, gateway_port)
+        await _nanobot_ws_proxy(
+            websocket,
+            rest_path,
+            gateway_host,
+            gateway_port,
+            cors_origins,
+        )
 
     logger.info(
         "[nanobot-ws-proxy] Proxying /nanobot-ws/* -> ws://{}:{} (in-process loopback)",
@@ -383,13 +655,19 @@ def create_app(
     install_queues_routes(app)
 
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
+    app.add_exception_handler(HTTPException, http_exception_handler)
     app.add_exception_handler(Exception, unhandled_exception_handler)
 
     # Register WS proxy before the SPA catch-all so the path isn't swallowed.
     # The "gateway" now lives in the same process via EmbeddedNanobot, but the
     # underlying WebSocketChannel still binds a loopback port for protocol
     # fidelity, so we proxy same-origin to it.
-    _mount_nanobot_ws_proxy(app, settings.nanobot_gateway_host, settings.nanobot_gateway_port)
+    _mount_nanobot_ws_proxy(
+        app,
+        settings.nanobot_gateway_host,
+        settings.nanobot_gateway_port,
+        list(settings.cors_origins),
+    )
 
     spa_mounted = _mount_spa(app) if mount_spa else False
 

@@ -30,6 +30,7 @@ import {
   CheckOutlined,
   CloseOutlined,
   DeleteOutlined,
+  EditOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
 } from "@ant-design/icons";
@@ -959,6 +960,9 @@ export default function Chat() {
   const [subagentTasks, setSubagentTasks] = useState<SubagentTask[]>([]);
   const [subagentPanelOpen, setSubagentPanelOpen] = useState(true);
   const [sessionJsonlModalOpen, setSessionJsonlModalOpen] = useState(false);
+  const [renameSessionModalOpen, setRenameSessionModalOpen] = useState(false);
+  const [renameSessionKey, setRenameSessionKey] = useState<string | null>(null);
+  const [renameSessionTitle, setRenameSessionTitle] = useState("");
   const [sessionJsonlFileSource, setSessionJsonlFileSource] = useState<
     "session" | "transcript"
   >("session");
@@ -1203,8 +1207,13 @@ export default function Chat() {
     }
   }, [useNanobotChannel, activeSessionKey]);
 
-  /** nanobot WS：`client_id=nanobot-web`，恢复会话时握手带 `chat_id=`（见 nanobot 文档） */
-  const nanobotWsPlaceholderRef = useRef<string | null>(null);
+  /**
+   * Bare `/chat` draft -> real session activation marker.
+   * We only materialize a new session after the first outbound message, instead
+   * of on socket `ready`, to match mainstream chat UX and avoid empty sessions.
+   */
+  const draftSessionActivationRequestedRef = useRef(false);
+  const [draftSessionActivationTick, setDraftSessionActivationTick] = useState(0);
 
   /**
    * After deleting the current session, `navigate` is async while `useParams` still
@@ -1236,64 +1245,62 @@ export default function Chat() {
 
   /**
    * nanobot `ready` 后由 `chat_id` 派生会话键 `websocket:<chat_id>`（见 `nanobotSessionKeyFromReadyChatId`）。
-   * 在此建立控制台 `sessions/*.jsonl` 并在仍处 `/chat` 草稿态时把路由同步为该键。
+   * 仅在“用户已经发送过首条消息（草稿激活）+ 当前仍处 `/chat` 草稿态”时建立控制台
+   * `sessions/*.jsonl` 并把路由同步为该键。这样可以避免 ws 重连/ready 抖动反复
+   * 触发新会话，主流聊天产品的“首条消息落地一个会话”行为。
    */
   useEffect(() => {
     if (!useNanobotChannel || !nanobotClientId) {
       ensuredNanobotConsoleSessionRef.current = null;
       return;
     }
-    const dedupeKey = `${String(currentBotId ?? "")}:${nanobotClientId}`;
-    if (ensuredNanobotConsoleSessionRef.current !== dedupeKey) {
-      ensuredNanobotConsoleSessionRef.current = dedupeKey;
-      void api
-        .createSession(nanobotClientId, currentBotId)
-        .then(() => {
-          queryClient.invalidateQueries({
-            queryKey: ["sessions", currentBotId],
-          });
-        })
-        .catch((err) => {
-          ensuredNanobotConsoleSessionRef.current = null;
-          console.error("[chat] createSession after nanobot ready", err);
-        });
-    }
-
-    if (paramSessionKey !== undefined) {
+    if (!draftSessionActivationRequestedRef.current) {
       return;
     }
-    const ph = nanobotWsPlaceholderRef.current;
-    const usingPlaceholder =
-      ph !== null &&
-      (currentSessionKey === null || currentSessionKey === ph);
-    /**
-     * Adopt the server session from `ready` on bare `/chat`:
-     * - After first send we hold a draft UUID in `ph` (legacy path above).
-     * - After "New chat" with no message yet, `ph` is null but we still need to
-     *   navigate once `createSession` + `nanobotClientId` exist so the new row
-     *   is selected in the sidebar.
-     */
-    const shouldSyncBareRouteToReadySession =
-      nanobotClientId !== currentSessionKey &&
-      (usingPlaceholder ||
-        currentSessionKey === null ||
-        readNanobotChatNewIntent());
-    if (shouldSyncBareRouteToReadySession) {
-      nanobotWsPlaceholderRef.current = null;
-      setCurrentSessionKey(nanobotClientId);
-      navigate(`/chat/${encodeURIComponent(nanobotClientId)}`, {
-        replace: true,
-      });
+    if (paramSessionKey !== undefined) {
+      // Already on /chat/:key — do not POST /sessions again, the file already
+      // exists for this thread. Clear the activation marker so subsequent
+      // ready frames are ignored.
+      draftSessionActivationRequestedRef.current = false;
+      return;
     }
+
+    const dedupeKey = `${String(currentBotId ?? "")}:${nanobotClientId}`;
+    if (ensuredNanobotConsoleSessionRef.current === dedupeKey) {
+      return;
+    }
+    ensuredNanobotConsoleSessionRef.current = dedupeKey;
+
+    void api
+      .createSession(nanobotClientId, currentBotId)
+      .then(() => {
+        draftSessionActivationRequestedRef.current = false;
+        queryClient.invalidateQueries({
+          queryKey: ["sessions", currentBotId],
+        });
+        setCurrentSessionKey(nanobotClientId);
+        navigate(`/chat/${encodeURIComponent(nanobotClientId)}`, {
+          replace: true,
+        });
+        try {
+          sessionStorage.removeItem(NANOBOT_CHAT_NEW_INTENT_STORAGE_KEY);
+        } catch {
+          // ignore
+        }
+      })
+      .catch((err) => {
+        ensuredNanobotConsoleSessionRef.current = null;
+        console.error("[chat] createSession after first outbound", err);
+      });
   }, [
     useNanobotChannel,
     nanobotClientId,
     currentBotId,
-    currentSessionKey,
     paramSessionKey,
     navigate,
     setCurrentSessionKey,
     queryClient,
+    draftSessionActivationTick,
   ]);
 
   const scheduleNanobotStatusJson = useCallback(() => {
@@ -1449,7 +1456,7 @@ export default function Chat() {
         );
 
         flushSync(() => {
-          nanobotWsPlaceholderRef.current = null;
+          draftSessionActivationRequestedRef.current = false;
           setCurrentSessionKey(null);
           setMessages([]);
           setShowSuggestions(true);
@@ -1524,7 +1531,7 @@ export default function Chat() {
         );
 
         flushSync(() => {
-          nanobotWsPlaceholderRef.current = null;
+          draftSessionActivationRequestedRef.current = false;
           setCurrentSessionKey(null);
           setMessages([]);
           setShowSuggestions(true);
@@ -1581,6 +1588,35 @@ export default function Chat() {
         queryKey: ["sessions", currentBotId],
       });
       addToast({ type: "error", message: t("chat.toastBatchFailed") });
+    },
+  });
+
+  const renameSessionMutation = useMutation({
+    mutationFn: async (payload: { key: string; title: string }) =>
+      api.updateSession(payload.key, { title: payload.title }, currentBotId),
+    onSuccess: (updated) => {
+      queryClient.setQueryData<SessionInfo[]>(
+        ["sessions", currentBotId],
+        (old) =>
+          old
+            ? old.map((row) =>
+                row.key === updated.key
+                  ? {
+                      ...row,
+                      title: updated.title,
+                      last_message: updated.last_message,
+                    }
+                  : row,
+              )
+            : old,
+      );
+      addToast({ type: "success", message: t("chat.toastSessionRenamed") });
+      setRenameSessionModalOpen(false);
+      setRenameSessionKey(null);
+      setRenameSessionTitle("");
+    },
+    onError: () => {
+      addToast({ type: "error", message: t("chat.toastSessionRenameFailed") });
     },
   });
 
@@ -1766,7 +1802,7 @@ export default function Chat() {
 
     const list = sessions ?? [];
     if (list.length === 0) {
-      nanobotWsPlaceholderRef.current = null;
+      draftSessionActivationRequestedRef.current = false;
       setCurrentSessionKey(null);
       navigate("/chat", { replace: true });
       return;
@@ -1777,7 +1813,7 @@ export default function Chat() {
       return;
     }
     if (newestKey === paramSessionKey) {
-      nanobotWsPlaceholderRef.current = null;
+      draftSessionActivationRequestedRef.current = false;
       setCurrentSessionKey(null);
       navigate("/chat", { replace: true });
       return;
@@ -2175,8 +2211,22 @@ export default function Chat() {
         return;
       }
       if (chunk.type === "session_key" && chunk.session_key) {
-        setCurrentSessionKey(chunk.session_key);
-        navigate(`/chat/${encodeURIComponent(chunk.session_key)}`, {
+        const nextKey = chunk.session_key.trim();
+        if (!nextKey) {
+          return;
+        }
+        const shouldAdoptServerSessionKey =
+          !activeSessionKey ||
+          draftSessionActivationRequestedRef.current ||
+          readNanobotChatNewIntent();
+        if (!shouldAdoptServerSessionKey && nextKey !== activeSessionKey) {
+          // Keep current thread stable during normal chatting; only draft/new
+          // flows can adopt a new server session key.
+          return;
+        }
+        draftSessionActivationRequestedRef.current = false;
+        setCurrentSessionKey(nextKey);
+        navigate(`/chat/${encodeURIComponent(nextKey)}`, {
           replace: true,
         });
         queryClient.invalidateQueries({ queryKey: ["sessions"] });
@@ -2561,14 +2611,11 @@ export default function Chat() {
     streamingReasoningContentRef.current = "";
 
     if (useNanobotChannel) {
-      let sk = activeSessionKey;
-      if (!sk) {
-        sk =
-          nanobotWsPlaceholderRef.current ?? crypto.randomUUID();
-        nanobotWsPlaceholderRef.current = sk;
-        setCurrentSessionKey(sk);
-        // 勿在此 POST /sessions(占位 UUID)：与 nanobot `ready.client_id` 不一致；会话在 ready 时已按 client_id 建立。
-        // URL 等 handleStreamChunk 的 session_key。pending 仅 ref，不会触发重渲染，就绪则立刻发。
+      if (!activeSessionKey) {
+        // Bare `/chat` stays as draft until first message is sent. Once outbound
+        // starts, mark activation and materialize the server session on `ready`.
+        draftSessionActivationRequestedRef.current = true;
+        setDraftSessionActivationTick((n) => n + 1);
         pendingNanobotOutboundRef.current = userMessage;
         if (nanobotWsReady) {
           try {
@@ -2649,7 +2696,7 @@ export default function Chat() {
   };
 
   const handleNewChat = () => {
-    nanobotWsPlaceholderRef.current = null;
+    draftSessionActivationRequestedRef.current = false;
     try {
       localStorage.removeItem(LAST_CONSOLE_SESSION_STORAGE_KEY);
       sessionStorage.setItem(NANOBOT_CHAT_NEW_INTENT_STORAGE_KEY, "1");
@@ -2684,6 +2731,23 @@ export default function Chat() {
     setCurrentSessionKey(sessionKey);
     navigate(`/chat/${encodeURIComponent(sessionKey)}`);
     setSessionsSidebarOpen(false);
+  };
+
+  const openRenameSessionModal = (session: SessionInfo) => {
+    setRenameSessionKey(session.key);
+    setRenameSessionTitle(session.title || "");
+    setRenameSessionModalOpen(true);
+  };
+
+  const handleRenameSessionSubmit = () => {
+    const key = renameSessionKey?.trim();
+    if (!key) {
+      return;
+    }
+    renameSessionMutation.mutate({
+      key,
+      title: renameSessionTitle.trim(),
+    });
   };
 
   const suggestions = useMemo(
@@ -2959,6 +3023,17 @@ export default function Chat() {
                               {formatMessageTime(session.created_at)}
                             </span>
                           )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openRenameSessionModal(session);
+                          }}
+                          title={t("chat.renameSession")}
+                          className="self-center shrink-0 w-9 h-9 my-2 flex items-center justify-center rounded-md text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:text-gray-500 dark:hover:text-blue-300 dark:hover:bg-blue-500/10 transition-colors duration-150"
+                        >
+                          <EditOutlined className="text-base" />
                         </button>
                         <Popconfirm
                           title={t("chat.deleteSessionTitle")}
@@ -3557,6 +3632,42 @@ export default function Chat() {
             },
           ]}
         />
+      </Modal>
+      <Modal
+        open={renameSessionModalOpen}
+        onCancel={() => {
+          if (renameSessionMutation.isPending) {
+            return;
+          }
+          setRenameSessionModalOpen(false);
+          setRenameSessionKey(null);
+          setRenameSessionTitle("");
+        }}
+        title={t("chat.renameSession")}
+        onOk={handleRenameSessionSubmit}
+        okText={t("common.save")}
+        cancelText={t("common.cancel")}
+        okButtonProps={{
+          loading: renameSessionMutation.isPending,
+          disabled: !renameSessionKey,
+        }}
+        destroyOnClose
+      >
+        <div className="space-y-2">
+          <p className="m-0 text-xs text-gray-500 dark:text-gray-400">
+            {t("chat.renameSessionHint")}
+          </p>
+          <Input
+            value={renameSessionTitle}
+            maxLength={120}
+            onPressEnter={(e) => {
+              e.preventDefault();
+              handleRenameSessionSubmit();
+            }}
+            onChange={(e) => setRenameSessionTitle(e.target.value)}
+            placeholder={t("chat.renameSessionPlaceholder")}
+          />
+        </div>
       </Modal>
     </div>
   );

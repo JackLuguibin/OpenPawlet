@@ -114,6 +114,26 @@ def _run_npm_web(npm_script: str) -> None:
     sys.exit(result.returncode)
 
 
+_INSECURE_HOSTS = frozenset({"0.0.0.0", "::", "::0"})
+
+
+def _warn_if_publicly_bound(host: str, port: int) -> None:
+    """Loudly warn when the unauthenticated API is bound to a public address.
+
+    The console currently has no auth layer; binding to a non-loopback host
+    means any peer that can reach the port has full read/write access to the
+    workspace, config and LLM provider keys.
+    """
+    if host in _INSECURE_HOSTS:
+        logger.warning(
+            "[server] Binding to {}:{} exposes the UNAUTHENTICATED API to "
+            "every reachable network interface. Restrict via firewall or "
+            "switch host to 127.0.0.1 unless you fully trust the network.",
+            host,
+            port,
+        )
+
+
 def _run_start(*, mount_spa: bool = True) -> None:
     """Run the unified FastAPI app (REST + SPA + OpenAI + queues + nanobot)."""
     settings = get_settings()
@@ -123,6 +143,7 @@ def _run_start(*, mount_spa: bool = True) -> None:
             "assuming another OpenPawlet server is running and entering standby mode."
         )
         return
+    _warn_if_publicly_bound(settings.host, settings.port)
     setup_console_runtime_file_logging(app_log_level=settings.log_level)
     app = create_app(settings, mount_spa=mount_spa)
     uvicorn.run(

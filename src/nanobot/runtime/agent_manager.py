@@ -31,11 +31,18 @@ class ManagedAgentStatus:
     session_key: str | None = None
 
 
+_STOP_TIMEOUT_S = 10.0
+
+
 class UnifiedAgentManager:
     """Manage runtime lifecycle for the primary agent and subagents."""
 
     def __init__(self, embedded: "EmbeddedNanobot") -> None:
         self._embedded = embedded
+        # Serialise all start/stop control-plane operations so concurrent
+        # callers cannot race two agent loops on the same bus or tear down
+        # while another caller is still spawning.
+        self._lifecycle_lock = asyncio.Lock()
 
     @property
     def main_agent_id(self) -> str:
@@ -53,25 +60,53 @@ class UnifiedAgentManager:
             return True
         return bool(getattr(self._embedded.agent, "_running", False))
 
+    def _embedded_is_stopping(self) -> bool:
+        """True when the embedded runtime has begun shutdown."""
+        return bool(getattr(self._embedded, "_stopping", False))
+
     async def start_main(self) -> bool:
-        """Start the main agent loop if it is not running."""
-        if self._is_main_running():
-            return False
-        task = asyncio.create_task(self._embedded.agent.run(), name="nanobot-agent-run")
-        tasks = getattr(self._embedded, "_tasks", None)
-        if isinstance(tasks, list):
-            tasks.append(task)
-        return True
+        """Start the main agent loop if it is not running.
+
+        Refuses to start while the embedded runtime is shutting down so
+        callers cannot create orphaned tasks that bypass ``embedded.stop()``
+        cleanup.
+        """
+        async with self._lifecycle_lock:
+            if self._embedded_is_stopping():
+                raise RuntimeError("Embedded runtime is stopping; cannot start main agent")
+            if self._is_main_running():
+                return False
+            task = asyncio.create_task(self._embedded.agent.run(), name="nanobot-agent-run")
+            tasks = getattr(self._embedded, "_tasks", None)
+            if isinstance(tasks, list):
+                tasks.append(task)
+            return True
 
     async def stop_main(self) -> bool:
-        """Stop the main agent loop if it is running."""
-        if not self._is_main_running():
-            return False
-        self._embedded.agent.stop()
-        task = self._main_agent_task()
-        if task is not None:
-            await asyncio.gather(task, return_exceptions=True)
-        return True
+        """Stop the main agent loop if it is running.
+
+        Bounds the wait for graceful exit; if the loop ignores ``stop()``
+        beyond ``_STOP_TIMEOUT_S`` we forcibly cancel and surface a warning
+        so operators know something is wedged.
+        """
+        async with self._lifecycle_lock:
+            if not self._is_main_running():
+                return False
+            self._embedded.agent.stop()
+            task = self._main_agent_task()
+            if task is None:
+                return True
+            try:
+                await asyncio.wait_for(asyncio.shield(task), timeout=_STOP_TIMEOUT_S)
+            except TimeoutError:
+                task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
+            except Exception:
+                # ``asyncio.gather`` swallows the original exception via
+                # return_exceptions=True; we mirror that here so stop_main
+                # never propagates the loop's own teardown error.
+                await asyncio.gather(task, return_exceptions=True)
+            return True
 
     async def start_subagent(
         self,
@@ -85,23 +120,27 @@ class UnifiedAgentManager:
         session_key: str | None = None,
     ) -> str:
         """Create and start a subagent task; returns subagent runtime id."""
-        tid = await self._embedded.agent.subagents.spawn_task(
-            task=task,
-            label=label,
-            origin_channel=origin_channel,
-            origin_chat_id=origin_chat_id,
-            session_key=session_key,
-            parent_agent_id=parent_agent_id or self.main_agent_id,
-            team_id=team_id,
-        )
-        return f"sub:{tid}"
+        async with self._lifecycle_lock:
+            if self._embedded_is_stopping():
+                raise RuntimeError("Embedded runtime is stopping; cannot start subagent")
+            tid = await self._embedded.agent.subagents.spawn_task(
+                task=task,
+                label=label,
+                origin_channel=origin_channel,
+                origin_chat_id=origin_chat_id,
+                session_key=session_key,
+                parent_agent_id=parent_agent_id or self.main_agent_id,
+                team_id=team_id,
+            )
+            return f"sub:{tid}"
 
     async def stop_subagent(self, subagent_id: str) -> bool:
         """Stop one subagent by runtime id (`sub:<task_id>` or raw task id)."""
-        task_id = self._normalize_subagent_task_id(subagent_id)
-        if not task_id:
-            return False
-        return await self._embedded.agent.subagents.cancel_task(task_id)
+        async with self._lifecycle_lock:
+            task_id = self._normalize_subagent_task_id(subagent_id)
+            if not task_id:
+                return False
+            return await self._embedded.agent.subagents.cancel_task(task_id)
 
     def get_status(self, agent_id: str) -> ManagedAgentStatus | None:
         """Return status for one runtime agent id."""

@@ -85,10 +85,16 @@ def write_default_config(config_path: Path | None = None) -> Path:
     path = config_path if config_path is not None else find_config_file()
 
     # Build the default snapshot from field metadata so it is independent of
-    # any current env / .env / existing-file state.
-    defaults: dict[str, Any] = {
-        name: field.default for name, field in ServerSettings.model_fields.items()
-    }
+    # any current env / .env / existing-file state.  Fields that use a
+    # ``default_factory`` (e.g. ``version`` resolved from package metadata)
+    # report ``PydanticUndefined`` for ``field.default``; call the factory so
+    # the resulting JSON is always serialisable.
+    defaults: dict[str, Any] = {}
+    for name, field in ServerSettings.model_fields.items():
+        if field.default_factory is not None:
+            defaults[name] = field.default_factory()
+        else:
+            defaults[name] = field.default
     default_config = {_SERVER_KEY: defaults}
 
     path.parent.mkdir(parents=True, exist_ok=True)

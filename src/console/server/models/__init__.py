@@ -3,6 +3,11 @@
 from __future__ import annotations
 
 from console.server.models.activity import ActivityItem
+from console.server.models.agent_runtime import (
+    RuntimeAgentStatus,
+    RuntimeControlResult,
+    RuntimeSubagentStartBody,
+)
 from console.server.models.agents import (
     AddCategoryBody,
     Agent,
@@ -15,11 +20,6 @@ from console.server.models.agents import (
     CategoryOverrideBody,
     DelegateTaskRequest,
     DelegateTaskResponse,
-)
-from console.server.models.agent_runtime import (
-    RuntimeAgentStatus,
-    RuntimeControlResult,
-    RuntimeSubagentStartBody,
 )
 from console.server.models.alerts import Alert
 from console.server.models.base import (
@@ -71,6 +71,7 @@ from console.server.models.sessions import (
     SessionInfo,
     SessionJsonlRawPayload,
     SessionMessagesPayload,
+    UpdateSessionBody,
 )
 from console.server.models.skills import (
     InstallFromRegistryBody,
@@ -189,6 +190,7 @@ __all__ = [
     "TeamTranscriptResponse",
     "ToolCall",
     "ToolCallLog",
+    "UpdateSessionBody",
     "UsageHistoryItem",
     "WorkspaceFilePutBody",
     "WorkspaceFileResponse",

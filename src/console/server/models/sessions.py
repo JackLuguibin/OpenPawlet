@@ -136,6 +136,14 @@ class BatchDeleteBody(BaseModel):
     keys: list[str]
 
 
+class UpdateSessionBody(BaseModel):
+    """PATCH /sessions/{key} body."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: str | None = None
+
+
 class BatchDeleteFailure(BaseModel):
     """Per-key failure in batch delete."""
 

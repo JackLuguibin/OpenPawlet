@@ -153,6 +153,14 @@ export async function stopBot(botId: string): Promise<BotInfo> {
   });
 }
 
+// Swap the embedded runtime over to a different bot.  The console hosts
+// at most one runtime at a time; this triggers a brief restart.
+export async function activateBot(botId: string): Promise<BotInfo> {
+  return fetchJson<BotInfo>(`${API_BASE}/bots/${encodeURIComponent(botId)}/activate`, {
+    method: 'POST',
+  });
+}
+
 // ====================
 // Status API
 // ====================
@@ -356,6 +364,17 @@ export async function createSession(
   return fetchJson<SessionInfo>(`${API_BASE}/sessions${botQuery(botId)}`, {
     method: 'POST',
     body: JSON.stringify(payload),
+  });
+}
+
+export async function updateSession(
+  key: string,
+  data: { title?: string | null },
+  botId?: string | null
+): Promise<SessionInfo> {
+  return fetchJson<SessionInfo>(appendBotQuery(`${API_BASE}/sessions/${encodeURIComponent(key)}`, botId), {
+    method: 'PATCH',
+    body: JSON.stringify(data),
   });
 }
 

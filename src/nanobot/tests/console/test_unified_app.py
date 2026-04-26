@@ -238,10 +238,15 @@ def test_queues_snapshot_in_process_mode(app_no_embed) -> None:
 
 
 def test_queues_pause_returns_disabled(app_no_embed) -> None:
-    """Pause/replay must return 409 in the in-process layout."""
+    """Pause/replay are 410 Gone in the in-process layout.
+
+    Older builds returned 409 (treating it as transient), but the
+    capability is permanently removed in the consolidated process - the
+    SPA gates the corresponding buttons accordingly.
+    """
     with TestClient(app_no_embed) as client:
         resp = client.post("/queues/pause", json={"direction": "both", "paused": True})
-    assert resp.status_code == 409
+    assert resp.status_code == 410
     assert resp.json()["mode"] == "in_process"
 
 

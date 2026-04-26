@@ -109,7 +109,12 @@ async def get_runtime_agent_status(
 async def start_main_agent(request: Request) -> DataResponse[RuntimeControlResult]:
     """Start the primary agent loop when it is not running."""
     manager = _runtime_manager_or_503(request)
-    changed = await manager.start_main()
+    try:
+        changed = await manager.start_main()
+    except RuntimeError as exc:
+        # Raised when the embedded runtime is mid-shutdown; surface as 503
+        # so the SPA can retry once the next runtime comes up.
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     row = manager.get_status("main")
     if row is None:
         raise HTTPException(status_code=500, detail="Main agent status unavailable after start")
@@ -156,15 +161,18 @@ async def start_subagent(
 ) -> DataResponse[RuntimeControlResult]:
     """Create a managed subagent task (team_id is plain metadata)."""
     manager = _runtime_manager_or_503(request)
-    sub_id = await manager.start_subagent(
-        task=body.task,
-        label=body.label,
-        parent_agent_id=body.parent_agent_id,
-        team_id=body.team_id,
-        origin_channel=body.origin_channel or "api",
-        origin_chat_id=body.origin_chat_id or "manager",
-        session_key=body.session_key,
-    )
+    try:
+        sub_id = await manager.start_subagent(
+            task=body.task,
+            label=body.label,
+            parent_agent_id=body.parent_agent_id,
+            team_id=body.team_id,
+            origin_channel=body.origin_channel or "api",
+            origin_chat_id=body.origin_chat_id or "manager",
+            session_key=body.session_key,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     row = manager.get_status(sub_id)
     if row is None:
         raise HTTPException(status_code=500, detail="Subagent status unavailable after start")

@@ -39,10 +39,21 @@ _MEMORY_LEGACY = {"long_term": "long_term.md", "history": "history.md"}
 _CURSOR_SKILLS = Path(".cursor") / "skills"
 
 
-def workspace_root(bot_id: str | None) -> Path:
-    """Return expanded workspace directory from nanobot ``config.json``."""
-    cfg = load_config(resolve_config_path(bot_id))
+def _workspace_root_uncached(path: Path) -> Path:
+    cfg = load_config(path)
     return cfg.workspace_path.resolve()
+
+
+def workspace_root(bot_id: str | None) -> Path:
+    """Return expanded workspace directory from nanobot ``config.json``.
+
+    Cached by ``(path, mtime_ns)`` so /api/v1 routers that touch it on
+    every request (status, dashboard, sessions, observability, ...) do
+    not re-parse the config file each time.
+    """
+    from console.server.cache import config_cache
+
+    return config_cache().get_or_load(resolve_config_path(bot_id), _workspace_root_uncached)
 
 
 def console_state_dir(bot_id: str | None) -> Path:
@@ -120,23 +131,68 @@ def _normalize_rel_path(raw: str | None) -> str:
     return "/".join(parts)
 
 
+def _has_symlink_in_chain(base: Path, target: Path) -> bool:
+    """Return True if any path component between base and target is a symlink.
+
+    base must already be a fully resolved real path; target is a candidate
+    inside it.  Walking the chain prevents an attacker from planting a
+    symlink in the workspace tree to redirect writes outside it.
+    """
+    current = target
+    base_resolved = base
+    while True:
+        try:
+            if current.is_symlink():
+                return True
+        except OSError:
+            return True
+        if current == base_resolved:
+            return False
+        parent = current.parent
+        if parent == current:
+            return False
+        current = parent
+
+
+def safe_join(base: Path, rel: str | None, *, must_exist: bool) -> Path:
+    """Join *rel* under *base* defending against traversal and symlink escapes.
+
+    Used by every router that turns a user-supplied relative path into a
+    filesystem path under a controlled root (workspace, skill bundle, ...).
+    Rejects:
+      - absolute paths or ``..`` segments via :func:`_normalize_rel_path`
+      - resolved paths that escape *base*
+      - any symlink in the resolved chain (we never want to follow links
+        out of the controlled root, regardless of what they point to today)
+    """
+    try:
+        base_real = base.resolve(strict=True)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=500, detail="Base directory missing") from exc
+    normalized = _normalize_rel_path(rel)
+    if not normalized:
+        target = base_real
+    else:
+        target = (base_real / normalized).resolve()
+    try:
+        target.relative_to(base_real)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Path escapes base directory") from exc
+    if _has_symlink_in_chain(base_real, target):
+        raise HTTPException(status_code=400, detail="Symlinked path is not allowed")
+    if must_exist and not target.exists():
+        raise HTTPException(status_code=404, detail="Path not found")
+    return target
+
+
 def resolve_workspace_path(
     bot_id: str | None,
     rel: str | None,
     *,
     must_exist: bool,
 ) -> Path:
-    """Resolve ``rel`` under the workspace root; reject path traversal."""
-    root = workspace_root(bot_id)
-    normalized = _normalize_rel_path(rel)
-    target = (root / normalized).resolve() if normalized else root
-    try:
-        target.relative_to(root)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail="Path escapes workspace") from exc
-    if must_exist and not target.exists():
-        raise HTTPException(status_code=404, detail="Path not found")
-    return target
+    """Resolve ``rel`` under the workspace root; reject traversal and symlinks."""
+    return safe_join(workspace_root(bot_id), rel, must_exist=must_exist)
 
 
 def read_text(path: Path) -> str:
@@ -355,13 +411,33 @@ def load_json_file(path: Path, default: Any) -> Any:
 
 
 def save_json_file(path: Path, data: Any) -> None:
-    """Atomically write JSON with indentation."""
+    """Atomically write JSON with indentation, retrying replace on Windows.
+
+    On Windows ``tmp.replace(path)`` can briefly raise ``PermissionError``
+    when antivirus / search indexer holds the destination open.  A short
+    exponential backoff makes the operation robust without surfacing a
+    500 to the caller.
+    """
+    import time as _time
+
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
     try:
         with tmp.open("w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
-        tmp.replace(path)
     except OSError as exc:
-        logger.warning("[workspace] JSON save failed {}: {}", path, exc)
+        logger.warning("[workspace] JSON write failed {}: {}", path, exc)
         raise HTTPException(status_code=500, detail="Failed to save state") from exc
+    last_exc: OSError | None = None
+    for attempt in range(3):
+        try:
+            tmp.replace(path)
+            return
+        except PermissionError as exc:
+            last_exc = exc
+            _time.sleep(0.05 * (2**attempt))
+        except OSError as exc:
+            logger.warning("[workspace] JSON replace failed {}: {}", path, exc)
+            raise HTTPException(status_code=500, detail="Failed to save state") from exc
+    logger.warning("[workspace] JSON replace exhausted retries {}: {}", path, last_exc)
+    raise HTTPException(status_code=500, detail="Failed to save state") from last_exc

@@ -241,6 +241,10 @@ class EmbeddedNanobot:
         self._tasks: list[asyncio.Task[None]] = []
         self._reconciler_task: asyncio.Task[None] | None = None
         self._started = False
+        # Set when ``stop()`` has begun so control-plane callers (e.g. the
+        # console UnifiedAgentManager) can refuse to spawn new agent tasks
+        # against a runtime mid-shutdown.
+        self._stopping = False
         self._start_perf = 0.0
 
     # ---- public lifecycle ------------------------------------------------
@@ -299,6 +303,7 @@ class EmbeddedNanobot:
         if not self._started:
             return
         self._started = False
+        self._stopping = True
 
         if self._reconciler_task is not None:
             self._reconciler_task.cancel()
@@ -518,14 +523,39 @@ class EmbeddedNanobot:
                     logger.exception("primary team direct loop cancel")
             self._primary_team_event_task = None
 
+    def _teams_state_mtime_ns(self) -> int:
+        """Return ``teams.json`` mtime in ns (0 when missing).
+
+        Used to short-circuit the reconciler: when the file has not been
+        touched since the previous tick, no member loops can have been
+        added/removed and we skip the full workspace re-scan that
+        :meth:`_ensure_team_runtime` would otherwise perform.
+        """
+        teams_path = (
+            self._config.workspace_path / ".nanobot_console" / "teams.json"
+        )
+        try:
+            return teams_path.stat().st_mtime_ns
+        except FileNotFoundError:
+            return 0
+        except OSError:
+            return -1
+
     async def _team_runtime_reconciler(self) -> None:
+        last_mtime_ns = -2
         while True:
             try:
-                await self._ensure_team_runtime()
+                current = self._teams_state_mtime_ns()
+                if current != last_mtime_ns:
+                    await self._ensure_team_runtime()
+                    last_mtime_ns = current
             except asyncio.CancelledError:
                 raise
             except Exception:  # pragma: no cover - reconciler must keep running
                 logger.exception("team runtime reconcile failed")
+                # Force a recompute on the next iteration so a transient
+                # failure does not freeze us in stale state.
+                last_mtime_ns = -2
             await asyncio.sleep(2.0)
 
     # ---- callbacks ------------------------------------------------------

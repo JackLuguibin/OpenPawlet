@@ -16,6 +16,7 @@ initialization helpers.
 from __future__ import annotations
 
 import json
+from importlib import metadata as _importlib_metadata
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +27,21 @@ from pydantic_settings import (
     PydanticBaseSettingsSource,
     SettingsConfigDict,
 )
+
+
+def _resolve_package_version() -> str:
+    """Read the installed ``open-pawlet`` version, falling back to a stub.
+
+    Used as the default for :attr:`ServerSettings.version` so the server
+    surface, OpenAPI ``info.version`` and ``GET /api/v1/health`` always
+    report the wheel version that ``pyproject.toml`` declares.  The
+    fallback only kicks in for editable checkouts that have never been
+    ``pip install``-ed, which keeps the test suite working out of the box.
+    """
+    try:
+        return _importlib_metadata.version("open-pawlet")
+    except _importlib_metadata.PackageNotFoundError:
+        return "0.0.0+local"
 
 
 class JsonServerFileSource(PydanticBaseSettingsSource):
@@ -88,12 +104,30 @@ class ServerSettings(BaseSettings):
         extra="ignore",
     )
 
-    host: str = Field(default="0.0.0.0", description="Bind address")
+    host: str = Field(
+        default="127.0.0.1",
+        description=(
+            "Bind address. Defaults to loopback so the unauthenticated API is "
+            "not exposed to other hosts; set to 0.0.0.0 explicitly only on "
+            "trusted networks."
+        ),
+    )
     port: int = Field(default=8000, ge=1, le=65535, description="Bind port")
     reload: bool = Field(default=False, description="Enable auto-reload (dev only)")
     log_level: str = Field(default="INFO", description="Loguru log level")
     workers: int = Field(default=1, ge=1, description="Number of worker processes")
-    cors_origins: list[str] = Field(default=["*"], description="Allowed CORS origins")
+    cors_origins: list[str] = Field(
+        default=[
+            "http://localhost:8000",
+            "http://127.0.0.1:8000",
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+        ],
+        description=(
+            "Allowed CORS origins. Default whitelist covers the bundled SPA "
+            "and Vite dev server; widen explicitly for non-local clients."
+        ),
+    )
     cors_allow_credentials: bool = Field(
         default=True,
         description=("Send Access-Control-Allow-Credentials; ignored when any origin is '*'"),
@@ -103,7 +137,10 @@ class ServerSettings(BaseSettings):
         default="HTTP API for nanobot console management",
         description="API description",
     )
-    version: str = Field(default="0.2.2", description="API version")
+    version: str = Field(
+        default_factory=_resolve_package_version,
+        description="API version (auto-resolved from the installed open-pawlet wheel)",
+    )
     api_prefix: str = Field(default="/api/v1", description="Root path for all routes")
     docs_url: str = Field(
         default="/docs",

@@ -1,17 +1,18 @@
-"""Bot management API (single default instance backed by ``config.json``)."""
+"""Bot management API backed by the multi-instance registry."""
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 
 from console.server.bot_workspace import (
     is_bot_running,
     set_bot_running,
     workspace_root,
 )
+from console.server.bots_registry import DEFAULT_BOT_ID, get_registry
 from console.server.models import (
     CreateBotRequest,
     DataResponse,
@@ -24,8 +25,6 @@ from nanobot.utils.helpers import local_now
 
 router = APIRouter(tags=["Bots"])
 
-_DEFAULT_BOT_ID = "default"
-
 
 def _iso_mtime(path: Path, iana_tz: str | None) -> str:
     """Return file mtime as ISO string in the configured agent timezone."""
@@ -35,28 +34,47 @@ def _iso_mtime(path: Path, iana_tz: str | None) -> str:
 
 
 def _bot_info(bot_id: str | None) -> BotInfo:
-    """Build :class:`BotInfo` from nanobot config and workspace."""
-    cfg_path = resolve_config_path(bot_id)
-    ws = workspace_root(bot_id)
-    cfg_s = str(cfg_path.resolve())
-    ws_s = str(ws)
-    ts = _iso_mtime(cfg_path, read_default_timezone(cfg_path))
+    """Build :class:`BotInfo` from registry row + nanobot config."""
+    registry = get_registry()
+    target_id = bot_id or registry.default_id()
+    row = registry.get(target_id) or registry.get(DEFAULT_BOT_ID)
+    if row is None:
+        # Should never happen: list() always seeds the default, but be
+        # defensive in case the registry file is inconsistent.
+        cfg_path = resolve_config_path(None)
+        ws = workspace_root(None)
+        ts = _iso_mtime(cfg_path, read_default_timezone(cfg_path))
+        return BotInfo(
+            id=DEFAULT_BOT_ID,
+            name="nanobot",
+            config_path=str(cfg_path.resolve()),
+            workspace_path=str(ws),
+            created_at=ts,
+            updated_at=ts,
+            is_default=True,
+            running=is_bot_running(None),
+        )
+    cfg_path = Path(str(row["config_path"]))
+    iana = read_default_timezone(cfg_path)
+    ts = _iso_mtime(cfg_path, iana)
+    created_at = str(row.get("created_at") or ts)
     return BotInfo(
-        id=_DEFAULT_BOT_ID,
-        name="nanobot",
-        config_path=cfg_s,
-        workspace_path=ws_s,
-        created_at=ts,
+        id=str(row["id"]),
+        name=str(row.get("name") or row["id"]),
+        config_path=str(cfg_path.resolve()),
+        workspace_path=str(Path(str(row["workspace_path"])).resolve()),
+        created_at=created_at,
         updated_at=ts,
-        is_default=True,
-        running=is_bot_running(bot_id),
+        is_default=(str(row["id"]) == registry.default_id()),
+        running=is_bot_running(row["id"] if row["id"] != DEFAULT_BOT_ID else None),
     )
 
 
 @router.get("/bots", response_model=DataResponse[list[BotInfo]])
 async def list_bots() -> DataResponse[list[BotInfo]]:
-    """List bots (single default instance until multi-instance storage exists)."""
-    return DataResponse(data=[_bot_info(None)])
+    """List all registered bot instances."""
+    rows = get_registry().list()
+    return DataResponse(data=[_bot_info(r["id"]) for r in rows])
 
 
 @router.post(
@@ -64,50 +82,86 @@ async def list_bots() -> DataResponse[list[BotInfo]]:
     response_model=DataResponse[BotInfo],
     status_code=status.HTTP_200_OK,
 )
-async def create_bot(_body: CreateBotRequest) -> DataResponse[BotInfo]:
-    """Create a bot (not implemented — only one config/workspace is supported)."""
-    raise HTTPException(
-        status_code=501,
-        detail="Multiple bot instances are not supported yet",
-    )
+async def create_bot(body: CreateBotRequest) -> DataResponse[BotInfo]:
+    """Create a new bot instance with its own config + workspace."""
+    name = (getattr(body, "name", None) or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+    try:
+        row = get_registry().add(name=name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return DataResponse(data=_bot_info(row["id"]))
 
 
 @router.get("/bots/{bot_id}", response_model=DataResponse[BotInfo])
 async def get_bot(bot_id: str) -> DataResponse[BotInfo]:
-    """Return the default bot; any ``bot_id`` currently maps to the same instance."""
-    _ = bot_id
-    return DataResponse(data=_bot_info(None))
+    """Return one bot by id."""
+    if get_registry().get(bot_id) is None:
+        raise HTTPException(status_code=404, detail="Bot not found")
+    return DataResponse(data=_bot_info(bot_id))
 
 
 @router.delete("/bots/{bot_id}", response_model=DataResponse[OkBody])
 async def delete_bot(bot_id: str) -> DataResponse[OkBody]:
-    """Deleting the sole bot instance is not supported."""
-    _ = bot_id
-    raise HTTPException(
-        status_code=501,
-        detail="Deleting the default bot is not supported",
-    )
+    """Remove a non-default bot instance."""
+    try:
+        removed = get_registry().remove(bot_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not removed:
+        raise HTTPException(status_code=404, detail="Bot not found")
+    return DataResponse(data=OkBody())
 
 
 @router.put("/bots/default", response_model=DataResponse[OkBody])
-async def set_default_bot(_body: SetDefaultBotBody) -> DataResponse[OkBody]:
-    """No-op while only one bot exists."""
+async def set_default_bot(body: SetDefaultBotBody) -> DataResponse[OkBody]:
+    """Switch which bot is treated as default for ``bot_id`` omission."""
+    target = (getattr(body, "bot_id", None) or "").strip()
+    if not target:
+        raise HTTPException(status_code=400, detail="bot_id is required")
+    if not get_registry().set_default(target):
+        raise HTTPException(status_code=404, detail="Bot not found")
     return DataResponse(data=OkBody())
 
 
 @router.post("/bots/{bot_id}/start", response_model=DataResponse[BotInfo])
 async def start_bot(bot_id: str) -> DataResponse[BotInfo]:
-    """Mark bot as running in API only (no process supervisor)."""
-    _ = bot_id
-    set_bot_running(None, True)
-    info = _bot_info(None)
+    """Mark bot as running in API only (no process supervisor in P3a)."""
+    if get_registry().get(bot_id) is None:
+        raise HTTPException(status_code=404, detail="Bot not found")
+    set_bot_running(bot_id if bot_id != DEFAULT_BOT_ID else None, True)
+    info = _bot_info(bot_id)
     return DataResponse(data=info.model_copy(update={"running": True}))
 
 
 @router.post("/bots/{bot_id}/stop", response_model=DataResponse[BotInfo])
 async def stop_bot(bot_id: str) -> DataResponse[BotInfo]:
-    """Mark bot as stopped in API only (no process supervisor)."""
-    _ = bot_id
-    set_bot_running(None, False)
-    info = _bot_info(None)
+    """Mark bot as stopped in API only (no process supervisor in P3a)."""
+    if get_registry().get(bot_id) is None:
+        raise HTTPException(status_code=404, detail="Bot not found")
+    set_bot_running(bot_id if bot_id != DEFAULT_BOT_ID else None, False)
+    info = _bot_info(bot_id)
     return DataResponse(data=info.model_copy(update={"running": False}))
+
+
+@router.post("/bots/{bot_id}/activate", response_model=DataResponse[BotInfo])
+async def activate_bot(bot_id: str, request: Request) -> DataResponse[BotInfo]:
+    """Swap the embedded runtime over to *bot_id*.
+
+    The console hosts a single in-process runtime at a time; activating
+    a different bot stops the current one and starts a fresh runtime
+    targeting the requested bot's config + workspace.  This is a brief
+    restart - WS clients reconnect automatically.
+    """
+    from console.server.app import swap_runtime
+
+    if get_registry().get(bot_id) is None:
+        raise HTTPException(status_code=404, detail="Bot not found")
+    ok = await swap_runtime(request.app, bot_id)
+    if not ok:
+        raise HTTPException(
+            status_code=503,
+            detail="Runtime swap failed; console is in degraded mode",
+        )
+    return DataResponse(data=_bot_info(bot_id))

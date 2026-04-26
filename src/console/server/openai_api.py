@@ -32,6 +32,61 @@ from nanobot.utils.runtime import EMPTY_FINAL_RESPONSE_MESSAGE
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 _DATA_URL_RE = re.compile(r"^data:([^;]+);base64,(.+)$", re.DOTALL)
 
+# Bound the per-session lock cache so attackers cannot OOM the process by
+# rotating ``session_id`` values forever; entries idle beyond _LOCK_TTL_S
+# are evicted opportunistically when new ones are inserted.
+_LOCK_CACHE_MAX = 1024
+_LOCK_TTL_S = 600.0
+# Hard ceiling on concurrent /v1/chat/completions requests across all
+# sessions; keeps the underlying provider client + MCP fan-out stable.
+_DEFAULT_CONCURRENCY = 8
+
+
+class _SessionLockCache:
+    """TTL cache mapping session_key to ``asyncio.Lock``.
+
+    ``setdefault``-style API but with bounded size and idle eviction; any
+    lock that has been untouched for ``ttl_s`` seconds is dropped on the
+    next insert path so the cache cannot grow unbounded on attacker input
+    while still serialising real concurrent requests against the same
+    session_key.
+    """
+
+    def __init__(self, max_size: int = _LOCK_CACHE_MAX, ttl_s: float = _LOCK_TTL_S) -> None:
+        self._max_size = max_size
+        self._ttl_s = ttl_s
+        self._items: dict[str, tuple[asyncio.Lock, float]] = {}
+
+    def get_or_create(self, key: str) -> asyncio.Lock:
+        now = time.monotonic()
+        existing = self._items.get(key)
+        if existing is not None:
+            lock, _ = existing
+            self._items[key] = (lock, now)
+            return lock
+        self._evict(now)
+        lock = asyncio.Lock()
+        self._items[key] = (lock, now)
+        return lock
+
+    def _evict(self, now: float) -> None:
+        # Drop expired idle entries first.
+        cutoff = now - self._ttl_s
+        for key in [k for k, (lock, ts) in self._items.items() if ts < cutoff and not lock.locked()]:
+            self._items.pop(key, None)
+        if len(self._items) < self._max_size:
+            return
+        # Still over capacity: shed the oldest unlocked entries.
+        ordered = sorted(self._items.items(), key=lambda kv: kv[1][1])
+        for key, (lock, _) in ordered:
+            if len(self._items) < self._max_size:
+                break
+            if not lock.locked():
+                self._items.pop(key, None)
+
+    def __len__(self) -> int:
+        return len(self._items)
+
 
 class _FileSizeExceededError(Exception):
     """Raised when an uploaded file exceeds the size limit."""
@@ -39,6 +94,20 @@ class _FileSizeExceededError(Exception):
 
 API_SESSION_KEY = "api:default"
 API_CHAT_ID = "default"
+
+
+def _cleanup_media_files(paths: list[str]) -> None:
+    """Best-effort removal of saved upload files when a request fails.
+
+    We never want a half-processed multipart upload to leave the workspace
+    media directory growing forever; missing/permission errors are logged
+    at debug level only since the request is already failing.
+    """
+    for raw in paths:
+        try:
+            Path(raw).unlink(missing_ok=True)
+        except OSError as exc:
+            logger.debug("media cleanup failed {}: {}", raw, exc)
 
 
 def _error_json(status: int, message: str, err_type: str = "invalid_request_error") -> JSONResponse:
@@ -227,8 +296,18 @@ async def handle_chat_completions(request: Request) -> Response:
         return _error_json(400, f"Only configured model '{model_name}' is available")
 
     session_key = f"api:{session_id}" if session_id else API_SESSION_KEY
-    session_locks: dict[str, asyncio.Lock] = request.app.state.openai_session_locks
-    session_lock = session_locks.setdefault(session_key, asyncio.Lock())
+    session_locks = request.app.state.openai_session_locks
+    if isinstance(session_locks, _SessionLockCache):
+        session_lock = session_locks.get_or_create(session_key)
+    else:
+        # Tests and other custom mounts may inject a plain dict; keep the
+        # legacy ``setdefault`` semantics so they still serialise per
+        # session_key without our TTL/eviction guarantees.
+        session_lock = session_locks.setdefault(session_key, asyncio.Lock())
+    concurrency_sem = getattr(request.app.state, "openai_concurrency_sem", None)
+    if concurrency_sem is None:
+        concurrency_sem = asyncio.Semaphore(_DEFAULT_CONCURRENCY)
+        request.app.state.openai_concurrency_sem = concurrency_sem
 
     logger.info(
         "OpenAI API request session_key={} media={} text={} stream={}",
@@ -251,7 +330,7 @@ async def handle_chat_completions(request: Request) -> Response:
         async def _run() -> None:
             nonlocal stream_failed
             try:
-                async with session_lock:
+                async with concurrency_sem, session_lock:
                     await asyncio.wait_for(
                         agent_loop.process_direct(
                             content=text,
@@ -266,6 +345,7 @@ async def handle_chat_completions(request: Request) -> Response:
                     )
             except Exception:
                 stream_failed = True
+                _cleanup_media_files(media_paths)
                 logger.exception("Streaming error for session {}", session_key)
             finally:
                 # Ensure the stream terminates even when providers do not
@@ -298,7 +378,7 @@ async def handle_chat_completions(request: Request) -> Response:
 
     fallback = EMPTY_FINAL_RESPONSE_MESSAGE
     try:
-        async with session_lock:
+        async with concurrency_sem, session_lock:
             try:
                 response = await asyncio.wait_for(
                     agent_loop.process_direct(
@@ -329,11 +409,14 @@ async def handle_chat_completions(request: Request) -> Response:
                         logger.warning("Empty response after retry, using fallback")
                         response_text = fallback
             except TimeoutError:
+                _cleanup_media_files(media_paths)
                 return _error_json(504, f"Request timed out after {timeout_s}s")
             except Exception:
+                _cleanup_media_files(media_paths)
                 logger.exception("Error processing request for session {}", session_key)
                 return _error_json(500, "Internal server error", err_type="server_error")
     except Exception:
+        _cleanup_media_files(media_paths)
         logger.exception("Unexpected API lock error for session {}", session_key)
         return _error_json(500, "Internal server error", err_type="server_error")
 
@@ -368,6 +451,7 @@ def install_openai_routes(
     *,
     model_name: str = "nanobot",
     request_timeout: float = 120.0,
+    max_concurrency: int = _DEFAULT_CONCURRENCY,
 ) -> APIRouter:
     """Install OpenAI-compatible routes on *app* and return the router.
 
@@ -376,8 +460,10 @@ def install_openai_routes(
     """
     app.state.model_name = model_name
     app.state.request_timeout = request_timeout
-    if not hasattr(app.state, "openai_session_locks"):
-        app.state.openai_session_locks = {}
+    if not isinstance(getattr(app.state, "openai_session_locks", None), _SessionLockCache):
+        app.state.openai_session_locks = _SessionLockCache()
+    if not isinstance(getattr(app.state, "openai_concurrency_sem", None), asyncio.Semaphore):
+        app.state.openai_concurrency_sem = asyncio.Semaphore(max(1, int(max_concurrency)))
     router = APIRouter()
     router.add_api_route("/v1/chat/completions", handle_chat_completions, methods=["POST"])
     router.add_api_route("/v1/models", handle_models, methods=["GET"])

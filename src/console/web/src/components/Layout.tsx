@@ -1,11 +1,13 @@
 import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Menu, Button, Badge, Segmented, Select } from 'antd';
+import { Menu, Button, Badge, Segmented, Select, App as AntdApp } from 'antd';
+import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import type { MenuProps } from 'antd';
 import { useAppStore } from '../store';
 import { isConsoleWebSocketConfigured, useWebSocket } from '../hooks/useWebSocket';
 import { useBots } from '../hooks/useBots';
+import { activateBot } from '../api/client';
 import {
   LayoutDashboard,
   MessageSquare,
@@ -133,6 +135,8 @@ export default function Layout({ children }: LayoutProps) {
   useWebSocket();
 
   const { data: bots = [] } = useBots();
+  const queryClient = useQueryClient();
+  const { message: messageApi } = AntdApp.useApp();
 
   const activeBotId = currentBotId || bots.find((b) => b.is_default)?.id || bots[0]?.id || null;
 
@@ -141,6 +145,26 @@ export default function Layout({ children }: LayoutProps) {
       setCurrentBotId(activeBotId);
     }
   }, [bots, currentBotId, activeBotId, setCurrentBotId]);
+
+  const handleBotChange = async (nextBotId: string) => {
+    if (!nextBotId || nextBotId === currentBotId) return;
+    const previous = currentBotId;
+    setCurrentBotId(nextBotId);
+    try {
+      // Ask the server to swap the embedded runtime to the selected bot.
+      // While the swap runs, server-side queries hit a degraded runtime
+      // briefly; we invalidate downstream queries so the SPA refetches
+      // once the new runtime is up.
+      await activateBot(nextBotId);
+      await queryClient.invalidateQueries();
+    } catch (err) {
+      // Roll back on failure so the SPA does not lie about the active
+      // runtime to the user.
+      setCurrentBotId(previous);
+      const detail = err instanceof Error ? err.message : String(err);
+      messageApi.error(`Failed to activate bot: ${detail}`);
+    }
+  };
 
   const wsUi = useMemo(() => {
     if (consolePushConfigured) {
@@ -339,7 +363,7 @@ export default function Layout({ children }: LayoutProps) {
               <Select
                 size="small"
                 value={activeBotId}
-                onChange={(val) => setCurrentBotId(val)}
+                onChange={(val) => void handleBotChange(val)}
                 className="min-w-[140px]"
                 options={botSelectOptions}
                 popupMatchSelectWidth={false}

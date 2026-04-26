@@ -590,19 +590,39 @@ export function useNanobotChannelWebSocket(options: {
       if (!ws || ws.readyState !== WebSocket.OPEN) {
         throw new Error("nanobot WebSocket not connected");
       }
+      const routeSk = canonicalFromRouteRef.current;
+      const liveChatId = useAppStore.getState().nanobotChatId;
+      const resolvedChatId =
+        liveChatId && liveChatId.trim().length > 0
+          ? liveChatId.trim()
+          : tryParseNanobotResumeChatId(routeSk);
+      const resolvedSessionKey =
+        routeSk && routeSk.length > 0
+          ? routeSk
+          : resolvedChatId
+            ? nanobotSessionKeyFromReadyChatId(resolvedChatId)
+            : null;
+      /**
+       * Always pin the outbound message to the active session so nanobot
+       * `WebSocketChannel` persists it under the same `sessions/<key>.jsonl`
+       * file across reconnects and route changes. Without these fields the
+       * server falls back to the connection's chat_id (or anon-id), which is
+       * what caused "new session every message" in the bare /chat flow.
+       */
       const body: Record<string, unknown> = {
         content: payload.content,
       };
-      const routeSk = canonicalFromRouteRef.current;
-      if (routeSk && routeSk.startsWith("console:")) {
-        body.session_key = routeSk;
+      if (resolvedChatId) {
+        body.chat_id = resolvedChatId;
       }
+      if (resolvedSessionKey) {
+        body.session_key = resolvedSessionKey;
+      }
+      const metadata: Record<string, unknown> = { source: "console" };
       if (payload.botId) {
-        body.metadata = {
-          bot_id: payload.botId,
-          source: "console",
-        };
+        metadata.bot_id = payload.botId;
       }
+      body.metadata = metadata;
       const outbound = JSON.stringify(body);
       useAppStore.getState().addNanobotWsDebugLine(`[out] ${outbound}`);
       ws.send(outbound);

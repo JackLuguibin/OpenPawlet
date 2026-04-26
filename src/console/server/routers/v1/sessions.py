@@ -29,6 +29,7 @@ from console.server.models import (
     SessionDetail,
     SessionInfo,
     SessionJsonlRawPayload,
+    UpdateSessionBody,
 )
 from console.server.models.sessions import Message, SessionMessagesPayload
 from console.server.session_store import (
@@ -36,11 +37,13 @@ from console.server.session_store import (
     list_session_rows,
     load_context_entries,
     load_session,
+    load_session_preview,
     load_transcript_messages,
     read_context_jsonl_raw,
     read_session_jsonl_raw,
     read_transcript_jsonl_raw,
     save_empty_session,
+    set_session_custom_title,
 )
 from nanobot.utils.team_gateway_runtime import team_member_session_key
 
@@ -82,9 +85,9 @@ def _row_to_session_info(row: dict[str, object]) -> SessionInfo:
         agent_id = match.group("agent_id")
     return SessionInfo(
         key=key,
-        title=None,
+        title=str(row["title"]) if row.get("title") is not None else None,
         message_count=int(row["message_count"]),
-        last_message=None,
+        last_message=str(row["last_message"]) if row.get("last_message") is not None else None,
         created_at=str(ca) if ca is not None else None,
         updated_at=str(ua) if ua is not None else None,
         team_id=team_id,
@@ -413,6 +416,7 @@ async def get_session(
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
     messages = session.messages
+    title, last_message = load_session_preview(bot_id, session_key)
     if detail:
         previews: list[Message] = []
         for raw in messages[-_PREVIEW_LIMIT:]:
@@ -424,9 +428,9 @@ async def get_session(
         return DataResponse(
             data=SessionDetail(
                 key=session_key,
-                title=None,
+                title=title,
                 message_count=len(messages),
-                last_message=None,
+                last_message=last_message,
                 created_at=_iso(session.created_at),
                 updated_at=_iso(session.updated_at),
                 preview_messages=previews,
@@ -437,6 +441,40 @@ async def get_session(
             key=session_key,
             messages=messages,
             message_count=len(messages),
+        )
+    )
+
+
+@router.patch("/sessions/{session_key}", response_model=DataResponse[SessionInfo])
+async def update_session(
+    session_key: str,
+    body: UpdateSessionBody,
+    bot_id: str | None = Query(default=None, alias="bot_id"),
+) -> DataResponse[SessionInfo]:
+    """Update session display metadata (currently supports custom title)."""
+    session = load_session(bot_id, session_key)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    normalized_title = (body.title or "").strip() or None
+    set_session_custom_title(bot_id, session_key, normalized_title)
+    title, last_message = load_session_preview(bot_id, session_key)
+    team_id = room_id = agent_id = None
+    match = _TEAM_SESSION_RE.match(session_key)
+    if match:
+        team_id = match.group("team_id")
+        room_id = match.group("room_id")
+        agent_id = match.group("agent_id")
+    return DataResponse(
+        data=SessionInfo(
+            key=session_key,
+            title=title,
+            message_count=len(session.messages),
+            last_message=last_message,
+            created_at=_iso(session.created_at),
+            updated_at=_iso(session.updated_at),
+            team_id=team_id,
+            room_id=room_id,
+            agent_id=agent_id,
         )
     )
 
