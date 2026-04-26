@@ -205,7 +205,7 @@ function LogPanel({
   );
 }
 
-export default function Logs() {
+export default function Logs({ embedded = false }: { embedded?: boolean } = {}) {
   const { t } = useTranslation();
   const { addToast } = useAppStore();
   const [searchQuery, setSearchQuery] = useState('');
@@ -324,7 +324,7 @@ export default function Logs() {
   };
 
   return (
-    <PageLayout>
+    <PageLayout embedded={embedded}>
       <div className="flex min-h-0 flex-1 flex-col gap-5 [&_.ant-input-affix-wrapper]:!rounded-md [&_.ant-btn]:!rounded-md [&_.ant-alert]:!rounded-md">
         <div className="flex shrink-0 flex-col gap-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between lg:gap-6">

@@ -12,10 +12,7 @@ import {
   LayoutDashboard,
   MessageSquare,
   FolderOpen,
-  Smartphone,
-  Layers,
   Settings,
-  FileText,
   ChevronLeft,
   ChevronRight,
   Bot,
@@ -25,14 +22,8 @@ import {
   Moon,
   Monitor,
   Users,
-  UsersRound,
-  Brain,
-  Clock,
-  Heart,
-  Activity,
+  BookOpen,
   LineChart,
-  Cable,
-  Cpu,
 } from 'lucide-react';
 
 import WebSocketDebugPanel from './WebSocketDebugPanel';
@@ -40,21 +31,11 @@ import WebSocketDebugPanel from './WebSocketDebugPanel';
 /** Lock main scroll; each page uses flex-1 min-h-0 and scrolls inside */
 const LOCK_PAGE_SCROLL_PATHS = new Set([
   '/dashboard',
-  '/sessions',
   '/settings',
-  '/channels',
-  '/cron',
-  '/health',
   '/observability',
-  '/activity',
-  '/mcp',
-  '/memory',
+  '/knowledge',
   '/workspace',
   '/agents',
-  '/teams',
-  '/logs',
-  '/queues',
-  '/runtime',
 ]);
 
 interface LayoutProps {
@@ -65,11 +46,6 @@ type NavItem = {
   path: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
-};
-
-type NavSection = {
-  title: string;
-  items: NavItem[];
 };
 
 export default function Layout({ children }: LayoutProps) {
@@ -89,45 +65,15 @@ export default function Layout({ children }: LayoutProps) {
   } = useAppStore();
   const consolePushConfigured = isConsoleWebSocketConfigured();
 
-  const navSections: NavSection[] = useMemo(
+  const navItems: NavItem[] = useMemo(
     () => [
-      {
-        title: t('layout.sectionChat'),
-        items: [
-          { path: '/dashboard', label: t('layout.navOverview'), icon: LayoutDashboard },
-          { path: '/chat', label: t('layout.navChat'), icon: MessageSquare },
-        ],
-      },
-      {
-        title: t('layout.sectionControl'),
-        items: [
-          { path: '/runtime', label: t('layout.navRuntime'), icon: Cpu },
-          { path: '/channels', label: t('layout.navChannels'), icon: Smartphone },
-          { path: '/sessions', label: t('layout.navSessions'), icon: FolderOpen },
-          { path: '/cron', label: t('layout.navCron'), icon: Clock },
-          { path: '/health', label: t('layout.navHealth'), icon: Heart },
-          { path: '/activity', label: t('layout.navActivity'), icon: Activity },
-        ],
-      },
-      {
-        title: t('layout.sectionAgent'),
-        items: [
-          { path: '/mcp', label: t('layout.navMcpAndSkills'), icon: Layers },
-          { path: '/memory', label: t('layout.navMemoryAndProfile'), icon: Brain },
-          { path: '/workspace', label: t('layout.navWorkspace'), icon: FolderOpen },
-          { path: '/agents', label: t('layout.navAgents'), icon: Users },
-          { path: '/teams', label: t('layout.navTeams'), icon: UsersRound },
-          { path: '/observability', label: t('layout.navObservability'), icon: LineChart },
-        ],
-      },
-      {
-        title: t('layout.sectionManagement'),
-        items: [
-          { path: '/queues', label: t('layout.navQueues'), icon: Cable },
-          { path: '/logs', label: t('layout.navLogs'), icon: FileText },
-          { path: '/settings', label: t('layout.navSettings'), icon: Settings },
-        ],
-      },
+      { path: '/dashboard', label: t('layout.navOverview'), icon: LayoutDashboard },
+      { path: '/chat', label: t('layout.navChat'), icon: MessageSquare },
+      { path: '/agents', label: t('layout.navAgentsHub'), icon: Users },
+      { path: '/knowledge', label: t('layout.navKnowledge'), icon: BookOpen },
+      { path: '/workspace', label: t('layout.navWorkspace'), icon: FolderOpen },
+      { path: '/observability', label: t('layout.navObservabilityHub'), icon: LineChart },
+      { path: '/settings', label: t('layout.navSettings'), icon: Settings },
     ],
     [t],
   );
@@ -242,24 +188,27 @@ export default function Layout({ children }: LayoutProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const mobileNavId = 'nb-mobile-sidebar';
 
-  const selectedKey = '/' + (location.pathname.split('/')[1] || 'dashboard');
+  const topLevel = '/' + (location.pathname.split('/')[1] || 'dashboard');
+  // `/teams/:teamId` is rendered standalone but conceptually belongs to the
+  // Agents hub; keep that nav item highlighted while users browse a team.
+  const selectedKey = topLevel === '/teams' ? '/agents' : topLevel;
 
-  const menuItems: MenuProps['items'] = useMemo(() => navSections.map((section) => ({
-    type: 'group',
-    label: section.title,
-    children: section.items.map((item) => {
-      const Icon = item.icon;
-      return {
-        key: item.path,
-        icon: <Icon className="w-4 h-4" />,
-        label: (
-          <Link to={item.path} onClick={() => setMobileMenuOpen(false)}>
-            {item.label}
-          </Link>
-        ),
-      };
-    }),
-  })), [navSections]);
+  const menuItems: MenuProps['items'] = useMemo(
+    () =>
+      navItems.map((item) => {
+        const Icon = item.icon;
+        return {
+          key: item.path,
+          icon: <Icon className="w-4 h-4" />,
+          label: (
+            <Link to={item.path} onClick={() => setMobileMenuOpen(false)}>
+              {item.label}
+            </Link>
+          ),
+        };
+      }),
+    [navItems],
+  );
 
   return (
     <div className="flex min-h-0 flex-1 overflow-hidden">

@@ -128,7 +128,7 @@ function ChannelIcon({ name, size = 24, className }: { name: string; size?: numb
   return <Icon size={size} strokeWidth={1.75} className={className} />;
 }
 
-export default function Channels() {
+export default function Channels({ embedded = false }: { embedded?: boolean } = {}) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { addToast, currentBotId } = useAppStore();
@@ -251,7 +251,7 @@ export default function Channels() {
 
   if (isLoading) {
     return (
-      <PageLayout variant="center">
+      <PageLayout variant="center" embedded={embedded}>
         <Spin size="large" />
       </PageLayout>
     );
@@ -259,7 +259,7 @@ export default function Channels() {
 
   if (error) {
     return (
-      <PageLayout variant="bleed">
+      <PageLayout variant="bleed" embedded={embedded}>
         <Alert
           type="error"
           title={t('channels.errorLoad')}
@@ -277,7 +277,7 @@ export default function Channels() {
   const enabledTotal = channels?.filter((c) => c.enabled).length ?? 0;
 
   return (
-    <PageLayout className="min-h-0 flex-1 overflow-hidden !gap-0">
+    <PageLayout embedded={embedded} className="min-h-0 flex-1 overflow-hidden !gap-0">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-6 overflow-hidden">
       <header className="flex shrink-0 flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="space-y-1">

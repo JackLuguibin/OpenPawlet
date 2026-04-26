@@ -12,7 +12,7 @@ import type { TeamCreateRequest } from '../api/types_teams';
 
 const { TextArea } = Input;
 
-export default function Teams() {
+export default function Teams({ embedded = false }: { embedded?: boolean } = {}) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { currentBotId, addToast } = useAppStore();
@@ -55,14 +55,14 @@ export default function Teams() {
 
   if (!currentBotId) {
     return (
-      <PageLayout variant="bleed">
+      <PageLayout variant="bleed" embedded={embedded}>
         <Empty description={t('agents.selectBotFirst')} className="py-20" />
       </PageLayout>
     );
   }
 
   return (
-    <PageLayout variant="bleed" className="!gap-8">
+    <PageLayout variant="bleed" embedded={embedded} className="!gap-8">
       {/* Hero */}
       <section className="relative overflow-hidden rounded-2xl border border-slate-200/90 bg-gradient-to-br from-white via-violet-50/35 to-sky-50/40 px-6 py-8 shadow-sm dark:border-slate-700/80 dark:from-slate-900 dark:via-slate-900 dark:to-violet-950/30 sm:px-8 sm:py-10">
         <div

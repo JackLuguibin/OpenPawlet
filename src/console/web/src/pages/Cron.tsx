@@ -149,7 +149,7 @@ function CronJobDetails({
   );
 }
 
-export default function Cron() {
+export default function Cron({ embedded = false }: { embedded?: boolean } = {}) {
   const { t, i18n } = useTranslation();
   const queryClient = useQueryClient();
   const { addToast, currentBotId } = useAppStore();
@@ -259,7 +259,7 @@ export default function Cron() {
 
   if (botsLoading || waitingBot) {
     return (
-      <PageLayout variant="center">
+      <PageLayout variant="center" embedded={embedded}>
         <Spin size="large" />
       </PageLayout>
     );
@@ -267,7 +267,7 @@ export default function Cron() {
 
   if (botsFetched && bots.length === 0) {
     return (
-      <PageLayout variant="bleed">
+      <PageLayout variant="bleed" embedded={embedded}>
         <Empty description={t('dashboard.botRequired')} />
       </PageLayout>
     );
@@ -275,7 +275,7 @@ export default function Cron() {
 
   if (isLoading) {
     return (
-      <PageLayout variant="center">
+      <PageLayout variant="center" embedded={embedded}>
         <Spin size="large" />
       </PageLayout>
     );
@@ -283,7 +283,7 @@ export default function Cron() {
 
   if (error) {
     return (
-      <PageLayout variant="bleed">
+      <PageLayout variant="bleed" embedded={embedded}>
         <Alert
           type="error"
           title={t('cron.loadFailed')}
@@ -299,7 +299,7 @@ export default function Cron() {
   const enabledCount = jobs.filter((j) => j.enabled).length;
 
   return (
-    <PageLayout>
+    <PageLayout embedded={embedded}>
       <div className="flex shrink-0 flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-start gap-4 min-w-0">
           <div

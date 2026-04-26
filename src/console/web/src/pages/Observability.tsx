@@ -303,7 +303,7 @@ function ObservabilityEventRow({ ev, dateLocale, t, onOpenDetail, showTraceIdCol
   );
 }
 
-export default function Observability() {
+export default function Observability({ embedded = false }: { embedded?: boolean } = {}) {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -411,7 +411,7 @@ export default function Observability() {
   );
 
   return (
-    <PageLayout variant="bleed" className="min-h-0">
+    <PageLayout variant="bleed" embedded={embedded} className="min-h-0">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
@@ -475,7 +475,7 @@ export default function Observability() {
                 <Button
                   size="small"
                   icon={<HeartOutlined />}
-                  onClick={() => navigate('/health')}
+                  onClick={() => navigate('/observability?section=health')}
                   aria-label={t('observability.linkHealth')}
                 >
                   <span className="hidden md:inline">{t('observability.linkHealth')}</span>

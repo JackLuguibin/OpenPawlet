@@ -124,7 +124,7 @@ function normalizeTopics(rawTopics: string[]): TopicNormalizeResult {
   return { topics, invalidFormat, tooLong, dedupedCount, overflowed };
 }
 
-export default function Agents() {
+export default function Agents({ embedded = false }: { embedded?: boolean } = {}) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { currentBotId, addToast } = useAppStore();
@@ -537,14 +537,14 @@ export default function Agents() {
 
   if (!currentBotId) {
     return (
-      <PageLayout variant="bleed">
+      <PageLayout variant="bleed" embedded={embedded}>
         <Empty description={t('agents.selectBotFirst')} className="py-20" />
       </PageLayout>
     );
   }
 
   return (
-    <PageLayout>
+    <PageLayout embedded={embedded}>
       {/* Header + toolbar */}
       <div className="shrink-0 rounded-xl border border-gray-200/80 bg-white/90 p-4 shadow-sm dark:border-gray-700/70 dark:bg-gray-800/60">
         <div className="flex flex-wrap items-start justify-between gap-3">

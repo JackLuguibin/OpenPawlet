@@ -1,8 +1,9 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import type { CSSProperties } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router-dom';
 import i18n from '../i18n';
 import {
   Tabs,
@@ -34,12 +35,15 @@ import {
   EnvironmentOutlined,
   PlusOutlined,
   DeleteOutlined,
+  ClockCircleOutlined,
 } from '@ant-design/icons';
 import * as api from '../api/client';
 import { useAppStore } from '../store';
 import { formatQueryError } from '../utils/errors';
 import { getCommonTimeZoneSelectOptions } from '../utils/timezones';
 import { PageLayout } from '../components/PageLayout';
+import Channels from './Channels';
+import Cron from './Cron';
 
 const { Text } = Typography;
 
@@ -147,7 +151,13 @@ function buildProvidersPayload(
   return out;
 }
 
-type SettingsTab = 'general' | 'providers' | 'tools' | 'channels' | 'environment';
+type SettingsTab =
+  | 'general'
+  | 'providers'
+  | 'tools'
+  | 'channels'
+  | 'cron'
+  | 'environment';
 
 interface FormData {
   workspace: string;
@@ -162,11 +172,38 @@ interface FormData {
   restrict_to_workspace: boolean;
 }
 
+const VALID_SETTINGS_TABS: ReadonlyArray<SettingsTab> = [
+  'general',
+  'providers',
+  'tools',
+  'channels',
+  'cron',
+  'environment',
+];
+
+function readSettingsTab(searchParams: URLSearchParams): SettingsTab {
+  const raw = searchParams.get('tab') as SettingsTab | null;
+  return raw && VALID_SETTINGS_TABS.includes(raw) ? raw : 'general';
+}
+
 export default function Settings() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { addToast, currentBotId } = useAppStore();
-  const [activeTab, setActiveTab] = useState<SettingsTab>('general');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = readSettingsTab(searchParams);
+  const setActiveTab = useCallback(
+    (next: SettingsTab) => {
+      const params = new URLSearchParams(searchParams);
+      if (next === 'general') {
+        params.delete('tab');
+      } else {
+        params.set('tab', next);
+      }
+      setSearchParams(params, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
   const [form] = Form.useForm<FormData>();
   const { data: config, isLoading } = useQuery({
     queryKey: ['config', currentBotId],
@@ -358,7 +395,6 @@ export default function Settings() {
   };
 
   const configRaw = config as Record<string, unknown> | undefined;
-  const channels = configRaw?.channels as Record<string, Record<string, unknown>> | undefined;
   const mcpServers = (configRaw?.tools as Record<string, unknown>)?.mcpServers as
     | Record<string, unknown>
     | undefined;
@@ -811,51 +847,22 @@ export default function Settings() {
         </span>
       ),
       children: (
-        <Card
-          title={t('settings.channelsConfiguredTitle')}
-          className={SETTINGS_SCROLL_CARD_CLASS}
-          styles={SETTINGS_SCROLL_CARD_STYLES}
-        >
-          {channels && Object.keys(channels).length > 0 ? (
-            <div className="space-y-3">
-              {Object.entries(channels).map(([name, channelConfig]) => {
-                const cfg = (channelConfig ?? {}) as Record<string, unknown>;
-                const enabled = cfg.enabled !== false;
-                return (
-                  <Card key={name} size="small" className="min-w-0 w-full">
-                    <div className="flex items-center justify-between gap-3 min-w-0">
-                      <div className="flex min-w-0 flex-1 items-center gap-3">
-                        <MobileOutlined className="shrink-0 text-gray-500" />
-                        <div className="min-w-0">
-                          <p className="font-medium capitalize">{name}</p>
-                          <Text
-                            type="secondary"
-                            className="text-xs break-words [overflow-wrap:anywhere]"
-                          >
-                            {Object.keys(cfg)
-                              .filter((k) => k !== 'enabled')
-                              .join(', ') || t('settings.channelsDefaultConfig')}
-                          </Text>
-                        </div>
-                      </div>
-                      <Tag color={enabled ? 'success' : 'default'} className="shrink-0">
-                        {enabled ? t('common.enabled') : t('common.disabled')}
-                      </Tag>
-                    </div>
-                  </Card>
-                );
-              })}
-            </div>
-          ) : (
-            <Alert
-              title={t('settings.channelsNoneTitle')}
-              description={t('settings.channelsNoneDesc')}
-              type="info"
-              showIcon
-              icon={<MobileOutlined />}
-            />
-          )}
-        </Card>
+        <div className="flex min-h-0 min-w-0 w-full flex-1 flex-col overflow-hidden">
+          <Channels embedded />
+        </div>
+      ),
+    },
+    {
+      key: 'cron',
+      label: (
+        <span className="flex items-center gap-1.5">
+          <ClockCircleOutlined /> {t('settings.tabCron')}
+        </span>
+      ),
+      children: (
+        <div className="flex min-h-0 min-w-0 w-full flex-1 flex-col overflow-hidden">
+          <Cron embedded />
+        </div>
       ),
     },
     {

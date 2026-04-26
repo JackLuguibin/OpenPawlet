@@ -10,23 +10,13 @@ import ToastBridge from './components/ToastBridge';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
-const Chat = lazy(() => import('./pages/Chat'));
-const Sessions = lazy(() => import('./pages/Sessions'));
-const Channels = lazy(() => import('./pages/Channels'));
-const McpAndSkills = lazy(() => import('./pages/McpAndSkills'));
-const Settings = lazy(() => import('./pages/Settings'));
-const Logs = lazy(() => import('./pages/Logs'));
-const Agents = lazy(() => import('./pages/Agents'));
-const Teams = lazy(() => import('./pages/Teams'));
-const TeamDetail = lazy(() => import('./pages/TeamDetail'));
-const Memory = lazy(() => import('./pages/Memory'));
-const Cron = lazy(() => import('./pages/Cron'));
-const Health = lazy(() => import('./pages/Health'));
-const Observability = lazy(() => import('./pages/Observability'));
+const ChatHub = lazy(() => import('./pages/ChatHub'));
 const Workspace = lazy(() => import('./pages/Workspace'));
-const Activity = lazy(() => import('./pages/Activity'));
-const Queues = lazy(() => import('./pages/Queues'));
-const Runtime = lazy(() => import('./pages/Runtime'));
+const Settings = lazy(() => import('./pages/Settings'));
+const TeamDetail = lazy(() => import('./pages/TeamDetail'));
+const AgentsHub = lazy(() => import('./pages/AgentsHub'));
+const KnowledgeHub = lazy(() => import('./pages/KnowledgeHub'));
+const ObservabilityHub = lazy(() => import('./pages/ObservabilityHub'));
 
 function resolveIsDark(theme: 'light' | 'dark' | 'system'): boolean {
   if (theme === 'dark') return true;
@@ -52,29 +42,52 @@ function AppRoutes() {
           <Routes>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/chat" element={<Chat />} />
-            <Route path="/chat/:sessionKey" element={<Chat />} />
-            <Route path="/sessions" element={<Sessions />} />
-            <Route path="/channels" element={<Channels />} />
-            <Route path="/cron" element={<Cron />} />
-            <Route path="/health" element={<Health />} />
-            <Route path="/observability" element={<Observability />} />
-            <Route path="/workspace" element={<Workspace />} />
-            <Route path="/mcp" element={<McpAndSkills />} />
-            <Route path="/agents" element={<Agents />} />
-            <Route path="/teams" element={<Teams />} />
+            <Route path="/chat" element={<ChatHub />} />
+            <Route path="/chat/:sessionKey" element={<ChatHub />} />
+            <Route path="/agents" element={<AgentsHub />} />
             <Route path="/teams/:teamId" element={<TeamDetail />} />
-            <Route path="/skills" element={<Navigate to="/mcp" replace />} />
-            <Route path="/memory" element={<Memory />} />
+            <Route path="/knowledge" element={<KnowledgeHub />} />
+            <Route path="/workspace" element={<Workspace />} />
+            <Route path="/observability" element={<ObservabilityHub />} />
+            <Route path="/settings" element={<Settings />} />
+
+            {/* Legacy routes: keep old bookmarks/share-links working by
+                redirecting them into the new Hub pages with the matching
+                ?section= sub-tab. */}
+            <Route
+              path="/sessions"
+              element={<Navigate to="/chat?section=sessions" replace />}
+            />
+            <Route path="/runtime" element={<Navigate to="/agents?section=runtime" replace />} />
+            <Route path="/teams" element={<Navigate to="/agents?section=teams" replace />} />
+            <Route path="/mcp" element={<Navigate to="/knowledge?section=mcp" replace />} />
+            <Route path="/skills" element={<Navigate to="/knowledge" replace />} />
+            <Route path="/memory" element={<Navigate to="/knowledge?section=memory" replace />} />
             <Route
               path="/bot-profile"
-              element={<Navigate to="/memory?section=profile" replace />}
+              element={<Navigate to="/knowledge?section=profile" replace />}
             />
-            <Route path="/settings" element={<Settings />} />
-            <Route path="/logs" element={<Logs />} />
-            <Route path="/activity" element={<Activity />} />
-            <Route path="/queues" element={<Queues />} />
-            <Route path="/runtime" element={<Runtime />} />
+            <Route
+              path="/health"
+              element={<Navigate to="/observability?section=health" replace />}
+            />
+            <Route
+              path="/activity"
+              element={<Navigate to="/observability?section=activity" replace />}
+            />
+            <Route
+              path="/logs"
+              element={<Navigate to="/observability?section=logs" replace />}
+            />
+            <Route
+              path="/queues"
+              element={<Navigate to="/observability?section=queues" replace />}
+            />
+            <Route
+              path="/channels"
+              element={<Navigate to="/settings?tab=channels" replace />}
+            />
+            <Route path="/cron" element={<Navigate to="/settings?tab=cron" replace />} />
           </Routes>
         </Suspense>
       </Layout>

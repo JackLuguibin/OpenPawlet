@@ -57,7 +57,7 @@ const CHANNEL_TAG_COLOR: Record<string, string> = {
   msteams: 'purple',
 };
 
-export default function Sessions() {
+export default function Sessions({ embedded = false }: { embedded?: boolean } = {}) {
   const { t, i18n } = useTranslation();
   const queryClient = useQueryClient();
   const { addToast, currentBotId } = useAppStore();
@@ -335,7 +335,7 @@ export default function Sessions() {
   );
 
   return (
-    <PageLayout className="min-h-0 flex-1 overflow-hidden">
+    <PageLayout embedded={embedded} className="min-h-0 flex-1 overflow-hidden">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-6 overflow-hidden">
       {/* Header */}
       <div className="flex shrink-0 items-center justify-between">

@@ -70,7 +70,7 @@ function phaseTagColor(phase?: string | null, running?: boolean): string {
   }
 }
 
-export default function Runtime() {
+export default function Runtime({ embedded = false }: { embedded?: boolean } = {}) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const addToast = useAppStore((s) => s.addToast);
@@ -335,7 +335,7 @@ export default function Runtime() {
   ];
 
   return (
-    <PageLayout>
+    <PageLayout embedded={embedded}>
       <div className="shrink-0 rounded-xl border border-gray-200/80 bg-white/90 p-4 shadow-sm dark:border-gray-700/70 dark:bg-gray-800/60">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>

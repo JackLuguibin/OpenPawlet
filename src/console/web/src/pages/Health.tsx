@@ -38,7 +38,7 @@ function StatRow({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-export default function Health() {
+export default function Health({ embedded = false }: { embedded?: boolean } = {}) {
   const { t } = useTranslation();
   const { currentBotId } = useAppStore();
 
@@ -59,7 +59,7 @@ export default function Health() {
 
   if (isLoading) {
     return (
-      <PageLayout variant="center">
+      <PageLayout variant="center" embedded={embedded}>
         <Spin size="large" />
       </PageLayout>
     );
@@ -67,7 +67,7 @@ export default function Health() {
 
   if (error) {
     return (
-      <PageLayout variant="bleed">
+      <PageLayout variant="bleed" embedded={embedded}>
         <Alert type="error" title={t('health.loadFailed')} description={formatQueryError(error)} showIcon />
       </PageLayout>
     );
@@ -78,7 +78,7 @@ export default function Health() {
   const warningCount = issues.filter((i) => i.severity === 'warning').length;
 
   return (
-    <PageLayout>
+    <PageLayout embedded={embedded}>
       <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-start gap-3">
           <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-emerald-100 dark:bg-emerald-900/40">
@@ -174,7 +174,7 @@ export default function Health() {
               </div>
 
               <Link
-                to="/observability"
+                to="/observability?section=trace"
                 className="group flex items-center justify-between gap-3 rounded-md border border-violet-200/90 bg-violet-50/60 px-4 py-3 transition-colors hover:border-violet-300 hover:bg-violet-100/70 dark:border-violet-500/25 dark:bg-violet-950/35 dark:hover:border-violet-400/40 dark:hover:bg-violet-900/40"
               >
                 <span className="flex min-w-0 items-center gap-2 text-sm font-medium text-violet-800 dark:text-violet-200">

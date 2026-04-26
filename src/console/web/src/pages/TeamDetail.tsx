@@ -285,7 +285,7 @@ export default function TeamDetail() {
       {/* Channel header: calm bar + identity */}
       <header className="flex shrink-0 items-center gap-3 border-b border-zinc-200/80 bg-white/90 px-3 py-3 shadow-[0_1px_0_0_rgba(0,0,0,0.03)] backdrop-blur-md dark:border-zinc-800/80 dark:bg-zinc-900/90 sm:gap-4 sm:px-5">
         <Link
-          to="/teams"
+          to="/agents?section=teams"
           className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-zinc-500 transition-all hover:bg-zinc-100 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-50"
           title={t('teams.backToList')}
         >

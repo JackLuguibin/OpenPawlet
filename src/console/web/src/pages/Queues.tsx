@@ -70,7 +70,7 @@ function formatBytes(bytes: number): string {
   return `${b.toFixed(b >= 10 ? 0 : 1)} ${units[i]}`;
 }
 
-export default function Queues() {
+export default function Queues({ embedded = false }: { embedded?: boolean } = {}) {
   const { t } = useTranslation();
   const { message: messageApi, modal: modalApi } = AntdApp.useApp();
   const qc = useQueryClient();
@@ -185,7 +185,7 @@ export default function Queues() {
 
   if (isLoading && !snapshot) {
     return (
-      <PageLayout variant="center">
+      <PageLayout variant="center" embedded={embedded}>
         <Spin size="large" />
       </PageLayout>
     );
@@ -193,7 +193,7 @@ export default function Queues() {
 
   if (error || !merged) {
     return (
-      <PageLayout>
+      <PageLayout embedded={embedded}>
         <Alert
           type="error"
           title={t('queues.loadFailed')}
@@ -217,7 +217,7 @@ export default function Queues() {
   }));
 
   return (
-    <PageLayout className="min-h-0 flex-1 overflow-hidden">
+    <PageLayout embedded={embedded} className="min-h-0 flex-1 overflow-hidden">
       <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         <div className="flex min-w-0 items-start gap-3">
           <div

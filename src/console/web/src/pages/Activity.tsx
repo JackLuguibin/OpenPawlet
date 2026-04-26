@@ -70,7 +70,7 @@ const ACTIVITY_COLORS: Record<string, string> = {
   error: 'red',
 };
 
-export default function Activity() {
+export default function Activity({ embedded = false }: { embedded?: boolean } = {}) {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { currentBotId } = useAppStore();
@@ -202,7 +202,7 @@ export default function Activity() {
 
   if (isLoading && !activities) {
     return (
-      <PageLayout variant="center">
+      <PageLayout variant="center" embedded={embedded}>
         <Spin size="large" />
       </PageLayout>
     );
@@ -216,7 +216,7 @@ export default function Activity() {
       : '';
 
   return (
-    <PageLayout variant="bleed">
+    <PageLayout variant="bleed" embedded={embedded}>
       {/* Header */}
       <div className="flex items-center justify-between shrink-0">
         <div>
