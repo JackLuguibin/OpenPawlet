@@ -948,6 +948,8 @@ class WebSocketChannel(BaseChannel):
                 "chat_id": msg.chat_id,
                 "text": msg.content,
             }
+            if "data" in metadata:
+                payload["data"] = metadata["data"]
             if msg.media:
                 payload["media"] = msg.media
             if msg.reply_to:

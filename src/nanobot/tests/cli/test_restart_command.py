@@ -150,6 +150,7 @@ class TestRestartCommand:
         assert response is not None
         assert "/restart" in response.content
         assert "/status" in response.content
+        assert "/status-json" in response.content
         assert response.metadata == {"render_as": "text"}
 
     @pytest.mark.asyncio
@@ -201,6 +202,35 @@ class TestRestartCommand:
 
         assert response is not None
         assert "Tasks: 3 active" in response.content
+
+    @pytest.mark.asyncio
+    async def test_status_json_uses_structured_payload_for_websocket(self):
+        loop, _bus = _make_loop()
+        session = MagicMock()
+        session.get_history.return_value = [{"role": "user"}] * 2
+        loop.sessions.get_or_create.return_value = session
+        loop._start_time = time.time() - 10
+        loop._last_usage = {"prompt_tokens": 1234, "completion_tokens": 56, "cached_tokens": 200}
+        loop.consolidator.estimate_session_prompt_tokens = MagicMock(return_value=(4321, "tiktoken"))
+        loop.subagents.get_running_count_by_session.return_value = 0
+
+        msg = InboundMessage(
+            channel="websocket",
+            sender_id="u1",
+            chat_id="c1",
+            content="/status-json",
+        )
+        response = await loop._process_message(msg)
+
+        assert response is not None
+        assert response.content == ""
+        payload = response.metadata.get("data")
+        assert isinstance(payload, dict)
+        context = payload.get("context")
+        assert isinstance(context, dict)
+        assert context.get("tokens_estimate") == 4321
+        assert context.get("window_total") == loop.context_window_tokens
+        assert response.metadata.get("render_as") == "text"
 
     @pytest.mark.asyncio
     async def test_run_agent_loop_resets_usage_when_provider_omits_it(self):

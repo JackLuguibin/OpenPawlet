@@ -813,9 +813,43 @@ function resolveAssistantGroupId(msg: Message): string {
   return buildReplyGroupUuid(msg);
 }
 
+/**
+ * Build a deterministic row id for one rendered assistant group.
+ *
+ * `reply_group_id` may be reused by the backend in edge cases (e.g. retried
+ * synthetic status turns), so `grp-${reply_group_id}` alone is not guaranteed
+ * unique inside one rendered list. Include the first message anchor to keep
+ * React keys unique while preserving the original `reply_group_id` for logic.
+ */
+function buildAssistantGroupRowId(msg: Message, groupId: string): string {
+  const anchorSeed = [
+    msg.id || "",
+    msg.created_at || msg.timestamp || "",
+    (msg.content || "").slice(0, 64),
+  ].join("|");
+  return `grp-${groupId}-${hashStringToUuid(anchorSeed)}`;
+}
+
 function groupAssistantReplies(messages: Message[]): Message[] {
   const out: Message[] = [];
   let activeGroup: Message | null = null;
+  const usedGroupRowIds = new Set<string>();
+
+  const claimUniqueGroupRowId = (msg: Message, groupId: string): string => {
+    const base = buildAssistantGroupRowId(msg, groupId);
+    if (!usedGroupRowIds.has(base)) {
+      usedGroupRowIds.add(base);
+      return base;
+    }
+    let n = 2;
+    let next = `${base}-${n}`;
+    while (usedGroupRowIds.has(next)) {
+      n += 1;
+      next = `${base}-${n}`;
+    }
+    usedGroupRowIds.add(next);
+    return next;
+  };
 
   const flushGroup = () => {
     if (!activeGroup) {
@@ -846,7 +880,7 @@ function groupAssistantReplies(messages: Message[]): Message[] {
     if (!activeGroup) {
       activeGroup = {
         ...msg,
-        id: `grp-${incomingGroupId}`,
+        id: claimUniqueGroupRowId(msg, incomingGroupId),
         reply_group_id: incomingGroupId,
       };
       continue;
@@ -1531,7 +1565,7 @@ export default function Chat() {
     setStatusJsonLoading(true);
     try {
       sendNanobotMessage({
-        content: "/status",
+        content: "/status-json",
         botId: currentBotId,
       });
     } catch {

@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import sys
+import time
 
 from nanobot import __version__
 from nanobot.bus.events import OutboundMessage
@@ -44,6 +46,49 @@ async def cmd_restart(ctx: CommandContext) -> OutboundMessage:
 
 async def cmd_status(ctx: CommandContext) -> OutboundMessage:
     """Build an outbound status message for a session."""
+    payload, search_usage_text = await _build_status_payload(ctx)
+    return OutboundMessage(
+        channel=ctx.msg.channel,
+        chat_id=ctx.msg.chat_id,
+        content=build_status_content(
+            version=payload["version"],
+            model=payload["model"],
+            start_time=ctx.loop._start_time,
+            last_usage=payload["tokens"],
+            context_window_tokens=payload["context"]["window_total"],
+            session_msg_count=payload["session"]["messages"],
+            context_tokens_estimate=payload["context"]["tokens_estimate"],
+            search_usage_text=search_usage_text,
+            active_task_count=payload["tasks"]["active"],
+            max_completion_tokens=payload["context"]["max_completion_tokens"],
+        ),
+        metadata={**dict(ctx.msg.metadata or {}), "render_as": "text"},
+    )
+
+
+async def cmd_status_json(ctx: CommandContext) -> OutboundMessage:
+    """Build a structured JSON status response for a session."""
+    payload, _ = await _build_status_payload(ctx)
+    # Keep WebSocket status polling lightweight: send structured payload via metadata
+    # and leave text empty to avoid channel_notice parsing overhead.
+    if ctx.msg.channel == "websocket":
+        content = ""
+    else:
+        content = json.dumps(payload, ensure_ascii=False, indent=2)
+    return OutboundMessage(
+        channel=ctx.msg.channel,
+        chat_id=ctx.msg.chat_id,
+        content=content,
+        metadata={
+            **dict(ctx.msg.metadata or {}),
+            "render_as": "text",
+            "data": payload,
+        },
+    )
+
+
+async def _build_status_payload(ctx: CommandContext) -> tuple[dict[str, object], str | None]:
+    """Collect status fields used by both text and JSON commands."""
     loop = ctx.loop
     session = ctx.session or loop.sessions.get_or_create(ctx.key)
     ctx_est = 0
@@ -74,25 +119,35 @@ async def cmd_status(ctx: CommandContext) -> OutboundMessage:
         task_count += loop.subagents.get_running_count_by_session(ctx.key)
     except Exception:
         pass
-    return OutboundMessage(
-        channel=ctx.msg.channel,
-        chat_id=ctx.msg.chat_id,
-        content=build_status_content(
-            version=__version__,
-            model=loop.model,
-            start_time=loop._start_time,
-            last_usage=loop._last_usage,
-            context_window_tokens=loop.context_window_tokens,
-            session_msg_count=len(session.get_history(max_messages=0)),
-            context_tokens_estimate=ctx_est,
-            search_usage_text=search_usage_text,
-            active_task_count=task_count,
-            max_completion_tokens=getattr(
-                getattr(loop.provider, "generation", None), "max_tokens", 8192
-            ),
-        ),
-        metadata={**dict(ctx.msg.metadata or {}), "render_as": "text"},
-    )
+    max_completion_tokens = getattr(getattr(loop.provider, "generation", None), "max_tokens", 8192)
+    ctx_total = max(int(loop.context_window_tokens), 0)
+    ctx_budget = max(ctx_total - int(max_completion_tokens) - 1024, 1)
+    ctx_percent = min(int((ctx_est / ctx_budget) * 100), 999) if ctx_budget > 0 else 0
+    payload: dict[str, object] = {
+        "version": __version__,
+        "model": str(loop.model),
+        "tokens": {
+            "prompt_tokens": int(loop._last_usage.get("prompt_tokens", 0)),
+            "completion_tokens": int(loop._last_usage.get("completion_tokens", 0)),
+            "cached_tokens": int(loop._last_usage.get("cached_tokens", 0)),
+        },
+        "context": {
+            "tokens_estimate": int(ctx_est),
+            "window_total": ctx_total,
+            "input_budget": int(ctx_budget),
+            "percent_used": int(ctx_percent),
+            "max_completion_tokens": int(max_completion_tokens),
+        },
+        "session": {
+            "messages": int(len(session.get_history(max_messages=0))),
+            "key": ctx.key,
+        },
+        "uptime_seconds": max(int(time.time() - loop._start_time), 0),
+        "tasks": {"active": int(task_count)},
+    }
+    if search_usage_text:
+        payload["web_search"] = {"status_text": search_usage_text}
+    return payload, search_usage_text
 
 
 async def cmd_new(ctx: CommandContext) -> OutboundMessage:
@@ -350,6 +405,7 @@ def build_help_text() -> str:
         "/stop — Stop the current task",
         "/restart — Restart the bot",
         "/status — Show bot status",
+        "/status-json — Show bot status as JSON",
         "/dream — Manually trigger Dream consolidation",
         "/dream-log — Show what the last Dream changed",
         "/dream-restore — Revert memory to a previous state",
@@ -363,8 +419,11 @@ def register_builtin_commands(router: CommandRouter) -> None:
     router.priority("/stop", cmd_stop)
     router.priority("/restart", cmd_restart)
     router.priority("/status", cmd_status)
+    router.priority("/status-json", cmd_status_json)
     router.exact("/new", cmd_new)
     router.exact("/status", cmd_status)
+    router.exact("/status-json", cmd_status_json)
+    router.exact("/status_json", cmd_status_json)
     router.exact("/dream", cmd_dream)
     router.exact("/dream-log", cmd_dream_log)
     router.prefix("/dream-log ", cmd_dream_log)
