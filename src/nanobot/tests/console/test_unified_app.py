@@ -231,7 +231,10 @@ def test_queues_snapshot_in_process_mode(app_no_embed) -> None:
     snap = resp.json()
     assert snap["status"] == "ok"
     assert snap["topology"] == {"mode": "in_process"}
-    assert snap["metrics"] == {"inbound_pending": 0, "outbound_pending": 0}
+    # Pending depths are always present; richer counters only show up once a
+    # bus has been wired in (this test runs without an embedded runtime).
+    assert snap["metrics"]["inbound_pending"] == 0
+    assert snap["metrics"]["outbound_pending"] == 0
 
 
 def test_queues_pause_returns_disabled(app_no_embed) -> None:

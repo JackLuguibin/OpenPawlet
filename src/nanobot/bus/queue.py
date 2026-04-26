@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import time as _time
+from collections import deque
 from collections.abc import Iterable
 from typing import Any, Protocol
 
@@ -23,6 +25,14 @@ from nanobot.bus.envelope import (
     produced_at,
 )
 from nanobot.bus.events import AgentEvent, InboundMessage, OutboundMessage
+
+# Sliding-window length used to derive per-second rates exposed via
+# :meth:`MessageBus.stats_snapshot`. 10s matches the legacy ZMQ broker.
+_RATE_WINDOW_S: float = 10.0
+# Maximum number of recent message samples retained in memory. The samples
+# ring buffer is FIFO and resets on process restart - this layout never
+# persists queue traffic to disk.
+_SAMPLE_CAPACITY: int = 200
 
 
 class MessageBusProtocol(Protocol):
@@ -299,6 +309,34 @@ class MessageBus(RequestReplyMixin):
         self._direct_mailbox_lock = asyncio.Lock()
         self._request_waiters: dict[str, asyncio.Future[AgentEvent]] = {}
         self._request_waiters_lock = asyncio.Lock()
+        # ---- in-process stats (queue-manager parity) -----------------
+        # Counters are bumped from the same event loop that owns the
+        # bus, so plain ints suffice (no cross-thread contention).
+        self._counters: dict[str, int] = {
+            "inbound_published": 0,
+            "inbound_consumed": 0,
+            "outbound_published": 0,
+            "outbound_consumed": 0,
+            "events_published": 0,
+            "events_delivered": 0,
+            "events_dropped_mailbox": 0,
+        }
+        # Sliding window of (monotonic_ts, direction) used to compute
+        # per-second rates. Bounded indirectly by _RATE_WINDOW_S since
+        # _trim_rate_window() drops anything older than the window.
+        self._rate_window: deque[tuple[float, str]] = deque()
+        # Ring buffer of recent envelopes for the Queues UI samples panel.
+        # Stored as plain dicts shaped like ``QueueSampleInfo`` from the SPA.
+        self._samples: deque[dict[str, Any]] = deque(maxlen=_SAMPLE_CAPACITY)
+        # Pause flags are advisory display state in the in-process layout
+        # (the bus never blocks). The /queues/pause route returns 409, so
+        # the toggles can never flip True today; we keep the structure for
+        # forward-compatibility with the existing UI/snapshot contract.
+        self._paused: dict[str, bool] = {
+            "inbound": False,
+            "outbound": False,
+            "events": False,
+        }
 
     @staticmethod
     def _target_agent_id(ev: AgentEvent) -> str | None:
@@ -311,18 +349,24 @@ class MessageBus(RequestReplyMixin):
     async def publish_inbound(self, msg: InboundMessage) -> None:
         """Publish a message from a channel to the agent."""
         await self.inbound.put(msg)
+        self._record("inbound_published", msg)
 
     async def consume_inbound(self) -> InboundMessage:
         """Consume the next inbound message (blocks until available)."""
-        return await self.inbound.get()
+        msg = await self.inbound.get()
+        self._record("inbound_consumed", msg, sample=False)
+        return msg
 
     async def publish_outbound(self, msg: OutboundMessage) -> None:
         """Publish a response from the agent to channels."""
         await self.outbound.put(msg)
+        self._record("outbound_published", msg)
 
     async def consume_outbound(self) -> OutboundMessage:
         """Consume the next outbound message (blocks until available)."""
-        return await self.outbound.get()
+        msg = await self.outbound.get()
+        self._record("outbound_consumed", msg, sample=False)
+        return msg
 
     @property
     def inbound_size(self) -> int:
@@ -333,6 +377,116 @@ class MessageBus(RequestReplyMixin):
     def outbound_size(self) -> int:
         """Number of pending outbound messages."""
         return self.outbound.qsize()
+
+    # ---- in-process stats (queue-manager parity) ------------------------
+    @staticmethod
+    def _envelope_to_sample(
+        direction: str,
+        msg: InboundMessage | OutboundMessage | AgentEvent,
+    ) -> dict[str, Any]:
+        """Project *msg* into the SPA ``QueueSampleInfo`` shape."""
+        if isinstance(msg, AgentEvent):
+            kind = f"event:{msg.topic or 'broadcast'}"
+            session_key = ""
+            try:
+                payload = msg.payload or {}
+                if isinstance(payload, dict):
+                    raw = payload.get("session_key") or payload.get("source_session_key")
+                    session_key = str(raw or "")
+            except Exception:  # pragma: no cover - defensive
+                session_key = ""
+            text_bytes = 0
+        elif isinstance(msg, InboundMessage):
+            kind = f"channel:{msg.channel or 'unknown'}"
+            session_key = msg.session_key
+            text_bytes = len((msg.content or "").encode("utf-8", errors="replace"))
+        elif isinstance(msg, OutboundMessage):
+            kind = f"channel:{msg.channel or 'unknown'}"
+            session_key = f"{msg.channel or 'unknown'}:{msg.chat_id or ''}"
+            text_bytes = len((msg.content or "").encode("utf-8", errors="replace"))
+        else:  # pragma: no cover - defensive
+            kind = "unknown"
+            session_key = ""
+            text_bytes = 0
+        return {
+            "at": _time.time(),
+            "direction": direction,
+            "kind": kind,
+            "message_id": str(getattr(msg, "message_id", "") or ""),
+            "session_key": session_key,
+            "bytes": int(text_bytes),
+            "trace_id": str(getattr(msg, "trace_id", "") or ""),
+        }
+
+    def _trim_rate_window(self, now: float | None = None) -> None:
+        """Drop rate-window samples older than ``_RATE_WINDOW_S``."""
+        cutoff = (now if now is not None else _time.monotonic()) - _RATE_WINDOW_S
+        window = self._rate_window
+        while window and window[0][0] < cutoff:
+            window.popleft()
+
+    def _record(
+        self,
+        direction: str,
+        msg: InboundMessage | OutboundMessage | AgentEvent,
+        *,
+        sample: bool = True,
+    ) -> None:
+        """Increment counters and optionally append a UI sample."""
+        try:
+            self._counters[direction] = self._counters.get(direction, 0) + 1
+            now = _time.monotonic()
+            self._rate_window.append((now, direction))
+            self._trim_rate_window(now)
+            if sample:
+                self._samples.append(self._envelope_to_sample(direction, msg))
+        except Exception:  # pragma: no cover - stats must never raise
+            logger.debug("MessageBus stats recording failed", exc_info=True)
+
+    def _rates(self) -> dict[str, float]:
+        """Compute per-second rates from the sliding window."""
+        self._trim_rate_window()
+        window_s = max(_RATE_WINDOW_S, 1e-6)
+        counts: dict[str, int] = {}
+        for _, direction in self._rate_window:
+            counts[direction] = counts.get(direction, 0) + 1
+        # Expose the keys the SPA already references plus a generic mirror
+        # for every counter so future widgets can pick them up.
+        rates = {key: count / window_s for key, count in counts.items()}
+        rates.setdefault("inbound_forwarded", rates.get("inbound_published", 0.0))
+        rates.setdefault("outbound_forwarded", rates.get("outbound_published", 0.0))
+        rates.setdefault("events_per_s", rates.get("events_published", 0.0))
+        return rates
+
+    def stats_snapshot(self) -> dict[str, Any]:
+        """Return a structured snapshot consumed by ``queues_router``."""
+        metrics: dict[str, int] = {
+            "inbound_pending": self.inbound_size,
+            "outbound_pending": self.outbound_size,
+        }
+        for key, value in self._counters.items():
+            metrics[f"{key}_total"] = int(value)
+        return {
+            "metrics": metrics,
+            "rates": self._rates(),
+            "paused": dict(self._paused),
+            "dedupe": {
+                "enabled": False,
+                "hits": 0,
+                "misses": 0,
+                "size": 0,
+                "persist_size": 0,
+            },
+            "samples": self.recent_samples(),
+        }
+
+    def recent_samples(self, limit: int | None = None) -> list[dict[str, Any]]:
+        """Return a copy of the most recent message samples (newest last)."""
+        if limit is None or limit >= len(self._samples):
+            return list(self._samples)
+        if limit <= 0:
+            return []
+        return list(self._samples)[-limit:]
 
     # ---- events surface --------------------------------------------------
     async def publish_event(self, ev: AgentEvent) -> None:
@@ -357,6 +511,10 @@ class MessageBus(RequestReplyMixin):
             ):
                 await sub._deliver(ev)
                 delivered = True
+        self._record("events_published", ev)
+        if delivered:
+            self._counters["events_delivered"] += 1
+            self._rate_window.append((_time.monotonic(), "events_delivered"))
         # If a direct message had no active subscriber, keep it in mailbox
         # so a future subscriber can replay and ack it.
         target_agent_id = self._target_agent_id(ev)
@@ -365,6 +523,7 @@ class MessageBus(RequestReplyMixin):
                 bucket = self._direct_mailbox.setdefault(target_agent_id, {})
                 if ev.message_id not in bucket:
                     bucket[ev.message_id] = ev
+            self._counters["events_dropped_mailbox"] += 1
             logger.info(
                 "queued_direct_message target_agent_id={} message_id={}",
                 target_agent_id,

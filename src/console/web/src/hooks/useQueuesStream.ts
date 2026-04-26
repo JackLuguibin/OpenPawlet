@@ -7,8 +7,10 @@ import type { QueueSnapshot } from '../api/client';
  * Wire protocol (tick frames from the broker):
  *   { type: "tick", at, metrics, rates, paused, connections, dedupe, samples? }
  *
- * The hook connects to the same-origin `/queues-ws` reverse proxy, so the
- * admin token never reaches the browser.  On transient failures the hook
+ * The hook connects same-origin to the FastAPI route registered by
+ * ``console.server.queues_router`` (``/queues/stream``); the legacy
+ * ``/queues-ws`` alias is also accepted server-side for backward
+ * compatibility with older proxies.  On transient failures the hook
  * reconnects with exponential backoff (up to 30s).  The caller can call
  * ``subscribe(['samples'])`` to opt into sample pushes (off by default to
  * keep the tick payload small).
@@ -36,7 +38,7 @@ export interface UseQueuesStreamResult {
 function resolveWsUrl(): string {
   if (typeof window === 'undefined') return '';
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${proto}//${window.location.host}/queues-ws`;
+  return `${proto}//${window.location.host}/queues/stream`;
 }
 
 export function useQueuesStream(enabled: boolean = true): UseQueuesStreamResult {

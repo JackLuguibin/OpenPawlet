@@ -77,11 +77,20 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (p) => p.replace(/^\/nanobot-ws/, '') || '/',
       },
-      // Queue Manager admin stream - proxied by Console (token injection).
+      // Queue admin stream (FastAPI WS route registered by queues_router).
+      // ``/queues/stream`` is the canonical path; ``/queues-ws`` is kept as a
+      // dev-only alias and rewritten so it still hits the same handler if any
+      // older client uses it.
+      '/queues': {
+        target: `http://${host}:${port}`,
+        changeOrigin: true,
+        ws: true,
+      },
       '/queues-ws': {
         target: `ws://${host}:${port}`,
         ws: true,
         changeOrigin: true,
+        rewrite: () => '/queues/stream',
       },
     },
   },
