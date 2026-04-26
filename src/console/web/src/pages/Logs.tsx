@@ -1,8 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type UIEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Alert, Button, Input, Switch, Tooltip, Tabs } from 'antd';
-import { CopyOutlined, CheckOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Alert, Button, Input, Switch, Tooltip } from 'antd';
+import {
+  CopyOutlined,
+  CheckOutlined,
+  ReloadOutlined,
+  DeleteOutlined,
+  VerticalAlignTopOutlined,
+  VerticalAlignBottomOutlined,
+} from '@ant-design/icons';
 import { FileText, Terminal } from 'lucide-react';
 import { useAppStore } from '../store';
 import * as api from '../api/client';
@@ -11,8 +18,9 @@ import { RuntimeLogView } from '../components/RuntimeLogView';
 import { formatQueryError } from '../utils/errors';
 import type { RuntimeLogChunk } from '../api/types';
 
-/** Default tail depth for runtime log API; Tab UI replaces per-source fetches. */
-const RUNTIME_LOG_MAX_LINES = 2000;
+/** Lazy loading: start shallow, then expand on demand. */
+const RUNTIME_LOG_INITIAL_LINES = 300;
+const RUNTIME_LOG_LOAD_STEP = 300;
 
 function filterLines(text: string, q: string): string {
   if (!q.trim()) return text;
@@ -32,25 +40,42 @@ type LogPanelVariant = 'stacked' | 'tab';
 function LogPanel({
   label,
   chunk,
+  searchQuery,
+  onSearchChange,
   onCopy,
+  onBodyScroll,
   copied,
   t,
   variant = 'stacked',
 }: {
   label: string;
   chunk: RuntimeLogChunk;
+  searchQuery: string;
+  onSearchChange: (value: string) => void;
   onCopy: () => void;
+  onBodyScroll?: (e: UIEvent<HTMLDivElement>) => void;
   copied: boolean;
   t: (k: string) => string;
   variant?: LogPanelVariant;
 }) {
   const showMissing = !chunk.exists;
+  const bodyRef = useRef<HTMLDivElement | null>(null);
   const headerMain =
     variant === 'tab' ? null : (
       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
         <Terminal className="h-4 w-4" aria-hidden />
       </div>
     );
+
+  const scrollToTop = () => {
+    bodyRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const scrollToBottom = () => {
+    const el = bodyRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+  };
 
   return (
     <div
@@ -103,16 +128,46 @@ function LogPanel({
             </Tooltip>
           </div>
         </div>
-        <Button
-          type="default"
-          size="small"
-          className="shrink-0"
-          icon={copied ? <CheckOutlined className="text-emerald-500" /> : <CopyOutlined />}
-          onClick={onCopy}
-          disabled={showMissing && !chunk.text}
-        >
-          {t('logs.copyBlock')}
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          <Input.Search
+            allowClear
+            size="middle"
+            placeholder={t('logs.searchPlaceholder')}
+            value={searchQuery}
+            onChange={(e) => onSearchChange(e.target.value)}
+            className="w-[220px] min-w-[180px]"
+          />
+          <Tooltip title={t('logs.scrollTop')}>
+            <Button
+              type="default"
+              size="middle"
+              className="shrink-0"
+              icon={<VerticalAlignTopOutlined />}
+              onClick={scrollToTop}
+              aria-label={t('logs.scrollTop')}
+            />
+          </Tooltip>
+          <Tooltip title={t('logs.scrollBottom')}>
+            <Button
+              type="default"
+              size="middle"
+              className="shrink-0"
+              icon={<VerticalAlignBottomOutlined />}
+              onClick={scrollToBottom}
+              aria-label={t('logs.scrollBottom')}
+            />
+          </Tooltip>
+          <Button
+            type="default"
+            size="middle"
+            className="shrink-0"
+            icon={copied ? <CheckOutlined className="text-emerald-500" /> : <CopyOutlined />}
+            onClick={onCopy}
+            disabled={showMissing && !chunk.text}
+          >
+            {t('logs.copyBlock')}
+          </Button>
+        </div>
       </div>
 
       <div
@@ -135,9 +190,12 @@ function LogPanel({
             .filter(Boolean)
             .join(' ')}
           style={{ scrollbarGutter: 'stable' }}
+          onScroll={onBodyScroll}
+          ref={bodyRef}
         >
           <RuntimeLogView
             text={chunk.text || (showMissing ? '' : t('logs.empty'))}
+            newestFirst
             aria-label={label}
             className="min-h-0"
           />
@@ -153,31 +211,36 @@ export default function Logs() {
   const [searchQuery, setSearchQuery] = useState('');
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
-  const [activeLogTab, setActiveLogTab] = useState<'nanobot' | 'console'>('nanobot');
+  const [isClearing, setIsClearing] = useState(false);
+  const [mergedChunk, setMergedChunk] = useState<RuntimeLogChunk | null>(null);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [isFetchingOlder, setIsFetchingOlder] = useState(false);
+  const autoLoadLockedRef = useRef(false);
+  const lastScrollTopRef = useRef(0);
+  const lastAutoLoadAtRef = useRef(0);
 
   const { data, isLoading, error, refetch, isFetching } = useQuery({
-    queryKey: ['runtime-logs', 'all', RUNTIME_LOG_MAX_LINES],
-    queryFn: () => api.getRuntimeLogs('all', RUNTIME_LOG_MAX_LINES),
+    queryKey: ['runtime-logs', 'all', 'first-page', RUNTIME_LOG_INITIAL_LINES],
+    queryFn: () => api.getRuntimeLogs('all', { limit: RUNTIME_LOG_INITIAL_LINES }),
     refetchInterval: autoRefresh ? 5000 : false,
   });
 
-  const displayChunks = useMemo(() => {
-    const chunks = data?.chunks ?? [];
-    if (!searchQuery.trim()) return chunks;
-    return chunks.map((c) => ({
-      ...c,
-      text: filterLines(c.text, searchQuery),
-    }));
-  }, [data?.chunks, searchQuery]);
-
   useEffect(() => {
-    if (displayChunks.length === 0) return;
-    const keys = new Set(displayChunks.map((c) => c.source));
-    if (!keys.has(activeLogTab)) {
-      const first = displayChunks[0]!.source;
-      setActiveLogTab(first);
+    const first = data?.chunks?.[0];
+    if (!first) {
+      setMergedChunk(null);
+      setNextCursor(null);
+      return;
     }
-  }, [displayChunks, activeLogTab]);
+    setMergedChunk(first);
+    setNextCursor(first.next_cursor ?? null);
+  }, [data]);
+
+  const displayChunks = useMemo(() => {
+    if (!mergedChunk) return [];
+    if (!searchQuery.trim()) return [mergedChunk];
+    return [{ ...mergedChunk, text: filterLines(mergedChunk.text, searchQuery) }];
+  }, [mergedChunk, searchQuery]);
 
   const copyText = async (key: string, text: string) => {
     try {
@@ -187,6 +250,77 @@ export default function Logs() {
     } catch {
       addToast({ type: 'error', message: t('logs.copyFailed') });
     }
+  };
+
+  const clearLogs = async () => {
+    setIsClearing(true);
+    try {
+      await api.clearRuntimeLogs();
+      addToast({ type: 'success', message: t('logs.clearSuccess') });
+      setMergedChunk(null);
+      setNextCursor(null);
+      await refetch();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      addToast({ type: 'error', message: t('logs.clearFailed', { error: message }) });
+    } finally {
+      setIsClearing(false);
+    }
+  };
+
+  const canLoadMore = nextCursor != null;
+
+  const loadMore = async () => {
+    if (!nextCursor || isFetchingOlder) return;
+    setIsFetchingOlder(true);
+    try {
+      const older = await api.getRuntimeLogs('all', {
+        limit: RUNTIME_LOG_LOAD_STEP,
+        cursor: nextCursor,
+      });
+      const olderChunk = older.chunks?.[0];
+      if (!olderChunk) return;
+      setMergedChunk((prev) => {
+        if (!prev) return olderChunk;
+        // Older page goes before current text so chronological order stays stable.
+        return {
+          ...prev,
+          text: `${olderChunk.text}${prev.text}`,
+          truncated: olderChunk.has_more,
+          has_more: olderChunk.has_more,
+          next_cursor: olderChunk.next_cursor ?? null,
+        };
+      });
+      setNextCursor(olderChunk.next_cursor ?? null);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      addToast({ type: 'error', message: t('logs.loadError', { error: message }) });
+    } finally {
+      setIsFetchingOlder(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!isFetching && !isFetchingOlder) {
+      autoLoadLockedRef.current = false;
+    }
+  }, [isFetching, isFetchingOlder]);
+
+  const handleLogBodyScroll = (e: UIEvent<HTMLDivElement>) => {
+    if (!canLoadMore || isFetching || isFetchingOlder || autoLoadLockedRef.current) return;
+    const el = e.currentTarget;
+    const now = Date.now();
+    const currentTop = el.scrollTop;
+    const movingDown = currentTop > lastScrollTopRef.current + 2;
+    lastScrollTopRef.current = currentTop;
+    if (!movingDown) return;
+    // Throttle auto-loads so one continuous scroll does not burst multiple pages.
+    if (now - lastAutoLoadAtRef.current < 500) return;
+    const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    if (distanceToBottom > 80) return;
+    autoLoadLockedRef.current = true;
+    lastAutoLoadAtRef.current = now;
+    void loadMore();
   };
 
   return (
@@ -203,23 +337,29 @@ export default function Logs() {
               </p>
             </div>
             <div className="flex w-full min-w-0 flex-col gap-2.5 sm:flex-row sm:items-center sm:gap-3 lg:max-w-[min(100%,32rem)] lg:shrink-0 xl:max-w-[36rem]">
-              <Input.Search
-                allowClear
-                placeholder={t('logs.searchPlaceholder')}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="min-w-0 sm:flex-1"
-              />
               <div className="flex shrink-0 items-center justify-start gap-3 sm:ms-auto sm:justify-end">
                 <label className="mb-0 flex cursor-pointer items-center gap-2 text-sm leading-none text-slate-600 dark:text-slate-300">
                   <Switch checked={autoRefresh} onChange={setAutoRefresh} size="small" />
                   <span className="whitespace-nowrap">{t('logs.autoRefresh')}</span>
                 </label>
                 <Button
+                  danger
+                  icon={<DeleteOutlined />}
+                  loading={isClearing}
+                  onClick={clearLogs}
+                  disabled={isLoading}
+                >
+                  {t('logs.clear')}
+                </Button>
+                <Button
                   type="primary"
                   icon={<ReloadOutlined />}
                   loading={isFetching}
-                  onClick={() => refetch()}
+                  onClick={() => {
+                    setMergedChunk(null);
+                    setNextCursor(null);
+                    void refetch();
+                  }}
                   disabled={isLoading}
                   className="shadow-sm"
                 >
@@ -256,54 +396,42 @@ export default function Logs() {
 
           {displayChunks.length === 1 && (
             <LogPanel
-              label={
-                displayChunks[0]!.source === 'nanobot'
-                  ? t('logs.sourceNanobot')
-                  : t('logs.sourceConsole')
-              }
+              label={t('logs.sourceConsole')}
               chunk={displayChunks[0]!}
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
               copied={copied === chunkKey(displayChunks[0]!)}
               onCopy={() => copyText(chunkKey(displayChunks[0]!), displayChunks[0]!.text || '')}
+              onBodyScroll={handleLogBodyScroll}
               t={t}
               variant="stacked"
             />
           )}
 
           {displayChunks.length > 1 && (
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-slate-200/90 bg-white shadow-sm dark:border-slate-600/60 dark:bg-slate-900/30 dark:shadow-none">
-              <Tabs
-                activeKey={activeLogTab}
-                onChange={(key) => setActiveLogTab(key as 'nanobot' | 'console')}
-                type="line"
-                size="middle"
-                className="logs-runtime-tabs text-slate-800 dark:text-slate-100 [&_.ant-tabs-nav::before]:border-slate-200/80 dark:[&_.ant-tabs-nav::before]:border-slate-600/50"
-                items={displayChunks.map((chunk) => {
-                  const k = chunkKey(chunk);
-                  const label =
-                    chunk.source === 'nanobot' ? t('logs.sourceNanobot') : t('logs.sourceConsole');
-                  return {
-                    key: k,
-                    label: (
-                      <span className="inline-flex max-w-[200px] items-center gap-1.5 sm:max-w-none">
-                        <Terminal className="h-3.5 w-3.5 opacity-60" aria-hidden />
-                        <span className="truncate">{label}</span>
-                      </span>
-                    ),
-                    children: (
-                      <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
-                        <LogPanel
-                          label={label}
-                          chunk={chunk}
-                          copied={copied === k}
-                          onCopy={() => copyText(k, chunk.text || '')}
-                          t={t}
-                          variant="tab"
-                        />
-                      </div>
-                    ),
-                  };
-                })}
-              />
+            <div className="flex min-h-0 flex-1 flex-col gap-3">
+              {displayChunks.map((chunk) => {
+                const k = chunkKey(chunk);
+                return (
+                  <LogPanel
+                    key={k}
+                    label={t('logs.sourceConsole')}
+                    chunk={chunk}
+                    searchQuery={searchQuery}
+                    onSearchChange={setSearchQuery}
+                    copied={copied === k}
+                    onCopy={() => copyText(k, chunk.text || '')}
+                    onBodyScroll={handleLogBodyScroll}
+                    t={t}
+                    variant="stacked"
+                  />
+                );
+              })}
+            </div>
+          )}
+          {isFetchingOlder && canLoadMore && (
+            <div className="mt-3 text-center text-xs text-slate-500 dark:text-slate-400">
+              {t('logs.loadingMore')}
             </div>
           )}
         </div>

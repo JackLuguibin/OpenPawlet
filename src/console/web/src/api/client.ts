@@ -415,14 +415,33 @@ export async function getToolLogs(
 // ====================
 
 export async function getRuntimeLogs(
-  source: 'all' | 'nanobot' | 'console' = 'all',
-  maxLines = 2000
+  source: 'all' | 'console' = 'all',
+  options?: {
+    limit?: number;
+    cursor?: string | null;
+    /** Legacy: still supported by backend, avoid for new code. */
+    maxLines?: number;
+  }
 ): Promise<RuntimeLogsData> {
   const params = new URLSearchParams({
     source,
-    max_lines: String(maxLines),
   });
+  if (options?.limit != null) {
+    params.set('limit', String(options.limit));
+  }
+  if (options?.maxLines != null) {
+    params.set('max_lines', String(options.maxLines));
+  }
+  if (options?.cursor) {
+    params.set('cursor', options.cursor);
+  }
   return fetchJson<RuntimeLogsData>(`${API_BASE}/runtime-logs?${params}`);
+}
+
+export async function clearRuntimeLogs(): Promise<{ status: string; path: string }> {
+  return fetchJson<{ status: string; path: string }>(`${API_BASE}/runtime-logs/clear`, {
+    method: 'POST',
+  });
 }
 
 // ====================

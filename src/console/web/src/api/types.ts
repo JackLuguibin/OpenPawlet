@@ -76,11 +76,13 @@ export interface MCPStatus {
 }
 
 export interface RuntimeLogChunk {
-  source: 'nanobot' | 'console';
+  source: 'console';
   path: string;
   text: string;
   exists: boolean;
   truncated: boolean;
+  has_more: boolean;
+  next_cursor?: string | null;
 }
 
 export interface RuntimeLogsData {

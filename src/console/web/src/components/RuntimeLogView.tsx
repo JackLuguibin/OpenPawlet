@@ -36,17 +36,25 @@ export interface RuntimeLogViewProps {
   text: string;
   /** Filter substring (client-side, already applied in text before render if parent prefers) */
   className?: string;
+  /** Render newest lines first (top-down). */
+  newestFirst?: boolean;
   'aria-label'?: string;
 }
 
 /**
  * Renders log text with per-line level coloring (loguru-style).
  */
-export function RuntimeLogView({ text, className = '', ...rest }: RuntimeLogViewProps) {
+export function RuntimeLogView({
+  text,
+  className = '',
+  newestFirst = false,
+  ...rest
+}: RuntimeLogViewProps) {
   const lines = useMemo(() => {
     if (!text) return [];
-    return text.replace(/\n$/, '').split('\n');
-  }, [text]);
+    const base = text.replace(/\n$/, '').split('\n');
+    return newestFirst ? [...base].reverse() : base;
+  }, [text, newestFirst]);
 
   return (
     <div
