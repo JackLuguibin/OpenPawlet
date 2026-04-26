@@ -1040,6 +1040,47 @@ export async function getAgentsSystemStatus(botId: string): Promise<import('./ty
   );
 }
 
+// --------------------
+// Per-agent bootstrap files (independent persona)
+// --------------------
+
+export async function getAgentBootstrap(
+  botId: string,
+  agentId: string,
+): Promise<import('./types_agents').AgentBootstrapFiles> {
+  return fetchJson<import('./types_agents').AgentBootstrapFiles>(
+    `${API_BASE}/bots/${encodeURIComponent(botId)}/agents/${encodeURIComponent(agentId)}/bootstrap`,
+  );
+}
+
+export async function updateAgentBootstrap(
+  botId: string,
+  agentId: string,
+  key: import('./types_agents').AgentBootstrapKey,
+  content: string,
+): Promise<{ key: string }> {
+  return fetchJson<{ key: string }>(
+    `${API_BASE}/bots/${encodeURIComponent(botId)}/agents/${encodeURIComponent(agentId)}/bootstrap/${encodeURIComponent(key)}`,
+    {
+      method: 'PUT',
+      body: JSON.stringify({ content }),
+    },
+  );
+}
+
+export async function deleteAgentBootstrap(
+  botId: string,
+  agentId: string,
+  key: import('./types_agents').AgentBootstrapKey,
+): Promise<{ key: string }> {
+  return fetchJson<{ key: string }>(
+    `${API_BASE}/bots/${encodeURIComponent(botId)}/agents/${encodeURIComponent(agentId)}/bootstrap/${encodeURIComponent(key)}`,
+    {
+      method: 'DELETE',
+    },
+  );
+}
+
 // ====================
 // Teams API
 // ====================

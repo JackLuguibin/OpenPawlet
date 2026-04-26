@@ -29,6 +29,9 @@ class ManagedAgentStatus:
     stop_reason: str | None = None
     error: str | None = None
     session_key: str | None = None
+    # Profile id when the sub-agent ran with an independent persona profile
+    # (see :class:`nanobot.config.profile.AgentProfile`).
+    profile_id: str | None = None
 
 
 _STOP_TIMEOUT_S = 10.0
@@ -118,6 +121,7 @@ class UnifiedAgentManager:
         origin_channel: str = "api",
         origin_chat_id: str = "manager",
         session_key: str | None = None,
+        profile_id: str | None = None,
     ) -> str:
         """Create and start a subagent task; returns subagent runtime id."""
         async with self._lifecycle_lock:
@@ -131,6 +135,7 @@ class UnifiedAgentManager:
                 session_key=session_key,
                 parent_agent_id=parent_agent_id or self.main_agent_id,
                 team_id=team_id,
+                profile_id=profile_id,
             )
             return f"sub:{tid}"
 
@@ -215,5 +220,6 @@ class UnifiedAgentManager:
             stop_reason=getattr(st, "stop_reason", None),
             error=getattr(st, "error", None),
             session_key=getattr(st, "session_key", None),
+            profile_id=getattr(st, "profile_id", None),
         )
 

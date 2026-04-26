@@ -170,6 +170,7 @@ async def start_subagent(
             origin_channel=body.origin_channel or "api",
             origin_chat_id=body.origin_chat_id or "manager",
             session_key=body.session_key,
+            profile_id=body.profile_id,
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc

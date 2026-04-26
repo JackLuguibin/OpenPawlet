@@ -17,7 +17,14 @@ import {
   Checkbox,
   Upload,
   Switch,
+  Collapse,
 } from 'antd';
+import {
+  AgentProfilePanel,
+  applyExtrasToUpdate,
+  extractExtrasFromAgent,
+  type AgentProfileExtras,
+} from '../components/AgentProfilePanel';
 import {
   PlusOutlined,
   DeleteOutlined,
@@ -138,6 +145,9 @@ export default function Agents({ embedded = false }: { embedded?: boolean } = {}
   });
   const [createFormCategory, setCreateFormCategory] = useState('general');
   const [editFormCategory, setEditFormCategory] = useState('general');
+  const [editExtras, setEditExtras] = useState<AgentProfileExtras>(() =>
+    extractExtrasFromAgent(null),
+  );
   const [formData, setFormData] = useState<AgentCreateRequest>({
     name: '',
     description: '',
@@ -418,6 +428,7 @@ export default function Agents({ embedded = false }: { embedded?: boolean } = {}
       collaborators: agent.collaborators,
       enabled: agent.enabled,
     });
+    setEditExtras(extractExtrasFromAgent(agent));
     setTopicIssues({
       invalidFormat: [],
       tooLong: [],
@@ -432,7 +443,7 @@ export default function Agents({ embedded = false }: { embedded?: boolean } = {}
       if (!topics) return;
       updateMutation.mutate({
         agentId: selectedAgent.id,
-        data: { ...formData, topics },
+        data: applyExtrasToUpdate({ ...formData, topics }, editExtras),
         displayCategory: editFormCategory,
       });
     }
@@ -1083,6 +1094,27 @@ export default function Agents({ embedded = false }: { embedded?: boolean } = {}
               onChange={(checked) => setFormData({ ...formData, enabled: checked })}
             />
           </Form.Item>
+
+          <Collapse
+            className="mt-4"
+            items={[
+              {
+                key: 'profile',
+                label: (
+                  <span className="text-xs uppercase tracking-wide font-semibold">
+                    {t('agentProfile.collapseTitle', 'Independent persona / tools / model')}
+                  </span>
+                ),
+                children: (
+                  <AgentProfilePanel
+                    agent={selectedAgent}
+                    extras={editExtras}
+                    onChange={setEditExtras}
+                  />
+                ),
+              },
+            ]}
+          />
         </Form>
       </Modal>
 

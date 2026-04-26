@@ -12,6 +12,13 @@ from loguru import logger
 
 from nanobot.agent.context import ContextBuilder
 from nanobot.agent.hook import AgentHook, AgentHookContext
+from nanobot.agent.profile_resolver import (
+    ProfileStore,
+    ResolvedProfile,
+    build_profile_system_prompt,
+    is_tool_allowed,
+    resolve_profile,
+)
 from nanobot.agent.runner import AgentRunner, AgentRunSpec
 from nanobot.agent.skills import BUILTIN_SKILLS_DIR
 from nanobot.agent.tools.events import (
@@ -30,7 +37,13 @@ from nanobot.agent.tools.web import WebFetchTool, WebSearchTool
 from nanobot.bus.envelope import TARGET_BROADCAST
 from nanobot.bus.events import AgentEvent, InboundMessage
 from nanobot.bus.queue import MessageBus
-from nanobot.config.schema import ExecToolConfig, WebToolsConfig
+from nanobot.config.profile import AgentProfile
+from nanobot.config.schema import (
+    AgentDefaults,
+    ExecToolConfig,
+    ToolsConfig,
+    WebToolsConfig,
+)
 from nanobot.providers.base import LLMProvider
 from nanobot.utils.prompt_templates import render_template
 
@@ -55,6 +68,7 @@ class SubagentStatus:
     origin_chat_id: str | None = None
     session_key: str | None = None
     completed_at: float | None = None
+    profile_id: str | None = None  # Resolved profile (None when running as inherited sub-agent)
 
 
 class _SubagentHook(AgentHook):
@@ -101,6 +115,9 @@ class SubagentManager:
         disabled_skills: list[str] | None = None,
         timezone: str | None = None,
         parent_agent_id: str = "",
+        profile_store: ProfileStore | None = None,
+        base_defaults: AgentDefaults | None = None,
+        base_tools: ToolsConfig | None = None,
     ):
         self.provider = provider
         self.workspace = workspace
@@ -118,6 +135,22 @@ class SubagentManager:
         self._task_statuses: dict[str, SubagentStatus] = {}
         self._session_tasks: dict[str, set[str]] = {}  # session_key -> {task_id, ...}
         self._task_history_limit = 200
+        self.profile_store = profile_store or ProfileStore(workspace)
+        # Base configs used when resolving profiles into concrete settings.
+        # Fall back to a model-pinned AgentDefaults so resolution still works
+        # in lightweight tests that don't construct a full Config.
+        self._base_defaults = base_defaults or AgentDefaults(
+            workspace=str(workspace),
+            model=self.model,
+            max_tool_result_chars=self.max_tool_result_chars,
+            disabled_skills=list(self.disabled_skills),
+            timezone=self.timezone or "UTC",
+        )
+        self._base_tools = base_tools or ToolsConfig(
+            web=self.web_config,
+            exec=self.exec_config,
+            restrict_to_workspace=self.restrict_to_workspace,
+        )
 
     async def spawn(
         self,
@@ -128,6 +161,8 @@ class SubagentManager:
         session_key: str | None = None,
         parent_agent_id: str | None = None,
         team_id: str | None = None,
+        profile_id: str | None = None,
+        profile_inline: AgentProfile | None = None,
     ) -> str:
         """Spawn a subagent to execute a task in the background."""
         task_id = await self.spawn_task(
@@ -138,11 +173,17 @@ class SubagentManager:
             session_key=session_key,
             parent_agent_id=parent_agent_id,
             team_id=team_id,
+            profile_id=profile_id,
+            profile_inline=profile_inline,
         )
         display_label = (label or task[:30]).strip() or task_id
         if len(display_label) > 30:
             display_label = f"{display_label[:30]}..."
-        return f"Subagent [{display_label}] started (id: {task_id}). I'll notify you when it completes."
+        suffix = f" with profile '{profile_id}'" if profile_id else ""
+        return (
+            f"Subagent [{display_label}]{suffix} started (id: {task_id}). "
+            "I'll notify you when it completes."
+        )
 
     async def spawn_task(
         self,
@@ -154,11 +195,20 @@ class SubagentManager:
         session_key: str | None = None,
         parent_agent_id: str | None = None,
         team_id: str | None = None,
+        profile_id: str | None = None,
+        profile_inline: AgentProfile | None = None,
     ) -> str:
         """Spawn a subagent task and return the generated task id."""
         task_id = str(uuid.uuid4())[:8]
         display_label = label or task[:30] + ("..." if len(task) > 30 else "")
         origin = {"channel": origin_channel, "chat_id": origin_chat_id, "session_key": session_key}
+
+        # Resolve the profile up-front so callers see ``ValueError`` for
+        # unknown ids before a background task is created.
+        resolved = self._resolve_profile(profile_id=profile_id, profile_inline=profile_inline)
+        effective_profile_id = (
+            resolved.profile.id if resolved is not None else None
+        )
 
         status = SubagentStatus(
             task_id=task_id,
@@ -170,11 +220,12 @@ class SubagentManager:
             origin_channel=origin_channel,
             origin_chat_id=origin_chat_id,
             session_key=session_key,
+            profile_id=effective_profile_id,
         )
         self._task_statuses[task_id] = status
 
         bg_task = asyncio.create_task(
-            self._run_subagent(task_id, task, display_label, origin, status)
+            self._run_subagent(task_id, task, display_label, origin, status, resolved)
         )
         self._running_tasks[task_id] = bg_task
         if session_key:
@@ -204,63 +255,126 @@ class SubagentManager:
         logger.info("Spawned subagent [{}]: {}", task_id, display_label)
         return task_id
 
-    async def _run_subagent(
+    def _resolve_profile(
         self,
+        *,
+        profile_id: str | None,
+        profile_inline: AgentProfile | None,
+    ) -> ResolvedProfile | None:
+        """Return the resolved profile, or ``None`` when no override is requested."""
+        if profile_inline is not None:
+            profile = profile_inline
+        elif profile_id:
+            profile = self.profile_store.load(profile_id)
+            if profile is None:
+                raise ValueError(f"Unknown sub-agent profile: {profile_id!r}")
+        else:
+            return None
+        return resolve_profile(
+            profile,
+            base_defaults=self._base_defaults,
+            base_tools=self._base_tools,
+            workspace=self.workspace,
+        )
+
+    def _build_subagent_tools(
+        self,
+        *,
         task_id: str,
-        task: str,
-        label: str,
         origin: dict[str, str],
-        status: SubagentStatus,
-    ) -> None:
-        """Execute the subagent task and announce the result."""
-        logger.info("Subagent [{}] starting task: {}", task_id, label)
+        resolved: ResolvedProfile | None,
+    ) -> ToolRegistry:
+        """Register sub-agent tools, honouring the profile's allowed_tools whitelist."""
+        if resolved is not None:
+            web = resolved.web_config
+            exec_cfg = resolved.exec_config
+            restrict = resolved.restrict_to_workspace
+            allowed = resolved.allowed_tools
+            max_chars = resolved.max_tool_result_chars
+        else:
+            web = self.web_config
+            exec_cfg = self.exec_config
+            restrict = self.restrict_to_workspace
+            allowed = None
+            max_chars = self.max_tool_result_chars
+        del max_chars  # currently informational; runner pulls it from spec
 
-        async def _on_checkpoint(payload: dict) -> None:
-            status.phase = payload.get("phase", status.phase)
-            status.iteration = payload.get("iteration", status.iteration)
+        tools = ToolRegistry()
+        allowed_dir = self.workspace if (restrict or exec_cfg.sandbox) else None
+        extra_read = [BUILTIN_SKILLS_DIR] if allowed_dir else None
 
-        try:
-            # Build subagent tools (no message tool, no spawn tool)
-            tools = ToolRegistry()
-            allowed_dir = (
-                self.workspace if (self.restrict_to_workspace or self.exec_config.sandbox) else None
+        def _register(name: str, factory) -> None:
+            if not is_tool_allowed(name, allowed):
+                return
+            tools.register(factory())
+
+        _register(
+            "read_file",
+            lambda: ReadFileTool(
+                workspace=self.workspace,
+                allowed_dir=allowed_dir,
+                extra_allowed_dirs=extra_read,
+            ),
+        )
+        _register(
+            "write_file",
+            lambda: WriteFileTool(workspace=self.workspace, allowed_dir=allowed_dir),
+        )
+        _register(
+            "edit_file",
+            lambda: EditFileTool(workspace=self.workspace, allowed_dir=allowed_dir),
+        )
+        _register(
+            "list_dir",
+            lambda: ListDirTool(workspace=self.workspace, allowed_dir=allowed_dir),
+        )
+        _register(
+            "glob",
+            lambda: GlobTool(workspace=self.workspace, allowed_dir=allowed_dir),
+        )
+        _register(
+            "grep",
+            lambda: GrepTool(workspace=self.workspace, allowed_dir=allowed_dir),
+        )
+        if exec_cfg.enable:
+            _register(
+                "exec",
+                lambda: ExecTool(
+                    working_dir=str(self.workspace),
+                    timeout=exec_cfg.timeout,
+                    restrict_to_workspace=restrict,
+                    sandbox=exec_cfg.sandbox,
+                    path_append=exec_cfg.path_append,
+                    allowed_env_keys=exec_cfg.allowed_env_keys,
+                ),
             )
-            extra_read = [BUILTIN_SKILLS_DIR] if allowed_dir else None
-            tools.register(
-                ReadFileTool(
-                    workspace=self.workspace, allowed_dir=allowed_dir, extra_allowed_dirs=extra_read
-                )
+        if web.enable:
+            _register(
+                "web_search",
+                lambda: WebSearchTool(config=web.search, proxy=web.proxy),
             )
-            tools.register(WriteFileTool(workspace=self.workspace, allowed_dir=allowed_dir))
-            tools.register(EditFileTool(workspace=self.workspace, allowed_dir=allowed_dir))
-            tools.register(ListDirTool(workspace=self.workspace, allowed_dir=allowed_dir))
-            tools.register(GlobTool(workspace=self.workspace, allowed_dir=allowed_dir))
-            tools.register(GrepTool(workspace=self.workspace, allowed_dir=allowed_dir))
-            if self.exec_config.enable:
-                tools.register(
-                    ExecTool(
-                        working_dir=str(self.workspace),
-                        timeout=self.exec_config.timeout,
-                        restrict_to_workspace=self.restrict_to_workspace,
-                        sandbox=self.exec_config.sandbox,
-                        path_append=self.exec_config.path_append,
-                        allowed_env_keys=self.exec_config.allowed_env_keys,
-                    )
-                )
-            if self.web_config.enable:
-                tools.register(
-                    WebSearchTool(config=self.web_config.search, proxy=self.web_config.proxy)
-                )
-                tools.register(WebFetchTool(proxy=self.web_config.proxy))
-            # Subagents get the event tools so they can talk back to
-            # the parent agent (via send_to_agent) or listen for
-            # system events; they still don't get message/spawn, matching
-            # the existing isolation policy.
-            subagent_id = f"sub:{task_id}"
-            tools.register(PublishEventTool(bus=self.bus, default_source_agent=subagent_id))
-            tools.register(SendToAgentTool(bus=self.bus, default_source_agent=subagent_id))
-            tools.register(SendToAgentWaitReplyTool(bus=self.bus, default_source_agent=subagent_id))
-            tools.register(ReplyToAgentRequestTool(bus=self.bus, default_source_agent=subagent_id))
+            _register("web_fetch", lambda: WebFetchTool(proxy=web.proxy))
+
+        # Event channel tools (used by sub-agents to talk back / listen).
+        # Subscribe tool's context is set after registration.
+        subagent_id = f"sub:{task_id}"
+        _register(
+            "publish_event",
+            lambda: PublishEventTool(bus=self.bus, default_source_agent=subagent_id),
+        )
+        _register(
+            "send_to_agent",
+            lambda: SendToAgentTool(bus=self.bus, default_source_agent=subagent_id),
+        )
+        _register(
+            "send_to_agent_wait_reply",
+            lambda: SendToAgentWaitReplyTool(bus=self.bus, default_source_agent=subagent_id),
+        )
+        _register(
+            "reply_to_agent_request",
+            lambda: ReplyToAgentRequestTool(bus=self.bus, default_source_agent=subagent_id),
+        )
+        if is_tool_allowed("subscribe_event", allowed):
             subscribe_tool = SubscribeEventTool(
                 bus=self.bus,
                 default_agent_id=subagent_id,
@@ -273,8 +387,50 @@ class SubagentManager:
                 chat_id=origin["chat_id"],
             )
             tools.register(subscribe_tool)
-            tools.register(ListEventSubscribersTool(bus=self.bus))
-            system_prompt = self._build_subagent_prompt()
+        _register(
+            "list_event_subscribers",
+            lambda: ListEventSubscribersTool(bus=self.bus),
+        )
+        return tools
+
+    async def _run_subagent(
+        self,
+        task_id: str,
+        task: str,
+        label: str,
+        origin: dict[str, str],
+        status: SubagentStatus,
+        resolved: ResolvedProfile | None = None,
+    ) -> None:
+        """Execute the subagent task and announce the result."""
+        logger.info("Subagent [{}] starting task: {}", task_id, label)
+
+        async def _on_checkpoint(payload: dict) -> None:
+            status.phase = payload.get("phase", status.phase)
+            status.iteration = payload.get("iteration", status.iteration)
+
+        try:
+            tools = self._build_subagent_tools(
+                task_id=task_id, origin=origin, resolved=resolved
+            )
+
+            if resolved is not None:
+                system_prompt = build_profile_system_prompt(
+                    resolved,
+                    workspace=self.workspace,
+                    channel=origin.get("channel"),
+                    chat_id=origin.get("chat_id"),
+                    timezone=self.timezone,
+                )
+                effective_model = resolved.model
+                effective_max_chars = resolved.max_tool_result_chars
+                effective_max_iter = resolved.defaults.max_tool_iterations
+            else:
+                system_prompt = self._build_subagent_prompt()
+                effective_model = self.model
+                effective_max_chars = self.max_tool_result_chars
+                effective_max_iter = 15
+
             runtime = ContextBuilder._build_runtime_context(
                 origin["channel"],
                 origin["chat_id"],
@@ -289,9 +445,9 @@ class SubagentManager:
                 AgentRunSpec(
                     initial_messages=messages,
                     tools=tools,
-                    model=self.model,
-                    max_iterations=15,
-                    max_tool_result_chars=self.max_tool_result_chars,
+                    model=effective_model,
+                    max_iterations=effective_max_iter,
+                    max_tool_result_chars=effective_max_chars,
                     hook=_SubagentHook(task_id, status),
                     max_iterations_message="Task completed but no final response was generated.",
                     error_message=None,

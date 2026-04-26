@@ -63,11 +63,6 @@
     "crashHint": "Try reloading the page. If the problem persists, check the browser console.",
     "reload": "Reload"
   },
-  "chatHub": {
-    "tabChat": "Chat",
-    "tabSessions": "Sessions",
-    "ariaTabs": "Chat sub-pages"
-  },
   "agentsHub": {
     "pageTitle": "Agents",
     "pageSubtitle": "Manage individual agents, collaborative teams and runtime processes in one place.",
@@ -162,6 +157,8 @@
     "sessionsEmpty": "No sessions yet. Send a message below to start.",
     "mainAgentSessions": "Main Agent",
     "teamSessions": "Teams",
+    "subAgentSessions": "Sub Agents",
+    "subAgentUnboundGroup": "Ad-hoc sub-agent tasks",
     "toastSessionDeleted": "Session deleted",
     "toastSessionRenamed": "Session title updated",
     "toastSessionRenameFailed": "Failed to rename session",

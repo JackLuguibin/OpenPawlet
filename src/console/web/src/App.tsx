@@ -54,10 +54,7 @@ function AppRoutes() {
             {/* Legacy routes: keep old bookmarks/share-links working by
                 redirecting them into the new Hub pages with the matching
                 ?section= sub-tab. */}
-            <Route
-              path="/sessions"
-              element={<Navigate to="/chat?section=sessions" replace />}
-            />
+            <Route path="/sessions" element={<Navigate to="/chat" replace />} />
             <Route path="/runtime" element={<Navigate to="/agents?section=runtime" replace />} />
             <Route path="/teams" element={<Navigate to="/agents?section=teams" replace />} />
             <Route path="/mcp" element={<Navigate to="/knowledge?section=mcp" replace />} />

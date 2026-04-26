@@ -18,6 +18,7 @@ export interface RuntimeAgentStatus {
   stop_reason?: string | null;
   error?: string | null;
   session_key?: string | null;
+  profile_id?: string | null;
 }
 
 export interface RuntimeControlResult {
@@ -35,4 +36,5 @@ export interface RuntimeSubagentStartBody {
   origin_channel?: string | null;
   origin_chat_id?: string | null;
   session_key?: string | null;
+  profile_id?: string | null;
 }

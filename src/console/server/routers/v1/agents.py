@@ -9,19 +9,28 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import ValidationError
 
 from console.server.bot_workspace import (
+    agent_bootstrap_keys,
+    agent_bootstrap_path,
+    agent_profile_dir,
+    agent_profile_json_path,
     agent_workspace_json_path,
     agents_state_path,
     iso_now,
     load_json_file,
+    migrate_agent_profile_layout,
     new_id,
+    read_text,
     save_json_file,
     set_bot_running,
     teams_state_path,
     workspace_agents_dir,
+    write_text,
 )
 from console.server.models import (
     AddCategoryBody,
     Agent,
+    AgentBootstrapFiles,
+    AgentBootstrapUpdateBody,
     AgentCreateRequest,
     AgentsSystemStatus,
     AgentStatus,
@@ -33,6 +42,7 @@ from console.server.models import (
     DelegateTaskRequest,
     DelegateTaskResponse,
     OkBody,
+    OkWithKey,
     OkWithTopic,
 )
 
@@ -54,23 +64,58 @@ _CATEGORY_COLORS = (
 
 
 def _load_agent_file_dicts(bot_id: str) -> list[dict[str, Any]]:
-    """Load ``<workspace>/agents/*.json`` rows."""
+    """Load agent rows from both new and legacy layouts.
+
+    Discovery order under ``<workspace>/agents/``:
+
+    * ``<id>/profile.json`` — preferred (independent persona layout)
+    * ``<id>.json`` — legacy single file (auto-migrated on next write)
+    """
     base = workspace_agents_dir(bot_id)
     if not base.is_dir():
         return []
     rows: list[dict[str, Any]] = []
-    for path in sorted(base.glob("*.json")):
-        row = load_json_file(path, None)
+    seen_ids: set[str] = set()
+    for entry in sorted(base.iterdir()):
+        if entry.is_dir():
+            p = entry / "profile.json"
+            if not p.is_file():
+                continue
+            row = load_json_file(p, None)
+        elif entry.is_file() and entry.suffix == ".json":
+            row = load_json_file(entry, None)
+        else:
+            continue
         if isinstance(row, dict):
+            rid = str(row.get("id", "")).strip()
+            if rid and rid in seen_ids:
+                continue
+            if rid:
+                seen_ids.add(rid)
+                # Decorate with has_* flags so the API returns whether
+                # bootstrap files exist on disk for this agent.
+                row = _decorate_with_bootstrap_flags(bot_id, rid, row)
             rows.append(row)
     rows.sort(key=lambda d: (str(d.get("created_at", "") or ""), str(d.get("id", "") or "")))
     return rows
 
 
+def _decorate_with_bootstrap_flags(
+    bot_id: str, agent_id: str, row: dict[str, Any]
+) -> dict[str, Any]:
+    """Stamp ``has_soul`` / ``has_user`` / ``has_agents_md`` / ``has_tools_md``."""
+    out = dict(row)
+    out["has_soul"] = agent_bootstrap_path(bot_id, agent_id, "soul").is_file()
+    out["has_user"] = agent_bootstrap_path(bot_id, agent_id, "user").is_file()
+    out["has_agents_md"] = agent_bootstrap_path(bot_id, agent_id, "agents").is_file()
+    out["has_tools_md"] = agent_bootstrap_path(bot_id, agent_id, "tools").is_file()
+    return out
+
+
 def _migrate_legacy_agents_in_file(
     bot_id: str, agents_legacy: list[Any], data: dict[str, Any]
 ) -> None:
-    """One-time: copy ``.nanobot_console/agents.json`` ``agents`` array to per-file JSON."""
+    """One-time: copy ``.nanobot_console/agents.json`` ``agents`` array to per-agent dirs."""
     for item in agents_legacy:
         if not isinstance(item, dict):
             continue
@@ -78,8 +123,11 @@ def _migrate_legacy_agents_in_file(
             agent = Agent.model_validate(item)
         except ValidationError:
             continue
-        p = agent_workspace_json_path(bot_id, agent.id)
-        save_json_file(p, agent.model_dump(mode="json"))
+        p = agent_profile_json_path(bot_id, agent.id)
+        payload = agent.model_dump(mode="json")
+        for derived in ("has_soul", "has_user", "has_agents_md", "has_tools_md", "team_ids"):
+            payload.pop(derived, None)
+        save_json_file(p, payload)
     meta = {
         "categories": data.get("categories") if isinstance(data.get("categories"), list) else [],
         "category_overrides": data.get("category_overrides")
@@ -177,13 +225,21 @@ def _parse_categories(raw_list: list[Any]) -> list[CategoryInfo]:
     return out
 
 
-def _prune_orphan_agent_files(bot_id: str, keep_ids: set[str]) -> None:
-    """Remove ``agents/<id>.json`` not in ``keep_ids``."""
+def _prune_orphan_agent_entries(bot_id: str, keep_ids: set[str]) -> None:
+    """Remove ``agents/<id>.json`` and ``agents/<id>/`` not in ``keep_ids``."""
+    import shutil
+
     base = workspace_agents_dir(bot_id)
-    for path in base.glob("*.json"):
-        if path.stem not in keep_ids:
+    for entry in base.iterdir():
+        if entry.is_file() and entry.suffix == ".json":
+            if entry.stem not in keep_ids:
+                try:
+                    entry.unlink()
+                except OSError:
+                    pass
+        elif entry.is_dir() and entry.name not in keep_ids:
             try:
-                path.unlink()
+                shutil.rmtree(entry)
             except OSError:
                 pass
 
@@ -195,12 +251,28 @@ def _save_full_state(
     categories: list[CategoryInfo],
     category_overrides: dict[str, str],
 ) -> None:
-    """Write each agent to ``<workspace>/agents/<id>.json`` and metadata to ``.nanobot_console/``."""
+    """Persist each agent under ``<workspace>/agents/<id>/profile.json``.
+
+    Also tidies up legacy ``agents/<id>.json`` files for any kept ids.
+    Read-only ``has_*`` fields are stripped before persistence so they
+    can never drift away from on-disk reality.
+    """
     keep_ids = {a.id for a in agents}
     for a in agents:
-        p = agent_workspace_json_path(bot_id, a.id)
-        save_json_file(p, a.model_dump(mode="json"))
-    _prune_orphan_agent_files(bot_id, keep_ids)
+        migrate_agent_profile_layout(bot_id, a.id)
+        p = agent_profile_json_path(bot_id, a.id)
+        data = a.model_dump(mode="json")
+        for derived in ("has_soul", "has_user", "has_agents_md", "has_tools_md", "team_ids"):
+            data.pop(derived, None)
+        save_json_file(p, data)
+        # Drop the legacy single-file copy if it still exists.
+        legacy = agent_workspace_json_path(bot_id, a.id)
+        if legacy.is_file():
+            try:
+                legacy.unlink()
+            except OSError:
+                pass
+    _prune_orphan_agent_entries(bot_id, keep_ids)
     path = agents_state_path(bot_id)
     payload = {
         "categories": [c.model_dump(mode="json") for c in categories],
@@ -335,6 +407,34 @@ async def list_agents(bot_id: str) -> DataResponse[list[Agent]]:
     return DataResponse(data=_attach_team_memberships(bot_id, _parse_agents(raw["agents"])))
 
 
+_PROFILE_OVERRIDE_FIELDS: tuple[str, ...] = (
+    "max_tokens",
+    "max_tool_iterations",
+    "max_tool_result_chars",
+    "context_window_tokens",
+    "reasoning_effort",
+    "timezone",
+    "web_enabled",
+    "exec_enabled",
+    "mcp_servers_allowlist",
+    "allowed_tools",
+    "skills_denylist",
+    "use_own_bootstrap",
+    "inherit_main_bootstrap",
+)
+
+
+def _apply_profile_overrides(
+    data: dict[str, Any],
+    body: AgentCreateRequest | AgentUpdateRequest,
+) -> None:
+    """Copy independent-persona override fields from *body* into *data* in place."""
+    for field in _PROFILE_OVERRIDE_FIELDS:
+        value = getattr(body, field, None)
+        if value is not None:
+            data[field] = value
+
+
 @router.post("", response_model=DataResponse[Agent], status_code=status.HTTP_200_OK)
 async def create_agent(bot_id: str, body: AgentCreateRequest) -> DataResponse[Agent]:
     """Create an agent record."""
@@ -345,19 +445,23 @@ async def create_agent(bot_id: str, body: AgentCreateRequest) -> DataResponse[Ag
     aid = body.id or new_id("agent-")
     if any(a.id == aid for a in agents):
         raise HTTPException(status_code=400, detail="Agent id already exists")
-    agent = Agent(
-        id=aid,
-        name=body.name,
-        description=body.description,
-        model=body.model,
-        temperature=body.temperature,
-        system_prompt=body.system_prompt,
-        skills=list(body.skills) if body.skills is not None else [],
-        topics=list(body.topics) if body.topics is not None else [],
-        collaborators=(list(body.collaborators) if body.collaborators is not None else []),
-        enabled=True if body.enabled is None else body.enabled,
-        created_at=iso_now(),
-    )
+    agent_data: dict[str, Any] = {
+        "id": aid,
+        "name": body.name,
+        "description": body.description,
+        "model": body.model,
+        "temperature": body.temperature,
+        "system_prompt": body.system_prompt,
+        "skills": list(body.skills) if body.skills is not None else [],
+        "topics": list(body.topics) if body.topics is not None else [],
+        "collaborators": (
+            list(body.collaborators) if body.collaborators is not None else []
+        ),
+        "enabled": True if body.enabled is None else body.enabled,
+        "created_at": iso_now(),
+    }
+    _apply_profile_overrides(agent_data, body)
+    agent = Agent.model_validate(agent_data)
     agents.append(agent)
     _save_full_state(
         bot_id,
@@ -417,6 +521,7 @@ async def update_agent(
             data["collaborators"] = body.collaborators
         if body.enabled is not None:
             data["enabled"] = body.enabled
+        _apply_profile_overrides(data, body)
         updated = Agent.model_validate(data)
         new_list.append(updated)
     if updated is None:
@@ -517,3 +622,78 @@ async def broadcast_event(
     """Broadcast event to subscribers (stub)."""
     _ = bot_id, agent_id
     return DataResponse(data=OkWithTopic(topic=body.topic))
+
+
+# ---------------------------------------------------------------------------
+# Bootstrap files (independent persona)
+# ---------------------------------------------------------------------------
+
+
+def _ensure_agent_exists(bot_id: str, agent_id: str) -> None:
+    """Raise 404 when *agent_id* has no record under ``<workspace>/agents/``."""
+    raw = _load_raw_state(bot_id)
+    if not any(
+        isinstance(row, dict) and str(row.get("id", "")).strip() == agent_id
+        for row in raw["agents"]
+    ):
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+
+@router.get(
+    "/{agent_id}/bootstrap",
+    response_model=DataResponse[AgentBootstrapFiles],
+)
+async def get_agent_bootstrap(
+    bot_id: str, agent_id: str
+) -> DataResponse[AgentBootstrapFiles]:
+    """Return SOUL/USER/AGENTS/TOOLS markdown for one agent."""
+    _ensure_agent_exists(bot_id, agent_id)
+    parts: dict[str, str] = {}
+    for key in agent_bootstrap_keys():
+        path = agent_bootstrap_path(bot_id, agent_id, key)
+        parts[key] = read_text(path) if path.is_file() else ""
+    return DataResponse(data=AgentBootstrapFiles(**parts))
+
+
+@router.put(
+    "/{agent_id}/bootstrap/{key}",
+    response_model=DataResponse[OkWithKey],
+)
+async def update_agent_bootstrap(
+    bot_id: str,
+    agent_id: str,
+    key: str,
+    body: AgentBootstrapUpdateBody,
+) -> DataResponse[OkWithKey]:
+    """Write one bootstrap file under ``<workspace>/agents/<id>/``."""
+    _ensure_agent_exists(bot_id, agent_id)
+    if key not in agent_bootstrap_keys():
+        raise HTTPException(status_code=400, detail="Unknown profile key")
+    # Ensure the per-agent directory exists (the agent record may have
+    # come from the legacy single-file layout).
+    agent_profile_dir(bot_id, agent_id).mkdir(parents=True, exist_ok=True)
+    path = agent_bootstrap_path(bot_id, agent_id, key)
+    write_text(path, body.content)
+    return DataResponse(data=OkWithKey(key=key))
+
+
+@router.delete(
+    "/{agent_id}/bootstrap/{key}",
+    response_model=DataResponse[OkWithKey],
+)
+async def delete_agent_bootstrap(
+    bot_id: str,
+    agent_id: str,
+    key: str,
+) -> DataResponse[OkWithKey]:
+    """Remove one bootstrap file (so the agent inherits from main)."""
+    _ensure_agent_exists(bot_id, agent_id)
+    if key not in agent_bootstrap_keys():
+        raise HTTPException(status_code=400, detail="Unknown profile key")
+    path = agent_bootstrap_path(bot_id, agent_id, key)
+    if path.is_file():
+        try:
+            path.unlink()
+        except OSError as exc:
+            raise HTTPException(status_code=500, detail="Failed to delete file") from exc
+    return DataResponse(data=OkWithKey(key=key))

@@ -11,6 +11,8 @@ from console.server.models.agent_runtime import (
 from console.server.models.agents import (
     AddCategoryBody,
     Agent,
+    AgentBootstrapFiles,
+    AgentBootstrapUpdateBody,
     AgentCreateRequest,
     AgentsSystemStatus,
     AgentStatus,
@@ -107,6 +109,8 @@ __all__ = [
     "ActivityItem",
     "AddCategoryBody",
     "Agent",
+    "AgentBootstrapFiles",
+    "AgentBootstrapUpdateBody",
     "AgentCreateRequest",
     "AgentsSystemStatus",
     "AgentStatus",

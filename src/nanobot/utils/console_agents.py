@@ -24,11 +24,26 @@ def console_agent_display_name(workspace: Path, agent_id: str) -> str:
 def load_console_agent_row(workspace: Path, agent_id: str) -> dict[str, Any] | None:
     """Return the agent dict for *agent_id*, or None.
 
-    Prefers ``<workspace>/agents/<id>.json``, then legacy ``.nanobot_console/agents.json`` ``agents`` array.
+    Lookup order (first hit wins):
+
+    1. ``<workspace>/agents/<id>/profile.json`` — new layout that pairs
+       the agent record with its bootstrap markdown files in the same
+       directory.
+    2. ``<workspace>/agents/<id>.json`` — legacy single-file Console
+       record.
+    3. ``.nanobot_console/agents.json`` ``agents`` array (very old).
     """
     aid = (agent_id or "").strip()
     if not aid:
         return None
+    new_dir = workspace / "agents" / aid / "profile.json"
+    if new_dir.is_file():
+        try:
+            raw = json.loads(new_dir.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, UnicodeError):
+            return None
+        if isinstance(raw, dict):
+            return raw
     per = workspace / "agents" / f"{aid}.json"
     if per.is_file():
         try:
@@ -112,9 +127,22 @@ def resolve_gateway_identity_overrides(
         m = _row.get("model")
         if m:
             _gw_model = str(m)
+        # Build a console system prompt that incorporates the agent's
+        # explicit ``system_prompt`` plus an inline persona block when
+        # the new bootstrap files exist on disk. This keeps the gateway
+        # path consistent with sub-agent profile resolution without
+        # requiring AgentLoop to know about ProfileStore.
+        bits: list[str] = []
         sp = _row.get("system_prompt")
         if isinstance(sp, str) and sp.strip():
-            _gw_console_prompt = sp.strip()
+            bits.append(str(sp).strip())
+        bootstrap_block = _read_console_agent_bootstrap(
+            workspace, str(_row.get("id", logical_agent_id or "")).strip()
+        )
+        if bootstrap_block:
+            bits.append(bootstrap_block)
+        if bits:
+            _gw_console_prompt = "\n\n---\n\n".join(bits)
         raw_sk = _row.get("skills")
         if isinstance(raw_sk, list) and raw_sk:
             _deny = disabled_skills_for_allowlist(
@@ -123,6 +151,15 @@ def resolve_gateway_identity_overrides(
             if _deny is not None:
                 _base = set(_gw_disabled or [])
                 _gw_disabled = sorted(_base | _deny)
+        # Per-agent explicit denylist (independent persona feature).
+        raw_deny = _row.get("skills_denylist")
+        if isinstance(raw_deny, list) and raw_deny:
+            _base = set(_gw_disabled or [])
+            for entry in raw_deny:
+                name = str(entry).strip()
+                if name:
+                    _base.add(name)
+            _gw_disabled = sorted(_base)
     _tid = (team_id or "").strip() or None
     if not _tid:
         _tid = os.environ.get("NANOBOT_TEAM_ID", "").strip() or None
@@ -152,3 +189,38 @@ def resolve_gateway_identity_overrides(
                     else _merged_team
                 )
     return _gw_model, _gw_disabled, _gw_console_prompt
+
+
+_BOOTSTRAP_NAMES: tuple[tuple[str, str], ...] = (
+    ("agents", "AGENTS.md"),
+    ("soul", "SOUL.md"),
+    ("user", "USER.md"),
+    ("tools", "TOOLS.md"),
+)
+
+
+def _read_console_agent_bootstrap(workspace: Path, agent_id: str) -> str:
+    """Return concatenated SOUL/USER/AGENTS/TOOLS markdown for *agent_id*.
+
+    Looks under ``<workspace>/agents/<agent_id>/<NAME>.md``; missing
+    files are skipped. Returns an empty string if none exist.
+    """
+    aid = (agent_id or "").strip()
+    if not aid:
+        return ""
+    base = workspace / "agents" / aid
+    if not base.is_dir():
+        return ""
+    parts: list[str] = []
+    for _key, filename in _BOOTSTRAP_NAMES:
+        path = base / filename
+        if not path.is_file():
+            continue
+        try:
+            content = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError):
+            continue
+        if not content.strip():
+            continue
+        parts.append(f"## (agent) {filename}\n\n{content.strip()}")
+    return "\n\n".join(parts)

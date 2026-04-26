@@ -264,9 +264,60 @@ def assert_safe_agent_id(agent_id: str) -> str:
 
 
 def agent_workspace_json_path(bot_id: str | None, agent_id: str) -> Path:
-    """``<workspace>/agents/<agent_id>.json``."""
+    """``<workspace>/agents/<agent_id>.json`` (legacy single-file layout)."""
     aid = assert_safe_agent_id(agent_id)
     return workspace_agents_dir(bot_id) / f"{aid}.json"
+
+
+_AGENT_BOOTSTRAP_FILES: dict[str, str] = {
+    "soul": "SOUL.md",
+    "user": "USER.md",
+    "agents": "AGENTS.md",
+    "tools": "TOOLS.md",
+}
+
+
+def agent_profile_dir(bot_id: str | None, agent_id: str) -> Path:
+    """``<workspace>/agents/<agent_id>/`` (per-agent profile directory)."""
+    aid = assert_safe_agent_id(agent_id)
+    return workspace_agents_dir(bot_id) / aid
+
+
+def agent_profile_json_path(bot_id: str | None, agent_id: str) -> Path:
+    """``<workspace>/agents/<agent_id>/profile.json``."""
+    return agent_profile_dir(bot_id, agent_id) / "profile.json"
+
+
+def agent_bootstrap_keys() -> tuple[str, ...]:
+    """Stable ordered tuple of valid bootstrap keys (``soul``/``user``/...)."""
+    return tuple(_AGENT_BOOTSTRAP_FILES.keys())
+
+
+def agent_bootstrap_path(bot_id: str | None, agent_id: str, key: str) -> Path:
+    """``<workspace>/agents/<agent_id>/<NAME>.md`` for a given bootstrap key."""
+    if key not in _AGENT_BOOTSTRAP_FILES:
+        raise HTTPException(status_code=400, detail="Unknown profile key")
+    return agent_profile_dir(bot_id, agent_id) / _AGENT_BOOTSTRAP_FILES[key]
+
+
+def migrate_agent_profile_layout(bot_id: str | None, agent_id: str) -> None:
+    """Move ``agents/<id>.json`` → ``agents/<id>/profile.json`` if needed.
+
+    Idempotent: a no-op when the new file already exists or the legacy
+    file is missing. The old file is removed only after the new file is
+    written successfully.
+    """
+    aid = assert_safe_agent_id(agent_id)
+    legacy = workspace_agents_dir(bot_id) / f"{aid}.json"
+    new_path = agent_profile_json_path(bot_id, aid)
+    if new_path.is_file() or not legacy.is_file():
+        return
+    try:
+        new_path.parent.mkdir(parents=True, exist_ok=True)
+        new_path.write_text(legacy.read_text(encoding="utf-8"), encoding="utf-8")
+        legacy.unlink(missing_ok=True)
+    except OSError as exc:
+        logger.warning("[workspace] migrate agent profile failed {}: {}", aid, exc)
 
 
 def teams_state_path(bot_id: str | None) -> Path:

@@ -406,6 +406,10 @@ class AgentLoop:
             disabled_skills=disabled_skills,
             timezone=self.timezone,
             parent_agent_id=self.agent_id,
+            base_defaults=(
+                runtime_config.agents.defaults if runtime_config is not None else None
+            ),
+            base_tools=_tc,
         )
         self._unified_session = unified_session
         self._running = False

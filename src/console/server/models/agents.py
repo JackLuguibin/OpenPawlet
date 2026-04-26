@@ -24,6 +24,27 @@ class Agent(BaseModel):
     enabled: bool
     created_at: str
     team_ids: list[str] = Field(default_factory=list)
+    # Independent persona / tool overrides (None = inherit from main agent).
+    max_tokens: int | None = None
+    max_tool_iterations: int | None = None
+    max_tool_result_chars: int | None = None
+    context_window_tokens: int | None = None
+    reasoning_effort: str | None = None
+    timezone: str | None = None
+    web_enabled: bool | None = None
+    exec_enabled: bool | None = None
+    mcp_servers_allowlist: list[str] | None = None
+    allowed_tools: list[str] | None = None
+    skills_denylist: list[str] = Field(default_factory=list)
+    use_own_bootstrap: bool = True
+    inherit_main_bootstrap: bool = False
+    # Read-only flags reflecting whether this agent's bootstrap files exist
+    # under ``<workspace>/agents/<id>/``. The router populates these on read;
+    # ignored on write.
+    has_soul: bool = False
+    has_user: bool = False
+    has_agents_md: bool = False
+    has_tools_md: bool = False
 
 
 class AgentCreateRequest(BaseModel):
@@ -41,6 +62,19 @@ class AgentCreateRequest(BaseModel):
     topics: list[str] | None = None
     collaborators: list[str] | None = None
     enabled: bool | None = None
+    max_tokens: int | None = None
+    max_tool_iterations: int | None = None
+    max_tool_result_chars: int | None = None
+    context_window_tokens: int | None = None
+    reasoning_effort: str | None = None
+    timezone: str | None = None
+    web_enabled: bool | None = None
+    exec_enabled: bool | None = None
+    mcp_servers_allowlist: list[str] | None = None
+    allowed_tools: list[str] | None = None
+    skills_denylist: list[str] | None = None
+    use_own_bootstrap: bool | None = None
+    inherit_main_bootstrap: bool | None = None
 
 
 class AgentUpdateRequest(BaseModel):
@@ -57,6 +91,19 @@ class AgentUpdateRequest(BaseModel):
     topics: list[str] | None = None
     collaborators: list[str] | None = None
     enabled: bool | None = None
+    max_tokens: int | None = None
+    max_tool_iterations: int | None = None
+    max_tool_result_chars: int | None = None
+    context_window_tokens: int | None = None
+    reasoning_effort: str | None = None
+    timezone: str | None = None
+    web_enabled: bool | None = None
+    exec_enabled: bool | None = None
+    mcp_servers_allowlist: list[str] | None = None
+    allowed_tools: list[str] | None = None
+    skills_denylist: list[str] | None = None
+    use_own_bootstrap: bool | None = None
+    inherit_main_bootstrap: bool | None = None
 
 
 class AgentStatus(BaseModel):
@@ -141,6 +188,30 @@ class BroadcastEventRequest(BaseModel):
     topic: str
     content: str
     context: dict[str, Any] | None = None
+
+
+class AgentBootstrapFiles(BaseModel):
+    """GET /agents/{id}/bootstrap response.
+
+    Each field carries the markdown content for the named bootstrap file
+    under ``<workspace>/agents/<agent_id>/``. Empty string means the
+    file does not exist (caller may then fall back to main bootstrap).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    soul: str = ""
+    user: str = ""
+    agents: str = ""
+    tools: str = ""
+
+
+class AgentBootstrapUpdateBody(BaseModel):
+    """PUT /agents/{id}/bootstrap/{key} body."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    content: str
 
 
 def placeholder_agent(*, agent_id: str = "stub-agent") -> Agent:

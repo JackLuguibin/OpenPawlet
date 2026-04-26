@@ -41,6 +41,8 @@ import {
   ChevronDown,
   ChevronRight,
   Copy,
+  Cpu,
+  Loader2,
   MessageSquare,
   Sparkles,
   Square,
@@ -1167,10 +1169,18 @@ export default function Chat() {
   const [sessionsSidebarOpen, setSessionsSidebarOpen] = useState(false);
   const [sessionsSidebarCollapsed, setSessionsSidebarCollapsed] =
     useState(false);
-  const [sessionTreeExpanded, setSessionTreeExpanded] = useState({
+  const [sessionTreeExpanded, setSessionTreeExpanded] = useState<{
+    main: boolean;
+    teams: boolean;
+    subagents: boolean;
+  }>({
     main: true,
     teams: false,
+    subagents: false,
   });
+  const [expandedSubAgents, setExpandedSubAgents] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [batchSelectedKeys, setBatchSelectedKeys] = useState<Set<string>>(
     () => new Set(),
   );
@@ -1343,6 +1353,22 @@ export default function Chat() {
   } = useQuery({
     queryKey: ["sessions", currentBotId],
     queryFn: () => api.listSessions(currentBotId),
+  });
+
+  // Console multi-agent records — used to display human-friendly names for
+  // the Sub Agents grouping in the sidebar (id → name).
+  const { data: consoleAgents } = useQuery({
+    queryKey: ["agents", currentBotId],
+    queryFn: () => api.listAgents(currentBotId!),
+    enabled: !!currentBotId,
+  });
+
+  // Live runtime agents (main + subagent tasks). We poll lightly so the
+  // sidebar reflects newly spawned tasks even without a WebSocket frame.
+  const { data: runtimeAgents } = useQuery({
+    queryKey: ["runtime-agents", currentBotId],
+    queryFn: () => api.listRuntimeAgents(),
+    refetchInterval: 4000,
   });
 
   useEffect(() => {
@@ -1611,11 +1637,141 @@ export default function Chat() {
   );
   const groupedSessions = useMemo(() => {
     const list = sessions ?? [];
-    return {
-      main: list.filter((sessionRow) => !sessionRow.team_id),
-      teams: list.filter((sessionRow) => Boolean(sessionRow.team_id)),
-    };
+    const main: typeof list = [];
+    const teams: typeof list = [];
+    const subAgentRows = new Map<string, typeof list>();
+    for (const row of list) {
+      if (row.team_id) {
+        teams.push(row);
+        continue;
+      }
+      // Sub-agent sessions are non-team sessions that have been associated
+      // with a Console-defined agent (set when the session was created via
+      // POST /sessions { agent_id }, or matched from the session key).
+      if (row.agent_id) {
+        const bucket = subAgentRows.get(row.agent_id) ?? [];
+        bucket.push(row);
+        subAgentRows.set(row.agent_id, bucket);
+        continue;
+      }
+      main.push(row);
+    }
+    return { main, teams, subAgentRows };
   }, [sessions]);
+
+  // Sub-Agents grouping: Console-agent id → { name, sessions, runtime tasks }.
+  // We merge three signals: persisted sessions tagged with agent_id, the
+  // server runtime status (refreshed every few seconds), and the WS-driven
+  // ``subagentTasks`` list that captures very fresh spawn frames the
+  // server may not have surfaced via the polling endpoint yet.
+  const subAgentNodes = useMemo(() => {
+    const nameById = new Map<string, string>();
+    for (const a of consoleAgents ?? []) {
+      nameById.set(a.id, a.name || a.id);
+    }
+    type Node = {
+      key: string; // group key (Console agent id, profile id, or "__unbound__")
+      name: string;
+      sessions: typeof groupedSessions.main;
+      tasks: Array<{
+        id: string;
+        label: string;
+        status: "running" | "success" | "error";
+        phase?: string | null;
+        task?: string | null;
+      }>;
+    };
+    const nodes = new Map<string, Node>();
+
+    const ensure = (key: string, displayName?: string) => {
+      let node = nodes.get(key);
+      if (!node) {
+        node = {
+          key,
+          name: displayName || key,
+          sessions: [],
+          tasks: [],
+        };
+        nodes.set(key, node);
+      } else if (displayName && (!node.name || node.name === node.key)) {
+        node.name = displayName;
+      }
+      return node;
+    };
+
+    for (const [agentId, rows] of groupedSessions.subAgentRows.entries()) {
+      const node = ensure(agentId, nameById.get(agentId));
+      node.sessions = rows;
+    }
+
+    const subRuntimeAgents = (runtimeAgents ?? []).filter(
+      (r) => r.role === "sub",
+    );
+    for (const r of subRuntimeAgents) {
+      const groupKey = r.profile_id || "__unbound__";
+      const displayName = r.profile_id
+        ? nameById.get(r.profile_id) || r.profile_id
+        : t("chat.subAgentUnboundGroup", "Ad-hoc sub-agent tasks");
+      const node = ensure(groupKey, displayName);
+      const phase = r.phase || "";
+      const status: "running" | "success" | "error" = r.running
+        ? "running"
+        : r.error || phase === "error" || r.stop_reason === "tool_error"
+          ? "error"
+          : "success";
+      node.tasks.push({
+        id: r.agent_id,
+        label: r.label || r.agent_id,
+        status,
+        phase: r.phase ?? null,
+        task: r.task_description ?? null,
+      });
+    }
+
+    // Folding in WS-driven entries — they are running by the time we see them.
+    const seenTaskIds = new Set(
+      subRuntimeAgents.map((r) => r.agent_id.replace(/^sub:/, "")),
+    );
+    for (const wsTask of subagentTasks) {
+      if (seenTaskIds.has(wsTask.id)) {
+        continue;
+      }
+      const node = ensure(
+        "__unbound__",
+        t("chat.subAgentUnboundGroup", "Ad-hoc sub-agent tasks"),
+      );
+      node.tasks.push({
+        id: `sub:${wsTask.id}`,
+        label: wsTask.label,
+        status: wsTask.status,
+        phase: null,
+        task: wsTask.task ?? null,
+      });
+    }
+
+    // Sort: groups with running tasks first, then by name. Tasks: running first.
+    const ordered = Array.from(nodes.values()).sort((a, b) => {
+      const ra = a.tasks.some((task) => task.status === "running") ? 0 : 1;
+      const rb = b.tasks.some((task) => task.status === "running") ? 0 : 1;
+      if (ra !== rb) return ra - rb;
+      return a.name.localeCompare(b.name);
+    });
+    for (const node of ordered) {
+      node.tasks.sort((a, b) => {
+        const ra = a.status === "running" ? 0 : 1;
+        const rb = b.status === "running" ? 0 : 1;
+        if (ra !== rb) return ra - rb;
+        return a.label.localeCompare(b.label);
+      });
+    }
+    return ordered;
+  }, [
+    groupedSessions.subAgentRows,
+    runtimeAgents,
+    consoleAgents,
+    subagentTasks,
+    t,
+  ]);
 
   const sessionSidebarRowRefs = useRef<Map<string, HTMLDivElement | null>>(
     new Map(),
@@ -3340,6 +3496,217 @@ export default function Chat() {
               </div>
             );
           })}
+          {subAgentNodes.length > 0 ? (
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() =>
+                  setSessionTreeExpanded((prev) => ({
+                    ...prev,
+                    subagents: !prev.subagents,
+                  }))
+                }
+                className="w-full flex items-center justify-between px-2 py-1.5 rounded-md bg-gray-100/80 dark:bg-gray-700/40 hover:bg-gray-100 dark:hover:bg-gray-700/60 text-gray-700 dark:text-gray-200 transition-colors"
+              >
+                <span className="inline-flex items-center gap-2 min-w-0">
+                  {sessionTreeExpanded.subagents ? (
+                    <ChevronDown className="w-3.5 h-3.5 shrink-0 text-gray-500 dark:text-gray-300" />
+                  ) : (
+                    <ChevronRight className="w-3.5 h-3.5 shrink-0 text-gray-500 dark:text-gray-300" />
+                  )}
+                  <Cpu className="w-3.5 h-3.5 shrink-0 text-emerald-500 dark:text-emerald-400" />
+                  <span className="text-xs font-semibold uppercase tracking-wide">
+                    {t("chat.subAgentSessions", "Sub Agents")}
+                  </span>
+                </span>
+                <span className="text-[11px] text-gray-500 dark:text-gray-400 tabular-nums">
+                  {subAgentNodes.reduce(
+                    (sum, n) => sum + n.sessions.length + n.tasks.length,
+                    0,
+                  )}
+                </span>
+              </button>
+              {sessionTreeExpanded.subagents ? (
+                <div className="space-y-2 pl-3 border-l border-gray-200/80 dark:border-gray-700/80">
+                  {subAgentNodes.map((node) => {
+                    const nodeKey = node.key;
+                    const nodeExpanded = expandedSubAgents.has(nodeKey);
+                    const runningCt = node.tasks.filter(
+                      (task) => task.status === "running",
+                    ).length;
+                    return (
+                      <div key={nodeKey} className="space-y-1.5">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedSubAgents((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(nodeKey)) {
+                                next.delete(nodeKey);
+                              } else {
+                                next.add(nodeKey);
+                              }
+                              return next;
+                            })
+                          }
+                          className="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700/40 text-gray-700 dark:text-gray-200 transition-colors"
+                        >
+                          <span className="inline-flex items-center gap-2 min-w-0">
+                            {nodeExpanded ? (
+                              <ChevronDown className="w-3 h-3 shrink-0 text-gray-400" />
+                            ) : (
+                              <ChevronRight className="w-3 h-3 shrink-0 text-gray-400" />
+                            )}
+                            <Bot className="w-3.5 h-3.5 shrink-0 text-emerald-500 dark:text-emerald-400" />
+                            <span className="text-sm font-medium truncate">
+                              {node.name}
+                            </span>
+                            {runningCt > 0 ? (
+                              <span className="inline-flex items-center gap-1 text-[11px] text-blue-600 dark:text-blue-300">
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                                {runningCt}
+                              </span>
+                            ) : null}
+                          </span>
+                          <span className="text-[11px] text-gray-500 dark:text-gray-400 tabular-nums">
+                            {node.sessions.length + node.tasks.length}
+                          </span>
+                        </button>
+                        {nodeExpanded ? (
+                          <div className="pl-4 space-y-1.5">
+                            {node.tasks.length > 0 ? (
+                              <div className="space-y-1">
+                                {node.tasks.map((task) => (
+                                  <div
+                                    key={task.id}
+                                    className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-gray-50/60 dark:bg-gray-800/50 text-xs"
+                                    title={task.task || task.label}
+                                  >
+                                    {task.status === "running" ? (
+                                      <Loader2 className="w-3 h-3 shrink-0 animate-spin text-blue-500" />
+                                    ) : task.status === "success" ? (
+                                      <CheckCircle2 className="w-3 h-3 shrink-0 text-emerald-500" />
+                                    ) : (
+                                      <X className="w-3 h-3 shrink-0 text-red-500" />
+                                    )}
+                                    <span className="flex-1 truncate text-gray-700 dark:text-gray-200">
+                                      {task.label}
+                                    </span>
+                                    {task.phase ? (
+                                      <span className="text-[10px] text-gray-400">
+                                        {task.phase}
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : null}
+                            {node.sessions.map((session) => (
+                              <div
+                                key={session.key}
+                                ref={(el) => {
+                                  if (el) {
+                                    sessionSidebarRowRefs.current.set(
+                                      session.key,
+                                      el,
+                                    );
+                                  } else {
+                                    sessionSidebarRowRefs.current.delete(
+                                      session.key,
+                                    );
+                                  }
+                                }}
+                                className={`flex items-stretch gap-2 rounded-md transition-all ${
+                                  activeSessionKey === session.key
+                                    ? "bg-gradient-to-r from-primary-50 to-blue-50 dark:from-primary-900/30 dark:to-blue-900/20 text-primary-700 dark:text-primary-300"
+                                    : "hover:bg-gray-100 dark:hover:bg-gray-700/50"
+                                }`}
+                              >
+                                <div className="flex items-center justify-center shrink-0 pl-3 pr-0.5 py-2.5">
+                                  <Checkbox
+                                    checked={batchSelectedKeys.has(session.key)}
+                                    onClick={(e) => e.stopPropagation()}
+                                    onChange={(e) => {
+                                      e.stopPropagation();
+                                      const checked = e.target.checked;
+                                      setBatchSelectedKeys((prev) => {
+                                        const next = new Set(prev);
+                                        if (checked) {
+                                          next.add(session.key);
+                                        } else {
+                                          next.delete(session.key);
+                                        }
+                                        return next;
+                                      });
+                                    }}
+                                  />
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleSelectSession(session.key)
+                                  }
+                                  className="flex-1 min-w-0 text-left py-2.5 pr-2 rounded-l-lg"
+                                >
+                                  <span className="flex items-center gap-1.5 min-w-0">
+                                    <MessageSquare
+                                      className="w-3.5 h-3.5 shrink-0 text-emerald-500 dark:text-emerald-400"
+                                      aria-label="sub-agent session"
+                                    />
+                                    <span className="text-sm font-medium truncate block leading-snug min-w-0">
+                                      {session.title || session.key}
+                                    </span>
+                                  </span>
+                                  <span className="text-xs text-gray-500 mt-1 block leading-relaxed">
+                                    {t("chat.messageCount", {
+                                      count: session.message_count,
+                                    })}
+                                  </span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openRenameSessionModal(session);
+                                  }}
+                                  title={t("chat.renameSession")}
+                                  className="self-center shrink-0 w-8 h-8 my-1.5 flex items-center justify-center rounded-md text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:text-gray-500 dark:hover:text-blue-300 dark:hover:bg-blue-500/10 transition-colors duration-150"
+                                >
+                                  <EditOutlined />
+                                </button>
+                                <Popconfirm
+                                  title={t("chat.deleteSessionTitle")}
+                                  description={t("chat.deleteSessionDesc", {
+                                    name:
+                                      session.title || session.key,
+                                  })}
+                                  onConfirm={() =>
+                                    deleteSessionMutation.mutate(session.key)
+                                  }
+                                  okText={t("common.delete")}
+                                  cancelText={t("common.cancel")}
+                                  okButtonProps={{ danger: true }}
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={(e) => e.stopPropagation()}
+                                    title={t("chat.deleteSession")}
+                                    className="self-center shrink-0 w-8 h-8 mr-2 my-1.5 flex items-center justify-center rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 dark:text-gray-500 dark:hover:text-red-400 dark:hover:bg-red-500/10 transition-colors duration-150"
+                                  >
+                                    <DeleteOutlined />
+                                  </button>
+                                </Popconfirm>
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </div>
 

@@ -24,6 +24,7 @@ class RuntimeAgentStatus(BaseModel):
     stop_reason: str | None = None
     error: str | None = None
     session_key: str | None = None
+    profile_id: str | None = None
 
 
 class RuntimeControlResult(BaseModel):
@@ -49,4 +50,5 @@ class RuntimeSubagentStartBody(BaseModel):
     origin_channel: str | None = None
     origin_chat_id: str | None = None
     session_key: str | None = None
+    profile_id: str | None = None
 

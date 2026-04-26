@@ -17,6 +17,25 @@ export interface Agent {
   enabled: boolean;
   created_at: string;
   team_ids?: string[];
+  // Independent persona overrides (null = inherit from main agent).
+  max_tokens?: number | null;
+  max_tool_iterations?: number | null;
+  max_tool_result_chars?: number | null;
+  context_window_tokens?: number | null;
+  reasoning_effort?: string | null;
+  timezone?: string | null;
+  web_enabled?: boolean | null;
+  exec_enabled?: boolean | null;
+  mcp_servers_allowlist?: string[] | null;
+  allowed_tools?: string[] | null;
+  skills_denylist?: string[];
+  use_own_bootstrap?: boolean;
+  inherit_main_bootstrap?: boolean;
+  // Read-only (server-stamped) flags reflecting on-disk bootstrap files.
+  has_soul?: boolean;
+  has_user?: boolean;
+  has_agents_md?: boolean;
+  has_tools_md?: boolean;
 }
 
 export interface AgentCreateRequest {
@@ -30,6 +49,19 @@ export interface AgentCreateRequest {
   topics?: string[];
   collaborators?: string[];
   enabled?: boolean;
+  max_tokens?: number | null;
+  max_tool_iterations?: number | null;
+  max_tool_result_chars?: number | null;
+  context_window_tokens?: number | null;
+  reasoning_effort?: string | null;
+  timezone?: string | null;
+  web_enabled?: boolean | null;
+  exec_enabled?: boolean | null;
+  mcp_servers_allowlist?: string[] | null;
+  allowed_tools?: string[] | null;
+  skills_denylist?: string[] | null;
+  use_own_bootstrap?: boolean | null;
+  inherit_main_bootstrap?: boolean | null;
 }
 
 export interface AgentUpdateRequest {
@@ -42,7 +74,33 @@ export interface AgentUpdateRequest {
   topics?: string[];
   collaborators?: string[];
   enabled?: boolean;
+  max_tokens?: number | null;
+  max_tool_iterations?: number | null;
+  max_tool_result_chars?: number | null;
+  context_window_tokens?: number | null;
+  reasoning_effort?: string | null;
+  timezone?: string | null;
+  web_enabled?: boolean | null;
+  exec_enabled?: boolean | null;
+  mcp_servers_allowlist?: string[] | null;
+  allowed_tools?: string[] | null;
+  skills_denylist?: string[] | null;
+  use_own_bootstrap?: boolean | null;
+  inherit_main_bootstrap?: boolean | null;
 }
+
+export interface AgentBootstrapFiles {
+  soul: string;
+  user: string;
+  agents: string;
+  tools: string;
+}
+
+export interface AgentBootstrapUpdateBody {
+  content: string;
+}
+
+export type AgentBootstrapKey = 'soul' | 'user' | 'agents' | 'tools';
 
 export interface AgentStatus {
   agent_id: string;

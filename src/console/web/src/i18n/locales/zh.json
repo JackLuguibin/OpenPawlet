@@ -63,11 +63,6 @@
     "crashHint": "请尝试刷新页面；若仍无法恢复，请打开浏览器控制台查看详情。",
     "reload": "重新加载"
   },
-  "chatHub": {
-    "tabChat": "对话",
-    "tabSessions": "会话历史",
-    "ariaTabs": "对话页面切换"
-  },
   "agentsHub": {
     "pageTitle": "智能体",
     "pageSubtitle": "在一个面板中管理单体 Agent、协作团队和运行时进程。",
@@ -162,6 +157,8 @@
     "sessionsEmpty": "暂无历史会话。在下方输入消息即可开始新对话。",
     "mainAgentSessions": "Main Agent",
     "teamSessions": "Teams",
+    "subAgentSessions": "Sub Agents",
+    "subAgentUnboundGroup": "未绑定子 Agent 任务",
     "toastSessionDeleted": "会话已删除",
     "toastSessionRenamed": "会话标题已更新",
     "toastSessionRenameFailed": "会话重命名失败",

@@ -14,6 +14,11 @@ if TYPE_CHECKING:
     tool_parameters_schema(
         task=StringSchema("The task for the subagent to complete"),
         label=StringSchema("Optional short label for the task (for display)"),
+        profile=StringSchema(
+            "Optional sub-agent profile id (workspace/agents/<id>/). "
+            "When set, the sub-agent runs with that profile's persona, "
+            "model, and tool whitelist instead of the main agent's."
+        ),
         required=["task"],
     )
 )
@@ -51,11 +56,21 @@ class SpawnTool(Tool):
             "Spawn a subagent to handle a task in the background. "
             "Use this for complex or time-consuming tasks that can run independently. "
             "The subagent will complete the task and report back when done. "
+            "Pass `profile` to run the sub-agent with an independent persona "
+            "(separate SOUL/USER/AGENTS/TOOLS, model, and tool whitelist) "
+            "configured at workspace/agents/<id>/. "
+            "Omit `profile` to inherit the main agent's settings. "
             "For deliverables or existing projects, inspect the workspace first "
             "and use a dedicated subdirectory when helpful."
         )
 
-    async def execute(self, task: str, label: str | None = None, **kwargs: Any) -> str:
+    async def execute(
+        self,
+        task: str,
+        label: str | None = None,
+        profile: str | None = None,
+        **kwargs: Any,
+    ) -> str:
         """Spawn a subagent to execute the given task."""
         oc = self._origin_channel_ctx.get()
         och = self._origin_chat_id_ctx.get()
@@ -69,4 +84,5 @@ class SpawnTool(Tool):
             origin_channel=origin_channel,
             origin_chat_id=origin_chat_id,
             session_key=session_key,
+            profile_id=(profile.strip() if isinstance(profile, str) and profile.strip() else None),
         )
