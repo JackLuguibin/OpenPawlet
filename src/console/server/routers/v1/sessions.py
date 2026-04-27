@@ -35,11 +35,10 @@ from console.server.models.sessions import Message, SessionMessagesPayload
 from console.server.session_store import (
     delete_session_files,
     list_session_rows,
-    load_context_entries,
     load_session,
     load_session_preview,
     load_transcript_messages,
-    read_context_jsonl_raw,
+    read_last_context_entry,
     read_session_jsonl_raw,
     read_transcript_jsonl_raw,
     save_empty_session,
@@ -326,23 +325,32 @@ async def get_session_context(
 
     Reads ``<workspace>/context/{safe_key}.jsonl``, which ``SessionContextWriter``
     overwrites at the start of each agent turn with the prompt that is about to
-    be sent to the LLM.  The record contains both a rendered ``context_text``
-    and the structured ``messages`` so the console can display the real prompt
-    (system + bootstrap files + memory + history) without re-running the
-    context builder.  If older appended files still carry multiple lines, the
-    last line is used as the current snapshot for backwards compatibility.
+    be sent to the LLM.  Only the last record is loaded (via a tail read) and
+    the bulky structured ``messages`` array is dropped before serialization
+    because the UI only renders ``context_text`` plus turn metadata; sending
+    the full transcript wastes bandwidth and JSON-decode time on every dialog
+    open.  If older appended files still carry multiple lines, the last line
+    is used as the current snapshot for backwards compatibility.
     """
-    entries_raw = load_context_entries(bot_id, session_key)
-    if entries_raw is None:
+    record = read_last_context_entry(bot_id, session_key)
+    if record is None:
         raise HTTPException(status_code=404, detail="Session context not found")
 
-    latest = SessionContextEntry.model_validate(entries_raw[-1]) if entries_raw else None
-    text = read_context_jsonl_raw(bot_id, session_key) or ""
+    latest: SessionContextEntry | None = None
+    if record:
+        # Strip the structured ``messages`` array (often the largest field in
+        # the snapshot) since the console only displays the rendered text.
+        slim = {k: v for k, v in record.items() if k != "messages"}
+        latest = SessionContextEntry.model_validate(slim)
     return DataResponse(
         data=SessionContextPayload(
             key=session_key,
             latest=latest,
-            text=text,
+            # ``text`` is preserved in the schema for backwards compatibility
+            # with older clients but intentionally left empty: the console no
+            # longer reads it and the raw JSONL view fetches its own copy via
+            # ``/sessions/{key}/jsonl-raw``.
+            text="",
         )
     )
 

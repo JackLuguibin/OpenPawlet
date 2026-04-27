@@ -335,6 +335,82 @@ def load_context_entries(bot_id: str | None, session_key: str) -> list[dict[str,
     return entries
 
 
+def _read_last_nonempty_line(path: Path) -> str | None:
+    """Return the last non-empty line of *path* without loading the whole file.
+
+    Reads small chunks from the end of the file backwards until a complete
+    line is found.  Used to fetch only the latest record from JSONL files
+    that may grow large over time (per-turn context snapshots).  Returns
+    ``None`` when the file does not exist or contains no non-empty lines.
+    """
+    if not path.is_file():
+        return None
+    try:
+        size = path.stat().st_size
+        if size <= 0:
+            return None
+        chunk_size = 8192
+        buf = bytearray()
+        with open(path, "rb") as f:
+            pos = size
+            while pos > 0:
+                read_size = chunk_size if pos >= chunk_size else pos
+                pos -= read_size
+                f.seek(pos)
+                chunk = f.read(read_size)
+                # Prepend so accumulated buffer reads forwards.
+                buf[:0] = chunk
+                # Strip trailing whitespace/newlines so a file ending with
+                # "\n" still yields the actual last record on first hit.
+                stripped = buf.rstrip(b"\r\n \t")
+                nl = stripped.rfind(b"\n")
+                if nl != -1:
+                    line = stripped[nl + 1 :]
+                    if line:
+                        return line.decode("utf-8", errors="replace")
+                    # The found newline preceded only whitespace; keep scanning.
+                if pos == 0:
+                    line = stripped
+                    if line:
+                        return line.decode("utf-8", errors="replace")
+                    return None
+        return None
+    except OSError:
+        return None
+
+
+def read_last_context_entry(
+    bot_id: str | None, session_key: str
+) -> dict[str, Any] | None:
+    """Return only the last JSON record from ``context/{key}.jsonl``.
+
+    ``SessionContextWriter`` overwrites the file with a single record per
+    turn, so for fresh writers there is exactly one line; legacy writers may
+    have appended records.  Either way the UI only renders the most recent
+    snapshot, so we read the file from the end and decode just one line —
+    avoiding the cost of slurping a multi-megabyte history.
+
+    Returns ``None`` when the file is missing.  Returns an empty dict-like
+    sentinel only via exception handling: malformed last lines yield
+    ``None`` so the caller treats it as "no record yet".
+    """
+    path = _context_file_path(workspace_root(bot_id), session_key)
+    if not path.is_file():
+        return None
+    line = _read_last_nonempty_line(path)
+    if line is None:
+        # File exists but has no usable content.  Distinguish from missing
+        # file (None for missing) by returning an empty marker.
+        return {}
+    try:
+        record = json.loads(line)
+    except json.JSONDecodeError:
+        return {}
+    if isinstance(record, dict):
+        return record
+    return {}
+
+
 def delete_session_files(bot_id: str | None, session_key: str) -> bool:
     """Delete session JSONL from workspace and legacy global dir.
 

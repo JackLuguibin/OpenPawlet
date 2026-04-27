@@ -974,6 +974,7 @@ export default function Chat() {
   const {
     data: sessionJsonlData,
     isPending: sessionJsonlPending,
+    isFetching: sessionJsonlFetching,
     isError: sessionJsonlError,
     error: sessionJsonlErr,
   } = useQuery({
@@ -991,6 +992,10 @@ export default function Chat() {
       ),
     enabled: sessionJsonlModalOpen && Boolean(activeSessionKey),
     retry: false,
+    // Keep the previously fetched JSONL around between opens so reopening
+    // the dialog renders instantly while a background revalidation runs.
+    staleTime: 5_000,
+    gcTime: 5 * 60_000,
   });
 
   const sessionJsonlDisplayText = useMemo(() => {
@@ -1015,6 +1020,7 @@ export default function Chat() {
   const {
     data: sessionContextData,
     isPending: sessionContextPending,
+    isFetching: sessionContextFetching,
     isError: sessionContextError,
     error: sessionContextErr,
   } = useQuery({
@@ -1031,6 +1037,12 @@ export default function Chat() {
       Boolean(activeSessionKey) &&
       !isStreaming,
     retry: false,
+    // Preserve the previous snapshot so reopening the dialog or switching
+    // back to the assembled tab shows the last context immediately while
+    // a background refresh runs.  ``invalidateQueries`` calls below still
+    // trigger an authoritative refetch when the modal opens.
+    staleTime: 5_000,
+    gcTime: 5 * 60_000,
   });
 
   const sessionContextLatest = sessionContextData?.latest ?? null;
@@ -2858,11 +2870,10 @@ export default function Chat() {
         open={sessionJsonlModalOpen}
         onCancel={() => {
           setSessionJsonlModalOpen(false);
-          if (activeSessionKey) {
-            queryClient.removeQueries({
-              queryKey: ["sessionContext", activeSessionKey, currentBotId],
-            });
-          }
+          // Intentionally do not ``removeQueries`` here: keeping the cached
+          // snapshot lets the next open render instantly while a background
+          // refetch (triggered by ``invalidateQueries`` in the open effect)
+          // pulls any newer turn.
         }}
         title={t("chat.viewContextJsonl")}
         footer={null}
@@ -2906,6 +2917,9 @@ export default function Chat() {
                             })
                         : t("chat.contextAssembledEmpty")}
                     </span>
+                    {sessionContextFetching && !sessionContextPending ? (
+                      <Spin size="small" />
+                    ) : null}
                     <Button
                       type="primary"
                       icon={<Copy className="w-3.5 h-3.5" />}
@@ -2984,6 +2998,9 @@ export default function Chat() {
                         },
                       ]}
                     />
+                    {sessionJsonlFetching && !sessionJsonlPending ? (
+                      <Spin size="small" />
+                    ) : null}
                     <Button
                       type="primary"
                       icon={<Copy className="w-3.5 h-3.5" />}
