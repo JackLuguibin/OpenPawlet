@@ -106,12 +106,32 @@ def _run_npm_web(npm_script: str) -> None:
     """Run ``npm run <script>`` in the bundled ``web`` directory."""
     web_dir = _web_dir_or_exit()
     npm_bin = _npm_executable()
-    result = subprocess.run(
-        [npm_bin, "run", npm_script],
+    cmd = [npm_bin, "run", npm_script]
+    if os.name == "nt" and npm_bin.lower().endswith(".cmd"):
+        # Bypass npm.cmd batch wrapper to avoid "Terminate batch job (Y/N)?"
+        # and let Ctrl+C interrupt the Node process directly.
+        npm_cli = Path(npm_bin).parent / "node_modules" / "npm" / "bin" / "npm-cli.js"
+        node_bin = shutil.which("node.exe") or shutil.which("node")
+        if npm_cli.is_file() and node_bin:
+            cmd = [node_bin, str(npm_cli), "run", npm_script]
+
+    process = subprocess.Popen(
+        cmd,
         cwd=str(web_dir),
-        check=False,
     )
-    sys.exit(result.returncode)
+    try:
+        return_code = process.wait()
+    except KeyboardInterrupt:
+        logger.info("[web] Interrupt received, shutting down frontend process...")
+        process.terminate()
+        try:
+            return_code = process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            return_code = process.wait()
+        sys.exit(return_code if return_code is not None else 130)
+
+    sys.exit(return_code)
 
 
 _INSECURE_HOSTS = frozenset({"0.0.0.0", "::", "::0"})
