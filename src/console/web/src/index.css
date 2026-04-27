@@ -438,3 +438,31 @@ body {
 .settings-providers-alert .ant-alert-icon {
   font-size: 16px;
 }
+
+/* Chat sidebar switches: square visual style with compact labels */
+.chat-square-switch.ant-switch {
+  border-radius: 6px !important;
+}
+
+.chat-square-switch.ant-switch .ant-switch-handle,
+.chat-square-switch.ant-switch .ant-switch-handle::before {
+  border-radius: 3px !important;
+}
+
+.chat-display-mode-switch.ant-switch {
+  min-width: 74px;
+}
+
+.chat-subagent-mode-switch.ant-switch {
+  min-width: 86px;
+}
+
+.chat-display-mode-switch.ant-switch .ant-switch-inner {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.chat-subagent-mode-switch.ant-switch .ant-switch-inner {
+  font-size: 11px;
+  font-weight: 600;
+}

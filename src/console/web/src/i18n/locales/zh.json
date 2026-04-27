@@ -187,6 +187,12 @@
     "loadOlderFailed": "加载历史失败",
     "showSubagentSessions": "显示子 Agent 会话",
     "showSubagentSessionsHint": "默认隐藏子 Agent 自身的对话记录。开启后将出现在主 Agent 列表中，可点击查看其完整执行过程。",
+    "showSubagentSwitchOn": "含子Agent",
+    "showSubagentSwitchOff": "仅主Agent",
+    "sessionDisplayMode": "会话展示",
+    "sessionDisplayModeHint": "切换会话列表展示密度。关闭后仅显示标题；开启后显示时间、消息数和操作按钮。",
+    "sessionDisplayCompact": "极简",
+    "sessionDisplayDetail": "详情",
     "subagentTag": "Sub",
     "subagentTagHint": "子 Agent 独立会话",
     "subagentParent": "子 Agent，父会话：{{parent}}"

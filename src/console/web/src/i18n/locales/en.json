@@ -187,6 +187,12 @@
     "loadOlderFailed": "Failed to load older messages",
     "showSubagentSessions": "Show sub-agent sessions",
     "showSubagentSessionsHint": "Sub-agent transcripts are hidden by default. Toggle on to surface them under the main agent list and inspect their full execution.",
+    "showSubagentSwitchOn": "With Sub",
+    "showSubagentSwitchOff": "Main Only",
+    "sessionDisplayMode": "Session view",
+    "sessionDisplayModeHint": "Switch sidebar density. Off shows title only; on also shows time, message count, and action buttons.",
+    "sessionDisplayCompact": "Minimal",
+    "sessionDisplayDetail": "Detail",
     "subagentTag": "Sub",
     "subagentTagHint": "Sub-agent dedicated session",
     "subagentParent": "Sub-agent · parent: {{parent}}"

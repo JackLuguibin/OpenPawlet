@@ -184,6 +184,27 @@ export default function Chat() {
       // ignore (storage may be unavailable in private mode)
     }
   }, [showSubagentSessions]);
+  const [sessionSidebarDisplayMode, setSessionSidebarDisplayMode] = useState<
+    "compact" | "detail"
+  >(() => {
+    try {
+      const raw = localStorage.getItem("openpawlet:sessionSidebarDisplayMode");
+      return raw === "compact" ? "compact" : "detail";
+    } catch {
+      return "detail";
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        "openpawlet:sessionSidebarDisplayMode",
+        sessionSidebarDisplayMode,
+      );
+    } catch {
+      // ignore (storage may be unavailable in private mode)
+    }
+  }, [sessionSidebarDisplayMode]);
+  const isSessionDetailMode = sessionSidebarDisplayMode === "detail";
   const [sessionJsonlModalOpen, setSessionJsonlModalOpen] = useState(false);
   const [renameSessionModalOpen, setRenameSessionModalOpen] = useState(false);
   const [renameSessionKey, setRenameSessionKey] = useState<string | null>(null);
@@ -2379,22 +2400,31 @@ export default function Chat() {
             />
           </div>
         </div>
-        <div className="shrink-0 px-3.5 py-2 border-b border-gray-200/50 dark:border-gray-700/50 flex items-center justify-between gap-2">
-          <Tooltip title={t("chat.showSubagentSessionsHint")}>
-            <span className="text-xs text-gray-600 dark:text-gray-300 truncate">
-              {t("chat.showSubagentSessions")}
-              {groupedSessions.subagentSessions.length > 0 ? (
-                <span className="ml-1 text-[11px] text-gray-400 dark:text-gray-500 tabular-nums">
-                  ({groupedSessions.subagentSessions.length})
-                </span>
-              ) : null}
-            </span>
-          </Tooltip>
-          <Switch
-            size="small"
-            checked={showSubagentSessions}
-            onChange={setShowSubagentSessions}
-          />
+        <div className="shrink-0 px-3.5 py-2 border-b border-gray-200/50 dark:border-gray-700/50">
+          <div className="flex items-center justify-end gap-2">
+            <Tooltip title={t("chat.showSubagentSessionsHint")}>
+              <Switch
+                size="small"
+                checked={showSubagentSessions}
+                onChange={setShowSubagentSessions}
+                checkedChildren={t("chat.showSubagentSwitchOn")}
+                unCheckedChildren={t("chat.showSubagentSwitchOff")}
+                className="chat-square-switch chat-subagent-mode-switch"
+              />
+            </Tooltip>
+            <Tooltip title={t("chat.sessionDisplayModeHint")}>
+              <Switch
+                size="small"
+                checked={isSessionDetailMode}
+                onChange={(checked) =>
+                  setSessionSidebarDisplayMode(checked ? "detail" : "compact")
+                }
+                checkedChildren={t("chat.sessionDisplayDetail")}
+                unCheckedChildren={t("chat.sessionDisplayCompact")}
+                className="chat-square-switch chat-display-mode-switch"
+              />
+            </Tooltip>
+          </div>
         </div>
         <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar px-3.5 py-4 space-y-3">
           {sessionsListPending && sessions === undefined ? (
@@ -2495,89 +2525,113 @@ export default function Chat() {
                         <button
                           type="button"
                           onClick={() => handleSelectSession(session.key)}
-                          className="flex-1 min-w-0 text-left py-3.5 pr-2 rounded-l-lg"
+                          className={`flex-1 min-w-0 text-left rounded-l-lg ${
+                            isSessionDetailMode ? "py-3.5 pr-2" : "py-3 pr-3"
+                          }`}
                         >
-                          <span className="flex items-center gap-1.5 min-w-0">
-                            {session.team_id ? (
-                              <Users
-                                className="w-3.5 h-3.5 shrink-0 text-blue-500 dark:text-blue-400"
-                                aria-label="team session"
-                              />
-                            ) : (
-                              <Bot
-                                className={`w-3.5 h-3.5 shrink-0 ${
-                                  session.is_subagent
-                                    ? "text-amber-500 dark:text-amber-400"
-                                    : "text-violet-500 dark:text-violet-400"
-                                }`}
-                                aria-label={
-                                  session.is_subagent
-                                    ? "subagent session"
-                                    : "agent session"
-                                }
-                              />
-                            )}
-                            <span className="text-sm font-medium truncate block leading-snug min-w-0">
-                              {session.title || session.key}
-                            </span>
-                            {session.is_subagent ? (
-                              <Tooltip
-                                title={
-                                  session.parent_session_key
-                                    ? t("chat.subagentParent", {
-                                        parent: session.parent_session_key,
-                                      })
-                                    : t("chat.subagentTagHint")
-                                }
-                              >
-                                <Tag
-                                  color="orange"
-                                  className="!m-0 !text-[10px] !leading-4 !px-1 !py-0 shrink-0"
-                                >
-                                  {t("chat.subagentTag")}
-                                </Tag>
-                              </Tooltip>
-                            ) : null}
-                          </span>
-                          <span className="text-xs text-gray-500 mt-1.5 block leading-relaxed">
-                            {t("chat.messageCount", { count: session.message_count })}
-                          </span>
-                          {session.created_at && (
-                            <span className="text-xs text-gray-400 dark:text-gray-500 mt-1 block leading-relaxed">
-                              {formatMessageTime(session.created_at)}
+                          {isSessionDetailMode ? (
+                            <>
+                              <span className="flex items-center gap-1.5 min-w-0">
+                                {session.team_id ? (
+                                  <Users
+                                    className="w-3.5 h-3.5 shrink-0 text-blue-500 dark:text-blue-400"
+                                    aria-label="team session"
+                                  />
+                                ) : (
+                                  <Bot
+                                    className={`w-3.5 h-3.5 shrink-0 ${
+                                      session.is_subagent
+                                        ? "text-amber-500 dark:text-amber-400"
+                                        : "text-violet-500 dark:text-violet-400"
+                                    }`}
+                                    aria-label={
+                                      session.is_subagent
+                                        ? "subagent session"
+                                        : "agent session"
+                                    }
+                                  />
+                                )}
+                                <span className="text-sm font-medium truncate block leading-snug min-w-0">
+                                  {session.title || session.key}
+                                </span>
+                                {session.is_subagent ? (
+                                  <Tooltip
+                                    title={
+                                      session.parent_session_key
+                                        ? t("chat.subagentParent", {
+                                            parent: session.parent_session_key,
+                                          })
+                                        : t("chat.subagentTagHint")
+                                    }
+                                  >
+                                    <Tag
+                                      color="orange"
+                                      className="!m-0 !text-[10px] !leading-4 !px-1 !py-0 shrink-0"
+                                    >
+                                      {t("chat.subagentTag")}
+                                    </Tag>
+                                  </Tooltip>
+                                ) : null}
+                              </span>
+                              <span className="text-xs text-gray-500 mt-1.5 block leading-relaxed">
+                                {t("chat.messageCount", {
+                                  count: session.message_count,
+                                })}
+                              </span>
+                              <span className="text-[11px] text-gray-400 dark:text-gray-500 mt-1 block leading-relaxed font-mono truncate">
+                                ID: {session.key}
+                              </span>
+                              {session.created_at && (
+                                <span className="text-xs text-gray-400 dark:text-gray-500 mt-1 block leading-relaxed">
+                                  {formatMessageTime(session.created_at)}
+                                </span>
+                              )}
+                            </>
+                          ) : (
+                            <span className="flex items-center justify-between gap-2 w-full min-w-0">
+                              <span className="text-sm font-medium truncate block leading-snug min-w-0">
+                                {session.title || session.key}
+                              </span>
+                              <span className="text-[11px] text-gray-400 dark:text-gray-500 tabular-nums shrink-0">
+                                {session.message_count}
+                              </span>
                             </span>
                           )}
                         </button>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openRenameSessionModal(session);
-                          }}
-                          title={t("chat.renameSession")}
-                          className="self-center shrink-0 w-9 h-9 my-2 flex items-center justify-center rounded-md text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:text-gray-500 dark:hover:text-blue-300 dark:hover:bg-blue-500/10 transition-colors duration-150"
-                        >
-                          <EditOutlined className="text-base" />
-                        </button>
-                        <Popconfirm
-                          title={t("chat.deleteSessionTitle")}
-                          description={t("chat.deleteSessionDesc", {
-                            name: session.title || session.key,
-                          })}
-                          onConfirm={() => deleteSessionMutation.mutate(session.key)}
-                          okText={t("common.delete")}
-                          cancelText={t("common.cancel")}
-                          okButtonProps={{ danger: true }}
-                        >
+                        {isSessionDetailMode ? (
                           <button
                             type="button"
-                            onClick={(e) => e.stopPropagation()}
-                            title={t("chat.deleteSession")}
-                            className="self-center shrink-0 w-9 h-9 mr-2 my-2 flex items-center justify-center rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 dark:text-gray-500 dark:hover:text-red-400 dark:hover:bg-red-500/10 transition-colors duration-150"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openRenameSessionModal(session);
+                            }}
+                            title={t("chat.renameSession")}
+                            className="self-center shrink-0 w-9 h-9 my-2 flex items-center justify-center rounded-md text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:text-gray-500 dark:hover:text-blue-300 dark:hover:bg-blue-500/10 transition-colors duration-150"
                           >
-                            <DeleteOutlined className="text-base" />
+                            <EditOutlined className="text-base" />
                           </button>
-                        </Popconfirm>
+                        ) : null}
+                        {isSessionDetailMode ? (
+                          <Popconfirm
+                            title={t("chat.deleteSessionTitle")}
+                            description={t("chat.deleteSessionDesc", {
+                              name: session.title || session.key,
+                            })}
+                            onConfirm={() => deleteSessionMutation.mutate(session.key)}
+                            okText={t("common.delete")}
+                            cancelText={t("common.cancel")}
+                            okButtonProps={{ danger: true }}
+                          >
+                            <button
+                              type="button"
+                              onClick={(e) => e.stopPropagation()}
+                              title={t("chat.deleteSession")}
+                              className="self-center shrink-0 w-9 h-9 mr-2 my-2 flex items-center justify-center rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 dark:text-gray-500 dark:hover:text-red-400 dark:hover:bg-red-500/10 transition-colors duration-150"
+                            >
+                              <DeleteOutlined className="text-base" />
+                            </button>
+                          </Popconfirm>
+                        ) : null}
                       </div>
                     ))}
                   </div>
@@ -2735,56 +2789,80 @@ export default function Chat() {
                                   onClick={() =>
                                     handleSelectSession(session.key)
                                   }
-                                  className="flex-1 min-w-0 text-left py-2.5 pr-2 rounded-l-lg"
+                                  className={`flex-1 min-w-0 text-left rounded-l-lg ${
+                                    isSessionDetailMode
+                                      ? "py-2.5 pr-2"
+                                      : "py-2.5 pr-3"
+                                  }`}
                                 >
-                                  <span className="flex items-center gap-1.5 min-w-0">
-                                    <MessageSquare
-                                      className="w-3.5 h-3.5 shrink-0 text-emerald-500 dark:text-emerald-400"
-                                      aria-label="sub-agent session"
-                                    />
-                                    <span className="text-sm font-medium truncate block leading-snug min-w-0">
-                                      {session.title || session.key}
+                                  {isSessionDetailMode ? (
+                                    <>
+                                      <span className="flex items-center gap-1.5 min-w-0">
+                                        <MessageSquare
+                                          className="w-3.5 h-3.5 shrink-0 text-emerald-500 dark:text-emerald-400"
+                                          aria-label="sub-agent session"
+                                        />
+                                        <span className="text-sm font-medium truncate block leading-snug min-w-0">
+                                          {session.title || session.key}
+                                        </span>
+                                      </span>
+                                      <span className="text-xs text-gray-500 mt-1 block leading-relaxed">
+                                        {t("chat.messageCount", {
+                                          count: session.message_count,
+                                        })}
+                                      </span>
+                                      <span className="text-[11px] text-gray-400 dark:text-gray-500 mt-1 block leading-relaxed font-mono truncate">
+                                        ID: {session.key}
+                                      </span>
+                                    </>
+                                  ) : (
+                                    <span className="flex items-center justify-between gap-2 w-full min-w-0">
+                                      <span className="text-sm font-medium truncate block leading-snug min-w-0">
+                                        {session.title || session.key}
+                                      </span>
+                                      <span className="text-[11px] text-gray-400 dark:text-gray-500 tabular-nums shrink-0">
+                                        {session.message_count}
+                                      </span>
                                     </span>
-                                  </span>
-                                  <span className="text-xs text-gray-500 mt-1 block leading-relaxed">
-                                    {t("chat.messageCount", {
-                                      count: session.message_count,
-                                    })}
-                                  </span>
+                                  )}
                                 </button>
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    openRenameSessionModal(session);
-                                  }}
-                                  title={t("chat.renameSession")}
-                                  className="self-center shrink-0 w-8 h-8 my-1.5 flex items-center justify-center rounded-md text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:text-gray-500 dark:hover:text-blue-300 dark:hover:bg-blue-500/10 transition-colors duration-150"
-                                >
-                                  <EditOutlined />
-                                </button>
-                                <Popconfirm
-                                  title={t("chat.deleteSessionTitle")}
-                                  description={t("chat.deleteSessionDesc", {
-                                    name:
-                                      session.title || session.key,
-                                  })}
-                                  onConfirm={() =>
-                                    deleteSessionMutation.mutate(session.key)
-                                  }
-                                  okText={t("common.delete")}
-                                  cancelText={t("common.cancel")}
-                                  okButtonProps={{ danger: true }}
-                                >
+                                {isSessionDetailMode ? (
                                   <button
                                     type="button"
-                                    onClick={(e) => e.stopPropagation()}
-                                    title={t("chat.deleteSession")}
-                                    className="self-center shrink-0 w-8 h-8 mr-2 my-1.5 flex items-center justify-center rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 dark:text-gray-500 dark:hover:text-red-400 dark:hover:bg-red-500/10 transition-colors duration-150"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openRenameSessionModal(session);
+                                    }}
+                                    title={t("chat.renameSession")}
+                                    className="self-center shrink-0 w-8 h-8 my-1.5 flex items-center justify-center rounded-md text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:text-gray-500 dark:hover:text-blue-300 dark:hover:bg-blue-500/10 transition-colors duration-150"
                                   >
-                                    <DeleteOutlined />
+                                    <EditOutlined />
                                   </button>
-                                </Popconfirm>
+                                ) : null}
+                                {isSessionDetailMode ? (
+                                  <Popconfirm
+                                    title={t("chat.deleteSessionTitle")}
+                                    description={t("chat.deleteSessionDesc", {
+                                      name:
+                                        session.title || session.key,
+                                    })}
+                                    onConfirm={() =>
+                                      deleteSessionMutation.mutate(session.key)
+                                    }
+                                    okText={t("common.delete")}
+                                    cancelText={t("common.cancel")}
+                                    okButtonProps={{ danger: true }}
+                                  >
+                                    <button
+                                      type="button"
+                                      onClick={(e) => e.stopPropagation()}
+                                      title={t("chat.deleteSession")}
+                                      className="self-center shrink-0 w-8 h-8 mr-2 my-1.5 flex items-center justify-center rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 dark:text-gray-500 dark:hover:text-red-400 dark:hover:bg-red-500/10 transition-colors duration-150"
+                                    >
+                                      <DeleteOutlined />
+                                    </button>
+                                  </Popconfirm>
+                                ) : null}
                               </div>
                             ))}
                           </div>
