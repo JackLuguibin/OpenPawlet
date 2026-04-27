@@ -47,6 +47,79 @@ def embedded_disabled() -> bool:
     return _env_flag(_EMBEDDED_DISABLE_ENV)
 
 
+def _heal_team_rooms_for_active_bot(active_bot_id: str | None) -> None:
+    """Ensure every team that has members also has at least one room.
+
+    The embedded runtime only spawns ``agent.<id>`` event-bus subscription
+    loops for agents bound to a team room.  Older console flows (and any
+    workspace migrated from a release that did not auto-create rooms)
+    may persist teams whose ``rooms`` list is empty - those agents would
+    silently never receive direct messages.  This idempotent self-heal
+    runs once per startup so existing workspaces immediately pick up
+    subscriptions instead of waiting for the user to manually create a
+    room.
+    """
+    try:
+        from console.server.bot_workspace import (
+            iso_now,
+            new_id,
+            save_active_team_gateway,
+            teams_state_path,
+        )
+        from console.server.json_utils import load_json_file, save_json_file
+    except Exception:  # pragma: no cover - import guard
+        logger.exception("[teams] failed to import workspace helpers; skip self-heal")
+        return
+
+    path = teams_state_path(active_bot_id)
+    if not path.is_file():
+        return
+    raw = load_json_file(path, None)
+    if not isinstance(raw, dict):
+        return
+    teams = raw.get("teams") if isinstance(raw.get("teams"), list) else []
+    rooms = raw.get("rooms") if isinstance(raw.get("rooms"), list) else []
+    if not teams:
+        return
+
+    by_team_has_room: set[str] = set()
+    for room in rooms:
+        if isinstance(room, dict):
+            tid = str(room.get("team_id", "")).strip()
+            if tid:
+                by_team_has_room.add(tid)
+
+    healed = False
+    last_team_id: str | None = None
+    last_room_id: str | None = None
+    for team in teams:
+        if not isinstance(team, dict):
+            continue
+        tid = str(team.get("id", "")).strip()
+        members = team.get("member_agent_ids")
+        if not tid or not isinstance(members, list) or not members:
+            continue
+        if tid in by_team_has_room:
+            continue
+        rid = new_id("room-")
+        rooms.append({"id": rid, "team_id": tid, "created_at": iso_now()})
+        by_team_has_room.add(tid)
+        healed = True
+        last_team_id, last_room_id = tid, rid
+        logger.info(
+            "[teams] self-heal: created room {} for team {} (members={})",
+            rid,
+            tid,
+            len(members),
+        )
+
+    if not healed:
+        return
+    save_json_file(path, {**raw, "teams": teams, "rooms": rooms})
+    if last_team_id and last_room_id:
+        save_active_team_gateway(active_bot_id, last_team_id, last_room_id)
+
+
 async def _build_embedded_runtime(app: FastAPI) -> Any | None:
     """Construct (but do not start) the embedded ``EmbeddedNanobot`` instance.
 
@@ -118,6 +191,11 @@ async def start_embedded_runtime(app: FastAPI) -> Any | None:
     runtime could not be constructed or failed to start.  Either failure
     leaves the FastAPI app in degraded mode.
     """
+    try:
+        _heal_team_rooms_for_active_bot(getattr(app.state, "active_bot_id", None))
+    except Exception:  # noqa: BLE001 - never block startup over self-heal
+        logger.exception("[teams] self-heal failed; continuing with existing state")
+
     embedded = await _build_embedded_runtime(app)
     if embedded is None:
         return None

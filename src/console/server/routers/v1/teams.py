@@ -92,6 +92,29 @@ def _normalize_member_ephemeral(
     return normalized
 
 
+def _ensure_room_for_team(
+    bot_id: str,
+    team: Team,
+    rooms: list[TeamRoom],
+) -> str | None:
+    """Ensure *team* has at least one room so its members get bus subscriptions.
+
+    Returns the room id used (existing or newly created), or ``None`` when
+    the team has no members yet.  When a new room is created it is also
+    persisted as the active gateway pointer so the embedded runtime can
+    pick it up after a restart.
+    """
+    if not team.member_agent_ids:
+        return None
+    existing = next((r for r in rooms if r.team_id == team.id), None)
+    if existing is not None:
+        return existing.id
+    room_id = new_id("room-")
+    rooms.append(TeamRoom(id=room_id, team_id=team.id, created_at=iso_now()))
+    save_active_team_gateway(bot_id, team.id, room_id)
+    return room_id
+
+
 @router.get("", response_model=DataResponse[list[Team]])
 async def list_teams(bot_id: str) -> DataResponse[list[Team]]:
     raw = _load_teams_state(bot_id)
@@ -207,6 +230,10 @@ async def add_team_member(
         created_at=t.created_at,
     )
     teams = [updated if x.id == team_id else x for x in teams]
+    # Make sure the team has at least one room so the new member triggers
+    # an event-bus subscription loop in the embedded runtime; otherwise the
+    # agent stays silent until a room is created manually.
+    _ensure_room_for_team(bot_id, updated, rooms)
     _save_teams_state(bot_id, teams=teams, rooms=rooms)
     set_bot_running(bot_id, True)
     return DataResponse(data=updated)
