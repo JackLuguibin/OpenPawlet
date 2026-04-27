@@ -1294,6 +1294,29 @@ export default function Chat() {
   }, [messages]);
 
   /**
+   * Identify the latest assistant bubble that still has an unanswered
+   * ``ask_user`` tool call. Only this row gets the interactive prompt UI;
+   * older pending entries (rare, but possible if the transcript is
+   * corrupted) stay read-only so the user cannot accidentally answer a
+   * historical question.
+   */
+  const latestPendingAskUserMsgId = useMemo<string | null>(() => {
+    for (let i = displayMessages.length - 1; i >= 0; i -= 1) {
+      const msg = displayMessages[i];
+      if (msg.role !== "assistant" || !msg.tool_calls?.length) {
+        continue;
+      }
+      const hasPendingAsk = msg.tool_calls.some(
+        (tc) => tc.name === "ask_user" && tc.result === undefined,
+      );
+      if (hasPendingAsk) {
+        return msg.id;
+      }
+    }
+    return null;
+  }, [displayMessages]);
+
+  /**
    * Poll the virtual list scroll offset on every scroll event:
    * - keeps `messagesStickToBottomRef` accurate so new tokens only auto-scroll
    *   when the user is actively reading the tail;
@@ -1851,11 +1874,24 @@ export default function Chat() {
     t,
   ]);
 
-  const handleSend = async () => {
-    if (!input.trim() || isStreaming) return;
+  const handleSend = async (overrideMessage?: string) => {
+    // ``overrideMessage`` lets callers (e.g. the AskUser interactive prompt
+    // in the message list) submit text without first stuffing it into the
+    // textarea — the input box stays untouched and the message goes
+    // through the same WS path as a normal Enter-to-send.
+    //
+    // Guard with `typeof === "string"` because the send button's
+    // ``onClick={onSend}`` forwards a SyntheticMouseEvent into the first
+    // argument; treating any truthy value as an override would both wreck
+    // the message body AND skip the textarea reset.
+    const hasOverride = typeof overrideMessage === "string";
+    const candidate = hasOverride ? overrideMessage : input;
+    if (!candidate.trim() || isStreaming) return;
 
-    const userMessage = input.trim();
-    setInput("");
+    const userMessage = candidate.trim();
+    if (!hasOverride) {
+      setInput("");
+    }
     setShowSuggestions(false);
     messagesStickToBottomRef.current = true;
 
@@ -1978,6 +2014,27 @@ export default function Chat() {
     streamingReplyGroupIdRef.current = null;
     addToast({ type: "info", message: t("chat.toastStopped") });
   };
+
+  /**
+   * Submit a user reply to a pending ``ask_user`` agent prompt rendered
+   * inline in the message list. Pushes the chosen text through the same
+   * WS path as a normal message; nanobot routes it back as the matching
+   * tool result (``pending_ask_user_id`` in ``agent/loop.py``).
+   */
+  const handleAskUserAnswer = useCallback(
+    (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed || isStreaming) {
+        return;
+      }
+      void handleSend(trimmed);
+    },
+    // ``handleSend`` is recreated each render but only reads stable refs
+    // beyond the streaming flag we already gate on, so omit it from deps
+    // intentionally. Adding it would defeat the useCallback purpose.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [isStreaming],
+  );
 
   const handleNewChat = () => {
     draftSessionActivationRequestedRef.current = false;
@@ -2713,6 +2770,8 @@ export default function Chat() {
                   ) : null
                 }
                 renderItem={(msg) => {
+                  const isLatestPendingAskUser =
+                    msg.id === latestPendingAskUserMsgId;
                   const extraAbove =
                     msg.role === "assistant" ? (
                       <>
@@ -2722,6 +2781,12 @@ export default function Chat() {
                         <MessageToolCallsBlock
                           noTopMargin={!msg.reasoning_content}
                           tool_calls={msg.tool_calls}
+                          onAskUserAnswer={
+                            isLatestPendingAskUser
+                              ? handleAskUserAnswer
+                              : undefined
+                          }
+                          askUserDisabled={isStreaming}
                         />
                       </>
                     ) : null;

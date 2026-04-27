@@ -209,6 +209,36 @@ def _is_direct_openai_base(api_base: str | None) -> bool:
     return "api.openai.com" in normalized and "openrouter" not in normalized
 
 
+def _uses_third_party_proxy(
+    spec: "ProviderSpec | None",
+    api_base: str | None,
+) -> bool:
+    """Return True when the request goes to a non-default api_base.
+
+    Provider-specific ``thinking`` / ``enable_thinking`` / ``reasoning_split``
+    extensions are only safe against the vendor's own endpoint. Third-party
+    OpenAI-compatible gateways (``tb.api.mkeai.com``, custom proxies, …)
+    routinely 400 with ``Unrecognized request argument supplied: thinking``
+    when these fields leak through. Detect "user overrode the api_base" and
+    drop the extension to keep the request shape clean OpenAI-compat.
+
+    Local endpoints (``localhost`` / private IPs) are also treated as
+    third-party so vLLM / LM Studio / Ollama serving DeepSeek-style models
+    behind an OpenAI-compat shim do not receive unsupported fields either.
+    """
+    if not api_base:
+        return False
+    if _is_local_endpoint(spec, api_base):
+        return True
+    if not spec or not spec.default_api_base:
+        return False
+    actual = api_base.strip().lower().rstrip("/")
+    default = spec.default_api_base.strip().lower().rstrip("/")
+    if not actual:
+        return False
+    return actual != default
+
+
 def _responses_circuit_key(
     model: str | None,
     default_model: str,
@@ -515,7 +545,19 @@ class OpenAICompatProvider(LLMProvider):
         # Provider-specific thinking parameters.
         # Only sent when reasoning_effort is explicitly configured so that
         # the provider default is preserved otherwise.
-        if spec and spec.thinking_style and reasoning_effort is not None:
+        #
+        # Skip when the user routes through a third-party OpenAI-compat
+        # proxy (api_base differs from the spec default): those gateways
+        # don't recognize vendor-specific ``thinking`` / ``enable_thinking``
+        # / ``reasoning_split`` extras and reject the request with
+        # ``Unrecognized request argument supplied: thinking``.
+        third_party_base = _uses_third_party_proxy(spec, self._effective_base)
+        thinking_style_active = (
+            bool(spec and spec.thinking_style)
+            and reasoning_effort is not None
+            and not third_party_base
+        )
+        if thinking_style_active and spec is not None:
             thinking_enabled = semantic_effort != "minimal"
             extra = _THINKING_STYLE_MAP.get(spec.thinking_style, lambda _: None)(thinking_enabled)
             if extra:
@@ -525,7 +567,12 @@ class OpenAICompatProvider(LLMProvider):
         # Strip any provider prefix (e.g. "moonshotai/") before the set lookup
         # so that OpenRouter-style names like "moonshotai/kimi-k2.5" are handled
         # identically to bare names like "kimi-k2.5".
-        if reasoning_effort is not None and _is_kimi_thinking_model(model_name):
+        kimi_thinking_active = (
+            reasoning_effort is not None
+            and _is_kimi_thinking_model(model_name)
+            and not third_party_base
+        )
+        if kimi_thinking_active:
             thinking_enabled = semantic_effort != "minimal"
             kwargs.setdefault("extra_body", {}).update(
                 {"thinking": {"type": "enabled" if thinking_enabled else "disabled"}}
@@ -536,17 +583,8 @@ class OpenAICompatProvider(LLMProvider):
             kwargs["tool_choice"] = tool_choice or "auto"
 
         thinking_active = (
-            (
-                spec
-                and spec.thinking_style
-                and reasoning_effort is not None
-                and semantic_effort != "minimal"
-            )
-            or (
-                reasoning_effort is not None
-                and _is_kimi_thinking_model(model_name)
-                and semantic_effort != "minimal"
-            )
+            (thinking_style_active and semantic_effort != "minimal")
+            or (kimi_thinking_active and semantic_effort != "minimal")
         )
         if thinking_active:
             for msg in kwargs["messages"]:

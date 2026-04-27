@@ -1055,3 +1055,81 @@ def test_kimi_k2_thinking_series_no_thinking_injection() -> None:
     """kimi-k2-thinking series models must NOT receive extra_body.thinking."""
     kw = _build_kwargs_for("moonshot", "kimi-k2-thinking", reasoning_effort="high")
     assert "extra_body" not in kw
+
+
+# ---------------------------------------------------------------------------
+# Third-party OpenAI-compat proxy: skip vendor-specific thinking extras.
+# ---------------------------------------------------------------------------
+
+
+def _build_kwargs_with_base(
+    provider_name: str,
+    model: str,
+    api_base: str,
+    reasoning_effort=None,
+):
+    """Like ``_build_kwargs_for`` but lets us override ``api_base``."""
+    spec = find_by_name(provider_name)
+    with patch("nanobot.providers.openai_compat_provider.AsyncOpenAI"):
+        p = OpenAICompatProvider(
+            api_key="k",
+            api_base=api_base,
+            default_model=model,
+            spec=spec,
+        )
+    return p._build_kwargs(
+        messages=[{"role": "user", "content": "hi"}],
+        tools=None,
+        model=model,
+        max_tokens=1024,
+        temperature=0.7,
+        reasoning_effort=reasoning_effort,
+        tool_choice=None,
+    )
+
+
+def test_deepseek_third_party_proxy_skips_thinking_extra_body() -> None:
+    """User-overridden api_base means a generic OpenAI-compat proxy that
+    rejects vendor-specific ``thinking``. Skip injection to avoid a 400
+    ``Unrecognized request argument supplied: thinking``."""
+    kw = _build_kwargs_with_base(
+        "deepseek",
+        "deepseek-v3.2",
+        api_base="https://tb.api.mkeai.com/v1",
+        reasoning_effort="medium",
+    )
+    assert "extra_body" not in kw
+    for msg in kw["messages"]:
+        assert "reasoning_content" not in msg
+
+
+def test_dashscope_third_party_proxy_skips_enable_thinking() -> None:
+    kw = _build_kwargs_with_base(
+        "dashscope",
+        "qwen3-plus",
+        api_base="https://example-proxy.test/v1",
+        reasoning_effort="medium",
+    )
+    assert "extra_body" not in kw
+
+
+def test_kimi_third_party_proxy_skips_thinking() -> None:
+    kw = _build_kwargs_with_base(
+        "moonshot",
+        "kimi-k2.5",
+        api_base="https://example-proxy.test/v1",
+        reasoning_effort="medium",
+    )
+    assert "extra_body" not in kw
+
+
+def test_deepseek_native_base_still_sends_thinking() -> None:
+    """Sanity check: explicitly passing the spec default api_base must NOT
+    be treated as a third-party proxy — thinking still goes through."""
+    kw = _build_kwargs_with_base(
+        "deepseek",
+        "deepseek-v4-pro",
+        api_base="https://api.deepseek.com",
+        reasoning_effort="medium",
+    )
+    assert kw["extra_body"] == {"thinking": {"type": "enabled"}}

@@ -5,6 +5,7 @@ import { Check, CheckCircle2, ChevronRight, Copy, Wrench } from "lucide-react";
 import i18n from "../../i18n";
 import type { ToolCall } from "../../api/types";
 import { normalizeToolCallsArray } from "../../utils/toolCalls";
+import { AskUserPrompt, isAskUserToolCall } from "./AskUserPrompt";
 
 /**
  * Safe display for tool arguments. `JSON.stringify(undefined)` is `undefined`
@@ -180,11 +181,21 @@ interface MessageToolCallsBlockProps {
   tool_calls?: ToolCall[];
   /** When the surrounding container already provides spacing/dividers. */
   noTopMargin?: boolean;
+  /**
+   * Submit a user answer for an `ask_user` tool call rendered inside this
+   * block. When omitted, ask_user calls fall back to the standard
+   * collapsible row (read-only / historical view).
+   */
+  onAskUserAnswer?: (text: string) => void;
+  /** Disable the interactive ask_user prompt (e.g. while a reply streams). */
+  askUserDisabled?: boolean;
 }
 
 export function MessageToolCallsBlock({
   tool_calls,
   noTopMargin,
+  onAskUserAnswer,
+  askUserDisabled,
 }: MessageToolCallsBlockProps) {
   const { t } = useTranslation();
   const normalizedList = useMemo(() => {
@@ -192,105 +203,145 @@ export function MessageToolCallsBlock({
     return normalizeToolCallsArray(list as unknown);
   }, [tool_calls]);
 
+  // Split ``ask_user`` calls out so they render as interactive prompt
+  // cards above the standard collapsible tool-call list.
+  const askUserCalls = useMemo(
+    () => normalizedList.filter(isAskUserToolCall),
+    [normalizedList],
+  );
+  const otherCalls = useMemo(
+    () => normalizedList.filter((tc) => !isAskUserToolCall(tc)),
+    [normalizedList],
+  );
+
   if (normalizedList.length === 0) {
     return null;
   }
 
+  // ``ask_user`` always renders as a prompt card (interactive when this
+  // bubble is the latest pending one, read-only "已回复" view otherwise)
+  // so transcript replay and live streaming surface the same UX. Other
+  // tool calls keep the collapsible row layout below.
+  const hasAskUser = askUserCalls.length > 0;
+  const standardList = hasAskUser ? otherCalls : normalizedList;
+  // Provide a no-op callback for read-only cards so AskUserPrompt's
+  // ``onAnswer`` prop stays required-shaped while never firing — the
+  // ``askUserCardsDisabled`` flag below short-circuits the card before it
+  // ever invokes onAnswer, so the empty fn is purely a TS shape filler.
+  const askUserOnAnswer = onAskUserAnswer ?? (() => {});
+  const askUserCardsDisabled = !onAskUserAnswer || askUserDisabled === true;
+
   return (
     <div className={`${noTopMargin ? "" : "mt-3"} space-y-2.5`}>
-      <div className="flex items-center gap-2 pl-0.5">
-        <Wrench
-          className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500 shrink-0"
-          strokeWidth={2}
-          aria-hidden
-        />
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-          {t("chat.toolCalls")}
-        </span>
-      </div>
-      <div className="space-y-2">
-        {normalizedList.map((tc) => {
-          const preview = toolCallSummaryPreview(tc.arguments);
-          return (
-            <details
+      {hasAskUser ? (
+        <div className="space-y-2">
+          {askUserCalls.map((tc) => (
+            <AskUserPrompt
               key={tc.id}
-              className="group rounded-md text-left bg-white/90 dark:bg-gray-900/45 ring-1 ring-slate-200/80 dark:ring-slate-700/55 shadow-sm shadow-slate-900/[0.04] dark:shadow-black/20"
-            >
-              <summary className="cursor-pointer list-none flex flex-wrap items-center gap-x-2 gap-y-1.5 px-3 py-2.5 [&::-webkit-details-marker]:hidden hover:bg-slate-50/90 dark:hover:bg-white/[0.04] transition-colors rounded-md">
-                <ChevronRight
-                  className="h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-slate-500 transition-transform duration-200 group-open:rotate-90"
-                  aria-hidden
-                  strokeWidth={2.25}
-                />
-                <span
-                  className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-slate-200/90 text-slate-600 dark:bg-slate-700/90 dark:text-slate-300"
-                  title={t("chat.toolCallType")}
+              toolCall={tc}
+              onAnswer={askUserOnAnswer}
+              disabled={askUserCardsDisabled}
+            />
+          ))}
+        </div>
+      ) : null}
+      {standardList.length > 0 ? (
+        <>
+          <div className="flex items-center gap-2 pl-0.5">
+            <Wrench
+              className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500 shrink-0"
+              strokeWidth={2}
+              aria-hidden
+            />
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+              {t("chat.toolCalls")}
+            </span>
+          </div>
+          <div className="space-y-2">
+            {standardList.map((tc) => {
+              const preview = toolCallSummaryPreview(tc.arguments);
+              return (
+                <details
+                  key={tc.id}
+                  className="group rounded-md text-left bg-white/90 dark:bg-gray-900/45 ring-1 ring-slate-200/80 dark:ring-slate-700/55 shadow-sm shadow-slate-900/[0.04] dark:shadow-black/20"
                 >
-                  {tc.tool_call_type ?? "function"}
-                </span>
-                <code className="text-[12px] sm:text-[13px] font-mono font-semibold text-slate-800 dark:text-slate-100 break-all leading-snug">
-                  {tc.name}
-                </code>
-                {tc.result !== undefined ? (
-                  <span
-                    className="inline-flex shrink-0"
-                    title={t("chat.toolCompleted")}
-                    aria-label={t("chat.toolCompleted")}
-                  >
-                    <CheckCircle2
-                      className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400"
-                      strokeWidth={2.25}
+                  <summary className="cursor-pointer list-none flex flex-wrap items-center gap-x-2 gap-y-1.5 px-3 py-2.5 [&::-webkit-details-marker]:hidden hover:bg-slate-50/90 dark:hover:bg-white/[0.04] transition-colors rounded-md">
+                    <ChevronRight
+                      className="h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-slate-500 transition-transform duration-200 group-open:rotate-90"
                       aria-hidden
+                      strokeWidth={2.25}
                     />
-                  </span>
-                ) : null}
-                {preview ? (
-                  <span
-                    className="w-full sm:w-auto sm:flex-1 sm:min-w-0 text-[11px] text-slate-400 dark:text-slate-500 sm:text-right truncate pl-6 sm:pl-0"
-                    title={preview}
-                  >
-                    · {preview}
-                  </span>
-                ) : null}
-              </summary>
-              <div className="px-3 pb-3 pt-0 border-t border-slate-200/55 dark:border-slate-600/35">
-                <div className="pt-3 space-y-3">
-                  <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 shrink-0">
-                      {t("chat.callId")}
+                    <span
+                      className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-slate-200/90 text-slate-600 dark:bg-slate-700/90 dark:text-slate-300"
+                      title={t("chat.toolCallType")}
+                    >
+                      {tc.tool_call_type ?? "function"}
                     </span>
-                    <ToolCallIdCopy callId={tc.id} />
-                  </div>
-                  <div>
-                    <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">
-                      {t("chat.parameters")}
-                    </div>
-                    <ToolCallParametersTable args={tc.arguments} />
-                  </div>
-                  {tc.result !== undefined ? (
-                    <div>
-                      <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">
-                        {t("chat.result")}
+                    <code className="text-[12px] sm:text-[13px] font-mono font-semibold text-slate-800 dark:text-slate-100 break-all leading-snug">
+                      {tc.name}
+                    </code>
+                    {tc.result !== undefined ? (
+                      <span
+                        className="inline-flex shrink-0"
+                        title={t("chat.toolCompleted")}
+                        aria-label={t("chat.toolCompleted")}
+                      >
+                        <CheckCircle2
+                          className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400"
+                          strokeWidth={2.25}
+                          aria-hidden
+                        />
+                      </span>
+                    ) : null}
+                    {preview ? (
+                      <span
+                        className="w-full sm:w-auto sm:flex-1 sm:min-w-0 text-[11px] text-slate-400 dark:text-slate-500 sm:text-right truncate pl-6 sm:pl-0"
+                        title={preview}
+                      >
+                        · {preview}
+                      </span>
+                    ) : null}
+                  </summary>
+                  <div className="px-3 pb-3 pt-0 border-t border-slate-200/55 dark:border-slate-600/35">
+                    <div className="pt-3 space-y-3">
+                      <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 shrink-0">
+                          {t("chat.callId")}
+                        </span>
+                        <ToolCallIdCopy callId={tc.id} />
                       </div>
-                      <pre className="text-[11px] sm:text-xs font-mono leading-relaxed m-0 whitespace-pre-wrap break-words text-slate-700 dark:text-slate-200 bg-emerald-50/80 dark:bg-emerald-950/35 rounded px-2.5 py-2 ring-1 ring-inset ring-emerald-200/70 dark:ring-emerald-800/45 max-h-56 overflow-y-auto">
-                        {tc.result || "(empty)"}
-                      </pre>
+                      <div>
+                        <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">
+                          {t("chat.parameters")}
+                        </div>
+                        <ToolCallParametersTable args={tc.arguments} />
+                      </div>
+                      {tc.result !== undefined ? (
+                        <div>
+                          <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">
+                            {t("chat.result")}
+                          </div>
+                          <pre className="text-[11px] sm:text-xs font-mono leading-relaxed m-0 whitespace-pre-wrap break-words text-slate-700 dark:text-slate-200 bg-emerald-50/80 dark:bg-emerald-950/35 rounded px-2.5 py-2 ring-1 ring-inset ring-emerald-200/70 dark:ring-emerald-800/45 max-h-56 overflow-y-auto">
+                            {tc.result || "(empty)"}
+                          </pre>
+                        </div>
+                      ) : null}
+                      <details className="group/json rounded-md ring-1 ring-slate-200/65 dark:ring-slate-600/45 bg-slate-50/60 dark:bg-slate-950/40">
+                        <summary className="cursor-pointer list-none px-3 py-2 text-[11px] font-medium text-slate-500 dark:text-slate-400 [&::-webkit-details-marker]:hidden hover:bg-slate-100/70 dark:hover:bg-white/[0.05] rounded-md transition-colors">
+                          {t("chat.rawJson")}
+                        </summary>
+                        <pre className="text-[11px] sm:text-xs font-mono leading-relaxed text-slate-600 dark:text-slate-400 px-3 pb-3 pt-0 m-0 overflow-x-auto whitespace-pre-wrap break-words">
+                          {formatToolCallArgumentsForDisplay(tc.arguments)}
+                        </pre>
+                      </details>
                     </div>
-                  ) : null}
-                  <details className="group/json rounded-md ring-1 ring-slate-200/65 dark:ring-slate-600/45 bg-slate-50/60 dark:bg-slate-950/40">
-                    <summary className="cursor-pointer list-none px-3 py-2 text-[11px] font-medium text-slate-500 dark:text-slate-400 [&::-webkit-details-marker]:hidden hover:bg-slate-100/70 dark:hover:bg-white/[0.05] rounded-md transition-colors">
-                      {t("chat.rawJson")}
-                    </summary>
-                    <pre className="text-[11px] sm:text-xs font-mono leading-relaxed text-slate-600 dark:text-slate-400 px-3 pb-3 pt-0 m-0 overflow-x-auto whitespace-pre-wrap break-words">
-                      {formatToolCallArgumentsForDisplay(tc.arguments)}
-                    </pre>
-                  </details>
-                </div>
-              </div>
-            </details>
-          );
-        })}
-      </div>
+                  </div>
+                </details>
+              );
+            })}
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }
