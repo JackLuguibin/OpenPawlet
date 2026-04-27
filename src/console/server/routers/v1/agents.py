@@ -45,6 +45,7 @@ from console.server.models import (
     OkWithKey,
     OkWithTopic,
 )
+from console.server.parsing import parse_model_list
 from console.server.state_hub import publish_agents_update
 
 router = APIRouter(prefix="/bots/{bot_id}/agents", tags=["Agents"])
@@ -168,16 +169,8 @@ def _load_raw_state(bot_id: str) -> dict[str, Any]:
 
 
 def _parse_agents(raw_list: list[Any]) -> list[Agent]:
-    """Validate stored agent dicts."""
-    out: list[Agent] = []
-    for item in raw_list:
-        if not isinstance(item, dict):
-            continue
-        try:
-            out.append(Agent.model_validate(item))
-        except ValidationError:
-            continue
-    return out
+    """Validate stored agent dicts; malformed rows are dropped."""
+    return parse_model_list(raw_list, Agent)
 
 
 def _load_team_memberships(bot_id: str) -> dict[str, list[str]]:
@@ -214,16 +207,8 @@ def _attach_team_memberships(bot_id: str, agents: list[Agent]) -> list[Agent]:
 
 
 def _parse_categories(raw_list: list[Any]) -> list[CategoryInfo]:
-    """Validate stored category dicts."""
-    out: list[CategoryInfo] = []
-    for item in raw_list:
-        if not isinstance(item, dict):
-            continue
-        try:
-            out.append(CategoryInfo.model_validate(item))
-        except ValidationError:
-            continue
-    return out
+    """Validate stored category dicts; malformed rows are dropped."""
+    return parse_model_list(raw_list, CategoryInfo)
 
 
 def _prune_orphan_agent_entries(bot_id: str, keep_ids: set[str]) -> None:

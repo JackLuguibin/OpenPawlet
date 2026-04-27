@@ -2,17 +2,16 @@
 
 from __future__ import annotations
 
-import json
 import re
 import time
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
 from fastapi import HTTPException
 from loguru import logger
 
+from console.server.json_utils import load_json_file, save_json_file
 from console.server.nanobot_user_config import resolve_config_path
 from nanobot.config.loader import load_config
 from nanobot.utils.helpers import local_now
@@ -461,47 +460,5 @@ def skill_description_preview(md_path: Path, limit: int = 240) -> str:
     return ""
 
 
-def load_json_file(path: Path, default: Any) -> Any:
-    """Load JSON object from ``path``; return ``default`` if missing or invalid."""
-    if not path.is_file():
-        return default
-    try:
-        with path.open(encoding="utf-8") as f:
-            data: Any = json.load(f)
-    except (json.JSONDecodeError, OSError) as exc:
-        logger.warning("[workspace] bad JSON {}: {}", path, exc)
-        return default
-    return data
-
-
-def save_json_file(path: Path, data: Any) -> None:
-    """Atomically write JSON with indentation, retrying replace on Windows.
-
-    On Windows ``tmp.replace(path)`` can briefly raise ``PermissionError``
-    when antivirus / search indexer holds the destination open.  A short
-    exponential backoff makes the operation robust without surfacing a
-    500 to the caller.
-    """
-    import time as _time
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    try:
-        with tmp.open("w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-    except OSError as exc:
-        logger.warning("[workspace] JSON write failed {}: {}", path, exc)
-        raise HTTPException(status_code=500, detail="Failed to save state") from exc
-    last_exc: OSError | None = None
-    for attempt in range(3):
-        try:
-            tmp.replace(path)
-            return
-        except PermissionError as exc:
-            last_exc = exc
-            _time.sleep(0.05 * (2**attempt))
-        except OSError as exc:
-            logger.warning("[workspace] JSON replace failed {}: {}", path, exc)
-            raise HTTPException(status_code=500, detail="Failed to save state") from exc
-    logger.warning("[workspace] JSON replace exhausted retries {}: {}", path, last_exc)
-    raise HTTPException(status_code=500, detail="Failed to save state") from last_exc
+# ``load_json_file`` and ``save_json_file`` are re-exported from the imports above
+# so existing callers (e.g. routers) can continue to import them from this module.

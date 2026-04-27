@@ -12,8 +12,12 @@ import pytest
 from nanobot.agent.profile_resolver import ProfileStore
 from nanobot.agent.subagent import SubagentManager, SubagentStatus
 from nanobot.bus.queue import MessageBus
-from nanobot.config.profile import AgentDefaultsOverride, AgentProfile, ToolsConfigOverride
-from nanobot.config.profile import ExecToolOverride
+from nanobot.config.profile import (
+    AgentDefaultsOverride,
+    AgentProfile,
+    ExecToolOverride,
+    ToolsConfigOverride,
+)
 from nanobot.config.schema import AgentDefaults, ExecToolConfig, ToolsConfig
 
 _MAX_TOOL_RESULT_CHARS = AgentDefaults().max_tool_result_chars

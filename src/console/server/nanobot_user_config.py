@@ -228,68 +228,27 @@ def env_file_path(bot_id: str | None) -> Path:
     return resolve_config_path(bot_id).parent / ".env"
 
 
-def parse_dotenv_file(path: Path) -> dict[str, str]:
-    """Parse a minimal KEY=VALUE ``.env`` file into a string dict."""
-    if not path.exists():
-        return {}
-    result: dict[str, str] = {}
-    for line in path.read_text(encoding="utf-8").splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-        if "=" not in stripped:
-            continue
-        key, _, value = stripped.partition("=")
-        key = key.strip()
-        if not key:
-            continue
-        value = value.strip()
-        if len(value) >= 2 and value[0] in "\"'":
-            quote = value[0]
-            if value.endswith(quote):
-                value = value[1:-1]
-        result[key] = value
-    return result
+# Re-export ``.env`` IO helpers so existing callers don't need to update.
+from console.server.dotenv_io import parse_dotenv_file, write_dotenv_file  # noqa: E402, F401
 
 
-def write_dotenv_file(path: Path, vars_map: dict[str, str]) -> None:
-    """Write ``vars_map`` to ``path`` as sorted KEY=VALUE lines."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    lines: list[str] = []
-    for key in sorted(vars_map.keys()):
-        val = vars_map[key]
-        if _dotenv_value_needs_quoting(val):
-            val_out = json.dumps(val, ensure_ascii=False)
-        else:
-            val_out = val
-        lines.append(f"{key}={val_out}")
-    path.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
-
-
-def _dotenv_value_needs_quoting(value: str) -> bool:
-    """Return True if ``value`` should be JSON-quoted for ``.env``."""
-    if not value:
-        return False
-    if any(c in value for c in "\n\r#\"'"):
-        return True
-    if value.startswith(" ") or value.endswith(" "):
-        return True
-    return False
-
-
-def read_default_model(path: Path) -> str | None:
-    """Return ``agents.defaults.model`` from config at ``path``, if present."""
+def _read_agents_defaults(path: Path) -> dict[str, Any] | None:
+    """Return the ``agents.defaults`` mapping from config at ``path``, or ``None``."""
     try:
         data = build_config_response(path)
-    except ValidationError:
-        return None
-    except OSError:
+    except (ValidationError, OSError):
         return None
     agents = data.get("agents")
     if not isinstance(agents, dict):
         return None
     defaults = agents.get("defaults")
-    if not isinstance(defaults, dict):
+    return defaults if isinstance(defaults, dict) else None
+
+
+def read_default_model(path: Path) -> str | None:
+    """Return ``agents.defaults.model`` from config at ``path``, if present."""
+    defaults = _read_agents_defaults(path)
+    if defaults is None:
         return None
     model = defaults.get("model")
     return model if isinstance(model, str) else None
@@ -297,17 +256,8 @@ def read_default_model(path: Path) -> str | None:
 
 def read_default_timezone(path: Path) -> str | None:
     """Return ``agents.defaults.timezone`` (IANA) from config at ``path``, if present."""
-    try:
-        data = build_config_response(path)
-    except ValidationError:
-        return None
-    except OSError:
-        return None
-    agents = data.get("agents")
-    if not isinstance(agents, dict):
-        return None
-    defaults = agents.get("defaults")
-    if not isinstance(defaults, dict):
+    defaults = _read_agents_defaults(path)
+    if defaults is None:
         return None
     tz = defaults.get("timezone")
     return tz.strip() if isinstance(tz, str) and tz.strip() else None

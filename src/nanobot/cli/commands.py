@@ -7,7 +7,7 @@ import signal
 import sys
 from contextlib import nullcontext
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 # Force UTF-8 encoding for Windows console
 if sys.platform == "win32":
@@ -414,82 +414,26 @@ def _onboard_plugins(config_path: Path) -> None:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
 
-def _make_provider(config: Config):
-    """Create the appropriate LLM provider from config.
-
-    Routing is driven by ``ProviderSpec.backend`` in the registry.
-    """
-    from nanobot.providers.base import GenerationSettings
-    from nanobot.providers.registry import find_by_name
-
-    model = config.agents.defaults.model
-    provider_name = config.get_provider_name(model)
-    p = config.get_provider(model)
-    spec = find_by_name(provider_name) if provider_name else None
-    backend = spec.backend if spec else "openai_compat"
-
-    # --- validation ---
-    if backend == "azure_openai":
-        if not p or not p.api_key or not p.api_base:
-            console.print("[red]Error: Azure OpenAI requires api_key and api_base.[/red]")
-            console.print("Set them in ~/.nanobot/config.json under providers.azure_openai section")
-            console.print("Use the model field to specify the deployment name.")
-            raise typer.Exit(1)
-    elif backend == "openai_compat" and not model.startswith("bedrock/"):
-        needs_key = not (p and p.api_key)
-        exempt = spec and (spec.is_oauth or spec.is_local or spec.is_direct)
-        if needs_key and not exempt:
-            console.print("[red]Error: No API key configured.[/red]")
-            console.print("Set one in ~/.nanobot/config.json under providers section")
-            raise typer.Exit(1)
-
-    # --- instantiation by backend ---
-    if backend == "openai_codex":
-        from nanobot.providers.openai_codex_provider import OpenAICodexProvider
-
-        provider = OpenAICodexProvider(default_model=model)
-    elif backend == "azure_openai":
-        from nanobot.providers.azure_openai_provider import AzureOpenAIProvider
-
-        provider = AzureOpenAIProvider(
-            api_key=p.api_key,
-            api_base=p.api_base,
-            default_model=model,
-        )
-    elif backend == "github_copilot":
-        from nanobot.providers.github_copilot_provider import GitHubCopilotProvider
-
-        provider = GitHubCopilotProvider(default_model=model)
-    elif backend == "anthropic":
-        from nanobot.providers.anthropic_provider import AnthropicProvider
-
-        provider = AnthropicProvider(
-            api_key=p.api_key if p else None,
-            api_base=config.get_api_base(model),
-            default_model=model,
-            extra_headers=p.extra_headers if p else None,
-        )
+def _cli_provider_error(message: str) -> NoReturn:
+    """Surface provider configuration errors as CLI output and exit with 1."""
+    console.print(f"[red]Error: {message}[/red]")
+    if "Azure OpenAI" in message:
+        console.print("Set api_key/api_base in ~/.nanobot/config.json under providers.azure_openai section")
+        console.print("Use the model field to specify the deployment name.")
     else:
-        from nanobot.providers.openai_compat_provider import OpenAICompatProvider
+        console.print("Set one in ~/.nanobot/config.json under providers section")
+    raise typer.Exit(1)
 
-        provider = OpenAICompatProvider(
-            api_key=p.api_key if p else None,
-            api_base=config.get_api_base(model),
-            default_model=model,
-            extra_headers=p.extra_headers if p else None,
-            spec=spec,
-        )
 
-    defaults = config.agents.defaults
-    provider.generation = GenerationSettings(
-        temperature=defaults.temperature,
-        max_tokens=defaults.max_tokens,
-        reasoning_effort=defaults.reasoning_effort,
-    )
-    from nanobot.utils.token_usage_jsonl import attach_token_usage_jsonl
+def _make_provider(config: Config):
+    """Create the appropriate LLM provider from config (CLI flavour).
 
-    attach_token_usage_jsonl(provider, config.workspace_path, timezone=defaults.timezone)
-    return provider
+    Delegates to :func:`nanobot.providers.factory.build_provider` and renders
+    configuration errors via ``rich`` before exiting.
+    """
+    from nanobot.providers.factory import build_provider
+
+    return build_provider(config, error_handler=_cli_provider_error)
 
 
 def _load_runtime_config(config: str | None = None, workspace: str | None = None) -> Config:

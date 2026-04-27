@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, status
-from pydantic import ValidationError
 
 from console.server.bot_workspace import (
     clear_active_team_gateway_for_team,
@@ -31,7 +30,8 @@ from console.server.models import (
     TeamUpdateRequest,
     UpdateTeamMemberBody,
 )
-from console.server.routers.v1.agents import _load_raw_state, _parse_agents
+from console.server.parsing import parse_model_list
+from console.server.services.agents_state import list_agent_ids, list_agents
 from console.server.team_transcript import merge_team_transcript, team_member_session_key
 
 router = APIRouter(prefix="/bots/{bot_id}/teams", tags=["Teams"])
@@ -52,27 +52,11 @@ def _load_teams_state(bot_id: str) -> dict[str, Any]:
 
 
 def _parse_teams(raw_list: list[Any]) -> list[Team]:
-    out: list[Team] = []
-    for item in raw_list:
-        if not isinstance(item, dict):
-            continue
-        try:
-            out.append(Team.model_validate(item))
-        except ValidationError:
-            continue
-    return out
+    return parse_model_list(raw_list, Team)
 
 
 def _parse_rooms(raw_list: list[Any]) -> list[TeamRoom]:
-    out: list[TeamRoom] = []
-    for item in raw_list:
-        if not isinstance(item, dict):
-            continue
-        try:
-            out.append(TeamRoom.model_validate(item))
-        except ValidationError:
-            continue
-    return out
+    return parse_model_list(raw_list, TeamRoom)
 
 
 def _save_teams_state(bot_id: str, *, teams: list[Team], rooms: list[TeamRoom]) -> None:
@@ -85,8 +69,7 @@ def _save_teams_state(bot_id: str, *, teams: list[Team], rooms: list[TeamRoom]) 
 
 
 def _agent_id_set(bot_id: str) -> set[str]:
-    raw = _load_raw_state(bot_id)
-    return {a.id for a in _parse_agents(raw["agents"])}
+    return list_agent_ids(bot_id)
 
 
 def _get_team(teams: list[Team], team_id: str) -> Team:
@@ -369,7 +352,7 @@ async def get_team_room_transcript(
     rlist = _parse_rooms(raw["rooms"])
     if not any(r.id == room_id and r.team_id == team_id for r in rlist):
         raise HTTPException(status_code=404, detail="Room not found")
-    agents = _parse_agents(_load_raw_state(bot_id)["agents"])
+    agents = list_agents(bot_id)
     id_to_name = {a.id: a.name for a in agents}
     keys, rows = merge_team_transcript(
         bot_id,

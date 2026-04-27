@@ -8,9 +8,20 @@ from pathlib import Path
 from typing import Any
 
 from console.server.bot_workspace import workspace_root
+from console.server.json_utils import (
+    is_event_row,
+    is_metadata_row,
+    iter_jsonl_dicts,
+    read_utf8_file,
+)
 from console.server.nanobot_user_config import read_default_timezone, resolve_config_path
 from nanobot.session.manager import Session, SessionManager, get_runtime_manager
 from nanobot.utils.helpers import safe_filename
+
+
+def _read_utf8_file(path: Path) -> str | None:
+    """Backwards-compatible alias for :func:`json_utils.read_utf8_file`."""
+    return read_utf8_file(path)
 
 
 def _session_manager(bot_id: str | None) -> SessionManager:
@@ -34,16 +45,6 @@ def _context_file_path(ws: Path, session_key: str) -> Path:
     """Path to ``<workspace>/context/{safe_key}.jsonl`` (matches ``SessionContextWriter``)."""
     safe_key = safe_filename(session_key.replace(":", "_"))
     return ws / "context" / f"{safe_key}.jsonl"
-
-
-def _read_utf8_file(path: Path) -> str | None:
-    """Return file contents, or ``None`` if the path is not a file or read fails."""
-    if not path.is_file():
-        return None
-    try:
-        return path.read_text(encoding="utf-8")
-    except OSError:
-        return None
 
 
 def _session_meta_path(ws: Path) -> Path:
@@ -109,28 +110,16 @@ def set_session_custom_title(
     _save_session_meta(bot_id, meta)
 
 
+def _is_chat_message_row(row: dict[str, Any]) -> bool:
+    """Filter for actual chat message rows in transcript JSONL files."""
+    if is_event_row(row) or is_metadata_row(row):
+        return False
+    return row.get("role") in _VALID_TRANSCRIPT_ROLES
+
+
 def _parse_transcript_jsonl_text(text: str) -> list[dict[str, Any]]:
     """Parse transcript JSONL text into message dicts in line order (see ``parse_transcript_jsonl``)."""
-    out: list[dict[str, Any]] = []
-    for line in text.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            data = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(data, dict):
-            continue
-        if data.get("_event"):
-            continue
-        if data.get("_type") == "metadata":
-            continue
-        role = data.get("role")
-        if role not in _VALID_TRANSCRIPT_ROLES:
-            continue
-        out.append(data)
-    return out
+    return list(iter_jsonl_dicts(text, where=_is_chat_message_row))
 
 
 def parse_transcript_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -321,18 +310,7 @@ def load_context_entries(bot_id: str | None, session_key: str) -> list[dict[str,
     text = read_context_jsonl_raw(bot_id, session_key)
     if text is None:
         return None
-    entries: list[dict[str, Any]] = []
-    for line in text.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            record = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(record, dict):
-            entries.append(record)
-    return entries
+    return list(iter_jsonl_dicts(text))
 
 
 def _read_last_nonempty_line(path: Path) -> str | None:

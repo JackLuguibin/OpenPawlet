@@ -534,9 +534,9 @@ class TelegramChannel(BaseChannel):
         # the richest rendering it can afford.
         text_body = msg.content or ""
         if getattr(msg, "buttons", None):
-            from nanobot.agent.tools.message import MessageTool as _MT
+            from nanobot.agent.tools.message import MessageTool
 
-            buttons_text = _MT.buttons_as_text(msg.buttons)
+            buttons_text = MessageTool.buttons_as_text(msg.buttons)
             if buttons_text:
                 text_body = (
                     f"{text_body}\n\n{buttons_text}" if text_body.strip() else buttons_text

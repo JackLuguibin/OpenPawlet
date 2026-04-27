@@ -111,10 +111,14 @@ def _cleanup_media_files(paths: list[str]) -> None:
 
 
 def _error_json(status: int, message: str, err_type: str = "invalid_request_error") -> JSONResponse:
-    return JSONResponse(
-        {"error": {"message": message, "type": err_type, "code": status}},
-        status_code=status,
-    )
+    """Build an OpenAI-compatible error JSONResponse.
+
+    Thin wrapper around :func:`error_handlers.openai_error_response` kept so
+    the OpenAI router code stays at this short call shape.
+    """
+    from console.server.error_handlers import openai_error_response
+
+    return openai_error_response(status, message, err_type=err_type)
 
 
 def _chat_completion_response(content: str, model: str) -> dict[str, Any]:

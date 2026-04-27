@@ -22,6 +22,7 @@ from nanobot.agent.autocompact import AutoCompact
 from nanobot.agent.context import ContextBuilder
 from nanobot.agent.hook import AgentHook, AgentHookContext, CompositeHook
 from nanobot.agent.memory import Consolidator, Dream
+from nanobot.agent.outbound import reply_to as _reply_to
 from nanobot.agent.runner import _MAX_INJECTIONS_PER_TURN, AgentRunner, AgentRunSpec
 from nanobot.agent.skills import BUILTIN_SKILLS_DIR
 from nanobot.agent.subagent import SubagentManager
@@ -1231,30 +1232,28 @@ class AgentLoop:
                                 return f"{stream_base_id}:{stream_segment}"
 
                             async def on_stream(delta: str) -> None:
-                                meta = dict(msg.metadata or {})
-                                meta["_stream_delta"] = True
-                                meta["_stream_id"] = _current_stream_id()
                                 await self.bus.publish_outbound(
-                                    OutboundMessage(
-                                        channel=msg.channel,
-                                        chat_id=msg.chat_id,
-                                        content=delta,
-                                        metadata=meta,
+                                    _reply_to(
+                                        msg,
+                                        delta,
+                                        extra_metadata={
+                                            "_stream_delta": True,
+                                            "_stream_id": _current_stream_id(),
+                                        },
                                     )
                                 )
 
                             async def on_stream_end(*, resuming: bool = False) -> None:
                                 nonlocal stream_segment
-                                meta = dict(msg.metadata or {})
-                                meta["_stream_end"] = True
-                                meta["_resuming"] = resuming
-                                meta["_stream_id"] = _current_stream_id()
                                 await self.bus.publish_outbound(
-                                    OutboundMessage(
-                                        channel=msg.channel,
-                                        chat_id=msg.chat_id,
-                                        content="",
-                                        metadata=meta,
+                                    _reply_to(
+                                        msg,
+                                        "",
+                                        extra_metadata={
+                                            "_stream_end": True,
+                                            "_resuming": resuming,
+                                            "_stream_id": _current_stream_id(),
+                                        },
                                     )
                                 )
                                 stream_segment += 1
@@ -1540,25 +1539,14 @@ class AgentLoop:
         )
 
         async def _publish(**meta: Any) -> None:
+            content = meta.pop("content", "")
             await self.bus.publish_outbound(
-                OutboundMessage(
-                    channel=msg.channel,
-                    chat_id=msg.chat_id,
-                    content=meta.pop("content", ""),
-                    metadata={**(msg.metadata or {}), **meta},
-                )
+                _reply_to(msg, content, extra_metadata=meta)
             )
 
         async def _on_retry_wait(content: str) -> None:
-            meta = dict(msg.metadata or {})
-            meta["_retry_wait"] = True
             await self.bus.publish_outbound(
-                OutboundMessage(
-                    channel=msg.channel,
-                    chat_id=msg.chat_id,
-                    content=content,
-                    metadata=meta,
-                )
+                _reply_to(msg, content, extra_metadata={"_retry_wait": True})
             )
 
         # Persist the triggering user message immediately, before running the

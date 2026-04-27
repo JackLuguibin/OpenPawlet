@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from collections.abc import Callable
 from typing import Literal
 from uuid import uuid4
@@ -32,6 +31,15 @@ from console.server.models import (
     UpdateSessionBody,
 )
 from console.server.models.sessions import Message, SessionMessagesPayload
+from console.server.services.session_view import (
+    TEAM_SESSION_RE as _TEAM_SESSION_RE,
+)
+from console.server.services.session_view import (
+    parse_subagent_key as _parse_subagent_key,
+)
+from console.server.services.session_view import (
+    row_to_session_info as _row_to_session_info,
+)
 from console.server.session_store import (
     delete_session_files,
     list_session_rows,
@@ -62,15 +70,6 @@ _READ_JSONL_RAW: dict[
 }
 
 _PREVIEW_LIMIT = 8
-_TEAM_SESSION_RE = re.compile(
-    r"^console:team_(?P<team_id>[^_]+)_room_(?P<room_id>[^_]+)_agent_(?P<agent_id>.+?)(?:_run_[^_]+)?$"
-)
-# Sub-agent transcripts use ``subagent:<parent_session_key>:<8-char-task-id>``;
-# the parent portion may itself contain colons (e.g. ``cli:direct``) so the
-# parent group is greedy up to the final ``:<task_id>`` suffix.
-_SUBAGENT_SESSION_RE = re.compile(
-    r"^subagent:(?P<parent>.+):(?P<task>[0-9a-f]{8})$"
-)
 
 
 def _iso(dt: object | None) -> str | None:
@@ -81,44 +80,6 @@ def _iso(dt: object | None) -> str | None:
     if callable(iso):
         return iso()
     return str(dt)
-
-
-def _parse_subagent_key(key: str) -> tuple[bool, str | None, str | None]:
-    """Return ``(is_subagent, parent_session_key, task_id)`` for *key*."""
-    match = _SUBAGENT_SESSION_RE.match(key)
-    if not match:
-        return False, None, None
-    parent = match.group("parent")
-    if parent == "orphan":
-        parent = None
-    return True, parent, match.group("task")
-
-
-def _row_to_session_info(row: dict[str, object]) -> SessionInfo:
-    ca = row.get("created_at")
-    ua = row.get("updated_at")
-    key = str(row["key"])
-    team_id = room_id = agent_id = None
-    match = _TEAM_SESSION_RE.match(key)
-    if match:
-        team_id = match.group("team_id")
-        room_id = match.group("room_id")
-        agent_id = match.group("agent_id")
-    is_sub, parent_key, sub_task = _parse_subagent_key(key)
-    return SessionInfo(
-        key=key,
-        title=str(row["title"]) if row.get("title") is not None else None,
-        message_count=int(row["message_count"]),
-        last_message=str(row["last_message"]) if row.get("last_message") is not None else None,
-        created_at=str(ca) if ca is not None else None,
-        updated_at=str(ua) if ua is not None else None,
-        team_id=team_id,
-        room_id=room_id,
-        agent_id=agent_id,
-        is_subagent=is_sub,
-        subagent_task_id=sub_task,
-        parent_session_key=parent_key,
-    )
 
 
 def _preview_message_from_raw(raw: dict[str, object]) -> Message | None:

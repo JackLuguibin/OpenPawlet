@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
@@ -10,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from console.server.bot_workspace import workspace_root
+from console.server.json_utils import is_metadata_row, iter_jsonl_file
 from console.server.models.status import TokenUsage
 from console.server.models.usage import UsageHistoryItem
 from console.server.nanobot_user_config import (
@@ -85,20 +85,10 @@ def _accumulate_token_usage_jsonl(
     if not usage_dir.is_dir():
         return
     for path in sorted(usage_dir.glob("token_usage_*.jsonl")):
-        try:
-            text = path.read_text(encoding="utf-8")
-        except OSError:
-            continue
-        for line in text.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                data = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if not isinstance(data, dict) or data.get("_type") != "llm_token_usage":
-                continue
+        for data in iter_jsonl_file(
+            path,
+            where=lambda r: r.get("_type") == "llm_token_usage",
+        ):
             msg_date = _message_local_date(data, iana_tz)
             if msg_date is None:
                 continue
@@ -126,22 +116,7 @@ def _accumulate_token_usage_jsonl(
 
 def _iter_session_messages(session_dir: Path) -> Any:
     for path in sorted(session_dir.glob("*.jsonl")):
-        try:
-            text = path.read_text(encoding="utf-8")
-        except OSError:
-            continue
-        for line in text.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                data = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if data.get("_type") == "metadata":
-                continue
-            if isinstance(data, dict):
-                yield data
+        yield from iter_jsonl_file(path, where=lambda r: not is_metadata_row(r))
 
 
 @dataclass(frozen=True)

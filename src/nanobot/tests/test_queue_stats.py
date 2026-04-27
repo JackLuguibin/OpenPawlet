@@ -12,7 +12,7 @@ import asyncio
 import pytest
 
 from nanobot.bus.events import AgentEvent, InboundMessage, OutboundMessage
-from nanobot.bus.queue import MessageBus, _RATE_WINDOW_S, _SAMPLE_CAPACITY
+from nanobot.bus.queue import _RATE_WINDOW_S, _SAMPLE_CAPACITY, MessageBus
 
 
 def _ib(text: str = "hi") -> InboundMessage:
@@ -87,7 +87,7 @@ async def test_samples_buffer_is_bounded_fifo() -> None:
     first_session = samples[0]["session_key"]
     assert first_session == "test:c1"
     # Newest sample reflects the latest published payload bytes.
-    assert samples[-1]["bytes"] == len(f"msg-{overflow - 1}".encode("utf-8"))
+    assert samples[-1]["bytes"] == len(f"msg-{overflow - 1}".encode())
 
 
 @pytest.mark.asyncio

@@ -704,7 +704,7 @@ class AgentRunner:
             else:
                 try:
                     response = await asyncio.wait_for(llm_call, timeout=timeout_s)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     response = LLMResponse(
                         content=f"Error calling LLM: timed out after {timeout_s:g}s",
                         finish_reason="error",

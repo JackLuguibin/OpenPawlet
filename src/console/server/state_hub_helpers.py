@@ -80,12 +80,12 @@ def push_sessions_snapshot(bot_id: str | None) -> None:
     sees the same shape it would on a manual refetch.
     """
     try:
-        from console.server.routers.v1.sessions import _row_to_session_info
+        from console.server.services.session_view import row_to_session_info
         from console.server.session_store import list_session_rows
 
         rows = list_session_rows(bot_id)
         sessions: list[dict[str, Any]] = [
-            _row_to_session_info(r).model_dump(mode="json") for r in rows
+            row_to_session_info(r).model_dump(mode="json") for r in rows
         ]
         publish_sessions_update(bot_id, sessions)
     except Exception:  # noqa: BLE001

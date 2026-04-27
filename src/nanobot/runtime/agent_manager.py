@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import dataclass
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from nanobot.runtime.embedded import EmbeddedNanobot
@@ -44,7 +44,7 @@ _STOP_TIMEOUT_S = 10.0
 class UnifiedAgentManager:
     """Manage runtime lifecycle for the primary agent and subagents."""
 
-    def __init__(self, embedded: "EmbeddedNanobot") -> None:
+    def __init__(self, embedded: EmbeddedNanobot) -> None:
         self._embedded = embedded
         # Serialise all start/stop control-plane operations so concurrent
         # callers cannot race two agent loops on the same bus or tear down

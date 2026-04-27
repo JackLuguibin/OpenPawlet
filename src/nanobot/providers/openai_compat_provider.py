@@ -176,7 +176,7 @@ _RESPONSES_PROBE_INTERVAL_S = 300  # 5 minutes
 
 
 def _is_local_endpoint(
-    spec: "ProviderSpec | None",
+    spec: ProviderSpec | None,
     api_base: str | None,
 ) -> bool:
     """Return True when endpoint points to local/LAN model server."""
@@ -210,7 +210,7 @@ def _is_direct_openai_base(api_base: str | None) -> bool:
 
 
 def _uses_third_party_proxy(
-    spec: "ProviderSpec | None",
+    spec: ProviderSpec | None,
     api_base: str | None,
 ) -> bool:
     """Return True when the request goes to a non-default api_base.
