@@ -43,6 +43,36 @@ def test_row_to_session_info_non_team_session() -> None:
     assert info.team_id is None
     assert info.room_id is None
     assert info.agent_id is None
+    assert info.is_subagent is False
+    assert info.subagent_task_id is None
+    assert info.parent_session_key is None
+
+
+def test_row_to_session_info_detects_subagent_with_parent() -> None:
+    row = {
+        "key": "subagent:cli:direct:abcd1234",
+        "message_count": 5,
+        "created_at": None,
+        "updated_at": None,
+    }
+    info = _row_to_session_info(row)
+    assert info.is_subagent is True
+    assert info.subagent_task_id == "abcd1234"
+    assert info.parent_session_key == "cli:direct"
+
+
+def test_row_to_session_info_detects_orphan_subagent() -> None:
+    row = {
+        "key": "subagent:orphan:fedcba98",
+        "message_count": 0,
+        "created_at": None,
+        "updated_at": None,
+    }
+    info = _row_to_session_info(row)
+    assert info.is_subagent is True
+    assert info.subagent_task_id == "fedcba98"
+    # ``orphan`` sentinel is normalised away so the front-end shows nothing.
+    assert info.parent_session_key is None
 
 
 def test_delete_team_session_rotates_team_room(monkeypatch) -> None:

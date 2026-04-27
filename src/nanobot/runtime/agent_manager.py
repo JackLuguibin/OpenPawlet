@@ -28,7 +28,11 @@ class ManagedAgentStatus:
     iteration: int | None = None
     stop_reason: str | None = None
     error: str | None = None
+    # Sub-agent's own transcript key (``subagent:<parent>:<task_id>``) so the
+    # console can fetch its dedicated transcript via /sessions/{key}/transcript.
     session_key: str | None = None
+    # Original parent session key the sub-agent was spawned from.
+    parent_session_key: str | None = None
     # Profile id when the sub-agent ran with an independent persona profile
     # (see :class:`nanobot.config.profile.AgentProfile`).
     profile_id: str | None = None
@@ -220,6 +224,7 @@ class UnifiedAgentManager:
             stop_reason=getattr(st, "stop_reason", None),
             error=getattr(st, "error", None),
             session_key=getattr(st, "session_key", None),
+            parent_session_key=getattr(st, "parent_session_key", None),
             profile_id=getattr(st, "profile_id", None),
         )
 

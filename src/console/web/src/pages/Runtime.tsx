@@ -5,6 +5,7 @@ import {
   Alert,
   Button,
   Card,
+  Drawer,
   Empty,
   Form,
   Input,
@@ -13,11 +14,13 @@ import {
   Space,
   Spin,
   Table,
+  Tabs,
   Tag,
   Tooltip,
   Typography,
 } from 'antd';
 import {
+  EyeOutlined,
   PlayCircleOutlined,
   PauseCircleOutlined,
   PlusOutlined,
@@ -76,6 +79,10 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
   const addToast = useAppStore((s) => s.addToast);
   const [startModalOpen, setStartModalOpen] = useState(false);
   const [form] = Form.useForm<RuntimeSubagentStartBody>();
+  // Drawer-driven transcript viewer for one runtime row. We hold the entire
+  // ``RuntimeAgentStatus`` because the transcript fetch keys off
+  // ``session_key`` while the JSON view shows the full status payload.
+  const [detailRow, setDetailRow] = useState<RuntimeAgentStatus | null>(null);
 
   const agentsQuery = useQuery({
     queryKey: ['runtime-agents'],
@@ -153,6 +160,21 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
         message: t('runtime.stopSubFailed', { error: err.message }),
       });
     },
+  });
+
+  // Sub-agent transcripts persist under ``subagent:<parent>:<task_id>`` so the
+  // detail drawer can fetch them via the standard ``/sessions/{key}/transcript``
+  // endpoint.  We poll while the row is still running so progress streams in.
+  const detailSessionKey =
+    detailRow && detailRow.session_key && detailRow.session_key.startsWith('subagent:')
+      ? detailRow.session_key
+      : null;
+  const transcriptQuery = useQuery({
+    queryKey: ['runtime-subagent-transcript', detailSessionKey],
+    queryFn: () => api.getSessionTranscript(detailSessionKey as string),
+    enabled: !!detailSessionKey,
+    refetchInterval: detailRow?.running ? REFRESH_INTERVAL_MS : false,
+    retry: false,
   });
 
   const rows = agentsQuery.data ?? [];
@@ -275,60 +297,88 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
     {
       title: t('runtime.colActions'),
       key: 'actions',
-      width: 160,
+      width: 220,
       render: (_: unknown, row: RuntimeAgentStatus) => {
-        if (row.role === 'main') {
-          return row.running ? (
-            <Popconfirm
-              title={t('runtime.confirmStopMain')}
-              okText={t('runtime.stop')}
-              cancelText={t('common.cancel')}
-              okButtonProps={{ danger: true }}
-              onConfirm={() => stopMainMutation.mutate()}
-            >
-              <Button
-                size="small"
-                danger
-                icon={<PauseCircleOutlined />}
-                loading={stopMainMutation.isPending}
-              >
-                {t('runtime.stop')}
-              </Button>
-            </Popconfirm>
-          ) : (
-            <Button
-              size="small"
-              type="primary"
-              icon={<PlayCircleOutlined />}
-              loading={startMainMutation.isPending}
-              onClick={() => startMainMutation.mutate()}
-            >
-              {t('runtime.start')}
-            </Button>
-          );
-        }
-        if (!row.running) {
-          return <Text type="secondary" className="text-xs">{t('runtime.finished')}</Text>;
-        }
-        return (
-          <Popconfirm
-            title={t('runtime.confirmStopSub')}
-            okText={t('runtime.stop')}
-            cancelText={t('common.cancel')}
-            okButtonProps={{ danger: true }}
-            onConfirm={() => stopSubMutation.mutate(row.agent_id)}
+        const detailButton = (
+          <Tooltip
+            title={
+              row.role === 'sub'
+                ? t('runtime.viewDetail')
+                : t('runtime.detailMainDisabled')
+            }
           >
             <Button
               size="small"
-              danger
-              icon={<StopOutlined />}
-              loading={
-                stopSubMutation.isPending && stopSubMutation.variables === row.agent_id
-              }
+              icon={<EyeOutlined />}
+              onClick={() => setDetailRow(row)}
+              disabled={row.role !== 'sub'}
             >
-              {t('runtime.stop')}
+              {t('runtime.detail')}
             </Button>
-          </Popconfirm>
+          </Tooltip>
+        );
+
+        if (row.role === 'main') {
+          return (
+            <Space size={4} wrap>
+              {detailButton}
+              {row.running ? (
+                <Popconfirm
+                  title={t('runtime.confirmStopMain')}
+                  okText={t('runtime.stop')}
+                  cancelText={t('common.cancel')}
+                  okButtonProps={{ danger: true }}
+                  onConfirm={() => stopMainMutation.mutate()}
+                >
+                  <Button
+                    size="small"
+                    danger
+                    icon={<PauseCircleOutlined />}
+                    loading={stopMainMutation.isPending}
+                  >
+                    {t('runtime.stop')}
+                  </Button>
+                </Popconfirm>
+              ) : (
+                <Button
+                  size="small"
+                  type="primary"
+                  icon={<PlayCircleOutlined />}
+                  loading={startMainMutation.isPending}
+                  onClick={() => startMainMutation.mutate()}
+                >
+                  {t('runtime.start')}
+                </Button>
+              )}
+            </Space>
+          );
+        }
+        return (
+          <Space size={4} wrap>
+            {detailButton}
+            {row.running ? (
+              <Popconfirm
+                title={t('runtime.confirmStopSub')}
+                okText={t('runtime.stop')}
+                cancelText={t('common.cancel')}
+                okButtonProps={{ danger: true }}
+                onConfirm={() => stopSubMutation.mutate(row.agent_id)}
+              >
+                <Button
+                  size="small"
+                  danger
+                  icon={<StopOutlined />}
+                  loading={
+                    stopSubMutation.isPending && stopSubMutation.variables === row.agent_id
+                  }
+                >
+                  {t('runtime.stop')}
+                </Button>
+              </Popconfirm>
+            ) : (
+              <Text type="secondary" className="text-xs">{t('runtime.finished')}</Text>
+            )}
+          </Space>
         );
       },
     },
@@ -447,6 +497,140 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
           </Form.Item>
         </Form>
       </Modal>
+
+      <Drawer
+        open={detailRow !== null}
+        onClose={() => setDetailRow(null)}
+        width={Math.min(720, typeof window !== 'undefined' ? window.innerWidth - 80 : 720)}
+        title={
+          detailRow ? (
+            <Space size={8} className="flex-wrap">
+              <Tag color="purple" icon={<Bot className="inline h-3 w-3" />}>
+                {t('runtime.roleSub')}
+              </Tag>
+              <Text className="font-mono text-[12px]">{detailRow.agent_id}</Text>
+              {detailRow.label && (
+                <Text type="secondary" className="text-xs">
+                  {detailRow.label}
+                </Text>
+              )}
+            </Space>
+          ) : (
+            t('runtime.detailTitle')
+          )
+        }
+        destroyOnClose
+      >
+        {detailRow ? (
+          <Tabs
+            items={[
+              {
+                key: 'transcript',
+                label: t('runtime.transcriptTab'),
+                children: (
+                  <div className="space-y-3">
+                    {detailRow.session_key ? (
+                      <Text type="secondary" className="block text-xs">
+                        {t('runtime.transcriptSessionKey')}:{' '}
+                        <span className="font-mono">{detailRow.session_key}</span>
+                      </Text>
+                    ) : null}
+                    {!detailSessionKey ? (
+                      <Alert
+                        type="info"
+                        message={t('runtime.transcriptUnavailable')}
+                        showIcon
+                      />
+                    ) : transcriptQuery.isLoading ? (
+                      <div className="flex justify-center py-12">
+                        <Spin />
+                      </div>
+                    ) : transcriptQuery.error ? (
+                      <Alert
+                        type="warning"
+                        showIcon
+                        message={t('runtime.transcriptLoadFailed')}
+                        description={
+                          transcriptQuery.error instanceof Error
+                            ? transcriptQuery.error.message
+                            : String(transcriptQuery.error)
+                        }
+                      />
+                    ) : (transcriptQuery.data?.messages ?? []).length === 0 ? (
+                      <Empty description={t('runtime.transcriptEmpty')} />
+                    ) : (
+                      <div className="max-h-[60vh] overflow-y-auto space-y-2 rounded-md border border-gray-200/80 dark:border-gray-700/60 bg-gray-50/60 dark:bg-gray-900/40 p-3">
+                        {(transcriptQuery.data?.messages ?? []).map((raw, idx) => {
+                          const m = (raw ?? {}) as {
+                            role?: string;
+                            content?: unknown;
+                            tool_calls?: unknown[];
+                            tool_call_id?: string;
+                            name?: string;
+                            timestamp?: string;
+                            metadata?: { event?: string } & Record<string, unknown>;
+                          };
+                          const role = m.role ?? 'system';
+                          const text =
+                            typeof m.content === 'string'
+                              ? m.content
+                              : m.content == null
+                                ? ''
+                                : JSON.stringify(m.content);
+                          return (
+                            <div
+                              key={`${role}-${idx}`}
+                              className="rounded-md bg-white/70 dark:bg-gray-800/60 p-2 text-xs space-y-1"
+                            >
+                              <div className="flex items-center justify-between">
+                                <Tag
+                                  color={
+                                    role === 'user'
+                                      ? 'blue'
+                                      : role === 'assistant'
+                                        ? 'green'
+                                        : role === 'tool'
+                                          ? 'orange'
+                                          : 'default'
+                                  }
+                                  className="!m-0"
+                                >
+                                  {role}
+                                  {m.name ? `:${m.name}` : ''}
+                                  {m.metadata?.event ? `:${m.metadata.event}` : ''}
+                                </Tag>
+                                {m.timestamp && (
+                                  <Text type="secondary" className="text-[10px]">
+                                    {m.timestamp}
+                                  </Text>
+                                )}
+                              </div>
+                              <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-gray-800 dark:text-gray-200 m-0">
+                                {text || (m.tool_calls
+                                  ? JSON.stringify(m.tool_calls, null, 2)
+                                  : '')}
+                              </pre>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                ),
+              },
+              {
+                key: 'status',
+                label: t('runtime.statusTab'),
+                children: (
+                  <pre className="max-h-[60vh] overflow-y-auto rounded-md border border-gray-200/80 dark:border-gray-700/60 bg-gray-50/60 dark:bg-gray-900/40 p-3 text-[11px] font-mono leading-relaxed">
+                    {JSON.stringify(detailRow, null, 2)}
+                  </pre>
+                ),
+              },
+            ]}
+          />
+        ) : null}
+      </Drawer>
     </PageLayout>
   );
 }

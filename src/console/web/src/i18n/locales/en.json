@@ -174,7 +174,12 @@
     "jumpToBottom": "Jump to latest",
     "jumpToBottomNewMessages": "New messages · jump to latest",
     "loadingOlder": "Loading older messages…",
-    "loadOlderFailed": "Failed to load older messages"
+    "loadOlderFailed": "Failed to load older messages",
+    "showSubagentSessions": "Show sub-agent sessions",
+    "showSubagentSessionsHint": "Sub-agent transcripts are hidden by default. Toggle on to surface them under the main agent list and inspect their full execution.",
+    "subagentTag": "Sub",
+    "subagentTagHint": "Sub-agent dedicated session",
+    "subagentParent": "Sub-agent · parent: {{parent}}"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -1008,6 +1013,16 @@
     "fieldParent": "Parent agent id",
     "fieldParentExtra": "Optional, defaults to the current main agent",
     "fieldTeam": "Team id",
-    "fieldTeamExtra": "Optional metadata; no team entity is created"
+    "fieldTeamExtra": "Optional metadata; no team entity is created",
+    "detail": "Detail",
+    "viewDetail": "View this sub-agent's transcript and status",
+    "detailMainDisabled": "Open the Chat page to inspect the main agent",
+    "detailTitle": "Agent detail",
+    "transcriptTab": "Transcript",
+    "statusTab": "Status JSON",
+    "transcriptSessionKey": "Session key",
+    "transcriptUnavailable": "No dedicated transcript persisted for this agent (only main or ad-hoc sub-agents).",
+    "transcriptLoadFailed": "Failed to load transcript",
+    "transcriptEmpty": "No conversation captured yet"
   }
 }

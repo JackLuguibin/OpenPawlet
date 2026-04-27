@@ -174,7 +174,12 @@
     "jumpToBottom": "跳到最新",
     "jumpToBottomNewMessages": "有新消息 · 跳到最新",
     "loadingOlder": "加载历史消息…",
-    "loadOlderFailed": "加载历史失败"
+    "loadOlderFailed": "加载历史失败",
+    "showSubagentSessions": "显示子 Agent 会话",
+    "showSubagentSessionsHint": "默认隐藏子 Agent 自身的对话记录。开启后将出现在主 Agent 列表中，可点击查看其完整执行过程。",
+    "subagentTag": "Sub",
+    "subagentTagHint": "子 Agent 独立会话",
+    "subagentParent": "子 Agent，父会话：{{parent}}"
   },
   "dashboard": {
     "title": "概览",
@@ -1008,6 +1013,16 @@
     "fieldParent": "父 Agent ID",
     "fieldParentExtra": "可选：默认归属当前主 Agent",
     "fieldTeam": "Team ID",
-    "fieldTeamExtra": "可选：仅作为元数据，不会创建 team 实体"
+    "fieldTeamExtra": "可选：仅作为元数据，不会创建 team 实体",
+    "detail": "详情",
+    "viewDetail": "查看子 Agent 的对话记录与状态",
+    "detailMainDisabled": "主 Agent 的详情请前往“会话”页查看",
+    "detailTitle": "Agent 详情",
+    "transcriptTab": "对话记录",
+    "statusTab": "状态 JSON",
+    "transcriptSessionKey": "Session Key",
+    "transcriptUnavailable": "该 Agent 未持久化独立 transcript（仅主 Agent 或匿名子 Agent）。",
+    "transcriptLoadFailed": "加载对话记录失败",
+    "transcriptEmpty": "尚未产生任何对话内容"
   }
 }

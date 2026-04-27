@@ -116,3 +116,33 @@ class SessionTranscriptWriter:
         if metadata:
             record["metadata"] = metadata
         self._append_jsonl(session_key, record)
+
+    def append_event(
+        self,
+        session_key: str,
+        event: str,
+        *,
+        content: str,
+        metadata: dict[str, Any] | None = None,
+        source: str = "subagent_event",
+    ) -> None:
+        """Append a structured event row to *session_key* transcript.
+
+        Used to embed lightweight markers (e.g. subagent start/done) inside a
+        parent session transcript without faking a full assistant/tool turn.
+        The record is shaped like a normal message so existing readers degrade
+        gracefully, while ``metadata.event`` carries the real event type.
+        """
+        if not self.enabled:
+            return
+        meta: dict[str, Any] = {"event": event}
+        if metadata:
+            meta.update(metadata)
+        record: dict[str, Any] = {
+            "role": "system",
+            "source": source,
+            "content": content,
+            "metadata": meta,
+            "timestamp": timestamp(self._agent_timezone),
+        }
+        self._append_jsonl(session_key, record)

@@ -23,7 +23,7 @@ import { registerChatHandler, getWSRef } from "../hooks/useWebSocket";
 import { useAgentTimeZone } from "../hooks/useAgentTimeZone";
 import { formatChatMessageTime } from "../utils/agentDatetime";
 import * as api from "../api/client";
-import { Button, Tag, Popconfirm, Checkbox, Spin, Modal, Select, Tabs } from "antd";
+import { Button, Tag, Popconfirm, Checkbox, Spin, Modal, Select, Tabs, Switch, Tooltip } from "antd";
 import {
   PlusOutlined,
   LoadingOutlined,
@@ -1211,6 +1211,30 @@ export default function Chat() {
   const [showSuggestions, setShowSuggestions] = useState(true);
   const [subagentTasks, setSubagentTasks] = useState<SubagentTask[]>([]);
   const [subagentPanelOpen, setSubagentPanelOpen] = useState(true);
+  // Sub-agent transcripts surface as their own ``subagent:<parent>:<task_id>``
+  // sessions; hide them from the main sidebar by default and let the user
+  // toggle visibility (preference is persisted in localStorage).
+  const [showSubagentSessions, setShowSubagentSessions] = useState<boolean>(
+    () => {
+      try {
+        return (
+          localStorage.getItem("openpawlet:showSubagentSessions") === "1"
+        );
+      } catch {
+        return false;
+      }
+    },
+  );
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        "openpawlet:showSubagentSessions",
+        showSubagentSessions ? "1" : "0",
+      );
+    } catch {
+      // ignore (storage may be unavailable in private mode)
+    }
+  }, [showSubagentSessions]);
   const [sessionJsonlModalOpen, setSessionJsonlModalOpen] = useState(false);
   const [renameSessionModalOpen, setRenameSessionModalOpen] = useState(false);
   const [renameSessionKey, setRenameSessionKey] = useState<string | null>(null);
@@ -1640,7 +1664,12 @@ export default function Chat() {
     const main: typeof list = [];
     const teams: typeof list = [];
     const subAgentRows = new Map<string, typeof list>();
+    const subagentSessions: typeof list = [];
     for (const row of list) {
+      if (row.is_subagent) {
+        subagentSessions.push(row);
+        continue;
+      }
       if (row.team_id) {
         teams.push(row);
         continue;
@@ -1656,8 +1685,13 @@ export default function Chat() {
       }
       main.push(row);
     }
-    return { main, teams, subAgentRows };
-  }, [sessions]);
+    if (showSubagentSessions) {
+      // When the toggle is on, treat sub-agent transcripts as a flat list at
+      // the top level so users can navigate into them like any other session.
+      main.push(...subagentSessions);
+    }
+    return { main, teams, subAgentRows, subagentSessions };
+  }, [sessions, showSubagentSessions]);
 
   // Sub-Agents grouping: Console-agent id → { name, sessions, runtime tasks }.
   // We merge three signals: persisted sessions tagged with agent_id, the
@@ -3333,6 +3367,23 @@ export default function Chat() {
             />
           </div>
         </div>
+        <div className="shrink-0 px-3.5 py-2 border-b border-gray-200/50 dark:border-gray-700/50 flex items-center justify-between gap-2">
+          <Tooltip title={t("chat.showSubagentSessionsHint")}>
+            <span className="text-xs text-gray-600 dark:text-gray-300 truncate">
+              {t("chat.showSubagentSessions")}
+              {groupedSessions.subagentSessions.length > 0 ? (
+                <span className="ml-1 text-[11px] text-gray-400 dark:text-gray-500 tabular-nums">
+                  ({groupedSessions.subagentSessions.length})
+                </span>
+              ) : null}
+            </span>
+          </Tooltip>
+          <Switch
+            size="small"
+            checked={showSubagentSessions}
+            onChange={setShowSubagentSessions}
+          />
+        </div>
         <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar px-3.5 py-4 space-y-3">
           {sessionsListPending && sessions === undefined ? (
             <div className="flex flex-col items-center justify-center gap-3 py-16 text-gray-500 dark:text-gray-400">
@@ -3442,13 +3493,39 @@ export default function Chat() {
                               />
                             ) : (
                               <Bot
-                                className="w-3.5 h-3.5 shrink-0 text-violet-500 dark:text-violet-400"
-                                aria-label="agent session"
+                                className={`w-3.5 h-3.5 shrink-0 ${
+                                  session.is_subagent
+                                    ? "text-amber-500 dark:text-amber-400"
+                                    : "text-violet-500 dark:text-violet-400"
+                                }`}
+                                aria-label={
+                                  session.is_subagent
+                                    ? "subagent session"
+                                    : "agent session"
+                                }
                               />
                             )}
                             <span className="text-sm font-medium truncate block leading-snug min-w-0">
                               {session.title || session.key}
                             </span>
+                            {session.is_subagent ? (
+                              <Tooltip
+                                title={
+                                  session.parent_session_key
+                                    ? t("chat.subagentParent", {
+                                        parent: session.parent_session_key,
+                                      })
+                                    : t("chat.subagentTagHint")
+                                }
+                              >
+                                <Tag
+                                  color="orange"
+                                  className="!m-0 !text-[10px] !leading-4 !px-1 !py-0 shrink-0"
+                                >
+                                  {t("chat.subagentTag")}
+                                </Tag>
+                              </Tooltip>
+                            ) : null}
                           </span>
                           <span className="text-xs text-gray-500 mt-1.5 block leading-relaxed">
                             {t("chat.messageCount", { count: session.message_count })}

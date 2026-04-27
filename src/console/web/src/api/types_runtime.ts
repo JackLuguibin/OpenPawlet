@@ -17,7 +17,10 @@ export interface RuntimeAgentStatus {
   iteration?: number | null;
   stop_reason?: string | null;
   error?: string | null;
+  /** Sub-agent's own transcript key (``subagent:<parent>:<task_id>``). */
   session_key?: string | null;
+  /** Original parent session key the sub-agent was spawned from. */
+  parent_session_key?: string | null;
   profile_id?: string | null;
 }
 

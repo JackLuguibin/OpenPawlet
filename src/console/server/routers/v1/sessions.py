@@ -61,6 +61,12 @@ _PREVIEW_LIMIT = 8
 _TEAM_SESSION_RE = re.compile(
     r"^console:team_(?P<team_id>[^_]+)_room_(?P<room_id>[^_]+)_agent_(?P<agent_id>.+?)(?:_run_[^_]+)?$"
 )
+# Sub-agent transcripts use ``subagent:<parent_session_key>:<8-char-task-id>``;
+# the parent portion may itself contain colons (e.g. ``cli:direct``) so the
+# parent group is greedy up to the final ``:<task_id>`` suffix.
+_SUBAGENT_SESSION_RE = re.compile(
+    r"^subagent:(?P<parent>.+):(?P<task>[0-9a-f]{8})$"
+)
 
 
 def _iso(dt: object | None) -> str | None:
@@ -73,6 +79,17 @@ def _iso(dt: object | None) -> str | None:
     return str(dt)
 
 
+def _parse_subagent_key(key: str) -> tuple[bool, str | None, str | None]:
+    """Return ``(is_subagent, parent_session_key, task_id)`` for *key*."""
+    match = _SUBAGENT_SESSION_RE.match(key)
+    if not match:
+        return False, None, None
+    parent = match.group("parent")
+    if parent == "orphan":
+        parent = None
+    return True, parent, match.group("task")
+
+
 def _row_to_session_info(row: dict[str, object]) -> SessionInfo:
     ca = row.get("created_at")
     ua = row.get("updated_at")
@@ -83,6 +100,7 @@ def _row_to_session_info(row: dict[str, object]) -> SessionInfo:
         team_id = match.group("team_id")
         room_id = match.group("room_id")
         agent_id = match.group("agent_id")
+    is_sub, parent_key, sub_task = _parse_subagent_key(key)
     return SessionInfo(
         key=key,
         title=str(row["title"]) if row.get("title") is not None else None,
@@ -93,6 +111,9 @@ def _row_to_session_info(row: dict[str, object]) -> SessionInfo:
         team_id=team_id,
         room_id=room_id,
         agent_id=agent_id,
+        is_subagent=is_sub,
+        subagent_task_id=sub_task,
+        parent_session_key=parent_key,
     )
 
 
@@ -390,6 +411,7 @@ async def create_session(
         team_id = match.group("team_id")
         room_id = match.group("room_id")
         agent_id = match.group("agent_id")
+    is_sub, parent_key, sub_task = _parse_subagent_key(key)
     return DataResponse(
         data=SessionInfo(
             key=key,
@@ -401,6 +423,9 @@ async def create_session(
             team_id=team_id,
             room_id=room_id,
             agent_id=agent_id,
+            is_subagent=is_sub,
+            subagent_task_id=sub_task,
+            parent_session_key=parent_key,
         )
     )
 
@@ -467,6 +492,7 @@ async def update_session(
         team_id = match.group("team_id")
         room_id = match.group("room_id")
         agent_id = match.group("agent_id")
+    is_sub, parent_key, sub_task = _parse_subagent_key(session_key)
     return DataResponse(
         data=SessionInfo(
             key=session_key,
@@ -478,6 +504,9 @@ async def update_session(
             team_id=team_id,
             room_id=room_id,
             agent_id=agent_id,
+            is_subagent=is_sub,
+            subagent_task_id=sub_task,
+            parent_session_key=parent_key,
         )
     )
 

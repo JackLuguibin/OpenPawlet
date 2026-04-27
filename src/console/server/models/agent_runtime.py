@@ -24,6 +24,7 @@ class RuntimeAgentStatus(BaseModel):
     stop_reason: str | None = None
     error: str | None = None
     session_key: str | None = None
+    parent_session_key: str | None = None
     profile_id: str | None = None
 
 

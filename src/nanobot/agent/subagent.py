@@ -45,6 +45,8 @@ from nanobot.config.schema import (
     WebToolsConfig,
 )
 from nanobot.providers.base import LLMProvider
+from nanobot.session.manager import SessionManager
+from nanobot.session.transcript import SessionTranscriptWriter
 from nanobot.utils.prompt_templates import render_template
 
 
@@ -66,18 +68,41 @@ class SubagentStatus:
     team_id: str | None = None
     origin_channel: str | None = None
     origin_chat_id: str | None = None
+    # ``session_key`` is the sub-agent's own transcript key (``subagent:<parent>:<task_id>``)
+    # so the console can fetch its dedicated transcript via /sessions/{key}/transcript.
     session_key: str | None = None
+    # Original parent session key the sub-agent was spawned from (``console:...`` / ``cli:...`` / ...).
+    parent_session_key: str | None = None
     completed_at: float | None = None
     profile_id: str | None = None  # Resolved profile (None when running as inherited sub-agent)
 
 
 class _SubagentHook(AgentHook):
-    """Hook for subagent execution — logs tool calls and updates status."""
+    """Hook for subagent execution — logs tool calls and updates status.
 
-    def __init__(self, task_id: str, status: SubagentStatus | None = None) -> None:
+    When ``transcript`` and ``session_key`` are supplied, each iteration's
+    newly-appended messages are flushed to the sub-agent's own transcript
+    file so the console can render the live conversation while it runs.
+    """
+
+    def __init__(
+        self,
+        task_id: str,
+        status: SubagentStatus | None = None,
+        *,
+        transcript: SessionTranscriptWriter | None = None,
+        session_key: str | None = None,
+        initial_message_count: int = 0,
+    ) -> None:
         super().__init__()
         self._task_id = task_id
         self._status = status
+        self._transcript = transcript
+        self._session_key = session_key
+        # Tracks how many entries of context.messages have already been
+        # written to the transcript. Initial system+user messages are
+        # flushed up-front by SubagentManager so we start past them.
+        self._written_count = initial_message_count
 
     async def before_execute_tools(self, context: AgentHookContext) -> None:
         for tool_call in context.tool_calls:
@@ -90,6 +115,10 @@ class _SubagentHook(AgentHook):
             )
 
     async def after_iteration(self, context: AgentHookContext) -> None:
+        # Flush any messages the runner appended during this iteration so the
+        # sub-agent transcript stays in sync turn-by-turn (assistant reply +
+        # any tool result messages).
+        self._flush_transcript(context.messages)
         if self._status is None:
             return
         self._status.iteration = context.iteration
@@ -97,6 +126,21 @@ class _SubagentHook(AgentHook):
         self._status.usage = dict(context.usage)
         if context.error:
             self._status.error = str(context.error)
+
+    def _flush_transcript(self, messages: list[dict[str, Any]]) -> None:
+        if self._transcript is None or not self._session_key:
+            return
+        if self._written_count >= len(messages):
+            return
+        for m in messages[self._written_count:]:
+            try:
+                self._transcript.append_raw_turn_message(self._session_key, m)
+            except Exception as exc:  # pragma: no cover - transcript IO is best-effort
+                logger.debug(
+                    "Subagent [{}] transcript flush failed: {}", self._task_id, exc
+                )
+                break
+        self._written_count = len(messages)
 
 
 class SubagentManager:
@@ -118,6 +162,8 @@ class SubagentManager:
         profile_store: ProfileStore | None = None,
         base_defaults: AgentDefaults | None = None,
         base_tools: ToolsConfig | None = None,
+        transcript_writer: SessionTranscriptWriter | None = None,
+        session_manager: SessionManager | None = None,
     ):
         self.provider = provider
         self.workspace = workspace
@@ -133,9 +179,17 @@ class SubagentManager:
         self.runner = AgentRunner(provider)
         self._running_tasks: dict[str, asyncio.Task[None]] = {}
         self._task_statuses: dict[str, SubagentStatus] = {}
-        self._session_tasks: dict[str, set[str]] = {}  # session_key -> {task_id, ...}
+        # Tracks a sub-agent's own session_key (subagent:<parent>:<task_id>)
+        # so cancel_by_session can still target the original parent key while
+        # the sub-agent's transcript lives at a separate key.
+        self._session_tasks: dict[str, set[str]] = {}  # parent session_key -> {task_id, ...}
         self._task_history_limit = 200
         self.profile_store = profile_store or ProfileStore(workspace)
+        self._transcript = transcript_writer
+        # Optional session manager — when supplied, the sub-agent creates an
+        # empty ``sessions/<key>.jsonl`` placeholder so the file is visible in
+        # the console session list (transcript writes alone don't create one).
+        self._session_manager = session_manager
         # Base configs used when resolving profiles into concrete settings.
         # Fall back to a model-pinned AgentDefaults so resolution still works
         # in lightweight tests that don't construct a full Config.
@@ -210,6 +264,8 @@ class SubagentManager:
             resolved.profile.id if resolved is not None else None
         )
 
+        sub_session_key = self._build_subagent_session_key(session_key, task_id)
+
         status = SubagentStatus(
             task_id=task_id,
             label=display_label,
@@ -219,7 +275,8 @@ class SubagentManager:
             team_id=team_id,
             origin_channel=origin_channel,
             origin_chat_id=origin_chat_id,
-            session_key=session_key,
+            session_key=sub_session_key,
+            parent_session_key=session_key,
             profile_id=effective_profile_id,
         )
         self._task_statuses[task_id] = status
@@ -254,6 +311,20 @@ class SubagentManager:
 
         logger.info("Spawned subagent [{}]: {}", task_id, display_label)
         return task_id
+
+    @staticmethod
+    def _build_subagent_session_key(
+        parent_session_key: str | None,
+        task_id: str,
+    ) -> str:
+        """Compose the dedicated session_key used for the sub-agent transcript.
+
+        Format: ``subagent:<parent_session_key|orphan>:<task_id>`` — keeps the
+        parent context inline so the console can group sub-agents under their
+        originator while still routing transcript lookups by a unique key.
+        """
+        parent = (parent_session_key or "").strip() or "orphan"
+        return f"subagent:{parent}:{task_id}"
 
     def _resolve_profile(
         self,
@@ -409,6 +480,32 @@ class SubagentManager:
             status.phase = payload.get("phase", status.phase)
             status.iteration = payload.get("iteration", status.iteration)
 
+        sub_session_key = status.session_key or self._build_subagent_session_key(
+            origin.get("session_key"), task_id
+        )
+        parent_session_key = status.parent_session_key or origin.get("session_key")
+
+        # Materialise a placeholder session file so the sub-agent surfaces in
+        # ``GET /sessions`` (transcript writes alone don't create the
+        # ``sessions/<key>.jsonl`` metadata row the console list reads).
+        self._ensure_session_placeholder(sub_session_key)
+
+        # Emit a ``subagent_start`` marker on the parent transcript so the
+        # console can render an inline placeholder pointing at the dedicated
+        # sub-agent transcript.
+        self._emit_parent_event(
+            parent_session_key,
+            "subagent_start",
+            content=f"Subagent [{label}] started: {task}",
+            metadata={
+                "task_id": task_id,
+                "label": label,
+                "subagent_session_key": sub_session_key,
+                "task_description": task,
+                "profile_id": status.profile_id,
+            },
+        )
+
         try:
             tools = self._build_subagent_tools(
                 task_id=task_id, origin=origin, resolved=resolved
@@ -441,6 +538,11 @@ class SubagentManager:
                 {"role": "user", "content": f"{runtime}\n\n{task}"},
             ]
 
+            # Persist the seed system+user messages immediately so the console
+            # can render the sub-agent's task brief while the LLM is still
+            # working on the first turn.
+            self._flush_initial_messages(sub_session_key, messages)
+
             result = await self.runner.run(
                 AgentRunSpec(
                     initial_messages=messages,
@@ -448,16 +550,30 @@ class SubagentManager:
                     model=effective_model,
                     max_iterations=effective_max_iter,
                     max_tool_result_chars=effective_max_chars,
-                    hook=_SubagentHook(task_id, status),
+                    hook=_SubagentHook(
+                        task_id,
+                        status,
+                        transcript=self._transcript,
+                        session_key=sub_session_key,
+                        initial_message_count=len(messages),
+                    ),
                     max_iterations_message="Task completed but no final response was generated.",
                     error_message=None,
                     fail_on_tool_error=True,
+                    workspace=self.workspace,
+                    session_key=sub_session_key,
                     checkpoint_callback=_on_checkpoint,
                 )
             )
             status.phase = "done"
             status.stop_reason = result.stop_reason
             status.completed_at = time.monotonic()
+
+            # Make sure any tail messages produced after the final hook tick
+            # (e.g. assistant final response) land in the transcript too.
+            self._flush_result_tail(
+                sub_session_key, getattr(result, "messages", None)
+            )
 
             if result.stop_reason == "tool_error":
                 status.tool_events = list(result.tool_events)
@@ -468,6 +584,8 @@ class SubagentManager:
                     self._format_partial_progress(result),
                     origin,
                     "error",
+                    sub_session_key=sub_session_key,
+                    parent_session_key=parent_session_key,
                 )
             elif result.stop_reason == "error":
                 await self._announce_result(
@@ -477,20 +595,40 @@ class SubagentManager:
                     result.error or "Error: subagent execution failed.",
                     origin,
                     "error",
+                    sub_session_key=sub_session_key,
+                    parent_session_key=parent_session_key,
                 )
             else:
                 final_result = (
                     result.final_content or "Task completed but no final response was generated."
                 )
                 logger.info("Subagent [{}] completed successfully", task_id)
-                await self._announce_result(task_id, label, task, final_result, origin, "ok")
+                await self._announce_result(
+                    task_id,
+                    label,
+                    task,
+                    final_result,
+                    origin,
+                    "ok",
+                    sub_session_key=sub_session_key,
+                    parent_session_key=parent_session_key,
+                )
 
         except Exception as e:
             status.phase = "error"
             status.error = str(e)
             status.completed_at = time.monotonic()
             logger.error("Subagent [{}] failed: {}", task_id, e)
-            await self._announce_result(task_id, label, task, f"Error: {e}", origin, "error")
+            await self._announce_result(
+                task_id,
+                label,
+                task,
+                f"Error: {e}",
+                origin,
+                "error",
+                sub_session_key=sub_session_key,
+                parent_session_key=parent_session_key,
+            )
 
     async def _announce_result(
         self,
@@ -500,6 +638,9 @@ class SubagentManager:
         result: str,
         origin: dict[str, str],
         status: str,
+        *,
+        sub_session_key: str | None = None,
+        parent_session_key: str | None = None,
     ) -> None:
         """Announce the subagent result to the main agent via the message bus."""
         status_text = "completed successfully" if status == "ok" else "failed"
@@ -510,6 +651,24 @@ class SubagentManager:
             status_text=status_text,
             task=task,
             result=result,
+        )
+
+        # Drop a structured ``subagent_done`` / ``subagent_error`` row on the
+        # parent transcript so console viewers can navigate to the sub-agent's
+        # own session for the full conversation.
+        event_name = "subagent_done" if status == "ok" else "subagent_error"
+        excerpt = result if len(result) <= 400 else result[:400] + "…"
+        self._emit_parent_event(
+            parent_session_key,
+            event_name,
+            content=f"Subagent [{label}] {status_text}: {excerpt}",
+            metadata={
+                "task_id": task_id,
+                "label": label,
+                "subagent_session_key": sub_session_key,
+                "status": status,
+                "result_excerpt": excerpt,
+            },
         )
 
         # Inject as system message to trigger main agent.
@@ -527,6 +686,7 @@ class SubagentManager:
             metadata={
                 "injected_event": "subagent_result",
                 "subagent_task_id": task_id,
+                "subagent_session_key": sub_session_key,
             },
         )
 
@@ -557,6 +717,109 @@ class SubagentManager:
         logger.debug(
             "Subagent [{}] announced result to {}:{}", task_id, origin["channel"], origin["chat_id"]
         )
+
+    def _ensure_session_placeholder(self, sub_session_key: str) -> None:
+        """Create an empty ``sessions/<key>.jsonl`` if it doesn't exist yet.
+
+        The placeholder lets the console session list pick up sub-agent
+        transcripts (``list_session_rows`` enumerates the sessions directory).
+        Errors are swallowed because session bookkeeping must never block the
+        sub-agent loop itself.
+        """
+        if self._session_manager is None or not sub_session_key:
+            return
+        try:
+            existing = self._session_manager._load(sub_session_key)
+            if existing is not None:
+                return
+            from nanobot.session.manager import Session
+
+            session = Session(
+                key=sub_session_key,
+                agent_timezone=self._session_manager.agent_timezone,
+            )
+            self._session_manager.save(session)
+        except Exception as exc:  # pragma: no cover - bookkeeping is best-effort
+            logger.debug(
+                "Subagent session placeholder for {} failed: {}", sub_session_key, exc
+            )
+
+    def _emit_parent_event(
+        self,
+        parent_session_key: str | None,
+        event: str,
+        *,
+        content: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        """Append a structured sub-agent event to the parent transcript.
+
+        No-ops when transcript persistence is disabled or there is no parent
+        session (e.g. CLI direct spawns without an upstream conversation).
+        """
+        if self._transcript is None or not parent_session_key:
+            return
+        try:
+            self._transcript.append_event(
+                parent_session_key,
+                event,
+                content=content,
+                metadata=metadata,
+            )
+        except Exception as exc:  # pragma: no cover - transcript IO is best-effort
+            logger.debug("Subagent parent event '{}' write failed: {}", event, exc)
+
+    def _flush_initial_messages(
+        self,
+        sub_session_key: str,
+        messages: list[dict[str, Any]],
+    ) -> None:
+        """Persist the seed system+user messages for the sub-agent transcript."""
+        if self._transcript is None or not sub_session_key:
+            return
+        for m in messages:
+            try:
+                self._transcript.append_raw_turn_message(sub_session_key, m)
+            except Exception as exc:  # pragma: no cover - transcript IO is best-effort
+                logger.debug("Subagent initial transcript flush failed: {}", exc)
+                break
+
+    def _flush_result_tail(
+        self,
+        sub_session_key: str,
+        result_messages: list[dict[str, Any]] | None,
+    ) -> None:
+        """Append any messages produced after the last hook tick.
+
+        The runner appends the final assistant turn after ``after_iteration``
+        runs in some stop reasons, so we read the *result* messages and write
+        anything still missing from the transcript on disk.
+        """
+        if self._transcript is None or not sub_session_key or not result_messages:
+            return
+        try:
+            existing = self._read_transcript_count(sub_session_key)
+        except Exception as exc:  # pragma: no cover - transcript IO is best-effort
+            logger.debug("Subagent transcript tail check failed: {}", exc)
+            return
+        if existing >= len(result_messages):
+            return
+        for m in result_messages[existing:]:
+            try:
+                self._transcript.append_raw_turn_message(sub_session_key, m)
+            except Exception as exc:  # pragma: no cover - transcript IO is best-effort
+                logger.debug("Subagent transcript tail flush failed: {}", exc)
+                break
+
+    def _read_transcript_count(self, session_key: str) -> int:
+        """Return the number of JSONL lines currently on disk for *session_key*."""
+        if self._transcript is None:
+            return 0
+        path = self._transcript._path(session_key)
+        if not path.is_file():
+            return 0
+        with open(path, "r", encoding="utf-8") as f:
+            return sum(1 for _ in f)
 
     @staticmethod
     def _format_partial_progress(result) -> str:

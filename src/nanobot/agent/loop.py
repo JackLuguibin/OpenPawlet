@@ -394,6 +394,18 @@ class AgentLoop:
         self.sessions.configure_timezone(self.timezone)
         self.tools = ToolRegistry()
         self.runner = AgentRunner(provider)
+        # Build the transcript writer up-front so it can be shared with the
+        # sub-agent manager (lets sub-agents persist their own conversation
+        # under ``transcripts/subagent_<parent>_<task_id>.jsonl``).
+        self._session_transcript: SessionTranscriptWriter | None = None
+        if persist_session_transcript:
+            self._session_transcript = SessionTranscriptWriter(
+                workspace,
+                enabled=True,
+                include_full_tool_results=transcript_include_full_tool_results,
+                max_tool_result_chars=self.max_tool_result_chars,
+                timezone=self.timezone,
+            )
         self.subagents = SubagentManager(
             provider=provider,
             workspace=workspace,
@@ -410,6 +422,8 @@ class AgentLoop:
                 runtime_config.agents.defaults if runtime_config is not None else None
             ),
             base_tools=_tc,
+            transcript_writer=self._session_transcript,
+            session_manager=self.sessions,
         )
         self._unified_session = unified_session
         self._running = False
@@ -440,15 +454,6 @@ class AgentLoop:
             max_completion_tokens=provider.generation.max_tokens,
             consolidation_ratio=consolidation_ratio,
         )
-        self._session_transcript: SessionTranscriptWriter | None = None
-        if persist_session_transcript:
-            self._session_transcript = SessionTranscriptWriter(
-                workspace,
-                enabled=True,
-                include_full_tool_results=transcript_include_full_tool_results,
-                max_tool_result_chars=self.max_tool_result_chars,
-                timezone=self.timezone,
-            )
         # Per-turn snapshot of the real assembled LLM context (system prompt +
         # messages sent to the provider). Written to ``context/{key}.jsonl`` so
         # the console can show exactly what the agent saw on every turn.

@@ -39,6 +39,12 @@ class SessionInfo(BaseModel):
     team_id: str | None = None
     room_id: str | None = None
     agent_id: str | None = None
+    # ``True`` when the session_key follows the
+    # ``subagent:<parent>:<task_id>`` shape — used by the console to filter
+    # sub-agent transcripts out of the main chat list by default.
+    is_subagent: bool = False
+    subagent_task_id: str | None = None
+    parent_session_key: str | None = None
 
 
 class SessionDetail(SessionInfo):

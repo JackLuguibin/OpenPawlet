@@ -64,6 +64,10 @@ export interface SessionInfo {
   team_id?: string | null;
   room_id?: string | null;
   agent_id?: string | null;
+  /** True when the session_key follows ``subagent:<parent>:<task_id>``. */
+  is_subagent?: boolean;
+  subagent_task_id?: string | null;
+  parent_session_key?: string | null;
 }
 
 export interface ChannelStatus {
