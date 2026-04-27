@@ -36,7 +36,7 @@ function PageLoading() {
 
 function AppRoutes() {
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+    <div className="flex min-h-0 flex-1 flex-col bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100">
       <Layout>
         <Suspense fallback={<PageLoading />}>
           <Routes>
@@ -122,22 +122,18 @@ function App() {
           colorBgElevated: isDark ? undefined : '#ffffff',
         },
         components: {
-          Card: {
-            borderRadiusLG: 6,
-            borderRadius: 6,
-          },
-          Button: {
-            borderRadius: 6,
-            controlHeight: 36,
-          },
-          Input: {
-            borderRadius: 6,
-            controlHeight: 36,
-          },
-          Select: {
-            borderRadius: 6,
-            controlHeight: 36,
-          },
+          Card: { borderRadiusLG: 6, borderRadius: 6 },
+          Button: { borderRadius: 6, controlHeight: 36 },
+          Input: { borderRadius: 6, controlHeight: 36 },
+          Select: { borderRadius: 6, controlHeight: 36 },
+          Tabs: { cardPadding: '8px 16px', horizontalItemPadding: '8px 16px' },
+          Segmented: { borderRadius: 6, controlHeight: 32 },
+          Switch: { trackHeight: 22, trackMinWidth: 40 },
+          Collapse: { borderRadiusLG: 6, contentPadding: '12px 16px', headerPadding: '10px 16px' },
+          Menu: { itemBorderRadius: 6, itemMarginInline: 8, itemHeight: 38 },
+          Modal: { borderRadiusLG: 8 },
+          Form: { itemMarginBottom: 16 },
+          Alert: { borderRadiusLG: 6 },
         },
       }}
     >

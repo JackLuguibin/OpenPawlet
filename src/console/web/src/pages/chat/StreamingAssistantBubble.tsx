@@ -1,6 +1,12 @@
 import { useTranslation } from "react-i18next";
-import { Bot, Info, Wrench } from "lucide-react";
-import { CheckOutlined, CloseOutlined, LoadingOutlined } from "@ant-design/icons";
+import {
+  RobotOutlined,
+  InfoCircleOutlined,
+  ToolOutlined,
+  CheckOutlined,
+  CloseOutlined,
+  LoadingOutlined,
+} from "@ant-design/icons";
 import { Tag } from "antd";
 
 import { MessageThinkingBlock } from "./MessageThinkingBlock";
@@ -64,16 +70,15 @@ export function StreamingAssistantBubble({
   return (
     <>
       <div className="flex gap-3 w-full min-w-0">
-        <div className="w-10 h-10 rounded-md bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-600 flex items-center justify-center shrink-0">
-          <Bot className="w-5 h-5 text-gray-600 dark:text-gray-300" />
+        <div className="w-10 h-10 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 flex items-center justify-center shrink-0">
+          <RobotOutlined style={{ fontSize: 18 }} />
         </div>
         <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-md px-5 py-4 shadow-sm min-w-0 flex-1 max-w-full mr-[calc(2.5rem+0.75rem)]">
           {streamingChannelNotices.length > 0 ? (
             <div className="space-y-2 mb-3 pb-3 border-b border-amber-200/70 dark:border-amber-700/50">
               <div className="flex items-center gap-2 pl-0.5">
-                <Info
-                  className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0"
-                  strokeWidth={2}
+                <InfoCircleOutlined
+                  className="text-amber-600 dark:text-amber-400 shrink-0"
                   aria-hidden
                 />
                 <span className="text-[11px] font-semibold uppercase tracking-wider text-amber-700/90 dark:text-amber-400/90">
@@ -133,9 +138,8 @@ export function StreamingAssistantBubble({
               }
             >
               <div className="flex items-center gap-2 pl-0.5">
-                <Wrench
-                  className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500 shrink-0"
-                  strokeWidth={2}
+                <ToolOutlined
+                  className="text-slate-400 dark:text-slate-500 shrink-0"
                   aria-hidden
                 />
                 <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">

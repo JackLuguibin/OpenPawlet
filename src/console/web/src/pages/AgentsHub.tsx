@@ -1,9 +1,8 @@
-import { useCallback, useMemo, type ReactNode } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Bot, UsersRound, Cpu } from 'lucide-react';
-import { PageLayout } from '../components/PageLayout';
-import { SegmentedTabs } from '../components/SegmentedTabs';
+import { RobotOutlined, TeamOutlined, ApiOutlined } from '@ant-design/icons';
+import { HubShell, type HubTabItem } from '../components/HubShell';
 import Agents from './Agents';
 import Teams from './Teams';
 import Runtime from './Runtime';
@@ -34,70 +33,37 @@ export default function AgentsHub() {
     [setSearchParams],
   );
 
-  const tabs: { key: AgentsSection; label: ReactNode }[] = useMemo(
+  const tabs: HubTabItem<AgentsSection>[] = useMemo(
     () => [
       {
         key: 'agents',
-        label: (
-          <span className="inline-flex items-center justify-center gap-1.5">
-            <Bot className="h-3.5 w-3.5 opacity-80" aria-hidden />
-            {t('agentsHub.tabAgents')}
-          </span>
-        ),
+        icon: <RobotOutlined />,
+        label: t('agentsHub.tabAgents'),
+        content: <Agents embedded />,
       },
       {
         key: 'teams',
-        label: (
-          <span className="inline-flex items-center justify-center gap-1.5">
-            <UsersRound className="h-3.5 w-3.5 opacity-80" aria-hidden />
-            {t('agentsHub.tabTeams')}
-          </span>
-        ),
+        icon: <TeamOutlined />,
+        label: t('agentsHub.tabTeams'),
+        content: <Teams embedded />,
       },
       {
         key: 'runtime',
-        label: (
-          <span className="inline-flex items-center justify-center gap-1.5">
-            <Cpu className="h-3.5 w-3.5 opacity-80" aria-hidden />
-            {t('agentsHub.tabRuntime')}
-          </span>
-        ),
+        icon: <ApiOutlined />,
+        label: t('agentsHub.tabRuntime'),
+        content: <Runtime embedded />,
       },
     ],
     [t],
   );
 
   return (
-    <PageLayout className="min-h-0 flex-1 overflow-hidden">
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden">
-        <div className="shrink-0 rounded-md border border-gray-200/80 bg-white/70 shadow-sm shadow-gray-900/[0.03] backdrop-blur-sm dark:border-gray-700/50 dark:bg-gray-800/50">
-          <div className="px-4 py-4 sm:px-5 sm:py-5">
-            <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
-              {t('agentsHub.pageTitle')}
-            </h1>
-            <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-gray-500 dark:text-gray-400">
-              {t('agentsHub.pageSubtitle')}
-            </p>
-            <div className="mt-4 border-t border-gray-200/70 pt-4 dark:border-gray-700/60">
-              <SegmentedTabs
-                ariaLabel={t('agentsHub.ariaTabs')}
-                tabs={tabs}
-                value={section}
-                onChange={setSectionInUrl}
-                fullWidth
-                margins="none"
-                className="w-full"
-              />
-            </div>
-          </div>
-        </div>
-
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          {section === 'agents' && <Agents embedded />}
-          {section === 'teams' && <Teams embedded />}
-          {section === 'runtime' && <Runtime embedded />}
-        </div>
-      </div>
-    </PageLayout>
+    <HubShell
+      title={t('agentsHub.pageTitle')}
+      subtitle={t('agentsHub.pageSubtitle')}
+      tabs={tabs}
+      activeKey={section}
+      onChange={setSectionInUrl}
+    />
   );
 }

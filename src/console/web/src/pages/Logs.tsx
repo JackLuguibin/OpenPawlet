@@ -10,7 +10,7 @@ import {
   VerticalAlignTopOutlined,
   VerticalAlignBottomOutlined,
 } from '@ant-design/icons';
-import { FileText, Terminal } from 'lucide-react';
+import { FileTextOutlined, CodeOutlined } from '@ant-design/icons';
 import { useAppStore } from '../store';
 import * as api from '../api/client';
 import { PageLayout } from '../components/PageLayout';
@@ -63,7 +63,7 @@ function LogPanel({
   const headerMain =
     variant === 'tab' ? null : (
       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-        <Terminal className="h-4 w-4" aria-hidden />
+        <CodeOutlined aria-hidden />
       </div>
     );
 
@@ -329,7 +329,7 @@ export default function Logs({ embedded = false }: { embedded?: boolean } = {}) 
         <div className="flex shrink-0 flex-col gap-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between lg:gap-6">
             <div className="max-w-2xl min-w-0">
-              <h1 className="gradient-text text-2xl font-bold tracking-tight sm:text-3xl">
+              <h1 className="text-2xl font-semibold tracking-tight text-gray-900 dark:text-white sm:text-3xl">
                 {t('logs.title')}
               </h1>
               <p className="mt-1.5 text-sm leading-relaxed text-slate-500 dark:text-slate-400">
@@ -382,14 +382,14 @@ export default function Logs({ embedded = false }: { embedded?: boolean } = {}) 
         <div className="min-h-0 flex-1 flex flex-col">
           {isLoading && !data && (
             <div className="flex flex-col items-center justify-center rounded-md border border-dashed border-slate-200 py-20 text-slate-500 dark:border-slate-600">
-              <FileText className="mb-2 h-10 w-10 opacity-40" />
+              <FileTextOutlined className="mb-2 opacity-40" style={{ fontSize: 36 }} />
               {t('common.loading')}
             </div>
           )}
 
           {!isLoading && displayChunks.length === 0 && !error && (
             <div className="flex flex-col items-center justify-center rounded-md border border-dashed border-slate-200 py-20 text-slate-500 dark:border-slate-600">
-              <FileText className="mb-2 h-10 w-10 opacity-40" />
+              <FileTextOutlined className="mb-2 opacity-40" style={{ fontSize: 36 }} />
               {t('logs.empty')}
             </div>
           )}

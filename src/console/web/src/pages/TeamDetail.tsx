@@ -22,8 +22,15 @@ import {
   ReloadOutlined,
   CommentOutlined,
   UserAddOutlined,
+  DownOutlined,
+  RightOutlined,
+  NumberOutlined,
+  MoreOutlined,
+  PlusOutlined,
+  ThunderboltOutlined,
+  TeamOutlined,
+  CloseOutlined,
 } from '@ant-design/icons';
-import { ChevronDown, ChevronRight, Hash, MoreHorizontal, Plus, Sparkles, Users, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store';
 import { PageLayout } from '../components/PageLayout';
@@ -306,7 +313,7 @@ export default function TeamDetail() {
               |
             </span>
             <span className="inline-flex items-center gap-1 text-zinc-600 dark:text-zinc-300">
-              <Users className="h-3.5 w-3.5 opacity-70" />
+              <TeamOutlined className="opacity-70" />
               {t('teams.memberCount', { count: team.member_agent_ids.length })}
             </span>
           </div>
@@ -359,7 +366,7 @@ export default function TeamDetail() {
                 ) : (
                   <div className="flex h-8 items-center gap-1.5">
                     <span className="inline-flex !h-8 shrink-0 items-center text-[10px] font-medium text-zinc-500 dark:text-zinc-400">
-                      <Hash className="mr-1 h-2.5 w-2.5" />
+                      <NumberOutlined className="mr-1" />
                       {t('teams.roomLabel')}
                     </span>
                     {rooms.map((r) => {
@@ -383,7 +390,7 @@ export default function TeamDetail() {
                               : 'bg-white text-zinc-600 ring-1 ring-zinc-200 hover:bg-zinc-50 dark:bg-zinc-800 dark:text-zinc-300 dark:ring-zinc-700 dark:hover:bg-zinc-700/80',
                           ].join(' ')}
                         >
-                          <Hash className="h-3 w-3" />
+                          <NumberOutlined />
                           <span className="font-mono">{formatRoomChip(r.id)}</span>
                           <Popconfirm
                             title={t('teams.deleteRoomTitle')}
@@ -402,7 +409,7 @@ export default function TeamDetail() {
                               aria-label={t('teams.deleteRoom')}
                               disabled={deleteRoomMut.isPending}
                             >
-                              <X className="h-3 w-3" />
+                              <CloseOutlined />
                             </button>
                           </Popconfirm>
                         </div>
@@ -417,7 +424,7 @@ export default function TeamDetail() {
                   <Button
                     type="default"
                     size="middle"
-                    icon={<Plus className="h-3.5 w-3.5" />}
+                    icon={<PlusOutlined />}
                     loading={createRoomMut.isPending}
                     onClick={() => createRoomMut.mutate()}
                     disabled={team.member_agent_ids.length === 0}
@@ -562,9 +569,9 @@ export default function TeamDetail() {
                 {t('teams.contextCard')}
               </span>
               {profileCollapsed ? (
-                <ChevronRight className="h-4 w-4 text-zinc-400" />
+                <RightOutlined className="text-zinc-400" />
               ) : (
-                <ChevronDown className="h-4 w-4 text-zinc-400" />
+                <DownOutlined className="text-zinc-400" />
               )}
             </button>
             {!profileCollapsed && (
@@ -588,7 +595,7 @@ export default function TeamDetail() {
                           key={s}
                           className="inline-flex items-center gap-1 rounded-lg bg-violet-100/90 px-2 py-1 text-xs font-medium text-violet-900 dark:bg-violet-950/50 dark:text-violet-200"
                         >
-                          <Sparkles className="h-3 w-3 opacity-80" />
+                          <ThunderboltOutlined className="opacity-80" />
                           {s}
                         </span>
                       ))
@@ -614,9 +621,9 @@ export default function TeamDetail() {
                 {team.member_agent_ids.length}
               </span>
               {membersCollapsed ? (
-                <ChevronRight className="ml-2 h-4 w-4 text-zinc-400" />
+                <RightOutlined className="ml-2 text-zinc-400" />
               ) : (
-                <ChevronDown className="ml-2 h-4 w-4 text-zinc-400" />
+                <DownOutlined className="ml-2 text-zinc-400" />
               )}
             </button>
             {!membersCollapsed && (
@@ -662,7 +669,7 @@ export default function TeamDetail() {
                               type="text"
                               danger
                               size="small"
-                              icon={<MoreHorizontal className="h-4 w-4" />}
+                              icon={<MoreOutlined />}
                               loading={removeMemberMut.isPending}
                               className="!h-8 !w-8 !p-0 opacity-40 transition-opacity group-hover:opacity-100"
                               title={t('teams.removeMember')}

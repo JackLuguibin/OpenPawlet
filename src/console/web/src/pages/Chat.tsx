@@ -28,19 +28,16 @@ import {
   DeleteOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  RobotOutlined,
+  CheckCircleOutlined,
+  DownOutlined,
+  RightOutlined,
+  CopyOutlined,
+  ApiOutlined,
+  MessageOutlined,
+  CloseOutlined,
+  FileTextOutlined,
 } from "@ant-design/icons";
-import {
-  Bot,
-  CheckCircle2,
-  ChevronDown,
-  ChevronRight,
-  Copy,
-  Cpu,
-  Loader2,
-  MessageSquare,
-  X,
-  FileText,
-} from "lucide-react";
 import type { SessionInfo, StreamChunk, ToolCall } from "../api/types";
 import CodeMirror from "@uiw/react-codemirror";
 import { javascript } from "@codemirror/lang-javascript";
@@ -2297,16 +2294,16 @@ export default function Chat() {
   const showStreamingAssistantBubble = isStreaming;
 
   return (
-    <div className="flex flex-1 min-h-0 overflow-hidden overflow-x-hidden bg-gradient-to-br from-gray-50 via-white to-gray-100 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 relative">
+    <div className="flex flex-1 min-h-0 overflow-hidden overflow-x-hidden bg-white dark:bg-gray-950 relative">
       {/* Mobile Sessions Toggle Button */}
       <button
         onClick={() => setSessionsSidebarOpen(!sessionsSidebarOpen)}
-        className="md:hidden fixed bottom-20 right-4 z-30 p-3 bg-gradient-to-r from-primary-500 to-primary-600 text-white rounded-full shadow-lg shadow-primary-500/30 hover:shadow-xl hover:scale-105 transition-all"
+        className="md:hidden fixed bottom-20 right-4 z-30 p-3 bg-blue-500 hover:bg-blue-600 text-white rounded-full shadow-md transition-colors"
       >
         {sessionsSidebarOpen ? (
-          <X className="w-5 h-5" />
+          <CloseOutlined style={{ fontSize: 18 }} />
         ) : (
-          <MessageSquare className="w-5 h-5" />
+          <MessageOutlined style={{ fontSize: 18 }} />
         )}
       </button>
 
@@ -2316,11 +2313,11 @@ export default function Chat() {
           ${sessionsSidebarOpen ? "translate-x-0" : "-translate-x-full"}
           ${sessionsSidebarCollapsed ? "md:-translate-x-full md:w-0 md:pointer-events-none md:overflow-hidden" : "md:translate-x-0 md:w-72"}
           fixed md:relative z-20 h-screen md:h-full
-          w-72 bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl border-r border-gray-200/50 dark:border-gray-700/50
+          w-72 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800
           flex flex-col transition-transform duration-300 ease-out
         `}
       >
-        <div className="h-12 shrink-0 px-3.5 flex items-center gap-3 border-b border-gray-200/50 dark:border-gray-700/50 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm min-w-0">
+        <div className="h-12 shrink-0 px-3.5 flex items-center gap-3 border-b border-gray-200 dark:border-gray-800 min-w-0">
           <div className="flex items-center gap-3 min-w-0 flex-1">
             <span className="text-sm font-semibold text-gray-700 dark:text-gray-200 truncate min-w-0">
               {t("chat.sessionsTitle")}
@@ -2408,7 +2405,6 @@ export default function Chat() {
                 onChange={setShowSubagentSessions}
                 checkedChildren={t("chat.showSubagentSwitchOn")}
                 unCheckedChildren={t("chat.showSubagentSwitchOff")}
-                className="chat-square-switch chat-subagent-mode-switch"
               />
             </Tooltip>
             <Tooltip title={t("chat.sessionDisplayModeHint")}>
@@ -2420,7 +2416,6 @@ export default function Chat() {
                 }
                 checkedChildren={t("chat.sessionDisplayDetail")}
                 unCheckedChildren={t("chat.sessionDisplayCompact")}
-                className="chat-square-switch chat-display-mode-switch"
               />
             </Tooltip>
           </div>
@@ -2472,9 +2467,9 @@ export default function Chat() {
                 >
                   <span className="inline-flex items-center gap-2 min-w-0">
                     {expanded ? (
-                      <ChevronDown className="w-3.5 h-3.5 shrink-0 text-gray-500 dark:text-gray-300" />
+                      <DownOutlined className="shrink-0 text-gray-500 dark:text-gray-300" />
                     ) : (
-                      <ChevronRight className="w-3.5 h-3.5 shrink-0 text-gray-500 dark:text-gray-300" />
+                      <RightOutlined className="shrink-0 text-gray-500 dark:text-gray-300" />
                     )}
                     <span className="text-xs font-semibold uppercase tracking-wide">
                       {group.label}
@@ -2536,11 +2531,11 @@ export default function Chat() {
               >
                 <span className="inline-flex items-center gap-2 min-w-0">
                   {sessionTreeExpanded.subagents ? (
-                    <ChevronDown className="w-3.5 h-3.5 shrink-0 text-gray-500 dark:text-gray-300" />
+                    <DownOutlined className="shrink-0 text-gray-500 dark:text-gray-300" />
                   ) : (
-                    <ChevronRight className="w-3.5 h-3.5 shrink-0 text-gray-500 dark:text-gray-300" />
+                    <RightOutlined className="shrink-0 text-gray-500 dark:text-gray-300" />
                   )}
-                  <Cpu className="w-3.5 h-3.5 shrink-0 text-emerald-500 dark:text-emerald-400" />
+                  <ApiOutlined className="shrink-0 text-emerald-500 dark:text-emerald-400" />
                   <span className="text-xs font-semibold uppercase tracking-wide">
                     {t("chat.subAgentSessions", "Sub Agents")}
                   </span>
@@ -2579,17 +2574,17 @@ export default function Chat() {
                         >
                           <span className="inline-flex items-center gap-2 min-w-0">
                             {nodeExpanded ? (
-                              <ChevronDown className="w-3 h-3 shrink-0 text-gray-400" />
+                              <DownOutlined className="shrink-0 text-gray-400" />
                             ) : (
-                              <ChevronRight className="w-3 h-3 shrink-0 text-gray-400" />
+                              <RightOutlined className="shrink-0 text-gray-400" />
                             )}
-                            <Bot className="w-3.5 h-3.5 shrink-0 text-emerald-500 dark:text-emerald-400" />
+                            <RobotOutlined className="shrink-0 text-emerald-500 dark:text-emerald-400" />
                             <span className="text-sm font-medium truncate">
                               {node.name}
                             </span>
                             {runningCt > 0 ? (
                               <span className="inline-flex items-center gap-1 text-[11px] text-blue-600 dark:text-blue-300">
-                                <Loader2 className="w-3 h-3 animate-spin" />
+                                <LoadingOutlined spin />
                                 {runningCt}
                               </span>
                             ) : null}
@@ -2609,11 +2604,11 @@ export default function Chat() {
                                     title={task.task || task.label}
                                   >
                                     {task.status === "running" ? (
-                                      <Loader2 className="w-3 h-3 shrink-0 animate-spin text-blue-500" />
+                                      <LoadingOutlined spin className="shrink-0 text-blue-500" />
                                     ) : task.status === "success" ? (
-                                      <CheckCircle2 className="w-3 h-3 shrink-0 text-emerald-500" />
+                                      <CheckCircleOutlined className="shrink-0 text-emerald-500" />
                                     ) : (
-                                      <X className="w-3 h-3 shrink-0 text-red-500" />
+                                      <CloseOutlined className="shrink-0 text-red-500" />
                                     )}
                                     <span className="flex-1 truncate text-gray-700 dark:text-gray-200">
                                       {task.label}
@@ -2637,8 +2632,8 @@ export default function Chat() {
                                 compact
                                 showSubagentTag={false}
                                 leadingIcon={
-                                  <MessageSquare
-                                    className="w-3.5 h-3.5 shrink-0 text-emerald-500 dark:text-emerald-400"
+                                  <MessageOutlined
+                                    className="shrink-0 text-emerald-500 dark:text-emerald-400"
                                     aria-label="sub-agent session"
                                   />
                                 }
@@ -2685,7 +2680,7 @@ export default function Chat() {
       {/* Mobile Overlay */}
       {sessionsSidebarOpen && (
         <div
-          className="md:hidden fixed inset-0 bg-black/50 z-10 backdrop-blur-sm"
+          className="md:hidden fixed inset-0 bg-black/50 z-10"
           onClick={() => setSessionsSidebarOpen(false)}
         />
       )}
@@ -2704,10 +2699,10 @@ export default function Chat() {
       <div className="flex-1 flex min-w-0 min-h-0">
         <div className="flex-1 flex flex-col min-w-0 min-h-0">
           {/* Header */}
-          <div className="h-12 px-6 flex items-center justify-between border-b border-gray-200/50 dark:border-gray-700/50 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm">
+          <div className="h-12 px-6 flex items-center justify-between border-b border-gray-200 dark:border-gray-800">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-md bg-gradient-to-br from-primary-500 to-primary-600 shadow-lg shadow-primary-500/20">
-                <Bot className="w-5 h-5 text-white" />
+              <div className="p-2 rounded-md bg-blue-500 text-white">
+                <RobotOutlined style={{ fontSize: 18 }} />
               </div>
               <div>
                 <h2 className="text-lg font-semibold">{t("chat.title")}</h2>
@@ -2720,7 +2715,7 @@ export default function Chat() {
               {activeSessionKey ? (
                 <>
                   <Button
-                    icon={<FileText className="w-4 h-4" />}
+                    icon={<FileTextOutlined />}
                     onClick={() => {
                       setSessionJsonlFileSource("session");
                       setSessionContextTab("assembled");
@@ -2732,7 +2727,7 @@ export default function Chat() {
                   </Button>
                   <Button
                     shape="circle"
-                    icon={<FileText className="w-4 h-4" />}
+                    icon={<FileTextOutlined />}
                     onClick={() => {
                       setSessionJsonlFileSource("session");
                       setSessionContextTab("assembled");
@@ -2861,7 +2856,7 @@ export default function Chat() {
           )}
 
           {/* Input */}
-          <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl pb-safe">
+          <div className="bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 pb-safe">
             <div className="w-full min-w-0 max-w-3xl mx-auto px-4 md:px-6 py-4">
               <ChatInput
                 inputRef={inputRef}
@@ -2945,7 +2940,7 @@ export default function Chat() {
                     ) : null}
                     <Button
                       type="primary"
-                      icon={<Copy className="w-3.5 h-3.5" />}
+                      icon={<CopyOutlined />}
                       disabled={!sessionContextLatestText}
                       onClick={() => {
                         if (sessionContextLatestText) {
@@ -3026,7 +3021,7 @@ export default function Chat() {
                     ) : null}
                     <Button
                       type="primary"
-                      icon={<Copy className="w-3.5 h-3.5" />}
+                      icon={<CopyOutlined />}
                       disabled={!sessionJsonlData?.text}
                       onClick={() => {
                         if (sessionJsonlData?.text) {

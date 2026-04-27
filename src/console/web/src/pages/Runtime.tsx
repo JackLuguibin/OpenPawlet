@@ -27,7 +27,7 @@ import {
   ReloadOutlined,
   StopOutlined,
 } from '@ant-design/icons';
-import { Bot, Cpu } from 'lucide-react';
+import { RobotOutlined, ApiOutlined } from '@ant-design/icons';
 import { PageLayout } from '../components/PageLayout';
 import { useAppStore } from '../store';
 import * as api from '../api/client';
@@ -210,13 +210,13 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
   const renderRoleTag = (row: RuntimeAgentStatus) => {
     if (row.role === 'main') {
       return (
-        <Tag color="geekblue" icon={<Cpu className="inline h-3 w-3" />}>
+        <Tag color="geekblue" icon={<ApiOutlined />}>
           {t('runtime.roleMain')}
         </Tag>
       );
     }
     return (
-      <Tag color="purple" icon={<Bot className="inline h-3 w-3" />}>
+      <Tag color="purple" icon={<RobotOutlined />}>
         {t('runtime.roleSub')}
       </Tag>
     );
@@ -512,7 +512,7 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
         title={
           detailRow ? (
             <Space size={8} className="flex-wrap">
-              <Tag color="purple" icon={<Bot className="inline h-3 w-3" />}>
+              <Tag color="purple" icon={<RobotOutlined />}>
                 {t('runtime.roleSub')}
               </Tag>
               <Text className="font-mono text-[12px]">{detailRow.agent_id}</Text>

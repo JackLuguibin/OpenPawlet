@@ -1,6 +1,11 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Check, CornerDownLeft, HelpCircle, ListChecks } from "lucide-react";
+import {
+  CheckOutlined,
+  EnterOutlined,
+  QuestionCircleOutlined,
+  UnorderedListOutlined,
+} from "@ant-design/icons";
 
 import type { ToolCall } from "../../api/types";
 
@@ -196,7 +201,7 @@ export function AskUserPrompt({
     <div className="rounded-lg ring-1 ring-sky-200/80 dark:ring-sky-700/45 bg-gradient-to-br from-sky-50/90 to-white dark:from-sky-950/40 dark:to-gray-900/40 px-4 py-3.5 shadow-sm">
       <div className="flex items-start gap-2.5">
         <div className="mt-0.5 shrink-0 inline-flex h-6 w-6 items-center justify-center rounded-full bg-sky-100 dark:bg-sky-900/50 text-sky-600 dark:text-sky-300">
-          <HelpCircle className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
+          <QuestionCircleOutlined aria-hidden />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -205,7 +210,7 @@ export function AskUserPrompt({
             </span>
             {isLocked ? (
               <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
-                <Check className="h-3 w-3" strokeWidth={2.5} aria-hidden />
+                <CheckOutlined aria-hidden />
                 {t("chat.askUserAnswered")}
               </span>
             ) : null}
@@ -228,7 +233,7 @@ export function AskUserPrompt({
                 ].join(" ")}
                 title={t("chat.askUserMultiSelectToggleHint")}
               >
-                <ListChecks className="h-3 w-3" strokeWidth={2} aria-hidden />
+                <UnorderedListOutlined aria-hidden />
                 {multiSelect
                   ? t("chat.askUserMultiSelectOn")
                   : t("chat.askUserMultiSelectOff")}
@@ -287,7 +292,7 @@ export function AskUserPrompt({
                   ].join(" ")}
                 >
                   {isSelected ? (
-                    <Check className="h-2.5 w-2.5" strokeWidth={3} aria-hidden />
+                    <CheckOutlined aria-hidden />
                   ) : multiSelect && !isLocked ? (
                     ""
                   ) : (
@@ -328,7 +333,7 @@ export function AskUserPrompt({
               className="w-full rounded-md border border-slate-200/80 dark:border-slate-700/60 bg-white dark:bg-gray-900/55 px-3 py-1.5 pr-10 text-[12.5px] text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none focus:border-sky-400/85 focus:ring-2 focus:ring-sky-200/70 dark:focus:ring-sky-700/40 transition-colors"
             />
             <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-medium text-slate-300 dark:text-slate-500">
-              <CornerDownLeft className="h-3 w-3" strokeWidth={2} aria-hidden />
+              <EnterOutlined aria-hidden />
             </span>
           </div>
           <button

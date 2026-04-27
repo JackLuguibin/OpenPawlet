@@ -16,16 +16,18 @@ import {
   Card,
   Divider,
 } from 'antd';
-import { ReloadOutlined, HeartOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import {
-  ChevronRight,
-  ChevronDown,
-  Fingerprint,
-  BarChart2,
-  AlertTriangle,
-  MessagesSquare,
-  Search,
-} from 'lucide-react';
+  ReloadOutlined,
+  HeartOutlined,
+  InfoCircleOutlined,
+  RightOutlined,
+  DownOutlined,
+  TagsOutlined,
+  BarChartOutlined,
+  WarningOutlined,
+  CommentOutlined,
+  SearchOutlined,
+} from '@ant-design/icons';
 import * as api from '../api/client';
 import { formatQueryError } from '../utils/errors';
 import { useAppStore } from '../store';
@@ -293,7 +295,7 @@ function ObservabilityEventRow({ ev, dateLocale, t, onOpenDetail, showTraceIdCol
         {Object.keys(ev.payload ?? {}).length > 0 && (
           <div className="mt-1 min-[800px]:mt-1.5">
             <Text className="!text-xs text-indigo-600 dark:!text-indigo-400">
-              <ChevronRight className="inline h-3 w-3" aria-hidden />
+              <RightOutlined aria-hidden />
               {t('observability.detailInputOutput')}
             </Text>
           </div>
@@ -382,23 +384,23 @@ export default function Observability({ embedded = false }: { embedded?: boolean
     {
       label: t('observability.statTotalEvents'),
       value: hasTimelineData ? stats.total : null,
-      icon: <BarChart2 className="h-3.5 w-3.5 text-slate-500" />,
+      icon: <BarChartOutlined className="text-slate-500" />,
     },
     {
       label: t('observability.statUniqueTraces'),
       value: hasTimelineData ? stats.uniqueTraces : null,
-      icon: <Fingerprint className="h-3.5 w-3.5 text-slate-500" />,
+      icon: <TagsOutlined className="text-slate-500" />,
     },
     {
       label: t('observability.statErrorEvents'),
       value: hasTimelineData ? stats.errorLike : null,
-      icon: <AlertTriangle className="h-3.5 w-3.5 text-rose-500" />,
+      icon: <WarningOutlined className="text-rose-500" />,
       warn: hasTimelineData && stats.errorLike > 0,
     },
     {
       label: t('observability.statActiveSessions'),
       value: hasTimelineData ? stats.uniqueSessions : null,
-      icon: <MessagesSquare className="h-3.5 w-3.5 text-slate-500" />,
+      icon: <CommentOutlined className="text-slate-500" />,
     },
   ];
 
@@ -501,7 +503,7 @@ export default function Observability({ embedded = false }: { embedded?: boolean
           }}
         >
           <div
-            className="activity-filter-bar shrink-0 border-b border-gray-100 px-4 py-3 dark:border-gray-700"
+            className="shrink-0 border-b border-gray-100 bg-gray-50/40 px-4 py-3 dark:border-gray-700 dark:bg-gray-800/20"
             role="search"
             aria-label={t('observability.filterBarAria')}
           >
@@ -525,7 +527,7 @@ export default function Observability({ embedded = false }: { embedded?: boolean
             )}
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <Segmented
-                className="activity-type-segmented min-w-max !bg-gray-100/80 dark:!bg-gray-800/80"
+                className="min-w-max"
                 value={runFilter}
                 onChange={(v) => setRunFilter(v as 'all' | 'error')}
                 options={[
@@ -541,7 +543,7 @@ export default function Observability({ embedded = false }: { embedded?: boolean
                   value={traceIdFilter}
                   onChange={(e) => setTraceIdFilter(e.target.value)}
                   onPressEnter={() => void refetchTimeline()}
-                  prefix={<Search className="h-4 w-4 text-gray-400" strokeWidth={2} aria-hidden />}
+                  prefix={<SearchOutlined className="text-gray-400" aria-hidden />}
                   className="!w-full !rounded font-mono text-sm dark:!bg-gray-950/50"
                 />
               </div>
@@ -600,9 +602,9 @@ export default function Observability({ embedded = false }: { embedded?: boolean
                           className="flex w-full min-w-0 cursor-pointer select-none items-center gap-2 border-b border-cyan-200/40 bg-gradient-to-r from-cyan-50/90 to-slate-50/90 px-2 py-2.5 text-left dark:border-cyan-900/30 dark:from-cyan-950/25 dark:to-slate-900/40 sm:gap-3 sm:px-3"
                         >
                           <span className="shrink-0 text-slate-500" title={sessionOpen ? t('observability.groupToggleCollapse') : t('observability.groupToggleExpand')}>
-                            {sessionOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                            {sessionOpen ? <DownOutlined /> : <RightOutlined />}
                           </span>
-                          <MessagesSquare className="h-4 w-4 shrink-0 text-cyan-600 dark:text-cyan-400" />
+                          <CommentOutlined className="shrink-0 text-cyan-600 dark:text-cyan-400" />
                           <div
                             className="min-w-0 flex-1 font-mono text-xs text-slate-800 dark:text-slate-200"
                             onClick={(e) => e.stopPropagation()}
@@ -653,9 +655,9 @@ export default function Observability({ embedded = false }: { embedded?: boolean
                                       className="flex w-full min-w-0 cursor-pointer select-none items-center gap-2 bg-slate-50/50 px-2 py-2 pl-1 dark:bg-slate-800/20 sm:pl-2"
                                     >
                                       <span className="shrink-0 text-slate-400">
-                                        {traceOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                                        {traceOpen ? <DownOutlined /> : <RightOutlined />}
                                       </span>
-                                      <Fingerprint className="h-3.5 w-3.5 shrink-0 text-slate-500" />
+                                      <TagsOutlined className="shrink-0 text-slate-500" />
                                       <span className="min-w-0 flex-1 text-left text-xs text-slate-500 dark:text-slate-400">
                                         {t('observability.groupNoTrace')}
                                       </span>
@@ -699,9 +701,9 @@ export default function Observability({ embedded = false }: { embedded?: boolean
                                     className="flex w-full min-w-0 cursor-pointer select-none items-center gap-2 border-b border-slate-100/80 bg-slate-50/80 px-2 py-2 pl-1 dark:border-slate-800/50 dark:bg-slate-800/25 sm:gap-2 sm:pl-2"
                                   >
                                     <span className="shrink-0 text-slate-400">
-                                      {traceOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                                      {traceOpen ? <DownOutlined /> : <RightOutlined />}
                                     </span>
-                                    <Fingerprint className="h-3.5 w-3.5 shrink-0 text-indigo-500 dark:text-indigo-400" />
+                                    <TagsOutlined className="shrink-0 text-indigo-500 dark:text-indigo-400" />
                                     <div
                                       className="min-w-0 flex-1"
                                       onClick={(e) => e.stopPropagation()}

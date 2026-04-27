@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { ChevronRight } from "lucide-react";
+import { DownOutlined } from "@ant-design/icons";
 
 interface JumpToBottomButtonProps {
   /** Number of unseen rows below the current viewport; 0 hides the "new" hint. */
@@ -23,11 +23,11 @@ export function JumpToBottomButton({
     <button
       type="button"
       onClick={onJump}
-      className="absolute bottom-4 right-4 md:right-6 z-10 inline-flex items-center gap-1.5 rounded-full bg-primary-500 hover:bg-primary-600 text-white text-xs px-3 py-1.5 shadow-lg shadow-primary-500/30 transition-colors"
+      className="absolute bottom-4 right-4 md:right-6 z-10 inline-flex items-center gap-1.5 rounded-full bg-blue-500 hover:bg-blue-600 text-white text-xs px-3 py-1.5 shadow-md transition-colors"
       aria-label={t("chat.jumpToBottom")}
       title={t("chat.jumpToBottom")}
     >
-      <ChevronRight className="w-3.5 h-3.5 rotate-90" aria-hidden />
+      <DownOutlined aria-hidden />
       <span>
         {unreadBelowCount > 0
           ? t("chat.jumpToBottomNewMessages")

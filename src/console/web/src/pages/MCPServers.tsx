@@ -24,7 +24,6 @@ import {
   CopyOutlined,
 } from '@ant-design/icons';
 import type { TFunction } from 'i18next';
-import { Plug } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import * as api from '../api/client';
@@ -425,9 +424,9 @@ export function MCPServersPanel({ embedded = false }: { embedded?: boolean }) {
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
                 <div className="flex shrink-0 justify-center sm:justify-start">
                   <div className="flex h-12 w-12 items-center justify-center rounded border border-gray-200 bg-white shadow-sm dark:border-gray-600 dark:bg-gray-800">
-                    <Plug
-                      className="h-6 w-6 text-indigo-600 dark:text-indigo-400"
-                      strokeWidth={1.35}
+                    <ApiOutlined
+                      className="text-indigo-600 dark:text-indigo-400"
+                      style={{ fontSize: 22 }}
                     />
                   </div>
                 </div>

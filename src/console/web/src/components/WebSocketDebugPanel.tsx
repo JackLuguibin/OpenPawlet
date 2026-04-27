@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Button, Drawer, Empty, Typography } from 'antd';
-import { Trash2, Wifi } from 'lucide-react';
+import { DeleteOutlined, WifiOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 
 import { useAppStore } from '../store';
@@ -33,7 +33,7 @@ export default function WebSocketDebugPanel() {
         size="small"
         aria-label={t('websocketDebug.openAria')}
         title={t('websocketDebug.openTitle')}
-        icon={<Wifi className="w-4 h-4" />}
+        icon={<WifiOutlined />}
         onClick={() => setOpen(true)}
       />
       <Drawer
@@ -51,7 +51,7 @@ export default function WebSocketDebugPanel() {
           <div className="flex justify-end">
             <Button
               size="small"
-              icon={<Trash2 className="w-3.5 h-3.5" />}
+              icon={<DeleteOutlined />}
               onClick={() => clearNanobotWsDebug()}
               disabled={nanobotWsDebugLines.length === 0}
             >

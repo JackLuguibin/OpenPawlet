@@ -1,7 +1,10 @@
 import { useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
-import { LoadingOutlined } from "@ant-design/icons";
-import { Square } from "lucide-react";
+import {
+  LoadingOutlined,
+  PauseOutlined,
+  SendOutlined,
+} from "@ant-design/icons";
 import Input from "antd/es/input";
 import type { TextAreaRef } from "antd/es/input/TextArea";
 
@@ -109,26 +112,16 @@ export function ChatInput({
           <button
             onClick={isStreaming ? onStop : onSend}
             disabled={!isStreaming && !canSend}
-            className={`flex items-center justify-center w-8 h-8 rounded-md transition-all duration-150 ${
+            className={`flex items-center justify-center w-8 h-8 rounded-md transition-colors ${
               isStreaming
-                ? "bg-red-500 hover:bg-red-600 text-white shadow-md shadow-red-500/30 hover:shadow-red-500/40 hover:scale-105"
+                ? "bg-red-500 hover:bg-red-600 text-white"
                 : canSend
-                  ? "bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-500/30 hover:shadow-blue-500/40 hover:scale-105"
+                  ? "bg-blue-600 hover:bg-blue-700 text-white"
                   : "bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-600 cursor-not-allowed"
             }`}
             title={isStreaming ? t("chat.stop") : t("chat.send")}
           >
-            {isStreaming ? (
-              <Square className="w-3.5 h-3.5 fill-current" />
-            ) : (
-              <svg
-                viewBox="0 0 16 16"
-                className="w-3.5 h-3.5 fill-current"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path d="M.5 1.163A1 1 0 0 1 1.97.28l12.868 6.837a1 1 0 0 1 0 1.766L1.969 15.72A1 1 0 0 1 .5 14.836V10.33a1 1 0 0 1 .816-.983L8.5 8 1.316 6.653A1 1 0 0 1 .5 5.67V1.163Z" />
-              </svg>
-            )}
+            {isStreaming ? <PauseOutlined /> : <SendOutlined />}
           </button>
           </div>
         </div>

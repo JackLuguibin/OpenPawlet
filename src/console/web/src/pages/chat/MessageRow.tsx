@@ -1,5 +1,5 @@
 import { memo, type ReactNode } from "react";
-import { Bot, User } from "lucide-react";
+import { RobotOutlined, UserOutlined } from "@ant-design/icons";
 import { Markdown } from "../../components/Markdown";
 import type { ToolCall } from "../../api/types";
 
@@ -68,17 +68,14 @@ function MessageRowComponent({ msg, extraAbove, formattedTime }: MessageRowProps
       <div
         className={`w-10 h-10 min-w-[2.5rem] min-h-[2.5rem] rounded-md flex items-center justify-center flex-shrink-0 overflow-visible p-1.5 box-border ${
           isUser
-            ? "bg-sky-500 dark:bg-sky-600 text-white shadow-md shadow-sky-500/20"
-            : "bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-600"
+            ? "bg-sky-500 dark:bg-sky-600 text-white"
+            : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300"
         }`}
       >
         {isUser ? (
-          <User
-            className="w-5 h-5 min-w-5 min-h-5 text-white flex-shrink-0"
-            strokeWidth={2}
-          />
+          <UserOutlined style={{ fontSize: 18 }} />
         ) : (
-          <Bot className="w-5 h-5 text-gray-600 dark:text-gray-300" />
+          <RobotOutlined style={{ fontSize: 18 }} />
         )}
       </div>
       <div

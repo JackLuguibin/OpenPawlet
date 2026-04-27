@@ -1,8 +1,12 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Checkbox, Popconfirm, Tag, Tooltip } from "antd";
-import { DeleteOutlined, EditOutlined } from "@ant-design/icons";
-import { Bot, Users } from "lucide-react";
+import {
+  DeleteOutlined,
+  EditOutlined,
+  RobotOutlined,
+  TeamOutlined,
+} from "@ant-design/icons";
 
 import type { SessionInfo } from "../../api/types";
 
@@ -26,15 +30,15 @@ interface SessionSidebarItemProps {
 function DefaultLeadingIcon({ session }: { session: SessionInfo }) {
   if (session.team_id) {
     return (
-      <Users
-        className="w-3.5 h-3.5 shrink-0 text-blue-500 dark:text-blue-400"
+      <TeamOutlined
+        className="shrink-0 text-blue-500 dark:text-blue-400"
         aria-label="team session"
       />
     );
   }
   return (
-    <Bot
-      className={`w-3.5 h-3.5 shrink-0 ${
+    <RobotOutlined
+      className={`shrink-0 ${
         session.is_subagent
           ? "text-amber-500 dark:text-amber-400"
           : "text-violet-500 dark:text-violet-400"
@@ -69,10 +73,10 @@ export function SessionSidebarItem({
   return (
     <div
       ref={registerRowRef}
-      className={`flex items-stretch gap-2 rounded-md transition-all ${
+      className={`flex items-stretch gap-2 rounded-md transition-colors ${
         active
-          ? "bg-gradient-to-r from-primary-50 to-blue-50 dark:from-primary-900/30 dark:to-blue-900/20 text-primary-700 dark:text-primary-300"
-          : "hover:bg-gray-100 dark:hover:bg-gray-700/50"
+          ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
+          : "hover:bg-gray-100 dark:hover:bg-gray-800"
       }`}
     >
       <div className={`flex items-center justify-center shrink-0 pl-3 pr-0.5 ${rowPaddingY}`}>

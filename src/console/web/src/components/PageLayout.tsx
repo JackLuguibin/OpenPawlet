@@ -5,21 +5,24 @@ export type PageLayoutVariant = 'default' | 'center' | 'bleed';
 export interface PageLayoutProps {
   children: ReactNode;
   /**
-   * default: padded column with vertical rhythm (gap-6)
-   * center: full-area centered content (e.g. loading spinners)
-   * bleed: padding only; page controls gaps and sections
+   * default: padded column with vertical rhythm (gap-6).
+   * center: full-area centered content (e.g. loading spinners).
+   * bleed: padding only; page controls gaps and sections.
    */
   variant?: PageLayoutVariant;
   className?: string;
   /**
    * embedded: render as a transparent flex column without padding/gap.
-   * Used when this page is rendered inside a Hub container (which already
-   * supplies its own PageLayout shell). Overrides `variant`.
+   * Used when this page is rendered inside a Hub container.
    */
   embedded?: boolean;
 }
 
-const SHELL = 'flex min-h-0 min-w-0 flex-1 flex-col w-full';
+const VARIANTS: Record<PageLayoutVariant, string> = {
+  default: 'gap-6 p-4 sm:p-6',
+  center: 'items-center justify-center p-6',
+  bleed: 'p-4 sm:p-6',
+};
 
 export function PageLayout({
   children,
@@ -27,15 +30,9 @@ export function PageLayout({
   className = '',
   embedded = false,
 }: PageLayoutProps) {
-  const variantCls = embedded
-    ? ''
-    : variant === 'center'
-      ? 'items-center justify-center p-6'
-      : variant === 'bleed'
-        ? 'p-4 sm:p-6'
-        : 'gap-6 p-4 sm:p-6';
+  const variantCls = embedded ? '' : VARIANTS[variant];
   return (
-    <div className={[SHELL, variantCls, className].filter(Boolean).join(' ')}>
+    <div className={`flex min-h-0 min-w-0 w-full flex-1 flex-col ${variantCls} ${className}`}>
       {children}
     </div>
   );

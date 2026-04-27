@@ -1,13 +1,12 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Spin, Empty, Card } from 'antd';
+import { Spin, Empty, Card, Segmented } from 'antd';
 import { Markdown } from '../components/Markdown';
 import * as api from '../api/client';
 import { useAppStore } from '../store';
 import { useBots } from '../hooks/useBots';
 import { PageLayout } from '../components/PageLayout';
-import { SegmentedTabs } from '../components/SegmentedTabs';
 import { MARKDOWN_PROSE_CLASS } from '../utils/markdownProse';
 import { formatQueryError, isNotFoundError } from '../utils/errors';
 
@@ -44,10 +43,10 @@ function historyEntryKey(entry: { timestamp?: string; content: string }, index: 
 export function MemoryPanel({ currentBotId }: { currentBotId: string | null }) {
   const { t } = useTranslation();
 
-  const memorySubTabs: { key: MemorySubTab; label: string }[] = useMemo(
+  const memorySubTabs = useMemo(
     () => [
-      { key: 'long_term', label: t('memory.tabLong') },
-      { key: 'history', label: t('memory.tabHistory') },
+      { value: 'long_term' as const, label: t('memory.tabLong') },
+      { value: 'history' as const, label: t('memory.tabHistory') },
     ],
     [t],
   );
@@ -72,13 +71,11 @@ export function MemoryPanel({ currentBotId }: { currentBotId: string | null }) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
-      <SegmentedTabs
-        ariaLabel={t('memory.title')}
-        tabs={memorySubTabs}
+      <Segmented
+        size="small"
+        options={memorySubTabs}
         value={activeMemoryTab}
-        onChange={setActiveMemoryTab}
-        size="sm"
-        margins="none"
+        onChange={(val) => setActiveMemoryTab(val as MemorySubTab)}
       />
 
       {isLoading ? (
@@ -86,13 +83,11 @@ export function MemoryPanel({ currentBotId }: { currentBotId: string | null }) {
           <Spin />
         </div>
       ) : error ? (
-        <Empty
-          description={<span className="text-red-500">{errorDescription}</span>}
-        />
+        <Empty description={<span className="text-red-500">{errorDescription}</span>} />
       ) : activeMemoryTab === 'long_term' ? (
         <Card
-          className="flex-1 min-h-0 overflow-hidden flex flex-col rounded-md border border-gray-200/70 bg-white/90 shadow-sm shadow-gray-900/[0.04] dark:border-gray-700/50 dark:bg-gray-800/50 dark:shadow-none"
-          styles={{ body: { padding: '1.5rem 1.75rem 2rem', flex: 1, minHeight: 0, overflowY: 'auto' } }}
+          className="flex min-h-0 flex-1 flex-col overflow-hidden"
+          styles={{ body: { flex: 1, minHeight: 0, overflowY: 'auto' } }}
         >
           {longTermContent ? (
             <div className="max-w-3xl">
@@ -101,35 +96,31 @@ export function MemoryPanel({ currentBotId }: { currentBotId: string | null }) {
               </div>
             </div>
           ) : (
-            <div className="flex-1 flex items-center justify-center min-h-[200px]">
-              <Empty description={t('memory.emptyLong')} className="text-gray-500" />
+            <div className="flex min-h-[200px] flex-1 items-center justify-center">
+              <Empty description={t('memory.emptyLong')} />
             </div>
           )}
         </Card>
       ) : (
-        <div className="space-y-3 flex-1 min-h-0 overflow-y-auto">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
           {historyEntries.length > 0 ? (
             historyEntries.map((entry, idx) => (
-              <Card
-                key={historyEntryKey(entry, idx)}
-                size="small"
-                className="rounded border-l-4 border-l-primary-500 shadow-sm hover:shadow-md transition-all bg-white dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700/50"
-              >
+              <Card key={historyEntryKey(entry, idx)} size="small">
                 <div className="flex gap-4">
-                  {entry.timestamp && (
-                    <span className="text-xs font-mono text-primary-600 dark:text-primary-400 shrink-0 pt-0.5">
+                  {entry.timestamp ? (
+                    <span className="shrink-0 pt-0.5 font-mono text-xs text-blue-600 dark:text-blue-400">
                       {entry.timestamp}
                     </span>
-                  )}
-                  <div className="flex-1 text-sm leading-relaxed text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+                  ) : null}
+                  <div className="flex-1 whitespace-pre-wrap text-sm leading-relaxed">
                     {entry.content}
                   </div>
                 </div>
               </Card>
             ))
           ) : (
-            <div className="flex items-center justify-center min-h-[200px] py-12">
-              <Empty description={t('memory.emptyHistory')} className="text-gray-500" />
+            <div className="flex min-h-[200px] flex-1 items-center justify-center py-12">
+              <Empty description={t('memory.emptyHistory')} />
             </div>
           )}
         </div>

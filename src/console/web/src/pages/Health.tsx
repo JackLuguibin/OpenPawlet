@@ -10,7 +10,7 @@ import {
   Typography,
 } from 'antd';
 import { ExclamationCircleOutlined, InfoCircleOutlined } from '@ant-design/icons';
-import { ArrowRight, Heart, LineChart } from 'lucide-react';
+import { ArrowRightOutlined, HeartOutlined, LineChartOutlined } from '@ant-design/icons';
 import * as api from '../api/client';
 import { formatQueryError } from '../utils/errors';
 import { useAppStore } from '../store';
@@ -79,7 +79,7 @@ export default function Health({ embedded = false }: { embedded?: boolean } = {}
       <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-start gap-3">
           <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-emerald-100 dark:bg-emerald-900/40">
-            <Heart className="h-5 w-5 text-emerald-600 dark:text-emerald-300" />
+            <HeartOutlined style={{ fontSize: 20 }} className="text-emerald-600 dark:text-emerald-300" />
           </div>
           <div>
             <Title level={1} className="!m-0 !text-2xl !font-bold">
@@ -162,10 +162,10 @@ export default function Health({ embedded = false }: { embedded?: boolean } = {}
                 className="group flex items-center justify-between gap-3 rounded-md border border-violet-200/90 bg-violet-50/60 px-4 py-3 transition-colors hover:border-violet-300 hover:bg-violet-100/70 dark:border-violet-500/25 dark:bg-violet-950/35 dark:hover:border-violet-400/40 dark:hover:bg-violet-900/40"
               >
                 <span className="flex min-w-0 items-center gap-2 text-sm font-medium text-violet-800 dark:text-violet-200">
-                  <LineChart className="h-4 w-4 shrink-0" />
+                  <LineChartOutlined />
                   <span className="truncate">{t('health.linkAgentObservability')}</span>
                 </span>
-                <ArrowRight className="h-4 w-4 shrink-0 text-violet-400 transition-transform group-hover:translate-x-0.5 dark:text-violet-400" />
+                <ArrowRightOutlined className="text-violet-400 transition-transform group-hover:translate-x-0.5 dark:text-violet-400" />
               </Link>
               <p className="-mt-2 text-xs text-gray-500 dark:text-gray-400">{t('health.linkAgentObservabilityHint')}</p>
             </div>

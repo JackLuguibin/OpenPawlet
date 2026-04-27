@@ -1,6 +1,12 @@
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Check, CheckCircle2, ChevronRight, Copy, Wrench } from "lucide-react";
+import {
+  CheckOutlined,
+  CheckCircleOutlined,
+  RightOutlined,
+  CopyOutlined,
+  ToolOutlined,
+} from "@ant-design/icons";
 
 import i18n from "../../i18n";
 import type { ToolCall } from "../../api/types";
@@ -165,12 +171,9 @@ function ToolCallIdCopy({ callId }: { callId: string }) {
         aria-label={t("chat.copyCallId")}
       >
         {copied ? (
-          <Check
-            className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400"
-            strokeWidth={2.5}
-          />
+          <CheckOutlined className="text-emerald-600 dark:text-emerald-400" />
         ) : (
-          <Copy className="h-3.5 w-3.5" strokeWidth={2} />
+          <CopyOutlined />
         )}
       </button>
     </div>
@@ -248,9 +251,8 @@ export function MessageToolCallsBlock({
       {standardList.length > 0 ? (
         <>
           <div className="flex items-center gap-2 pl-0.5">
-            <Wrench
-              className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500 shrink-0"
-              strokeWidth={2}
+            <ToolOutlined
+              className="text-slate-400 dark:text-slate-500 shrink-0"
               aria-hidden
             />
             <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
@@ -266,10 +268,9 @@ export function MessageToolCallsBlock({
                   className="group rounded-md text-left bg-white/90 dark:bg-gray-900/45 ring-1 ring-slate-200/80 dark:ring-slate-700/55 shadow-sm shadow-slate-900/[0.04] dark:shadow-black/20"
                 >
                   <summary className="cursor-pointer list-none flex flex-wrap items-center gap-x-2 gap-y-1.5 px-3 py-2.5 [&::-webkit-details-marker]:hidden hover:bg-slate-50/90 dark:hover:bg-white/[0.04] transition-colors rounded-md">
-                    <ChevronRight
-                      className="h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-slate-500 transition-transform duration-200 group-open:rotate-90"
+                    <RightOutlined
+                      className="shrink-0 text-slate-400 dark:text-slate-500 transition-transform duration-200 group-open:rotate-90"
                       aria-hidden
-                      strokeWidth={2.25}
                     />
                     <span
                       className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-slate-200/90 text-slate-600 dark:bg-slate-700/90 dark:text-slate-300"
@@ -286,9 +287,8 @@ export function MessageToolCallsBlock({
                         title={t("chat.toolCompleted")}
                         aria-label={t("chat.toolCompleted")}
                       >
-                        <CheckCircle2
-                          className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400"
-                          strokeWidth={2.25}
+                        <CheckCircleOutlined
+                          className="text-emerald-600 dark:text-emerald-400"
                           aria-hidden
                         />
                       </span>

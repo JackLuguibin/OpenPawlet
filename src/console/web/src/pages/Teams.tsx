@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button, Empty, Form, Input, Modal, Select, Space, Spin } from 'antd';
 import { PlusOutlined, ReloadOutlined, RightOutlined } from '@ant-design/icons';
-import { UsersRound } from 'lucide-react';
+import { TeamOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { useAppStore } from '../store';
@@ -111,7 +111,7 @@ export default function Teams({ embedded = false }: { embedded?: boolean } = {})
       ) : teams.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300/80 bg-slate-50/50 py-20 dark:border-slate-600 dark:bg-slate-900/40">
           <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500/15 to-sky-500/15 text-violet-600 dark:from-violet-500/20 dark:to-sky-500/20 dark:text-violet-300">
-            <UsersRound className="h-8 w-8" strokeWidth={1.5} />
+            <TeamOutlined style={{ fontSize: 28 }} />
           </div>
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}

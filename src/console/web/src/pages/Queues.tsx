@@ -19,13 +19,13 @@ import {
   App as AntdApp,
 } from 'antd';
 import {
-  Cable,
-  PauseCircle,
-  PlayCircle,
-  RefreshCw,
-  Trash2,
-  Rewind,
-} from 'lucide-react';
+  DeploymentUnitOutlined,
+  PauseCircleOutlined,
+  PlayCircleOutlined,
+  ReloadOutlined,
+  DeleteOutlined,
+  RollbackOutlined,
+} from '@ant-design/icons';
 import { PageLayout } from '../components/PageLayout';
 import * as api from '../api/client';
 import type {
@@ -200,7 +200,7 @@ export default function Queues({ embedded = false }: { embedded?: boolean } = {}
           description={(error as Error)?.message}
           showIcon
           action={
-            <Button onClick={() => refetch()} icon={<RefreshCw className="w-4 h-4" />}>
+            <Button onClick={() => refetch()} icon={<ReloadOutlined />}>
               {t('queues.retry')}
             </Button>
           }
@@ -224,7 +224,7 @@ export default function Queues({ embedded = false }: { embedded?: boolean } = {}
             className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-sky-100 dark:bg-sky-950/50"
             aria-hidden
           >
-            <Cable className="h-5 w-5 text-sky-600 dark:text-sky-400" />
+            <DeploymentUnitOutlined className="text-sky-600 dark:text-sky-400" style={{ fontSize: 18 }} />
           </div>
           <div className="min-w-0">
             <Title level={3} className="!mb-1 !text-xl sm:!text-2xl !font-semibold">
@@ -246,7 +246,7 @@ export default function Queues({ embedded = false }: { embedded?: boolean } = {}
             unCheckedChildren={t('queues.streamOff')}
           />
           <Button
-            icon={<RefreshCw className="w-4 h-4" />}
+            icon={<ReloadOutlined />}
             onClick={() => {
               refetch();
               reconnect();
@@ -405,7 +405,7 @@ export default function Queues({ embedded = false }: { embedded?: boolean } = {}
                     </Text>
                     {merged.paused.inbound ? (
                       <Button
-                        icon={<PlayCircle className="w-4 h-4" />}
+                        icon={<PlayCircleOutlined />}
                         onClick={() => confirmPause('inbound', false)}
                         size="small"
                       >
@@ -414,7 +414,7 @@ export default function Queues({ embedded = false }: { embedded?: boolean } = {}
                     ) : (
                       <Button
                         danger
-                        icon={<PauseCircle className="w-4 h-4" />}
+                        icon={<PauseCircleOutlined />}
                         onClick={() => confirmPause('inbound', true)}
                         size="small"
                       >
@@ -428,7 +428,7 @@ export default function Queues({ embedded = false }: { embedded?: boolean } = {}
                     </Text>
                     {merged.paused.outbound ? (
                       <Button
-                        icon={<PlayCircle className="w-4 h-4" />}
+                        icon={<PlayCircleOutlined />}
                         onClick={() => confirmPause('outbound', false)}
                         size="small"
                       >
@@ -437,7 +437,7 @@ export default function Queues({ embedded = false }: { embedded?: boolean } = {}
                     ) : (
                       <Button
                         danger
-                        icon={<PauseCircle className="w-4 h-4" />}
+                        icon={<PauseCircleOutlined />}
                         onClick={() => confirmPause('outbound', true)}
                         size="small"
                       >
@@ -451,7 +451,7 @@ export default function Queues({ embedded = false }: { embedded?: boolean } = {}
                     </Text>
                     {merged.paused.events ? (
                       <Button
-                        icon={<PlayCircle className="w-4 h-4" />}
+                        icon={<PlayCircleOutlined />}
                         onClick={() => confirmPause('events', false)}
                         size="small"
                       >
@@ -460,7 +460,7 @@ export default function Queues({ embedded = false }: { embedded?: boolean } = {}
                     ) : (
                       <Button
                         danger
-                        icon={<PauseCircle className="w-4 h-4" />}
+                        icon={<PauseCircleOutlined />}
                         onClick={() => confirmPause('events', true)}
                         size="small"
                       >
@@ -644,7 +644,7 @@ export default function Queues({ embedded = false }: { embedded?: boolean } = {}
                           type="link"
                           size="small"
                           className="!px-1"
-                          icon={<Rewind className="w-4 h-4" />}
+                          icon={<RollbackOutlined />}
                           onClick={() => confirmReplay(row.message_id)}
                         >
                           {t('queues.replay')}
@@ -682,7 +682,7 @@ function ReplayAndClearForm({
         />
         <Button
           type="primary"
-          icon={<Rewind className="w-4 h-4" />}
+          icon={<RollbackOutlined />}
           disabled={!mid.trim()}
           onClick={() => onReplay(mid.trim())}
         >
@@ -702,7 +702,7 @@ function ReplayAndClearForm({
         />
         <Button
           danger
-          icon={<Trash2 className="w-4 h-4" />}
+          icon={<DeleteOutlined />}
           onClick={() => onClear(scope)}
         >
           {t('queues.clearDedupe')}

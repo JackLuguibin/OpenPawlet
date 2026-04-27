@@ -1,10 +1,8 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import type { CSSProperties } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
-import i18n from '../i18n';
 import {
   Tabs,
   Form,
@@ -42,6 +40,12 @@ import { useAppStore } from '../store';
 import { formatQueryError } from '../utils/errors';
 import { getCommonTimeZoneSelectOptions } from '../utils/timezones';
 import { PageLayout } from '../components/PageLayout';
+import {
+  PROVIDER_NAMES,
+  type ProviderFormEntry,
+  buildProvidersPayload,
+  providerDisplayName,
+} from './settings/providersUtils';
 import Channels from './Channels';
 import Cron from './Cron';
 
@@ -62,94 +66,6 @@ const SETTINGS_SCROLL_CARD_STYLES: {
   body: { flex: 1, minHeight: 0, overflowY: 'auto' },
 };
 
-/** Provider names that can be configured in Settings (schema keys, lowercase). */
-const PROVIDER_NAMES = [
-  'openai',
-  'anthropic',
-  'openrouter',
-  'deepseek',
-  'ollama',
-  'custom',
-  'groq',
-  'gemini',
-  'azure_openai',
-  'vllm',
-  'dashscope',
-  'zhipu',
-  'moonshot',
-  'minimax',
-  'aihubmix',
-  'siliconflow',
-  'volcengine',
-  'volcengine_coding_plan',
-  'byteplus',
-  'byteplus_coding_plan',
-] as const;
-
-function providerDisplayName(name: (typeof PROVIDER_NAMES)[number], t: TFunction): string {
-  const key = `settings.providerBrand.${name}`;
-  const translated = t(key);
-  if (translated !== key) return translated;
-  return name
-    .split('_')
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-    .join(' ');
-}
-
-export type ProviderFormEntry = {
-  apiKey: string;
-  apiBase: string;
-  extraHeadersJson: string;
-};
-
-/** Match pydantic `to_camel` for provider field names in model_dump(by_alias=True). */
-function providerSchemaKeyToJsonKey(snake: string): string {
-  const parts = snake.split('_');
-  if (parts.length === 1) return parts[0].toLowerCase();
-  return (
-    parts[0].toLowerCase() +
-    parts
-      .slice(1)
-      .map((p) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase())
-      .join('')
-  );
-}
-
-function buildProvidersPayload(
-  providerForm: Record<string, ProviderFormEntry>
-): Record<string, Record<string, unknown>> {
-  const out: Record<string, Record<string, unknown>> = {};
-  for (const name of PROVIDER_NAMES) {
-    const entry = providerForm[name] ?? { apiKey: '', apiBase: '', extraHeadersJson: '' };
-    const trimmedJson = entry.extraHeadersJson?.trim() ?? '';
-    let extraHeaders: Record<string, string> | null = null;
-    if (trimmedJson) {
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(trimmedJson) as unknown;
-      } catch {
-        throw new Error(i18n.t('settings.errExtraHeadersJson', { name }));
-      }
-      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-        throw new Error(i18n.t('settings.errExtraHeadersObject', { name }));
-      }
-      const obj = parsed as Record<string, unknown>;
-      for (const [k, v] of Object.entries(obj)) {
-        if (typeof v !== 'string') {
-          throw new Error(i18n.t('settings.errExtraHeadersString', { name, key: k }));
-        }
-      }
-      extraHeaders = obj as Record<string, string>;
-    }
-    const jsonKey = providerSchemaKeyToJsonKey(name);
-    out[jsonKey] = {
-      apiKey: entry.apiKey?.trim() ?? '',
-      apiBase: entry.apiBase?.trim() ? entry.apiBase.trim() : null,
-      extraHeaders,
-    };
-  }
-  return out;
-}
 
 type SettingsTab =
   | 'general'
@@ -672,7 +588,7 @@ export default function Settings() {
               description={t('settings.providersWarnDesc')}
               type="warning"
               showIcon
-              className="settings-providers-alert mb-4 rounded-md border border-amber-200/70 bg-amber-50/90 dark:border-amber-900/45 dark:bg-amber-950/30 [&_.ant-alert-description]:text-sm"
+              className="mb-4"
             />
             {filteredProviderNames.length === 0 ? (
               <Empty className="py-6" description={t('settings.noMatchingProviders')} />
@@ -681,7 +597,7 @@ export default function Settings() {
                 <Collapse
                   defaultActiveKey={[]}
                   expandIconPlacement="end"
-                  className="settings-provider-collapse border-0 bg-transparent"
+                  className="bg-transparent"
                   items={filteredProviderNames.map((name) => {
                     const entry = providerForm[name] ?? {
                       apiKey: '',
@@ -907,7 +823,7 @@ export default function Settings() {
         activeKey={activeTab}
         onChange={(key) => setActiveTab(key as SettingsTab)}
         items={tabItems}
-        className="settings-page-tabs settings-tabs flex min-h-0 min-w-0 w-full flex-1 flex-col [&_.ant-slider-track]:h-2 [&_.ant-slider-rail]:h-2 [&_.ant-tabs-nav]:shrink-0 [&_.ant-tabs-content-holder]:flex [&_.ant-tabs-content-holder]:min-h-0 [&_.ant-tabs-content-holder]:min-w-0 [&_.ant-tabs-content-holder]:w-full [&_.ant-tabs-content-holder]:flex-1 [&_.ant-tabs-content-holder]:flex-col [&_.ant-tabs-content-holder]:overflow-hidden [&_.ant-tabs-content]:flex [&_.ant-tabs-content]:min-h-0 [&_.ant-tabs-content]:w-full [&_.ant-tabs-content]:flex-1 [&_.ant-tabs-content]:flex-col [&_.ant-tabs-tabpane:not(.ant-tabs-tabpane-hidden)]:flex [&_.ant-tabs-tabpane:not(.ant-tabs-tabpane-hidden)]:min-h-0 [&_.ant-tabs-tabpane:not(.ant-tabs-tabpane-hidden)]:w-full [&_.ant-tabs-tabpane:not(.ant-tabs-tabpane-hidden)]:flex-1 [&_.ant-tabs-tabpane:not(.ant-tabs-tabpane-hidden)]:flex-col [&_.ant-tabs-tabpane:not(.ant-tabs-tabpane-hidden)]:overflow-hidden"
+        className="hub-shell-tabs"
       />
     </PageLayout>
   );

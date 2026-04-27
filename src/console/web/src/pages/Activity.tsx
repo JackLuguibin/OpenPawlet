@@ -24,7 +24,11 @@ import {
   ArrowDownOutlined,
   AppstoreOutlined,
 } from '@ant-design/icons';
-import { Send, MessageCircle, AlertTriangle } from 'lucide-react';
+import {
+  SendOutlined,
+  MessageOutlined,
+  WarningOutlined,
+} from '@ant-design/icons';
 import * as api from '../api/client';
 import { useAppStore } from '../store';
 import { getWSRef } from '../hooks/useWebSocket';
@@ -48,16 +52,16 @@ function formatActivityMetadata(meta: Record<string, unknown> | undefined): stri
 type ActivityIconComponent = ComponentType<{ className?: string }>;
 
 const ACTIVITY_ICONS: Record<string, ActivityIconComponent> = {
-  message: Send,
+  message: SendOutlined,
   tool_call: CodeOutlined,
   tool: CodeOutlined,
   channel: ApiOutlined,
-  session: MessageCircle,
-  error: AlertTriangle,
+  session: MessageOutlined,
+  error: WarningOutlined,
 };
 
 function ActivityIcon({ type }: { type: string }) {
-  const Icon = ACTIVITY_ICONS[type] || MessageCircle;
+  const Icon = ACTIVITY_ICONS[type] || MessageOutlined;
   return <Icon className="text-lg" />;
 }
 
@@ -114,7 +118,7 @@ export default function Activity({ embedded = false }: { embedded?: boolean } = 
         value: 'message',
         label: (
           <span className="flex items-center gap-1.5 sm:gap-2">
-            <Send className="h-[15px] w-[15px] shrink-0 text-blue-500 opacity-90" />
+            <SendOutlined className="shrink-0 text-blue-500 opacity-90" />
             <span className="whitespace-nowrap">{t('activity.typeMessage')}</span>
           </span>
         ),
@@ -141,7 +145,7 @@ export default function Activity({ embedded = false }: { embedded?: boolean } = 
         value: 'session',
         label: (
           <span className="flex items-center gap-1.5 sm:gap-2">
-            <MessageCircle className="h-[15px] w-[15px] shrink-0 text-emerald-600 dark:text-emerald-400 opacity-90" />
+            <MessageOutlined className="shrink-0 text-emerald-600 dark:text-emerald-400 opacity-90" />
             <span className="whitespace-nowrap">{t('activity.typeSession')}</span>
           </span>
         ),
@@ -150,7 +154,7 @@ export default function Activity({ embedded = false }: { embedded?: boolean } = 
         value: 'error',
         label: (
           <span className="flex items-center gap-1.5 sm:gap-2">
-            <AlertTriangle className="h-[15px] w-[15px] shrink-0 text-red-500 opacity-90" />
+            <WarningOutlined className="shrink-0 text-red-500 opacity-90" />
             <span className="whitespace-nowrap">{t('activity.typeError')}</span>
           </span>
         ),
@@ -239,19 +243,19 @@ export default function Activity({ embedded = false }: { embedded?: boolean } = 
       </div>
 
       {/* Filters */}
-      <div className="activity-filter-bar mt-5 shrink-0">
+      <div className="mt-5 shrink-0 rounded-md border border-gray-200/80 bg-gray-50/70 p-2.5 dark:border-gray-700/60 dark:bg-gray-800/30">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
           <div className="min-w-0 flex-1 overflow-x-auto [-webkit-overflow-scrolling:touch] [scrollbar-width:thin]">
             <Segmented
-              className="activity-type-segmented min-w-max"
+              className="min-w-max"
               value={typeFilter}
               onChange={(val) => setTypeFilter(String(val))}
               options={activityTypeOptions}
             />
           </div>
-          <div className="flex shrink-0 items-center gap-2 border-t border-slate-200/90 pt-3 dark:border-slate-600/80 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0">
+          <div className="flex shrink-0 items-center gap-2 border-t border-gray-200/90 pt-3 dark:border-gray-600/80 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0">
             <Segmented
-              className="activity-sort-segmented w-full sm:w-auto"
+              className="w-full sm:w-auto"
               value={sortOrder}
               onChange={(val) => setSortOrder(val as 'desc' | 'asc')}
               options={[

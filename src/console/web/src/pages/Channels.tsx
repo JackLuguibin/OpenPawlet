@@ -16,22 +16,20 @@ import {
   InfoCircleOutlined,
   EditOutlined,
   DeleteOutlined,
+  SendOutlined,
+  MessageOutlined,
+  ContainerOutlined,
+  PhoneOutlined,
+  FileTextOutlined,
+  BellOutlined,
+  MailOutlined,
+  GoldOutlined,
+  AppstoreOutlined,
+  ApiOutlined,
+  ShopOutlined,
+  DesktopOutlined,
 } from '@ant-design/icons';
-import {
-  Send,
-  MessageCircle,
-  Briefcase,
-  Phone,
-  FileText,
-  Bell,
-  Mail,
-  Gamepad2,
-  Grid3x3,
-  PlugZap,
-  Building2,
-  MonitorSmartphone,
-  type LucideIcon,
-} from 'lucide-react';
+import type { ComponentType } from 'react';
 import { useTranslation } from 'react-i18next';
 import * as api from '../api/client';
 import { useAppStore } from '../store';
@@ -65,21 +63,23 @@ function parseAllowFrom(s: string): string[] {
     .filter(Boolean);
 }
 
-const CHANNEL_ICONS: Record<string, LucideIcon> = {
-  telegram: Send,
-  discord: Gamepad2,
-  slack: Briefcase,
-  whatsapp: Phone,
-  feishu: FileText,
-  dingtalk: Bell,
-  email: Mail,
-  qq: MessageCircle,
-  matrix: Grid3x3,
-  mochat: MessageCircle,
-  websocket: PlugZap,
-  weixin: MessageCircle,
-  wecom: Building2,
-  msteams: MonitorSmartphone,
+type IconCmp = ComponentType<{ className?: string; style?: React.CSSProperties }>;
+
+const CHANNEL_ICONS: Record<string, IconCmp> = {
+  telegram: SendOutlined,
+  discord: GoldOutlined,
+  slack: ContainerOutlined,
+  whatsapp: PhoneOutlined,
+  feishu: FileTextOutlined,
+  dingtalk: BellOutlined,
+  email: MailOutlined,
+  qq: MessageOutlined,
+  matrix: AppstoreOutlined,
+  mochat: MessageOutlined,
+  websocket: ApiOutlined,
+  weixin: MessageOutlined,
+  wecom: ShopOutlined,
+  msteams: DesktopOutlined,
 };
 
 /** Top accent strip (full color gradient) */
@@ -124,8 +124,8 @@ const ICON_BG_DISABLED =
   'bg-slate-200/95 text-slate-500 shadow-inner dark:bg-slate-700/90 dark:text-slate-400';
 
 function ChannelIcon({ name, size = 24, className }: { name: string; size?: number; className?: string }) {
-  const Icon = CHANNEL_ICONS[name] || MessageCircle;
-  return <Icon size={size} strokeWidth={1.75} className={className} />;
+  const Icon = CHANNEL_ICONS[name] || MessageOutlined;
+  return <Icon className={className} style={{ fontSize: size }} />;
 }
 
 export default function Channels({ embedded = false }: { embedded?: boolean } = {}) {
