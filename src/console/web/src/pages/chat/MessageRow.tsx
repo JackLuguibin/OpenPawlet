@@ -39,6 +39,25 @@ interface MessageRowProps {
 function MessageRowComponent({ msg, extraAbove, formattedTime }: MessageRowProps) {
   const isUser = msg.role === "user";
   const isAssistant = msg.role === "assistant";
+  const isSystem = msg.role === "system";
+
+  // System notices ("Stopped N task(s).", restart confirmations, etc.) render
+  // as a centered, low-emphasis pill so they read as out-of-band notifications
+  // rather than another assistant turn.
+  if (isSystem) {
+    return (
+      <div className="flex w-full justify-center">
+        <div className="max-w-[85%] rounded-full bg-gray-100 dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700 px-4 py-1.5 text-xs text-gray-500 dark:text-gray-400 text-center">
+          <span className="whitespace-pre-wrap break-words">{msg.content}</span>
+          {formattedTime ? (
+            <span className="ml-2 text-gray-400 dark:text-gray-500">
+              · {formattedTime}
+            </span>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div

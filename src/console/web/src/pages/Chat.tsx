@@ -1537,13 +1537,39 @@ export default function Chat() {
         streamingPrimedByServerRef.current = false;
         setIsStreaming(true);
       } else if (chunk.type === "channel_notice" && chunk.content) {
-        streamingPrimedByServerRef.current = false;
-        setIsStreaming(true);
         const noticeText = chunk.content as string;
         const usageFromStatus = parseNanobotStatusJson(noticeText);
         if (usageFromStatus) {
           setNanobotContextUsage(usageFromStatus);
         }
+        // After the assistant turn already finalized (e.g. after `/stop`
+        // emitted `chat_end`, the trailing `Stopped N task(s).` confirmation
+        // arrives as a `message` frame) treat the notice as a standalone
+        // system bubble in the message list instead of a transient streaming
+        // notice that would otherwise re-enter streaming UI and stay there
+        // forever (no further `chat_end` follows).
+        if (
+          assistantReplyFinalizedRef.current ||
+          !isStreamingRef.current
+        ) {
+          const systemMsg: Message = {
+            id: `sys-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            role: "system",
+            content: noticeText,
+            created_at: new Date().toISOString(),
+            source: "main_agent",
+            ...(chunk.reply_group_id
+              ? { reply_group_id: chunk.reply_group_id }
+              : {}),
+          };
+          setMessages((prev) => [...prev, systemMsg]);
+          if (useNanobotChannel) {
+            scheduleNanobotStatusJson();
+          }
+          return;
+        }
+        streamingPrimedByServerRef.current = false;
+        setIsStreaming(true);
         setStreamingChannelNotices((prev) => [...prev, noticeText]);
         if (
           typeof chunk.reasoning_content === "string" &&
@@ -1744,10 +1770,36 @@ export default function Chat() {
             streamingReasoningContentRef.current.length > 0;
           expectStatusJsonTrailingChatDoneRef.current = false;
           if (!hasReal) {
+            // Even when this trailing frame carries no renderable content, it
+            // still terminates the turn — clear the streaming UI so the input
+            // box flips back to "send" mode (#stop button bug).
+            cancelStreamTokenFlush();
+            setIsStreaming(false);
+            setStreamingContent("");
+            streamingContentRef.current = "";
+            setStreamingToolProgress([]);
+            setStreamingChannelNotices([]);
+            setStreamingPayloadToolCalls([]);
+            setStreamingReasoningContent("");
+            streamingPayloadToolCallsRef.current = [];
+            streamingReasoningContentRef.current = "";
             return;
           }
         }
         if (assistantReplyFinalizedRef.current) {
+          // A second `chat_end` for the same reply group: still drive the UI
+          // back to idle so the stop button reliably ends streaming even if
+          // an earlier finalize path forgot to flip the flag.
+          cancelStreamTokenFlush();
+          setIsStreaming(false);
+          setStreamingContent("");
+          streamingContentRef.current = "";
+          setStreamingToolProgress([]);
+          setStreamingChannelNotices([]);
+          setStreamingPayloadToolCalls([]);
+          setStreamingReasoningContent("");
+          streamingPayloadToolCallsRef.current = [];
+          streamingReasoningContentRef.current = "";
           return;
         }
         assistantReplyFinalizedRef.current = true;
@@ -1775,6 +1827,26 @@ export default function Chat() {
         setStreamingContent("");
         setStreamingToolProgress([]);
         setStreamingChannelNotices([]);
+        // Any throttled mid-turn transcript refresh is superseded by chat_done.
+        cancelTranscriptSync();
+        // When the turn ends with no actual content (e.g. the user pressed
+        // "Stop" and nanobot's `_dispatch` finally emits a bare `chat_end`
+        // lifecycle frame after task cancellation), skip appending an empty
+        // assistant bubble. The follow-up confirmation `message` frame
+        // ("Stopped N task(s).") still arrives and is rendered through the
+        // ``channel_notice`` branch below.
+        const hasRenderableContent =
+          fromChunk.length > 0 ||
+          (mergedToolCalls && mergedToolCalls.length > 0) ||
+          (mergedReasoning !== undefined && mergedReasoning.length > 0);
+        if (!hasRenderableContent) {
+          streamingReplyGroupIdRef.current = null;
+          setToolCalls([]);
+          if (useNanobotChannel) {
+            scheduleNanobotStatusJson();
+          }
+          return;
+        }
         const assistantMsg: Message = {
           id: `msg-${Date.now()}`,
           role: "assistant",
@@ -1796,8 +1868,6 @@ export default function Chat() {
         streamingReplyGroupIdRef.current = null;
         setMessages((prev) => [...prev, assistantMsg]);
         setToolCalls([]);
-        // Any throttled mid-turn transcript refresh is superseded by chat_done.
-        cancelTranscriptSync();
         // Scope to the active bot to match the canonical sessions query key
         // used elsewhere in the file (e.g. ["sessions", currentBotId]).
         queryClient.invalidateQueries({ queryKey: ["sessions", currentBotId] });
@@ -2010,9 +2080,76 @@ export default function Chat() {
   };
 
   const handleStop = () => {
-    // Agent interruption is not yet supported via WebSocket.
-    // Stop button clears local streaming state only.
+    // Send `/stop` slash command to the active WebSocket so nanobot's
+    // command router cancels in-flight tasks for this session. The
+    // server emits ``chat_end`` (lifecycle finally) followed by a
+    // confirmation ``message`` frame ("Stopped N task(s).").
+    let dispatched = false;
+
+    if (useNanobotChannel) {
+      if (nanobotWsReady) {
+        try {
+          sendNanobotMessage({ content: "/stop", botId: currentBotId });
+          dispatched = true;
+        } catch (e) {
+          console.warn("[chat] failed to send /stop via nanobot ws", e);
+        }
+      }
+    } else {
+      const ws = getWSRef()?.current;
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        try {
+          ws.send(
+            JSON.stringify({
+              type: "chat",
+              message: "/stop",
+              session_key: activeSessionKey || undefined,
+              bot_id: currentBotId || undefined,
+            }),
+          );
+          dispatched = true;
+        } catch (e) {
+          console.warn("[chat] failed to send /stop via console ws", e);
+        }
+      }
+    }
+
+    // Drive the streaming UI to "stopped" immediately so users get instant
+    // feedback regardless of how fast the server's ``chat_end`` arrives or
+    // whether an earlier ``message`` frame ("Stopped N task(s).") races
+    // ahead of the lifecycle terminator. ``assistantReplyFinalizedRef`` is
+    // flipped so the trailing `message` frame is rendered as a standalone
+    // system bubble (see ``channel_notice`` branch) instead of re-entering
+    // streaming mode and stranding the input bar in stop-button state.
     cancelStreamTokenFlush();
+    cancelTranscriptSync();
+    // If the cancelled turn already produced visible content, persist it as
+    // an interrupted assistant bubble so users keep the partial reply.
+    const partialText = streamingContentRef.current;
+    const partialTools = streamingPayloadToolCallsRef.current;
+    const partialReasoning = streamingReasoningContentRef.current;
+    const hasPartialContent =
+      partialText.length > 0 ||
+      partialTools.length > 0 ||
+      partialReasoning.length > 0;
+    if (hasPartialContent) {
+      const interruptedMsg: Message = {
+        id: `msg-${Date.now()}`,
+        role: "assistant",
+        content: partialText,
+        created_at: new Date().toISOString(),
+        source: "main_agent",
+        ...(partialTools.length > 0 ? { tool_calls: partialTools } : {}),
+        ...(partialReasoning.length > 0
+          ? { reasoning_content: partialReasoning }
+          : {}),
+        ...(streamingReplyGroupIdRef.current
+          ? { reply_group_id: streamingReplyGroupIdRef.current }
+          : {}),
+      };
+      setMessages((prev) => [...prev, interruptedMsg]);
+    }
+    assistantReplyFinalizedRef.current = true;
     setIsStreaming(false);
     setStreamingContent("");
     streamingContentRef.current = "";
@@ -2024,7 +2161,12 @@ export default function Chat() {
     streamingPayloadToolCallsRef.current = [];
     streamingReasoningContentRef.current = "";
     streamingReplyGroupIdRef.current = null;
-    addToast({ type: "info", message: t("chat.toastStopped") });
+
+    if (dispatched) {
+      addToast({ type: "info", message: t("chat.toastStopped") });
+    } else {
+      addToast({ type: "error", message: t("chat.toastWsNotConnected") });
+    }
   };
 
   /**
