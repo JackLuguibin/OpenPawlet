@@ -1,49 +1,152 @@
 import { useEffect, useRef, type CSSProperties } from 'react';
-import * as echarts from 'echarts';
-import ReactECharts from 'echarts-for-react';
+import * as echarts from 'echarts/core';
+import { CanvasRenderer } from 'echarts/renderers';
+import {
+  BarChart,
+  CustomChart,
+  LineChart,
+  PieChart,
+} from 'echarts/charts';
+import {
+  DataZoomComponent,
+  GridComponent,
+  LegendComponent,
+  TitleComponent,
+  TooltipComponent,
+} from 'echarts/components';
+import type {
+  ComposeOption,
+  EChartsCoreOption,
+  ECharts,
+  SetOptionOpts,
+} from 'echarts/core';
+import type {
+  BarSeriesOption,
+  CustomSeriesOption,
+  LineSeriesOption,
+  PieSeriesOption,
+} from 'echarts/charts';
+import type {
+  DataZoomComponentOption,
+  GridComponentOption,
+  LegendComponentOption,
+  TitleComponentOption,
+  TooltipComponentOption,
+} from 'echarts/components';
 
-/** Same as `echarts.EChartsOption` (official examples use `import * as echarts from 'echarts'`). */
-export type EChartsOption = echarts.EChartsOption;
+// Register only the chart types and components we actually use across the
+// app (Dashboard pie/bar/line, TraceGanttChart custom). Pulling the full
+// `echarts` package adds ~700 kB to the bundle for features we never use.
+let echartsRegistered = false;
+function ensureEchartsRegistered() {
+  if (echartsRegistered) return;
+  echartsRegistered = true;
+  echarts.use([
+    CanvasRenderer,
+    PieChart,
+    BarChart,
+    LineChart,
+    CustomChart,
+    TitleComponent,
+    TooltipComponent,
+    LegendComponent,
+    GridComponent,
+    DataZoomComponent,
+  ]);
+}
+
+/**
+ * Strongly-typed option that includes only the series + components we have
+ * registered above. Keeping this narrow ensures dead-code elimination keeps
+ * working: any new usage forces an explicit `echarts.use(...)` update here.
+ */
+export type EChartsOption = ComposeOption<
+  | BarSeriesOption
+  | CustomSeriesOption
+  | LineSeriesOption
+  | PieSeriesOption
+  | DataZoomComponentOption
+  | GridComponentOption
+  | LegendComponentOption
+  | TitleComponentOption
+  | TooltipComponentOption
+>;
 
 export type EChartsWithResizeProps = {
   option: EChartsOption;
   className?: string;
   style?: CSSProperties;
-  /** Forwarded to echarts-for-react (e.g. `{ click: (p) => ... }`). */
+  /** Forwarded to the underlying chart (e.g. `{ click: (p) => ... }`). */
   onEvents?: Record<string, (params: unknown) => void>;
 };
 
+const DEFAULT_SET_OPTS: SetOptionOpts = { notMerge: true, lazyUpdate: true };
+
 /**
- * Wraps echarts-for-react so the canvas tracks container size after flex/grid or window changes.
+ * Imperative wrapper around echarts/core. We deliberately avoid
+ * `echarts-for-react` so the build does not transitively pull the full
+ * `echarts` umbrella package, and so we keep tighter control over resize
+ * + event lifecycles.
  */
 export function EChartsWithResize({ option, className, style, onEvents }: EChartsWithResizeProps) {
-  const shellRef = useRef<HTMLDivElement>(null);
-  const instanceRef = useRef<echarts.ECharts | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const instanceRef = useRef<ECharts | null>(null);
+  const eventsRef = useRef<Record<string, (params: unknown) => void> | undefined>(onEvents);
+
+  // Keep the latest event handlers without recreating the chart.
+  eventsRef.current = onEvents;
 
   useEffect(() => {
-    const shell = shellRef.current;
-    if (!shell) return;
-    const ro = new ResizeObserver(() => {
-      instanceRef.current?.resize();
-    });
-    ro.observe(shell);
-    return () => ro.disconnect();
+    ensureEchartsRegistered();
+    const el = containerRef.current;
+    if (!el) return;
+    const chart = echarts.init(el, undefined, { renderer: 'canvas' });
+    instanceRef.current = chart;
+
+    // Bridge a stable handler list to the latest ref so consumers can pass
+    // inline lambdas without churning the chart on every parent re-render.
+    const bound = new Map<string, (params: unknown) => void>();
+    const installHandlers = () => {
+      for (const [name, handler] of bound) {
+        chart.off(name, handler);
+      }
+      bound.clear();
+      const next = eventsRef.current;
+      if (!next) return;
+      for (const name of Object.keys(next)) {
+        const proxy = (params: unknown) => eventsRef.current?.[name]?.(params);
+        chart.on(name, proxy);
+        bound.set(name, proxy);
+      }
+    };
+    installHandlers();
+
+    const ro = new ResizeObserver(() => chart.resize());
+    ro.observe(el);
+
+    return () => {
+      ro.disconnect();
+      for (const [name, handler] of bound) {
+        chart.off(name, handler);
+      }
+      bound.clear();
+      chart.dispose();
+      instanceRef.current = null;
+    };
   }, []);
 
+  useEffect(() => {
+    const chart = instanceRef.current;
+    if (!chart) return;
+    chart.setOption(option as EChartsCoreOption, DEFAULT_SET_OPTS);
+  }, [option]);
+
   return (
-    <div ref={shellRef} className="h-full w-full min-h-0 min-w-0 overflow-visible">
-      <ReactECharts
-        option={option}
+    <div className="h-full w-full min-h-0 min-w-0 overflow-visible">
+      <div
+        ref={containerRef}
         className={className}
         style={{ width: '100%', height: '100%', ...style }}
-        opts={{ renderer: 'canvas' }}
-        notMerge
-        lazyUpdate
-        onEvents={onEvents}
-        onChartReady={(chart) => {
-          instanceRef.current = chart;
-          chart.resize();
-        }}
       />
     </div>
   );

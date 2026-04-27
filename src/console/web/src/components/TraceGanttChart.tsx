@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import type {
   CustomSeriesRenderItemAPI,
   CustomSeriesRenderItemParams,
-  TooltipComponentFormatterCallbackParams,
-} from 'echarts';
+  TopLevelFormatterParams,
+} from 'echarts/types/dist/shared';
 import type { TFunction } from 'i18next';
 import type { AgentObservabilityEvent } from '../api/types';
 import { useAppStore } from '../store';
@@ -214,7 +214,7 @@ export function TraceGanttChart({ events, t, onSelectEvent, dateLocale }: Props)
           fontSize: 11,
         },
         extraCssText: 'max-width:min(90vw,22rem);box-shadow:0 4px 24px rgba(0,0,0,0.12);',
-        formatter: (raw: TooltipComponentFormatterCallbackParams) => {
+        formatter: (raw: TopLevelFormatterParams) => {
           if (Array.isArray(raw)) return '';
           const params = raw as { seriesType?: string; dataIndex?: number };
           if (params.seriesType !== 'custom' || params.dataIndex == null) return '';

@@ -57,6 +57,154 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  build: {
+    // Slightly raise the warning ceiling: the largest legitimate chunk
+    // (echarts) is ~600 kB after manualChunks, which is acceptable for a
+    // route that is already code-split.
+    chunkSizeWarningLimit: 800,
+    rollupOptions: {
+      // Suppress the "Circular chunk: antd-heavy -> antd-core -> antd-heavy"
+      // notice. antd's internal modules (e.g. table -> filterDropdown -> tree)
+      // legitimately cross the leaf/non-leaf boundary, but the resulting
+      // ESM cycles are harmless at runtime and the chunking still saves ~85kB
+      // on routes that don't use Table/Tree/Cascader/etc.
+      onwarn(warning, warn) {
+        if (
+          warning.code === 'CIRCULAR_DEPENDENCY' ||
+          (warning.message && warning.message.startsWith('Circular chunk:'))
+        ) {
+          return
+        }
+        warn(warning)
+      },
+      output: {
+        // Split heavy 3rd-party libs into their own long-lived chunks so the
+        // main entry chunk stays small and per-route lazy chunks don't
+        // accidentally inline an entire library (e.g. echarts being pulled
+        // into the first route that imports it).
+        manualChunks(rawId) {
+          // Normalise Windows backslashes so the path tests below work on
+          // every platform identically.
+          const id = rawId.replace(/\\/g, '/')
+          if (!id.includes('node_modules')) return undefined
+
+          // echarts is ~1MB raw; keep it isolated so only Dashboard /
+          // Observability routes pay the cost when first opened.
+          if (
+            id.includes('node_modules/echarts') ||
+            id.includes('node_modules/zrender') ||
+            id.includes('node_modules/echarts-for-react')
+          ) {
+            return 'echarts'
+          }
+
+          // CodeMirror + language packs + theme are large; co-locate so the
+          // browser caches a single editor chunk for Workspace + Chat.
+          if (
+            id.includes('node_modules/@codemirror') ||
+            id.includes('node_modules/@uiw/react-codemirror') ||
+            id.includes('node_modules/@uiw/codemirror-extensions-basic-setup') ||
+            id.includes('node_modules/@uiw/codemirror-theme-vscode') ||
+            id.includes('node_modules/@lezer')
+          ) {
+            return 'codemirror'
+          }
+
+          // antd is huge (1MB+ tree-shaken). Pull leaf components that no
+          // other antd module depends on into a separate `antd-heavy`
+          // chunk, so non-Workspace/Runtime/Queues/Agents routes don't pay
+          // the cost. Components imported by `antd-core` (date-picker,
+          // calendar, time-picker, color-picker, steps – referenced by
+          // locale strings or shared tokens) MUST stay in `antd-core` to
+          // avoid Rollup circular-chunk warnings.
+          if (
+            id.includes('node_modules/antd/') ||
+            id.includes('node_modules/@ant-design/') ||
+            id.includes('node_modules/@rc-component/') ||
+            id.includes('node_modules/rc-')
+          ) {
+            // Verified leaves via dependency analysis of antd@6.3.1 — none
+            // of these are imported by sibling antd modules (other than the
+            // top-level barrel `antd/es/index.js`, which we co-locate below),
+            // so isolating them does not create runtime cycles. Tree-shaking
+            // ensures unused leaf imports from the barrel drop out entirely.
+            const leafSegments = [
+              'antd/es/cascader/',
+              'antd/es/transfer/',
+              'antd/es/splitter/',
+              'antd/es/upload/',
+              'antd/es/table/',
+              'antd/es/tree/',
+              'antd/es/tree-select/',
+              'antd/es/anchor/',
+              'antd/es/carousel/',
+              'antd/es/result/',
+              'antd/es/mentions/',
+              'antd/es/auto-complete/',
+              // Heavy @rc-component/* packages that exclusively back the
+              // leaves above (antd v6 moved rc-* into @rc-component/*).
+              '@rc-component/table/',
+              '@rc-component/tree/',
+              '@rc-component/tree-select/',
+              '@rc-component/cascader/',
+              '@rc-component/mentions/',
+              '@rc-component/upload/',
+            ]
+            if (leafSegments.some((seg) => id.includes(seg))) {
+              return 'antd-heavy'
+            }
+            // The top-level barrel re-exports the leaves above, which would
+            // otherwise create a circular chunk reference (core <-> heavy).
+            // Co-locating the barrel with the leaves means consumers that
+            // don't tree-shake the barrel still get a clean dependency edge:
+            // antd-heavy -> antd-core (one direction only).
+            if (
+              id.endsWith('node_modules/antd/es/index.js') ||
+              id.endsWith('node_modules/antd/lib/index.js')
+            ) {
+              return 'antd-heavy'
+            }
+            return 'antd-core'
+          }
+
+          // Markdown stack (used by Chat / Workspace) is ~150kB on its own.
+          if (
+            id.includes('node_modules/react-markdown') ||
+            id.includes('node_modules/remark-') ||
+            id.includes('node_modules/micromark') ||
+            id.includes('node_modules/mdast-') ||
+            id.includes('node_modules/unist-') ||
+            id.includes('node_modules/hast-') ||
+            id.includes('node_modules/unified') ||
+            id.includes('node_modules/vfile')
+          ) {
+            return 'markdown'
+          }
+
+          // i18next is loaded eagerly via main.tsx; keep it as a stable
+          // long-lived vendor chunk.
+          if (
+            id.includes('node_modules/i18next') ||
+            id.includes('node_modules/react-i18next')
+          ) {
+            return 'i18n'
+          }
+
+          // React core – very stable, ideal for long-term browser cache.
+          if (
+            id.includes('node_modules/react/') ||
+            id.includes('node_modules/react-dom/') ||
+            id.includes('node_modules/scheduler/') ||
+            id.includes('node_modules/react-router') ||
+            id.includes('node_modules/@remix-run/router')
+          ) {
+            return 'react-vendor'
+          }
+          return undefined
+        },
+      },
+    },
+  },
   server: {
     port: 3000,
     proxy: {
