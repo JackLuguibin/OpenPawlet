@@ -25,8 +25,6 @@ import { Button, Tag, Popconfirm, Checkbox, Spin, Modal, Select, Tabs, Switch, T
 import {
   PlusOutlined,
   LoadingOutlined,
-  CheckOutlined,
-  CloseOutlined,
   DeleteOutlined,
   EditOutlined,
   MenuFoldOutlined,
@@ -42,9 +40,6 @@ import {
   Loader2,
   MessageSquare,
   Users,
-  Wand2,
-  Wrench,
-  Info,
   X,
   FileText,
 } from "lucide-react";
@@ -59,17 +54,12 @@ import { SubagentPanel, type SubagentTask } from "../components/SubagentPanel";
 import { MessageRow } from "./chat/MessageRow";
 import { VirtualizedMessageList } from "./chat/VirtualizedMessageList";
 import { useVirtualListHandle } from "./chat/useVirtualListHandle";
-import type {
-  Message,
-  NanobotContextUsage,
-  TrackedToolCall,
-} from "./chat/types";
+import type { Message, TrackedToolCall } from "./chat/types";
 import {
   parseNanobotStatusJson,
   resolveChatDonePrimaryText,
 } from "./chat/statusParse";
 import {
-  formatToolHintMultiline,
   groupAssistantReplies,
   mergeStreamingToolCalls,
   mergeToolResultsIntoAssistantMessages,
@@ -86,19 +76,15 @@ import {
 import { MessageToolCallsBlock } from "./chat/MessageToolCalls";
 import { MessageThinkingBlock } from "./chat/MessageThinkingBlock";
 import { ChatInput } from "./chat/ChatInput";
-
-/**
- * Pagination window size for lazy-loaded chat history.
- *
- * The first request asks the backend `/transcript` endpoint for the most
- * recent `CHAT_HISTORY_PAGE_SIZE` messages; scrolling to the top fetches the
- * previous page. Keep this modest so the first render of a long conversation
- * stays fast; users scrolling up pay a single round-trip for older context.
- */
-const CHAT_HISTORY_PAGE_SIZE = 80;
-
-/** Pixel distance from the container's top that triggers a prev-page fetch. */
-const CHAT_HISTORY_TOP_TRIGGER_PX = 120;
+import { ChatHeroSuggestions } from "./chat/ChatHeroSuggestions";
+import { JumpToBottomButton } from "./chat/JumpToBottomButton";
+import { StreamingAssistantBubble } from "./chat/StreamingAssistantBubble";
+import { useNanobotContextUsage } from "./chat/useNanobotContextUsage";
+import {
+  CHAT_HISTORY_PAGE_SIZE,
+  CHAT_HISTORY_TOP_TRIGGER_PX,
+  useChatHistoryPaging,
+} from "./chat/useChatHistoryPaging";
 
 /** Near-bottom threshold (mirrors the pre-virtualization scroll sticky rule). */
 const CHAT_NEAR_BOTTOM_PX = 100;
@@ -225,9 +211,6 @@ export default function Chat() {
     mq.addEventListener("change", onChange);
     return () => mq.removeEventListener("change", onChange);
   }, [jsonlViewTheme]);
-  const [nanobotContextUsage, setNanobotContextUsage] =
-    useState<NanobotContextUsage | null>(null);
-  const [statusJsonLoading, setStatusJsonLoading] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -239,18 +222,6 @@ export default function Chat() {
   const [unreadBelowCount, setUnreadBelowCount] = useState(0);
   /** Drives the "jump to bottom" button visibility; updated from scroll events. */
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
-  /**
-   * Absolute index (into the full transcript) of the oldest message currently
-   * loaded in `messages`. `null` when pagination metadata is unavailable
-   * (transcript endpoint returned the legacy full-history shape).
-   */
-  const [historyOldestOffset, setHistoryOldestOffset] = useState<number | null>(
-    null,
-  );
-  const [historyHasMore, setHistoryHasMore] = useState(false);
-  const [loadingOlder, setLoadingOlder] = useState(false);
-  /** Prevent concurrent prev-page requests for the same scroll event burst. */
-  const loadingOlderRef = useRef(false);
   const inputRef = useRef<TextAreaRef>(null);
   const streamingContentRef = useRef("");
   /** Coalesce high-frequency chat_token updates to one setState per animation frame */
@@ -260,16 +231,6 @@ export default function Chat() {
   const transcriptSyncTimerRef = useRef<number | null>(null);
   /** 新会话首条消息：等待 nanobot 内置 websocket 通道连接后再发送 */
   const pendingNanobotOutboundRef = useRef<string | null>(null);
-  /** Silent `/status` poll: ignore streamed UI, parse status payload only */
-  const silentStatusJsonRef = useRef(false);
-  const silentStatusJsonBufferRef = useRef("");
-  const statusJsonInFlightRef = useRef(false);
-  const queuedStatusJsonRef = useRef(false);
-  /** Incremented when `activeSessionKey` changes so stale `/status` replies are ignored */
-  const contextSessionEpochRef = useRef(0);
-  const statusJsonPollEpochRef = useRef(0);
-  /** After early parse from `/status`, ignore a following empty `chat_end` frame */
-  const expectStatusJsonTrailingChatDoneRef = useRef(false);
 
   /** Cancel scheduled rAF and apply any buffered tokens so state matches streamingContentRef */
   const cancelStreamTokenFlush = useCallback(() => {
@@ -315,18 +276,7 @@ export default function Chat() {
   }, [activeSessionKey, currentBotId, queryClient]);
 
   useEffect(() => {
-    contextSessionEpochRef.current += 1;
-    setNanobotContextUsage(null);
-    silentStatusJsonRef.current = false;
-    silentStatusJsonBufferRef.current = "";
-    statusJsonInFlightRef.current = false;
-    queuedStatusJsonRef.current = false;
-    setStatusJsonLoading(false);
-    expectStatusJsonTrailingChatDoneRef.current = false;
     messagesStickToBottomRef.current = true;
-  }, [activeSessionKey]);
-
-  useEffect(() => {
     streamingPrimedByServerRef.current = false;
   }, [activeSessionKey]);
 
@@ -563,59 +513,22 @@ export default function Chat() {
     draftSessionActivationTick,
   ]);
 
-  const scheduleNanobotStatusJson = useCallback(() => {
-    if (!useNanobotChannel || !nanobotWsReady) {
-      return;
-    }
-    if (statusJsonInFlightRef.current) {
-      queuedStatusJsonRef.current = true;
-      return;
-    }
-    statusJsonInFlightRef.current = true;
-    silentStatusJsonRef.current = true;
-    silentStatusJsonBufferRef.current = "";
-    statusJsonPollEpochRef.current = contextSessionEpochRef.current;
-    setStatusJsonLoading(true);
-    try {
-      sendNanobotMessage({
-        content: "/status-json",
-        botId: currentBotId,
-      });
-    } catch {
-      statusJsonInFlightRef.current = false;
-      silentStatusJsonRef.current = false;
-      setStatusJsonLoading(false);
-      if (queuedStatusJsonRef.current) {
-        queuedStatusJsonRef.current = false;
-        queueMicrotask(() => scheduleNanobotStatusJson());
-      }
-    }
-  }, [useNanobotChannel, nanobotWsReady, currentBotId, sendNanobotMessage]);
-
-  const completeSilentStatusJsonPoll = useCallback(
-    (raw: string, options?: { fromEarlyParse?: boolean }) => {
-      const epochOk =
-        statusJsonPollEpochRef.current === contextSessionEpochRef.current;
-      silentStatusJsonBufferRef.current = "";
-      silentStatusJsonRef.current = false;
-      statusJsonInFlightRef.current = false;
-      setStatusJsonLoading(false);
-      if (options?.fromEarlyParse) {
-        expectStatusJsonTrailingChatDoneRef.current = true;
-      }
-      if (epochOk) {
-        const parsed = parseNanobotStatusJson(raw);
-        if (parsed) {
-          setNanobotContextUsage(parsed);
-        }
-      }
-      if (queuedStatusJsonRef.current) {
-        queuedStatusJsonRef.current = false;
-        queueMicrotask(() => scheduleNanobotStatusJson());
-      }
-    },
-    [scheduleNanobotStatusJson],
-  );
+  const {
+    nanobotContextUsage,
+    setNanobotContextUsage,
+    statusJsonLoading,
+    scheduleNanobotStatusJson,
+    silentStatusJsonRef,
+    silentStatusJsonBufferRef,
+    expectStatusJsonTrailingChatDoneRef,
+    completeSilentStatusJsonPoll,
+  } = useNanobotContextUsage({
+    useNanobotChannel,
+    nanobotWsReady,
+    currentBotId,
+    sendNanobotMessage,
+    activeSessionKey,
+  });
 
   /** Sidebar's "latest" row uses the same rule as navigation/delete fallbacks. */
   const latestSessionKeyForSidebar = useMemo(
@@ -1269,6 +1182,22 @@ export default function Chat() {
     [],
   );
 
+  const {
+    setHistoryOldestOffset,
+    historyHasMore,
+    setHistoryHasMore,
+    loadingOlder,
+    loadingOlderRef,
+    loadOlderHistoryPage,
+  } = useChatHistoryPaging({
+    activeSessionKey,
+    currentBotId,
+    buildStableMessageId,
+    setMessages,
+    addToast,
+    t,
+  });
+
   useEffect(() => {
     if (!sessionData?.messages) {
       if (!activeSessionKey) {
@@ -1314,7 +1243,14 @@ export default function Chat() {
     });
     setHistoryOldestOffset(nextOldestOffset);
     setHistoryHasMore(nextHasMore);
-  }, [sessionData, activeSessionKey, isStreaming, buildStableMessageId]);
+  }, [
+    sessionData,
+    activeSessionKey,
+    isStreaming,
+    buildStableMessageId,
+    setHistoryHasMore,
+    setHistoryOldestOffset,
+  ]);
 
   // Keep sidebar message_count in sync with GET /sessions/:key/transcript without refetching the full list.
   const sessionMessageCount = sessionData?.message_count;
@@ -1358,91 +1294,6 @@ export default function Chat() {
   }, [messages]);
 
   /**
-   * Try to load the previous history page when the user scrolls near the top.
-   *
-   * Anchor restoration: we capture the current (scrollHeight - scrollTop)
-   * delta before the pending page is appended; after React commits the new
-   * rows we add the growth back so the viewport appears frozen in place
-   * rather than jumping up to the new top.
-   */
-  const loadOlderHistoryPage = useCallback(async () => {
-    if (loadingOlderRef.current) return;
-    if (!historyHasMore) return;
-    if (!activeSessionKey) return;
-    if (historyOldestOffset === null || historyOldestOffset <= 0) return;
-
-    loadingOlderRef.current = true;
-    setLoadingOlder(true);
-
-    // Find the scroll parent the virtual list mounted; it owns the scroll
-    // offset we need to restore after prepending rows.
-    const scroller = document.querySelector<HTMLDivElement>(
-      '[data-testid="chat-virtual-scroll"]',
-    );
-    const prevScrollHeight = scroller?.scrollHeight ?? 0;
-    const prevScrollTop = scroller?.scrollTop ?? 0;
-
-    try {
-      const page = await api.getSessionTranscript(
-        activeSessionKey,
-        currentBotId,
-        {
-          limit: CHAT_HISTORY_PAGE_SIZE,
-          beforeIndex: historyOldestOffset,
-        },
-      );
-      const older = (page.messages ?? []) as Message[];
-      const newOldestOffset =
-        typeof page.offset === "number" ? page.offset : 0;
-      const nextHasMore = Boolean(page.has_more);
-
-      if (older.length > 0) {
-        setMessages((prev) => {
-          const prepended: Message[] = older.map((msg, idx) => ({
-            ...msg,
-            id: buildStableMessageId(msg, newOldestOffset + idx),
-          }));
-          return [...prepended, ...prev];
-        });
-      }
-      setHistoryOldestOffset(newOldestOffset);
-      setHistoryHasMore(nextHasMore);
-
-      // Restore scroll position after layout settles. Using requestAnimation-
-      // Frame twice ensures measurement + paint have both flushed so the
-      // growth we add is the final value.
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          if (!scroller) return;
-          const growth = scroller.scrollHeight - prevScrollHeight;
-          if (growth > 0) {
-            scroller.scrollTop = prevScrollTop + growth;
-          }
-        });
-      });
-    } catch (err) {
-      addToast({
-        type: "error",
-        message:
-          err instanceof Error
-            ? `${t("chat.loadOlderFailed")}: ${err.message}`
-            : t("chat.loadOlderFailed"),
-      });
-    } finally {
-      loadingOlderRef.current = false;
-      setLoadingOlder(false);
-    }
-  }, [
-    historyHasMore,
-    historyOldestOffset,
-    activeSessionKey,
-    currentBotId,
-    buildStableMessageId,
-    addToast,
-    t,
-  ]);
-
-  /**
    * Poll the virtual list scroll offset on every scroll event:
    * - keeps `messagesStickToBottomRef` accurate so new tokens only auto-scroll
    *   when the user is actively reading the tail;
@@ -1471,7 +1322,12 @@ export default function Chat() {
     ) {
       void loadOlderHistoryPage();
     }
-  }, [virtualListHandleRef, historyHasMore, loadOlderHistoryPage]);
+  }, [
+    virtualListHandleRef,
+    historyHasMore,
+    loadOlderHistoryPage,
+    loadingOlderRef,
+  ]);
 
   // Attach scroll listener to the virtualization scroll parent.
   useEffect(() => {
@@ -1941,6 +1797,10 @@ export default function Chat() {
       scheduleTranscriptSync,
       cancelTranscriptSync,
       useNanobotChannel,
+      expectStatusJsonTrailingChatDoneRef,
+      setNanobotContextUsage,
+      silentStatusJsonBufferRef,
+      silentStatusJsonRef,
     ],
   );
 
@@ -1990,14 +1850,6 @@ export default function Chat() {
     cancelStreamTokenFlush,
     t,
   ]);
-
-  /** After each nanobot channel `ready` (connect or reconnect), refresh context via `/status`. */
-  useEffect(() => {
-    if (!useNanobotChannel || !nanobotWsReady) {
-      return;
-    }
-    scheduleNanobotStatusJson();
-  }, [useNanobotChannel, nanobotWsReady, scheduleNanobotStatusJson]);
 
   const handleSend = async () => {
     if (!input.trim() || isStreaming) return;
@@ -2199,18 +2051,6 @@ export default function Chat() {
     ],
     [t],
   );
-
-  const toolCallTagColor = (status: TrackedToolCall["status"]) => {
-    if (status === "running") return "processing";
-    if (status === "success") return "success";
-    return "error";
-  };
-
-  const trackedToolStatusLabel = (status: TrackedToolCall["status"]) => {
-    if (status === "running") return t("subagent.running");
-    if (status === "success") return t("subagent.completed");
-    return t("subagent.failed");
-  };
 
   /** Message time in agent-configured IANA timezone (matches nanobot logs). */
   const formatMessageTime = (isoStr: string | undefined): string => {
@@ -2838,42 +2678,14 @@ export default function Chat() {
 
           {/* Messages / Hero */}
           {displayMessages.length === 0 && showSuggestions ? (
-            <div
-              ref={messagesContainerRef}
-              className="flex-1 min-h-0 overflow-y-auto no-scrollbar px-4 md:px-6 py-2 md:py-3"
-            >
-              <div className="min-h-full flex flex-col items-center justify-start pt-2 md:pt-4 text-center text-gray-600 dark:text-gray-300">
-                <div className="w-20 h-20 rounded-md bg-gradient-to-br from-primary-100 to-blue-100 dark:from-primary-900/30 dark:to-blue-900/20 flex items-center justify-center mb-6 shadow-xl shadow-primary-500/10">
-                  <Bot className="w-10 h-10 text-primary-600" />
-                </div>
-                <h3 className="text-2xl font-bold mb-3 bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
-                  {t("chat.heroTitle")}
-                </h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mb-8 max-w-md">
-                  {t("chat.heroSubtitle")}
-                </p>
-                <div className="grid gap-3 w-full max-w-xl">
-                  {suggestions.map((suggestion, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => {
-                        setInput(suggestion.text);
-                        inputRef.current?.focus();
-                      }}
-                      className="flex items-center justify-between px-5 py-4 rounded-md bg-white dark:bg-gray-800 shadow-sm hover:shadow-md border border-gray-100 dark:border-gray-700 text-left text-sm transition-shadow duration-200 group"
-                    >
-                      <div className="flex items-center gap-3">
-                        <Wand2 className="w-4 h-4 text-primary-500" />
-                        <span className="font-medium">{suggestion.label}</span>
-                      </div>
-                      <span className="text-gray-400 group-hover:translate-x-1 transition-transform">
-                        →
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
+            <ChatHeroSuggestions
+              suggestions={suggestions}
+              onPickSuggestion={(text) => {
+                setInput(text);
+                inputRef.current?.focus();
+              }}
+              containerRef={messagesContainerRef}
+            />
           ) : (
             <div className="relative flex-1 min-h-0 flex flex-col">
               <VirtualizedMessageList
@@ -2925,163 +2737,14 @@ export default function Chat() {
                 footer={
                   <>
                     {showStreamingAssistantBubble && (
-                      <>
-                        <div className="flex gap-3 w-full min-w-0">
-                          <div className="w-10 h-10 rounded-md bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-600 flex items-center justify-center shrink-0">
-                            <Bot className="w-5 h-5 text-gray-600 dark:text-gray-300" />
-                          </div>
-                          <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-md px-5 py-4 shadow-sm min-w-0 flex-1 max-w-full mr-[calc(2.5rem+0.75rem)]">
-                            {streamingChannelNotices.length > 0 ? (
-                              <div className="space-y-2 mb-3 pb-3 border-b border-amber-200/70 dark:border-amber-700/50">
-                                <div className="flex items-center gap-2 pl-0.5">
-                                  <Info
-                                    className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0"
-                                    strokeWidth={2}
-                                    aria-hidden
-                                  />
-                                  <span className="text-[11px] font-semibold uppercase tracking-wider text-amber-700/90 dark:text-amber-400/90">
-                                    {t("chat.statusLabel")}
-                                  </span>
-                                </div>
-                                {streamingChannelNotices.map((line, idx) => (
-                                  <p
-                                    key={`${idx}-${line.slice(0, 48)}`}
-                                    className="text-[12px] sm:text-[13px] leading-snug text-amber-950 dark:text-amber-100/95 m-0"
-                                  >
-                                    {line}
-                                  </p>
-                                ))}
-                              </div>
-                            ) : null}
-                            {streamingReasoningContent.length > 0 ? (
-                              <MessageThinkingBlock
-                                text={streamingReasoningContent}
-                              />
-                            ) : null}
-                            {streamingPayloadToolCalls.length > 0 ? (
-                              <div
-                                className={
-                                  streamingReasoningContent.length > 0 ||
-                                  streamingChannelNotices.length > 0
-                                    ? "mt-3 pt-3 border-t border-gray-100 dark:border-gray-700"
-                                    : ""
-                                }
-                              >
-                                <MessageToolCallsBlock
-                                  noTopMargin
-                                  tool_calls={streamingPayloadToolCalls}
-                                />
-                              </div>
-                            ) : null}
-                            {streamingContent ? (
-                              <div
-                                className={`text-[15px] leading-relaxed text-gray-900 dark:text-gray-100 whitespace-pre-wrap break-words ${
-                                  streamingReasoningContent.length > 0 ||
-                                  streamingPayloadToolCalls.length > 0 ||
-                                  streamingChannelNotices.length > 0
-                                    ? "mt-3 pt-3 border-t border-gray-100 dark:border-gray-700"
-                                    : ""
-                                }`}
-                              >
-                                {streamingContent}
-                              </div>
-                            ) : null}
-                            {streamingToolProgress.length > 0 ? (
-                              <div
-                                className={
-                                  streamingContent ||
-                                  streamingPayloadToolCalls.length > 0 ||
-                                  streamingReasoningContent.length > 0 ||
-                                  streamingChannelNotices.length > 0
-                                    ? "mt-3 pt-3 border-t border-gray-100 dark:border-gray-700 space-y-2"
-                                    : "space-y-2"
-                                }
-                              >
-                                <div className="flex items-center gap-2 pl-0.5">
-                                  <Wrench
-                                    className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500 shrink-0"
-                                    strokeWidth={2}
-                                    aria-hidden
-                                  />
-                                  <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                                    {t("chat.toolCalls")}
-                                  </span>
-                                </div>
-                                {streamingToolProgress.map((hint, idx) => (
-                                  <pre
-                                    key={`${idx}-${hint.slice(0, 24)}`}
-                                    className="text-[11px] sm:text-xs leading-relaxed font-mono text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-950/80 rounded-md px-3 py-2.5 whitespace-pre-wrap break-all m-0 overflow-x-auto ring-1 ring-inset ring-slate-200/60 dark:ring-slate-700/50 border-0"
-                                  >
-                                    {formatToolHintMultiline(hint)}
-                                  </pre>
-                                ))}
-                              </div>
-                            ) : null}
-                            {streamingContent.trim().length > 0 ? (
-                              <span
-                                className="mt-3 inline-flex items-center gap-1 text-primary-500"
-                                aria-hidden
-                              >
-                                <span className="inline-block w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
-                                <span className="inline-block w-1.5 h-1.5 rounded-full bg-current animate-pulse [animation-delay:150ms]" />
-                                <span className="inline-block w-1.5 h-1.5 rounded-full bg-current animate-pulse [animation-delay:300ms]" />
-                              </span>
-                            ) : (
-                              <LoadingOutlined className="mt-2 text-primary-500" />
-                            )}
-                          </div>
-                        </div>
-
-                        {toolCalls.length > 0 && (
-                          <div className="flex gap-3 w-full min-w-0 mt-4">
-                            <div
-                              className="w-10 min-w-[2.5rem] shrink-0"
-                              aria-hidden
-                            />
-                            <div className="flex-1 min-w-0 space-y-2 mr-[calc(2.5rem+0.75rem)]">
-                              {toolCalls.map((tc) => (
-                                <div
-                                  key={tc.id}
-                                  className={`rounded-md p-4 border ${
-                                    tc.status === "running"
-                                      ? "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800"
-                                      : tc.status === "success"
-                                        ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800"
-                                        : "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"
-                                  }`}
-                                >
-                                  <div className="flex items-center gap-2 mb-2">
-                                    {tc.status === "running" ? (
-                                      <LoadingOutlined className="text-blue-500" />
-                                    ) : tc.status === "success" ? (
-                                      <CheckOutlined className="text-green-500" />
-                                    ) : (
-                                      <CloseOutlined className="text-red-500" />
-                                    )}
-                                    <span className="font-medium text-sm">
-                                      {tc.name}
-                                    </span>
-                                    <Tag color={toolCallTagColor(tc.status)}>
-                                      {trackedToolStatusLabel(tc.status)}
-                                    </Tag>
-                                  </div>
-                                  {tc.args && (
-                                    <pre className="text-xs bg-gray-900 text-gray-100 p-2 rounded-md overflow-x-auto">
-                                      {tc.args}
-                                    </pre>
-                                  )}
-                                  {tc.result && (
-                                    <pre className="text-xs mt-2 bg-gray-900 text-gray-100 p-2 rounded-md overflow-x-auto max-h-32">
-                                      {tc.result.slice(0, 500)}
-                                      {tc.result.length > 500 && "..."}
-                                    </pre>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </>
+                      <StreamingAssistantBubble
+                        streamingChannelNotices={streamingChannelNotices}
+                        streamingReasoningContent={streamingReasoningContent}
+                        streamingPayloadToolCalls={streamingPayloadToolCalls}
+                        streamingContent={streamingContent}
+                        streamingToolProgress={streamingToolProgress}
+                        toolCalls={toolCalls}
+                      />
                     )}
                     <div ref={messagesEndRef} />
                   </>
@@ -3089,20 +2752,10 @@ export default function Chat() {
               />
 
               {showJumpToBottom ? (
-                <button
-                  type="button"
-                  onClick={jumpToBottom}
-                  className="absolute bottom-4 right-4 md:right-6 z-10 inline-flex items-center gap-1.5 rounded-full bg-primary-500 hover:bg-primary-600 text-white text-xs px-3 py-1.5 shadow-lg shadow-primary-500/30 transition-colors"
-                  aria-label={t("chat.jumpToBottom")}
-                  title={t("chat.jumpToBottom")}
-                >
-                  <ChevronRight className="w-3.5 h-3.5 rotate-90" aria-hidden />
-                  <span>
-                    {unreadBelowCount > 0
-                      ? t("chat.jumpToBottomNewMessages")
-                      : t("chat.jumpToBottom")}
-                  </span>
-                </button>
+                <JumpToBottomButton
+                  unreadBelowCount={unreadBelowCount}
+                  onJump={jumpToBottom}
+                />
               ) : null}
             </div>
           )}
