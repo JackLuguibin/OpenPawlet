@@ -2273,14 +2273,8 @@ export default function Chat() {
     return formatChatMessageTime(isoStr, agentTz, locale);
   };
 
-  /** nanobot may emit `stream_end` before the last `tool_event`; keep bubble while tools still stream in. */
-  const showStreamingAssistantBubble =
-    isStreaming &&
-    (Boolean(streamingContent) ||
-      streamingChannelNotices.length > 0 ||
-      streamingToolProgress.length > 0 ||
-      streamingPayloadToolCalls.length > 0 ||
-      streamingReasoningContent.length > 0);
+  /** Show tail bubble for the whole in-flight turn, including warm-up before first token. */
+  const showStreamingAssistantBubble = isStreaming;
 
   return (
     <div className="flex flex-1 min-h-0 overflow-hidden overflow-x-hidden bg-gradient-to-br from-gray-50 via-white to-gray-100 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 relative">

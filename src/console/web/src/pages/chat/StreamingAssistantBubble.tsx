@@ -1,10 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { Bot, Info, Wrench } from "lucide-react";
-import {
-  CheckOutlined,
-  CloseOutlined,
-  LoadingOutlined,
-} from "@ant-design/icons";
+import { CheckOutlined, CloseOutlined, LoadingOutlined } from "@ant-design/icons";
 import { Tag } from "antd";
 
 import { MessageThinkingBlock } from "./MessageThinkingBlock";
@@ -46,7 +42,7 @@ function trackedToolTagColor(status: TrackedToolCall["status"]) {
  *   3. Tool-calls payload block (rich UI from `MessageToolCallsBlock`).
  *   4. Streamed text body.
  *   5. Tool progress hints (lightweight one-liners).
- *   6. Either a 3-dot pulse (when text exists) or a spinner (warming up).
+ *   6. A 3-dot pulse shown during the entire streaming phase.
  *   7. Tracked tool-call chips (rendered as a sibling row beneath the bubble).
  */
 export function StreamingAssistantBubble({
@@ -156,18 +152,14 @@ export function StreamingAssistantBubble({
               ))}
             </div>
           ) : null}
-          {streamingContent.trim().length > 0 ? (
-            <span
-              className="mt-3 inline-flex items-center gap-1 text-primary-500"
-              aria-hidden
-            >
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-current animate-pulse [animation-delay:150ms]" />
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-current animate-pulse [animation-delay:300ms]" />
-            </span>
-          ) : (
-            <LoadingOutlined className="mt-2 text-primary-500" />
-          )}
+          <span
+            className="mt-3 inline-flex items-center gap-1.5 text-slate-700 dark:text-slate-300"
+            aria-hidden
+          >
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-current animate-pulse" />
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-current animate-pulse [animation-delay:150ms]" />
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-current animate-pulse [animation-delay:300ms]" />
+          </span>
         </div>
       </div>
 
