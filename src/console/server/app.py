@@ -33,6 +33,8 @@ from console.server.openai_api import install_openai_routes
 from console.server.queue_envelope import tag_inbound_text_frame
 from console.server.queues_router import install_queues_routes
 from console.server.routers import v1
+from console.server.state_hub import bind_state_hub_to_loop
+from console.server.ws_state import state_ws_handler
 
 _ERR_VALIDATION_CODE = "VALIDATION_ERROR"
 _ERR_VALIDATION_MSG = "Request validation failed"
@@ -171,6 +173,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         port=settings.port,
     )
     app.state.started_at_perf = time.perf_counter()
+    # Bind the state-push hub to this loop so synchronous publishers
+    # (request handlers, agent worker threads) can enqueue frames.
+    bind_state_hub_to_loop(asyncio.get_running_loop())
     # Track which bot the active runtime belongs to so the bots router
     # can refuse redundant ``/activate`` calls and surface accurate
     # per-bot status to the SPA.
@@ -692,6 +697,13 @@ def create_app(
         settings.nanobot_gateway_port,
         list(settings.cors_origins),
     )
+
+    # Server-driven state push channel.  Mounted before the SPA fallback so
+    # the path is not swallowed by the catch-all.  See ``state_hub.py``
+    # and ``ws_state.py`` for the protocol contract.
+    @app.websocket("/ws/state")
+    async def _ws_state_route(websocket: WebSocket) -> None:
+        await state_ws_handler(websocket)
 
     spa_mounted = _mount_spa(app) if mount_spa else False
 

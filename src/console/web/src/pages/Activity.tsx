@@ -162,7 +162,10 @@ export default function Activity({ embedded = false }: { embedded?: boolean } = 
   const { data: activities, isLoading, error, refetch } = useQuery({
     queryKey: ['activity', currentBotId, typeFilter],
     queryFn: () => api.getRecentActivity(100, currentBotId, typeFilter || undefined),
-    refetchInterval: 15_000,
+    // Real-time updates arrive over the activity WebSocket subscription
+    // below; this fallback only catches the rare case where the socket
+    // is blocked by an upstream proxy.
+    refetchInterval: 60_000,
     refetchOnWindowFocus: true,
   });
 

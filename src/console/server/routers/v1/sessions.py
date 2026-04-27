@@ -44,6 +44,11 @@ from console.server.session_store import (
     save_empty_session,
     set_session_custom_title,
 )
+from console.server.state_hub import publish_session_deleted
+from console.server.state_hub_helpers import (
+    push_sessions_snapshot,
+    push_status_snapshot,
+)
 from nanobot.utils.team_gateway_runtime import team_member_session_key
 
 router = APIRouter(tags=["Sessions"])
@@ -228,10 +233,14 @@ async def delete_sessions_batch(
         try:
             if delete_session_files(bot_id, key):
                 deleted.append(key)
+                publish_session_deleted(bot_id, key)
             else:
                 failed.append(BatchDeleteFailure(key=key, error="Session not found"))
         except OSError as exc:
             failed.append(BatchDeleteFailure(key=key, error=str(exc)))
+    if deleted:
+        push_sessions_snapshot(bot_id)
+        push_status_snapshot(bot_id)
     return DataResponse(data=BatchDeleteResponse(deleted=deleted, failed=failed))
 
 
@@ -420,6 +429,8 @@ async def create_session(
         room_id = match.group("room_id")
         agent_id = match.group("agent_id")
     is_sub, parent_key, sub_task = _parse_subagent_key(key)
+    push_sessions_snapshot(bot_id)
+    push_status_snapshot(bot_id)
     return DataResponse(
         data=SessionInfo(
             key=key,
@@ -493,6 +504,7 @@ async def update_session(
         raise HTTPException(status_code=404, detail="Session not found")
     normalized_title = (body.title or "").strip() or None
     set_session_custom_title(bot_id, session_key, normalized_title)
+    push_sessions_snapshot(bot_id)
     title, last_message = load_session_preview(bot_id, session_key)
     team_id = room_id = agent_id = None
     match = _TEAM_SESSION_RE.match(session_key)
@@ -530,4 +542,7 @@ async def delete_session(
     _rotate_team_room_for_deleted_team_session(bot_id, session_key)
     if not delete_session_files(bot_id, session_key):
         raise HTTPException(status_code=404, detail="Session not found")
+    publish_session_deleted(bot_id, session_key)
+    push_sessions_snapshot(bot_id)
+    push_status_snapshot(bot_id)
     return DataResponse(data=OkBody())

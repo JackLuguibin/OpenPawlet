@@ -45,6 +45,7 @@ from console.server.models import (
     OkWithKey,
     OkWithTopic,
 )
+from console.server.state_hub import publish_agents_update
 
 router = APIRouter(prefix="/bots/{bot_id}/agents", tags=["Agents"])
 
@@ -470,6 +471,7 @@ async def create_agent(bot_id: str, body: AgentCreateRequest) -> DataResponse[Ag
         category_overrides=overrides,
     )
     set_bot_running(bot_id, True)
+    publish_agents_update(bot_id)
     return DataResponse(data=agent.model_copy(update={"team_ids": []}))
 
 
@@ -532,6 +534,7 @@ async def update_agent(
         categories=categories,
         category_overrides=overrides,
     )
+    publish_agents_update(bot_id)
     team_ids = _load_team_memberships(bot_id).get(updated.id, [])
     return DataResponse(data=updated.model_copy(update={"team_ids": team_ids}))
 
@@ -551,6 +554,7 @@ async def delete_agent(bot_id: str, agent_id: str) -> DataResponse[OkBody]:
         categories=categories,
         category_overrides=overrides,
     )
+    publish_agents_update(bot_id)
     return DataResponse(data=OkBody())
 
 

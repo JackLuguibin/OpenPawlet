@@ -277,7 +277,27 @@ export type WSMessageType =
   /** nanobot `event: message` — status / retry lines until `chat_end` */
   | 'channel_notice'
   /** nanobot `event: message` with empty `text` and JSON status in `data` (`/status-json`) */
-  | 'nanobot_status_json';
+  | 'nanobot_status_json'
+  /** Welcome frame from `/ws/state` after the upgrade settles. */
+  | 'welcome'
+  /** Server-side keepalive ping; SPA replies are not required. */
+  | 'ping'
+  /** Reply to a client-issued `ping`. */
+  | 'pong'
+  /** A single transcript message was appended (replaces transcript polling). */
+  | 'session_message_appended'
+  /** A session JSONL was deleted on disk. */
+  | 'session_deleted'
+  /** Channel list snapshot changed (config save / channel toggle). */
+  | 'channels_update'
+  /** MCP server list snapshot changed. */
+  | 'mcp_update'
+  /** Multi-agent registry was mutated (create/update/delete). */
+  | 'agents_update'
+  /** Runtime agent loop status table snapshot. */
+  | 'runtime_agents_update'
+  /** A single observability JSONL row was appended. */
+  | 'observability_event';
 
 export interface WSMessage {
   type: WSMessageType;
@@ -285,6 +305,8 @@ export interface WSMessage {
   session_key?: string;
   /** Present on `activity_update` push messages. */
   entry?: ActivityItem;
+  /** Server-side wall-clock timestamp; set by ``state_hub.publish``. */
+  server_ts?: number;
 }
 
 // Streaming response types

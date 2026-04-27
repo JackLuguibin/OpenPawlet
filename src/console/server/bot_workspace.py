@@ -104,6 +104,19 @@ def set_bot_running(bot_id: str | None, running: bool) -> None:
         data["running"] = False
         data["started_at"] = None
     save_json_file(path, data)
+    # Notify the SPA so the running indicator + uptime + channel-online
+    # icons update without waiting for the next ``/status`` poll.  Done
+    # last so a publish failure cannot mask the persistence error.
+    try:
+        from console.server.state_hub_helpers import (
+            push_channels_snapshot,
+            push_status_snapshot,
+        )
+
+        push_status_snapshot(bot_id)
+        push_channels_snapshot(bot_id)
+    except Exception:  # noqa: BLE001 - never break the mutation
+        pass
 
 
 def is_bot_running(bot_id: str | None) -> bool:

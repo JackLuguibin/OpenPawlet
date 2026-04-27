@@ -300,12 +300,16 @@ export default function Chat() {
     enabled: !!currentBotId,
   });
 
-  // Live runtime agents (main + subagent tasks). We poll lightly so the
-  // sidebar reflects newly spawned tasks even without a WebSocket frame.
+  // Live runtime agents (main + subagent tasks). The state-push channel
+  // (`/ws/state` -> `runtime_agents_update`) keeps this cache fresh in
+  // real time, so we no longer poll. A longer-interval fallback covers
+  // the (unlikely) case the socket is down and the SPA cannot
+  // reconnect (e.g. corporate proxy stripping WS upgrades).
   const { data: runtimeAgents } = useQuery({
     queryKey: ["runtime-agents", currentBotId],
     queryFn: () => api.listRuntimeAgents(),
-    refetchInterval: 4000,
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
   });
 
   useEffect(() => {

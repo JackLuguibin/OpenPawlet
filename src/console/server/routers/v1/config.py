@@ -20,6 +20,7 @@ from console.server.nanobot_user_config import (
     save_full_config,
     validate_core_config,
 )
+from console.server.state_hub_helpers import push_after_config_change
 from nanobot.config.schema import Config
 
 router = APIRouter(tags=["Config"])
@@ -63,6 +64,9 @@ async def put_config(
         data = build_config_response(path)
     except ValidationError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+    # ``config.json`` writes can change default model, channels, MCP servers
+    # all at once; broadcast every dependent snapshot in one shot.
+    push_after_config_change(bot_id)
     return DataResponse(data=ConfigSection.model_validate(data))
 
 

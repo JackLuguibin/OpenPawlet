@@ -21,6 +21,10 @@ from console.server.models.channels import (
     ChannelUpdateBody,
 )
 from console.server.models.status import ChannelStatus
+from console.server.state_hub_helpers import (
+    push_channels_snapshot,
+    push_status_snapshot,
+)
 
 router = APIRouter(tags=["Channels"])
 
@@ -44,6 +48,8 @@ async def update_channel(
         saved = merge_channel_patch(bot_id, name, body.data)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    push_channels_snapshot(bot_id)
+    push_status_snapshot(bot_id)
     return DataResponse(data=saved)
 
 
@@ -59,6 +65,8 @@ async def delete_channel(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    push_channels_snapshot(bot_id)
+    push_status_snapshot(bot_id)
     return DataResponse(data=OkBody())
 
 

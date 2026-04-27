@@ -38,7 +38,12 @@ import type {
 
 const { Text } = Typography;
 
+// Heavy fallback interval used only when the `/ws/state` push channel is
+// unreachable; runtime status updates land via `runtime_agents_update`
+// frames first, and the detail-drawer transcript still refreshes
+// periodically because per-message append events are not yet wired up.
 const REFRESH_INTERVAL_MS = 4000;
+const RUNTIME_FALLBACK_INTERVAL_MS = 30_000;
 
 function formatUptime(seconds?: number | null): string {
   if (seconds == null || Number.isNaN(seconds) || seconds < 0) return '—';
@@ -87,7 +92,9 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
   const agentsQuery = useQuery({
     queryKey: ['runtime-agents'],
     queryFn: api.listRuntimeAgents,
-    refetchInterval: REFRESH_INTERVAL_MS,
+    // Live updates come from `/ws/state` (`runtime_agents_update`); the
+    // long fallback only covers the case where the socket is blocked.
+    refetchInterval: RUNTIME_FALLBACK_INTERVAL_MS,
     retry: false,
   });
 

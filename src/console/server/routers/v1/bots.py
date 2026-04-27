@@ -21,6 +21,7 @@ from console.server.models import (
 )
 from console.server.models.bots import BotInfo
 from console.server.nanobot_user_config import read_default_timezone, resolve_config_path
+from console.server.state_hub import publish_bots_update
 from nanobot.utils.helpers import local_now
 
 router = APIRouter(tags=["Bots"])
@@ -91,6 +92,7 @@ async def create_bot(body: CreateBotRequest) -> DataResponse[BotInfo]:
         row = get_registry().add(name=name)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    publish_bots_update()
     return DataResponse(data=_bot_info(row["id"]))
 
 
@@ -111,6 +113,7 @@ async def delete_bot(bot_id: str) -> DataResponse[OkBody]:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not removed:
         raise HTTPException(status_code=404, detail="Bot not found")
+    publish_bots_update()
     return DataResponse(data=OkBody())
 
 
@@ -122,6 +125,7 @@ async def set_default_bot(body: SetDefaultBotBody) -> DataResponse[OkBody]:
         raise HTTPException(status_code=400, detail="bot_id is required")
     if not get_registry().set_default(target):
         raise HTTPException(status_code=404, detail="Bot not found")
+    publish_bots_update()
     return DataResponse(data=OkBody())
 
 
