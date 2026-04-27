@@ -21,12 +21,11 @@ import { registerChatHandler, getWSRef } from "../hooks/useWebSocket";
 import { useAgentTimeZone } from "../hooks/useAgentTimeZone";
 import { formatChatMessageTime } from "../utils/agentDatetime";
 import * as api from "../api/client";
-import { Button, Tag, Popconfirm, Checkbox, Spin, Modal, Select, Tabs, Switch, Tooltip } from "antd";
+import { Button, Popconfirm, Checkbox, Spin, Modal, Select, Tabs, Switch, Tooltip } from "antd";
 import {
   PlusOutlined,
   LoadingOutlined,
   DeleteOutlined,
-  EditOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
 } from "@ant-design/icons";
@@ -39,7 +38,6 @@ import {
   Cpu,
   Loader2,
   MessageSquare,
-  Users,
   X,
   FileText,
 } from "lucide-react";
@@ -79,6 +77,7 @@ import { ChatInput } from "./chat/ChatInput";
 import { ChatHeroSuggestions } from "./chat/ChatHeroSuggestions";
 import { JumpToBottomButton } from "./chat/JumpToBottomButton";
 import { StreamingAssistantBubble } from "./chat/StreamingAssistantBubble";
+import { SessionSidebarItem } from "./chat/SessionSidebarItem";
 import { useNanobotContextUsage } from "./chat/useNanobotContextUsage";
 import {
   CHAT_HISTORY_PAGE_SIZE,
@@ -2488,151 +2487,35 @@ export default function Chat() {
                 {expanded ? (
                   <div className="space-y-2 pl-3 border-l border-gray-200/80 dark:border-gray-700/80">
                     {group.rows.map((session) => (
-                      <div
+                      <SessionSidebarItem
                         key={session.key}
-                        ref={(el) => {
+                        session={session}
+                        active={activeSessionKey === session.key}
+                        detailMode={isSessionDetailMode}
+                        checked={batchSelectedKeys.has(session.key)}
+                        onSelect={() => handleSelectSession(session.key)}
+                        onToggleChecked={(checked) => {
+                          setBatchSelectedKeys((prev) => {
+                            const next = new Set(prev);
+                            if (checked) {
+                              next.add(session.key);
+                            } else {
+                              next.delete(session.key);
+                            }
+                            return next;
+                          });
+                        }}
+                        onRename={() => openRenameSessionModal(session)}
+                        onDelete={() => deleteSessionMutation.mutate(session.key)}
+                        registerRowRef={(el) => {
                           if (el) {
                             sessionSidebarRowRefs.current.set(session.key, el);
                           } else {
                             sessionSidebarRowRefs.current.delete(session.key);
                           }
                         }}
-                        className={`flex items-stretch gap-2 rounded-md transition-all ${
-                          activeSessionKey === session.key
-                            ? "bg-gradient-to-r from-primary-50 to-blue-50 dark:from-primary-900/30 dark:to-blue-900/20 text-primary-700 dark:text-primary-300"
-                            : "hover:bg-gray-100 dark:hover:bg-gray-700/50"
-                        }`}
-                      >
-                        <div className="flex items-center justify-center shrink-0 pl-3 pr-0.5 py-3">
-                          <Checkbox
-                            checked={batchSelectedKeys.has(session.key)}
-                            onClick={(e) => e.stopPropagation()}
-                            onChange={(e) => {
-                              e.stopPropagation();
-                              const checked = e.target.checked;
-                              setBatchSelectedKeys((prev) => {
-                                const next = new Set(prev);
-                                if (checked) {
-                                  next.add(session.key);
-                                } else {
-                                  next.delete(session.key);
-                                }
-                                return next;
-                              });
-                            }}
-                          />
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleSelectSession(session.key)}
-                          className={`flex-1 min-w-0 text-left rounded-l-lg ${
-                            isSessionDetailMode ? "py-3.5 pr-2" : "py-3 pr-3"
-                          }`}
-                        >
-                          {isSessionDetailMode ? (
-                            <>
-                              <span className="flex items-center gap-1.5 min-w-0">
-                                {session.team_id ? (
-                                  <Users
-                                    className="w-3.5 h-3.5 shrink-0 text-blue-500 dark:text-blue-400"
-                                    aria-label="team session"
-                                  />
-                                ) : (
-                                  <Bot
-                                    className={`w-3.5 h-3.5 shrink-0 ${
-                                      session.is_subagent
-                                        ? "text-amber-500 dark:text-amber-400"
-                                        : "text-violet-500 dark:text-violet-400"
-                                    }`}
-                                    aria-label={
-                                      session.is_subagent
-                                        ? "subagent session"
-                                        : "agent session"
-                                    }
-                                  />
-                                )}
-                                <span className="text-sm font-medium truncate block leading-snug min-w-0">
-                                  {session.title || session.key}
-                                </span>
-                                {session.is_subagent ? (
-                                  <Tooltip
-                                    title={
-                                      session.parent_session_key
-                                        ? t("chat.subagentParent", {
-                                            parent: session.parent_session_key,
-                                          })
-                                        : t("chat.subagentTagHint")
-                                    }
-                                  >
-                                    <Tag
-                                      color="orange"
-                                      className="!m-0 !text-[10px] !leading-4 !px-1 !py-0 shrink-0"
-                                    >
-                                      {t("chat.subagentTag")}
-                                    </Tag>
-                                  </Tooltip>
-                                ) : null}
-                              </span>
-                              <span className="text-xs text-gray-500 mt-1.5 block leading-relaxed">
-                                {t("chat.messageCount", {
-                                  count: session.message_count,
-                                })}
-                              </span>
-                              <span className="text-[11px] text-gray-400 dark:text-gray-500 mt-1 block leading-relaxed font-mono truncate">
-                                ID: {session.key}
-                              </span>
-                              {session.created_at && (
-                                <span className="text-xs text-gray-400 dark:text-gray-500 mt-1 block leading-relaxed">
-                                  {formatMessageTime(session.created_at)}
-                                </span>
-                              )}
-                            </>
-                          ) : (
-                            <span className="flex items-center justify-between gap-2 w-full min-w-0">
-                              <span className="text-sm font-medium truncate block leading-snug min-w-0">
-                                {session.title || session.key}
-                              </span>
-                              <span className="text-[11px] text-gray-400 dark:text-gray-500 tabular-nums shrink-0">
-                                {session.message_count}
-                              </span>
-                            </span>
-                          )}
-                        </button>
-                        {isSessionDetailMode ? (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openRenameSessionModal(session);
-                            }}
-                            title={t("chat.renameSession")}
-                            className="self-center shrink-0 w-9 h-9 my-2 flex items-center justify-center rounded-md text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:text-gray-500 dark:hover:text-blue-300 dark:hover:bg-blue-500/10 transition-colors duration-150"
-                          >
-                            <EditOutlined className="text-base" />
-                          </button>
-                        ) : null}
-                        {isSessionDetailMode ? (
-                          <Popconfirm
-                            title={t("chat.deleteSessionTitle")}
-                            description={t("chat.deleteSessionDesc", {
-                              name: session.title || session.key,
-                            })}
-                            onConfirm={() => deleteSessionMutation.mutate(session.key)}
-                            okText={t("common.delete")}
-                            cancelText={t("common.cancel")}
-                            okButtonProps={{ danger: true }}
-                          >
-                            <button
-                              type="button"
-                              onClick={(e) => e.stopPropagation()}
-                              title={t("chat.deleteSession")}
-                              className="self-center shrink-0 w-9 h-9 mr-2 my-2 flex items-center justify-center rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 dark:text-gray-500 dark:hover:text-red-400 dark:hover:bg-red-500/10 transition-colors duration-150"
-                            >
-                              <DeleteOutlined className="text-base" />
-                            </button>
-                          </Popconfirm>
-                        ) : null}
-                      </div>
+                        formatMessageTime={formatMessageTime}
+                      />
                     ))}
                   </div>
                 ) : null}
@@ -2745,9 +2628,35 @@ export default function Chat() {
                               </div>
                             ) : null}
                             {node.sessions.map((session) => (
-                              <div
+                              <SessionSidebarItem
                                 key={session.key}
-                                ref={(el) => {
+                                session={session}
+                                active={activeSessionKey === session.key}
+                                detailMode={isSessionDetailMode}
+                                checked={batchSelectedKeys.has(session.key)}
+                                compact
+                                showSubagentTag={false}
+                                leadingIcon={
+                                  <MessageSquare
+                                    className="w-3.5 h-3.5 shrink-0 text-emerald-500 dark:text-emerald-400"
+                                    aria-label="sub-agent session"
+                                  />
+                                }
+                                onSelect={() => handleSelectSession(session.key)}
+                                onToggleChecked={(checked) => {
+                                  setBatchSelectedKeys((prev) => {
+                                    const next = new Set(prev);
+                                    if (checked) {
+                                      next.add(session.key);
+                                    } else {
+                                      next.delete(session.key);
+                                    }
+                                    return next;
+                                  });
+                                }}
+                                onRename={() => openRenameSessionModal(session)}
+                                onDelete={() => deleteSessionMutation.mutate(session.key)}
+                                registerRowRef={(el) => {
                                   if (el) {
                                     sessionSidebarRowRefs.current.set(
                                       session.key,
@@ -2759,111 +2668,7 @@ export default function Chat() {
                                     );
                                   }
                                 }}
-                                className={`flex items-stretch gap-2 rounded-md transition-all ${
-                                  activeSessionKey === session.key
-                                    ? "bg-gradient-to-r from-primary-50 to-blue-50 dark:from-primary-900/30 dark:to-blue-900/20 text-primary-700 dark:text-primary-300"
-                                    : "hover:bg-gray-100 dark:hover:bg-gray-700/50"
-                                }`}
-                              >
-                                <div className="flex items-center justify-center shrink-0 pl-3 pr-0.5 py-2.5">
-                                  <Checkbox
-                                    checked={batchSelectedKeys.has(session.key)}
-                                    onClick={(e) => e.stopPropagation()}
-                                    onChange={(e) => {
-                                      e.stopPropagation();
-                                      const checked = e.target.checked;
-                                      setBatchSelectedKeys((prev) => {
-                                        const next = new Set(prev);
-                                        if (checked) {
-                                          next.add(session.key);
-                                        } else {
-                                          next.delete(session.key);
-                                        }
-                                        return next;
-                                      });
-                                    }}
-                                  />
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    handleSelectSession(session.key)
-                                  }
-                                  className={`flex-1 min-w-0 text-left rounded-l-lg ${
-                                    isSessionDetailMode
-                                      ? "py-2.5 pr-2"
-                                      : "py-2.5 pr-3"
-                                  }`}
-                                >
-                                  {isSessionDetailMode ? (
-                                    <>
-                                      <span className="flex items-center gap-1.5 min-w-0">
-                                        <MessageSquare
-                                          className="w-3.5 h-3.5 shrink-0 text-emerald-500 dark:text-emerald-400"
-                                          aria-label="sub-agent session"
-                                        />
-                                        <span className="text-sm font-medium truncate block leading-snug min-w-0">
-                                          {session.title || session.key}
-                                        </span>
-                                      </span>
-                                      <span className="text-xs text-gray-500 mt-1 block leading-relaxed">
-                                        {t("chat.messageCount", {
-                                          count: session.message_count,
-                                        })}
-                                      </span>
-                                      <span className="text-[11px] text-gray-400 dark:text-gray-500 mt-1 block leading-relaxed font-mono truncate">
-                                        ID: {session.key}
-                                      </span>
-                                    </>
-                                  ) : (
-                                    <span className="flex items-center justify-between gap-2 w-full min-w-0">
-                                      <span className="text-sm font-medium truncate block leading-snug min-w-0">
-                                        {session.title || session.key}
-                                      </span>
-                                      <span className="text-[11px] text-gray-400 dark:text-gray-500 tabular-nums shrink-0">
-                                        {session.message_count}
-                                      </span>
-                                    </span>
-                                  )}
-                                </button>
-                                {isSessionDetailMode ? (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      openRenameSessionModal(session);
-                                    }}
-                                    title={t("chat.renameSession")}
-                                    className="self-center shrink-0 w-8 h-8 my-1.5 flex items-center justify-center rounded-md text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:text-gray-500 dark:hover:text-blue-300 dark:hover:bg-blue-500/10 transition-colors duration-150"
-                                  >
-                                    <EditOutlined />
-                                  </button>
-                                ) : null}
-                                {isSessionDetailMode ? (
-                                  <Popconfirm
-                                    title={t("chat.deleteSessionTitle")}
-                                    description={t("chat.deleteSessionDesc", {
-                                      name:
-                                        session.title || session.key,
-                                    })}
-                                    onConfirm={() =>
-                                      deleteSessionMutation.mutate(session.key)
-                                    }
-                                    okText={t("common.delete")}
-                                    cancelText={t("common.cancel")}
-                                    okButtonProps={{ danger: true }}
-                                  >
-                                    <button
-                                      type="button"
-                                      onClick={(e) => e.stopPropagation()}
-                                      title={t("chat.deleteSession")}
-                                      className="self-center shrink-0 w-8 h-8 mr-2 my-1.5 flex items-center justify-center rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 dark:text-gray-500 dark:hover:text-red-400 dark:hover:bg-red-500/10 transition-colors duration-150"
-                                    >
-                                      <DeleteOutlined />
-                                    </button>
-                                  </Popconfirm>
-                                ) : null}
-                              </div>
+                              />
                             ))}
                           </div>
                         ) : null}
