@@ -61,8 +61,12 @@ type NavItem = {
 function SidebarBrand({ collapsed, brand, tagline }: { collapsed: boolean; brand: string; tagline: string }) {
   return (
     <div className="h-16 flex items-center px-4 border-b border-gray-200 dark:border-gray-800">
-      <div className="flex h-10 w-10 items-center justify-center rounded-md bg-blue-500 text-white shadow-sm">
-        <RobotOutlined style={{ fontSize: 20 }} />
+      <div className="flex h-10 w-10 items-center justify-center flex-shrink-0">
+        <img
+          src="/openpawlet-icon.png"
+          alt={brand}
+          className="h-10 w-10 object-contain"
+        />
       </div>
       {!collapsed && (
         <div className="ml-3 flex flex-col">
