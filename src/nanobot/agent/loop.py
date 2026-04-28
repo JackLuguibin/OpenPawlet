@@ -563,6 +563,106 @@ class AgentLoop:
         """Optional append-only verbatim transcript writer (see persist_session_transcript)."""
         return getattr(self, "_session_transcript", None)
 
+    def apply_hot_config(self, new_config: Config) -> dict[str, Any]:
+        """Apply config changes that can be hot-swapped without rebuilding the loop.
+
+        In-flight requests keep their captured field references; only new
+        turns / sessions started after this call see the new values. Returns
+        a mapping describing what was actually changed (mostly for logs and
+        tests).
+
+        Fields that are NOT hot-swappable (channels, mcp_servers, web/exec
+        tools, restrict_to_workspace, provider plumbing) are intentionally
+        ignored here — callers route those through ``swap_runtime`` instead.
+        """
+        defaults = new_config.agents.defaults
+        changed: dict[str, Any] = {}
+
+        new_model = defaults.model or self.provider.get_default_model()
+        if new_model != self.model:
+            changed["model"] = (self.model, new_model)
+            self.model = new_model
+            self.consolidator.model = new_model
+            self.dream.model = new_model
+            try:
+                self.subagents.model = new_model
+            except AttributeError:
+                pass
+
+        if defaults.timezone != self.timezone:
+            changed["timezone"] = (self.timezone, defaults.timezone)
+            self.timezone = defaults.timezone
+            self.context.timezone = defaults.timezone
+            self.sessions.configure_timezone(defaults.timezone)
+            try:
+                self.subagents.timezone = defaults.timezone
+            except AttributeError:
+                pass
+
+        if defaults.max_tool_iterations != self.max_iterations:
+            changed["max_iterations"] = (self.max_iterations, defaults.max_tool_iterations)
+            self.max_iterations = defaults.max_tool_iterations
+
+        if defaults.max_tool_result_chars != self.max_tool_result_chars:
+            changed["max_tool_result_chars"] = (
+                self.max_tool_result_chars,
+                defaults.max_tool_result_chars,
+            )
+            self.max_tool_result_chars = defaults.max_tool_result_chars
+
+        if defaults.context_window_tokens != self.context_window_tokens:
+            changed["context_window_tokens"] = (
+                self.context_window_tokens,
+                defaults.context_window_tokens,
+            )
+            self.context_window_tokens = defaults.context_window_tokens
+            self.consolidator.context_window_tokens = defaults.context_window_tokens
+
+        if defaults.context_block_limit != self.context_block_limit:
+            changed["context_block_limit"] = (
+                self.context_block_limit,
+                defaults.context_block_limit,
+            )
+            self.context_block_limit = defaults.context_block_limit
+
+        if defaults.provider_retry_mode != self.provider_retry_mode:
+            changed["provider_retry_mode"] = (
+                self.provider_retry_mode,
+                defaults.provider_retry_mode,
+            )
+            self.provider_retry_mode = defaults.provider_retry_mode
+
+        new_disabled = set(defaults.disabled_skills or [])
+        cur_disabled = set(getattr(self.context.skills, "disabled_skills", set()) or set())
+        if new_disabled != cur_disabled:
+            changed["disabled_skills"] = sorted(new_disabled)
+            self.context.apply_skills_and_extra_prompt(
+                disabled_skills=sorted(new_disabled),
+                extra_system_sections=None,
+            )
+
+        if defaults.session_ttl_minutes != getattr(self.auto_compact, "_ttl", None):
+            changed["session_ttl_minutes"] = defaults.session_ttl_minutes
+            self.auto_compact._ttl = defaults.session_ttl_minutes
+
+        return changed
+
+    def replace_provider(self, new_provider: LLMProvider) -> None:
+        """Swap the LLM provider used by every downstream component.
+
+        Used when ``llm_providers.json`` changes the active default
+        instance or rotates an API key. In-flight LLM calls keep their
+        bound provider; only new calls go through the replacement.
+        """
+        self.provider = new_provider
+        self.runner.provider = new_provider
+        self.consolidator.provider = new_provider
+        self.dream.provider = new_provider
+        try:
+            self.subagents.provider = new_provider
+        except AttributeError:
+            pass
+
     def _snapshot_turn_context(
         self,
         session_key: str | None,

@@ -1,8 +1,15 @@
-"""Environment variables API models."""
+"""Environment variables API models.
+
+The ``exec_visible_keys`` field mirrors the subset of variables the user
+has opted in to forward to the ``exec`` tool's sandboxed subprocesses
+(``tools.exec.allowedEnvKeys``).  Keeping it on the same payload as the
+raw values avoids a separate round trip when the SPA renders the env
+table with the per-row "allow exec" toggle.
+"""
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class EnvResponse(BaseModel):
@@ -11,6 +18,7 @@ class EnvResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     vars: dict[str, str]
+    exec_visible_keys: list[str] = Field(default_factory=list)
 
 
 class EnvPutBody(BaseModel):
@@ -19,6 +27,10 @@ class EnvPutBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     vars: dict[str, str]
+    # Subset of ``vars`` the user wants forwarded to the exec tool.
+    # Unknown / extra keys are ignored server-side; ``None`` keeps the
+    # current allowlist untouched (legacy clients).
+    exec_visible_keys: list[str] | None = None
 
 
 class EnvPutResponse(BaseModel):
@@ -28,3 +40,4 @@ class EnvPutResponse(BaseModel):
 
     status: str = "ok"
     vars: dict[str, str] | None = None
+    exec_visible_keys: list[str] = Field(default_factory=list)

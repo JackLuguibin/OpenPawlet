@@ -19,6 +19,7 @@ import {
   Radio,
   Select,
   Alert,
+  Tooltip,
 } from 'antd';
 import {
   SaveOutlined,
@@ -136,11 +137,18 @@ export default function Settings() {
     return base;
   }, [config]);
 
-  const [envEntries, setEnvEntries] = useState<Array<{ key: string; value: string }>>([]);
+  const [envEntries, setEnvEntries] = useState<
+    Array<{ key: string; value: string; execVisible: boolean }>
+  >([]);
   useEffect(() => {
     if (envData?.vars) {
+      const allowSet = new Set(envData.exec_visible_keys || []);
       setEnvEntries(
-        Object.entries(envData.vars).map(([key, value]) => ({ key, value }))
+        Object.entries(envData.vars).map(([key, value]) => ({
+          key,
+          value,
+          execVisible: allowSet.has(key),
+        }))
       );
     } else if (envData && Object.keys(envData.vars || {}).length === 0) {
       setEnvEntries([]);
@@ -210,13 +218,15 @@ export default function Settings() {
   });
 
   const updateEnvMutation = useMutation({
-    mutationFn: (vars: Record<string, string>) => api.updateEnv(vars, currentBotId),
+    mutationFn: (payload: { vars: Record<string, string>; execVisibleKeys: string[] }) =>
+      api.updateEnv(payload.vars, currentBotId, payload.execVisibleKeys),
     onSuccess: () => {
       addToast({
         type: 'success',
         message: t('settings.envSaved'),
       });
       queryClient.invalidateQueries({ queryKey: ['env'] });
+      queryClient.invalidateQueries({ queryKey: ['config'] });
     },
     onError: (error) => {
       addToast({ type: 'error', message: formatQueryError(error) });
@@ -229,11 +239,14 @@ export default function Settings() {
 
   const handleSaveEnv = () => {
     const vars: Record<string, string> = {};
-    for (const { key, value } of envEntries) {
+    const execVisibleKeys: string[] = [];
+    for (const { key, value, execVisible } of envEntries) {
       const k = key?.trim();
-      if (k) vars[k] = value ?? '';
+      if (!k) continue;
+      vars[k] = value ?? '';
+      if (execVisible) execVisibleKeys.push(k);
     }
-    updateEnvMutation.mutate(vars);
+    updateEnvMutation.mutate({ vars, execVisibleKeys });
   };
 
   const handleExportConfig = () => {
@@ -301,6 +314,22 @@ export default function Settings() {
                   }}
                   className="flex-1 font-mono"
                 />
+                <Tooltip title={t('settings.envExecVisibleHint')}>
+                  <div className="flex items-center gap-1 text-xs text-gray-500">
+                    <Switch
+                      size="small"
+                      checked={entry.execVisible}
+                      onChange={(checked) => {
+                        const next = [...envEntries];
+                        next[idx] = { ...next[idx], execVisible: checked };
+                        setEnvEntries(next);
+                      }}
+                    />
+                    <span className="whitespace-nowrap">
+                      {t('settings.envExecVisibleLabel')}
+                    </span>
+                  </div>
+                </Tooltip>
                 <Button
                   type="text"
                   danger
@@ -313,7 +342,9 @@ export default function Settings() {
           <div className="flex gap-2">
             <Button
               icon={<PlusOutlined />}
-              onClick={() => setEnvEntries([...envEntries, { key: '', value: '' }])}
+              onClick={() =>
+                setEnvEntries([...envEntries, { key: '', value: '', execVisible: false }])
+              }
             >
               {t('settings.envAdd')}
             </Button>

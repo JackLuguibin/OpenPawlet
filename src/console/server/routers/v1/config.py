@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import ValidationError
 
+from console.server.config_apply import apply_config_change
 from console.server.models import (
     ConfigPutBody,
     ConfigSection,
@@ -15,6 +16,7 @@ from console.server.models import (
 )
 from console.server.nanobot_user_config import (
     build_config_response,
+    load_raw_config,
     merge_config_section,
     resolve_config_path,
     save_full_config,
@@ -44,6 +46,7 @@ async def get_config(
 
 @router.put("/config", response_model=DataResponse[ConfigSection])
 async def put_config(
+    request: Request,
     body: ConfigPutBody,
     bot_id: str | None = Query(default=None, alias="bot_id"),
 ) -> DataResponse[ConfigSection]:
@@ -52,6 +55,10 @@ async def put_config(
     Writing to ``providers`` via this endpoint is rejected — provider
     credentials now live in ``llm_providers.json`` and must be edited
     via the dedicated ``/llm-providers`` API.
+
+    After persisting, the change is forwarded to the live runtime through
+    :func:`console.server.config_apply.apply_config_change` so users no
+    longer need to restart the server for most edits to take effect.
     """
     if body.section == "providers":
         raise HTTPException(
@@ -62,6 +69,7 @@ async def put_config(
             ),
         )
     path = resolve_config_path(bot_id)
+    old_raw = load_raw_config(path)
     merged = merge_config_section(path, body.section, body.data)
     ok, errors = validate_core_config(merged)
     if not ok:
@@ -77,8 +85,7 @@ async def put_config(
         data = build_config_response(path)
     except ValidationError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
-    # ``config.json`` writes can change default model, channels, MCP servers
-    # all at once; broadcast every dependent snapshot in one shot.
+    await apply_config_change(request.app, bot_id, old_raw, merged)
     push_after_config_change(bot_id)
     return DataResponse(data=ConfigSection.model_validate(data))
 

@@ -35,13 +35,25 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
 from console.server.bot_workspace import workspace_root
+from console.server.config_apply import apply_providers_change
 from console.server.models import DataResponse, OkBody
 from console.server.state_hub_helpers import push_after_config_change
+
+
+def _after_provider_change(request: Request, bot_id: str | None) -> None:
+    """Refresh state-hub snapshots and hot-swap the live LLM provider.
+
+    Centralised so every mutating ``/llm-providers`` endpoint applies the
+    same post-write hooks (state push + provider rebuild) without
+    drifting over time.
+    """
+    push_after_config_change(bot_id)
+    apply_providers_change(request.app)
 from nanobot.providers.instances import (
     ALL_FAILOVER_TRIGGERS,
     DEFAULT_FAILOVER_TRIGGERS,
@@ -259,7 +271,7 @@ async def list_instances(bot_id: str) -> DataResponse[list[dict[str, Any]]]:
 
 @router.post("", response_model=DataResponse[dict[str, Any]], status_code=status.HTTP_200_OK)
 async def create_instance(
-    bot_id: str, body: LLMProviderInstanceCreate
+    request: Request, bot_id: str, body: LLMProviderInstanceCreate
 ) -> DataResponse[dict[str, Any]]:
     """Create one new instance (id auto-generated if blank)."""
     store = _store(bot_id)
@@ -298,7 +310,7 @@ async def create_instance(
             instance = instance.model_copy(update={"is_default": True})
 
     store.upsert(instance)
-    push_after_config_change(bot_id)
+    _after_provider_change(request, bot_id)
     return DataResponse(data=_safe_payload(instance))
 
 
@@ -311,7 +323,7 @@ async def get_instance(bot_id: str, instance_id: str) -> DataResponse[dict[str, 
 
 @router.put("/{instance_id}", response_model=DataResponse[dict[str, Any]])
 async def update_instance(
-    bot_id: str, instance_id: str, body: LLMProviderInstanceUpdate
+    request: Request, bot_id: str, instance_id: str, body: LLMProviderInstanceUpdate
 ) -> DataResponse[dict[str, Any]]:
     """Update non-key fields on an existing instance.
 
@@ -349,7 +361,7 @@ async def update_instance(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     store.upsert(updated)
-    push_after_config_change(bot_id)
+    _after_provider_change(request, bot_id)
     return DataResponse(data=_safe_payload(updated))
 
 
@@ -358,7 +370,7 @@ async def update_instance(
     response_model=DataResponse[dict[str, Any]],
 )
 async def set_default_instance(
-    bot_id: str, instance_id: str
+    request: Request, bot_id: str, instance_id: str
 ) -> DataResponse[dict[str, Any]]:
     """Mark *instance_id* as the workspace default; demote every other.
 
@@ -368,16 +380,18 @@ async def set_default_instance(
     inst = store.set_default(instance_id)
     if inst is None:
         raise HTTPException(status_code=404, detail="Instance not found")
-    push_after_config_change(bot_id)
+    _after_provider_change(request, bot_id)
     return DataResponse(data=_safe_payload(inst))
 
 
 @router.delete("/{instance_id}", response_model=DataResponse[OkBody])
-async def delete_instance(bot_id: str, instance_id: str) -> DataResponse[OkBody]:
+async def delete_instance(
+    request: Request, bot_id: str, instance_id: str
+) -> DataResponse[OkBody]:
     """Delete an instance and clean up references on others."""
     if not _store(bot_id).delete(instance_id):
         raise HTTPException(status_code=404, detail="Instance not found")
-    push_after_config_change(bot_id)
+    _after_provider_change(request, bot_id)
     return DataResponse(data=OkBody())
 
 
@@ -454,7 +468,7 @@ async def list_keys(bot_id: str, instance_id: str) -> DataResponse[list[dict[str
     status_code=status.HTTP_200_OK,
 )
 async def add_key(
-    bot_id: str, instance_id: str, body: ApiKeyAddBody
+    request: Request, bot_id: str, instance_id: str, body: ApiKeyAddBody
 ) -> DataResponse[dict[str, Any]]:
     """Append a new API key.  Returns the masked row including its new ``id``."""
     store, inst = _require_instance(bot_id, instance_id)
@@ -468,7 +482,7 @@ async def add_key(
     new_entry = ApiKeyEntry(id=new_id, label=(body.label or "").strip(), value=value)
     inst.api_keys.append(new_entry)
     store.upsert(inst)
-    push_after_config_change(bot_id)
+    _after_provider_change(request, bot_id)
     masked_row = {
         "id": new_entry.id,
         "label": new_entry.label,
@@ -489,7 +503,7 @@ async def add_key(
     response_model=DataResponse[list[dict[str, Any]]],
 )
 async def reorder_keys(
-    bot_id: str, instance_id: str, body: ApiKeyReorderBody
+    request: Request, bot_id: str, instance_id: str, body: ApiKeyReorderBody
 ) -> DataResponse[list[dict[str, Any]]]:
     """Reorder keys to match ``ordered_ids``.
 
@@ -507,7 +521,7 @@ async def reorder_keys(
             new_order.append(entry)
     inst.api_keys = new_order
     store.upsert(inst)
-    push_after_config_change(bot_id)
+    _after_provider_change(request, bot_id)
     return DataResponse(data=_safe_keys(inst))
 
 
@@ -516,6 +530,7 @@ async def reorder_keys(
     response_model=DataResponse[dict[str, Any]],
 )
 async def patch_key(
+    request: Request,
     bot_id: str,
     instance_id: str,
     key_id: str,
@@ -531,7 +546,7 @@ async def patch_key(
         entry.value = body.value.strip()
     inst.api_keys[idx] = entry
     store.upsert(inst)
-    push_after_config_change(bot_id)
+    _after_provider_change(request, bot_id)
     return DataResponse(
         data={
             "id": entry.id,
@@ -548,14 +563,14 @@ async def patch_key(
     response_model=DataResponse[OkBody],
 )
 async def delete_key(
-    bot_id: str, instance_id: str, key_id: str
+    request: Request, bot_id: str, instance_id: str, key_id: str
 ) -> DataResponse[OkBody]:
     """Remove one key from the instance."""
     store, inst = _require_instance(bot_id, instance_id)
     idx = _find_key_index(inst, key_id)
     inst.api_keys.pop(idx)
     store.upsert(inst)
-    push_after_config_change(bot_id)
+    _after_provider_change(request, bot_id)
     return DataResponse(data=OkBody())
 
 

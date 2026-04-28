@@ -702,17 +702,27 @@ export async function validateConfig(
 // Environment Variables API
 // ====================
 
-export async function getEnv(botId?: string | null): Promise<{ vars: Record<string, string> }> {
-  return fetchJson<{ vars: Record<string, string> }>(`${API_BASE}/env${botQuery(botId)}`);
+export async function getEnv(
+  botId?: string | null
+): Promise<{ vars: Record<string, string>; exec_visible_keys: string[] }> {
+  return fetchJson<{ vars: Record<string, string>; exec_visible_keys: string[] }>(
+    `${API_BASE}/env${botQuery(botId)}`
+  );
 }
 
 export async function updateEnv(
   vars: Record<string, string>,
-  botId?: string | null
-): Promise<{ status: string; vars?: Record<string, string> }> {
+  botId?: string | null,
+  execVisibleKeys?: string[]
+): Promise<{ status: string; vars?: Record<string, string>; exec_visible_keys: string[] }> {
   return fetchJson(`${API_BASE}/env${botQuery(botId)}`, {
     method: 'PUT',
-    body: JSON.stringify({ vars }),
+    body: JSON.stringify({
+      vars,
+      // omit when caller didn't pass it so legacy callers don't accidentally
+      // wipe the existing exec allowlist
+      ...(execVisibleKeys !== undefined ? { exec_visible_keys: execVisibleKeys } : {}),
+    }),
   });
 }
 
