@@ -3,7 +3,6 @@ import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import {
-  Card,
   Spin,
   Empty,
   Tag,
@@ -14,20 +13,19 @@ import {
   Segmented,
   Badge,
   Drawer,
+  Pagination,
 } from 'antd';
 import {
-  ReloadOutlined,
-  CodeOutlined,
-  ApiOutlined,
-  ClockCircleOutlined,
-  ArrowUpOutlined,
-  ArrowDownOutlined,
-  AppstoreOutlined,
-} from '@ant-design/icons';
-import {
-  SendOutlined,
-  MessageOutlined,
-  WarningOutlined,
+  SyncOutlined,
+  ToolOutlined,
+  ShareAltOutlined,
+  FieldTimeOutlined,
+  SortAscendingOutlined,
+  SortDescendingOutlined,
+  ClusterOutlined,
+  CommentOutlined,
+  ContainerOutlined,
+  ExclamationCircleOutlined,
 } from '@ant-design/icons';
 import * as api from '../api/client';
 import { useAppStore } from '../store';
@@ -52,16 +50,16 @@ function formatActivityMetadata(meta: Record<string, unknown> | undefined): stri
 type ActivityIconComponent = ComponentType<{ className?: string }>;
 
 const ACTIVITY_ICONS: Record<string, ActivityIconComponent> = {
-  message: SendOutlined,
-  tool_call: CodeOutlined,
-  tool: CodeOutlined,
-  channel: ApiOutlined,
-  session: MessageOutlined,
-  error: WarningOutlined,
+  message: CommentOutlined,
+  tool_call: ToolOutlined,
+  tool: ToolOutlined,
+  channel: ShareAltOutlined,
+  session: ContainerOutlined,
+  error: ExclamationCircleOutlined,
 };
 
 function ActivityIcon({ type }: { type: string }) {
-  const Icon = ACTIVITY_ICONS[type] || MessageOutlined;
+  const Icon = ACTIVITY_ICONS[type] || CommentOutlined;
   return <Icon className="text-lg" />;
 }
 
@@ -85,6 +83,8 @@ export default function Activity({ embedded = false }: { embedded?: boolean } = 
   const locale = i18n.language.startsWith('zh') ? 'zh-CN' : 'en-US';
   const [typeFilter, setTypeFilter] = useState<string>('');
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const [detailItem, setDetailItem] = useState<ActivityItem | null>(null);
 
   const formatTimeAgo = (dateStr?: string): string => {
@@ -109,7 +109,7 @@ export default function Activity({ embedded = false }: { embedded?: boolean } = 
         value: '',
         label: (
           <span className="flex items-center gap-1.5 sm:gap-2">
-            <AppstoreOutlined className="text-[15px] text-slate-500 dark:text-slate-400" />
+            <ClusterOutlined className="text-[15px] text-slate-500 dark:text-slate-400" />
             <span className="whitespace-nowrap">{t('activity.typeAll')}</span>
           </span>
         ),
@@ -118,7 +118,7 @@ export default function Activity({ embedded = false }: { embedded?: boolean } = 
         value: 'message',
         label: (
           <span className="flex items-center gap-1.5 sm:gap-2">
-            <SendOutlined className="shrink-0 text-blue-500 opacity-90" />
+            <CommentOutlined className="shrink-0 text-blue-500 opacity-90" />
             <span className="whitespace-nowrap">{t('activity.typeMessage')}</span>
           </span>
         ),
@@ -127,7 +127,7 @@ export default function Activity({ embedded = false }: { embedded?: boolean } = 
         value: 'tool_call',
         label: (
           <span className="flex items-center gap-1.5 sm:gap-2">
-            <CodeOutlined className="text-[15px] text-violet-500 opacity-90" />
+            <ToolOutlined className="text-[15px] text-violet-500 opacity-90" />
             <span className="whitespace-nowrap">{t('activity.typeToolCall')}</span>
           </span>
         ),
@@ -136,7 +136,7 @@ export default function Activity({ embedded = false }: { embedded?: boolean } = 
         value: 'channel',
         label: (
           <span className="flex items-center gap-1.5 sm:gap-2">
-            <ApiOutlined className="text-[15px] text-cyan-600 dark:text-cyan-400 opacity-90" />
+            <ShareAltOutlined className="text-[15px] text-cyan-600 dark:text-cyan-400 opacity-90" />
             <span className="whitespace-nowrap">{t('activity.typeChannel')}</span>
           </span>
         ),
@@ -145,7 +145,7 @@ export default function Activity({ embedded = false }: { embedded?: boolean } = 
         value: 'session',
         label: (
           <span className="flex items-center gap-1.5 sm:gap-2">
-            <MessageOutlined className="shrink-0 text-emerald-600 dark:text-emerald-400 opacity-90" />
+            <ContainerOutlined className="shrink-0 text-emerald-600 dark:text-emerald-400 opacity-90" />
             <span className="whitespace-nowrap">{t('activity.typeSession')}</span>
           </span>
         ),
@@ -154,7 +154,7 @@ export default function Activity({ embedded = false }: { embedded?: boolean } = 
         value: 'error',
         label: (
           <span className="flex items-center gap-1.5 sm:gap-2">
-            <WarningOutlined className="shrink-0 text-red-500 opacity-90" />
+            <ExclamationCircleOutlined className="shrink-0 text-red-500 opacity-90" />
             <span className="whitespace-nowrap">{t('activity.typeError')}</span>
           </span>
         ),
@@ -163,15 +163,24 @@ export default function Activity({ embedded = false }: { embedded?: boolean } = 
     [t],
   );
 
-  const { data: activities, isLoading, error, refetch } = useQuery({
-    queryKey: ['activity', currentBotId, typeFilter],
-    queryFn: () => api.getRecentActivity(100, currentBotId, typeFilter || undefined),
-    // Real-time updates arrive over the activity WebSocket subscription
-    // below; this fallback only catches the rare case where the socket
-    // is blocked by an upstream proxy.
+  const skip = (page - 1) * pageSize;
+
+  const { data: activityFeed, isLoading, error, refetch } = useQuery({
+    queryKey: ['activity', currentBotId, typeFilter, page, pageSize],
+    queryFn: () =>
+      api.getRecentActivity({
+        botId: currentBotId,
+        activityType: typeFilter || undefined,
+        skip,
+        limit: pageSize,
+      }),
     refetchInterval: 60_000,
     refetchOnWindowFocus: true,
   });
+
+  useEffect(() => {
+    setPage(1);
+  }, [currentBotId, typeFilter]);
 
   // Subscribe to the bot's activity room so live updates arrive via WebSocket.
   // Depend on `wsConnected` so late-opening sockets still trigger (sub)scription.
@@ -190,24 +199,37 @@ export default function Activity({ embedded = false }: { embedded?: boolean } = 
     };
   }, [currentBotId, wsConnected]);
 
-  const activityCounts = activities?.reduce(
+  const activityItems = activityFeed?.items ?? [];
+  const activityHasMore = activityFeed?.has_more ?? false;
+  /** Lower bound estimate for Pagination when more pages exist after this slice. */
+  const paginationTotal = activityHasMore
+    ? page * pageSize + 1
+    : Math.max((page - 1) * pageSize + activityItems.length, 0);
+
+  const activityCounts = activityItems.reduce(
     (acc, item) => {
-      const t = item.type || 'unknown';
-      acc[t] = (acc[t] || 0) + 1;
+      const tk = item.type || 'unknown';
+      acc[tk] = (acc[tk] || 0) + 1;
       return acc;
     },
     {} as Record<string, number>
   );
 
-  const sortedActivities = activities
-    ? [...activities].sort((a, b) => {
-        const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
-        const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
-        return sortOrder === 'desc' ? timeB - timeA : timeA - timeB;
-      })
-    : [];
+  const pageCountBreakdownText = useMemo(() => {
+    const entries = Object.entries(activityCounts).sort(([a], [b]) =>
+      a.localeCompare(b, undefined, { sensitivity: 'base' })
+    );
+    if (entries.length === 0) return '';
+    return entries.map(([type, count]) => `${type}: ${count}`).join(' · ');
+  }, [activityCounts]);
 
-  if (isLoading && !activities) {
+  const sortedActivities = [...activityItems].sort((a, b) => {
+    const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+    const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+    return sortOrder === 'desc' ? timeB - timeA : timeA - timeB;
+  });
+
+  if (isLoading && !activityFeed) {
     return (
       <PageLayout variant="center" embedded={embedded}>
         <Spin size="large" />
@@ -223,9 +245,10 @@ export default function Activity({ embedded = false }: { embedded?: boolean } = 
       : '';
 
   return (
-    <PageLayout variant="bleed" embedded={embedded}>
+    <PageLayout variant="bleed" embedded={embedded} className="min-h-0 flex-1 overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between shrink-0">
+      <div className="flex shrink-0 items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
             {t('activity.title')}
@@ -236,14 +259,19 @@ export default function Activity({ embedded = false }: { embedded?: boolean } = 
         </div>
         <Space>
           <Badge status="processing" text={<span className="text-xs text-gray-400">{t('common.live')}</span>} />
-          <Button icon={<ReloadOutlined />} onClick={() => refetch()}>
+          <Button icon={<SyncOutlined />} onClick={() => refetch()}>
             {t('common.refresh')}
           </Button>
         </Space>
       </div>
 
       {/* Filters */}
-      <div className="mt-5 shrink-0 rounded-md border border-gray-200/80 bg-gray-50/70 p-2.5 dark:border-gray-700/60 dark:bg-gray-800/30">
+      <div className="shrink-0 rounded-md border border-gray-200/80 bg-gray-50/70 p-2.5 dark:border-gray-700/60 dark:bg-gray-800/30">
+        {!error && activityItems.length > 0 && pageCountBreakdownText ? (
+          <div className="mb-2.5 text-xs leading-snug text-gray-500 dark:text-gray-400">
+            {t('activity.pageStatsDetail', { count: activityItems.length, detail: pageCountBreakdownText })}
+          </div>
+        ) : null}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
           <div className="min-w-0 flex-1 overflow-x-auto [-webkit-overflow-scrolling:touch] [scrollbar-width:thin]">
             <Segmented
@@ -263,7 +291,7 @@ export default function Activity({ embedded = false }: { embedded?: boolean } = 
                   value: 'desc',
                   label: (
                     <span className="flex items-center justify-center gap-1.5 px-0.5">
-                      <ArrowDownOutlined className="text-sm" />
+                      <SortDescendingOutlined className="text-sm" />
                       <span className="hidden md:inline">{t('activity.sortNewest')}</span>
                     </span>
                   ),
@@ -272,7 +300,7 @@ export default function Activity({ embedded = false }: { embedded?: boolean } = 
                   value: 'asc',
                   label: (
                     <span className="flex items-center justify-center gap-1.5 px-0.5">
-                      <ArrowUpOutlined className="text-sm" />
+                      <SortAscendingOutlined className="text-sm" />
                       <span className="hidden md:inline">{t('activity.sortOldest')}</span>
                     </span>
                   ),
@@ -283,26 +311,10 @@ export default function Activity({ embedded = false }: { embedded?: boolean } = 
         </div>
       </div>
 
-      {/* Activity Counts */}
-      {activityCounts && Object.keys(activityCounts).length > 0 && (
-        <div className="flex flex-wrap gap-2 mt-4 shrink-0">
-          {Object.entries(activityCounts).map(([type, count]) => (
-            <Tag
-              key={type}
-              color={ACTIVITY_COLORS[type] || 'default'}
-              className="flex items-center gap-1"
-            >
-              <ActivityIcon type={type} />
-              {type}: {count}
-            </Tag>
-          ))}
-        </div>
-      )}
-
-      {/* Activity List */}
-      <div className="mt-4 flex min-h-0 flex-1 flex-col overflow-y-auto">
+      {/* Activity list: scroll view only (no Card); flex-1 + min-h-0 + basis-0 keeps height within the hub */}
+      <div className="flex min-h-0 min-w-0 flex-1 basis-0 flex-col overflow-y-auto overscroll-contain">
         {error ? (
-          <Card className="rounded-md border border-red-200 dark:border-red-800">
+          <div className="rounded-md border border-red-200 px-4 py-10 dark:border-red-800">
             <Empty
               description={
                 <span className="text-red-500">
@@ -310,12 +322,10 @@ export default function Activity({ embedded = false }: { embedded?: boolean } = 
                 </span>
               }
             />
-          </Card>
-        ) : activities && activities.length > 0 ? (
-          <Card
-            className="rounded-md border border-gray-200/80 dark:border-gray-700/60 bg-white dark:bg-gray-800/40"
-            styles={{ body: { padding: '1rem 1.5rem' } }}
-          >
+          </div>
+        ) : activityItems.length > 0 ? (
+          <div className="min-w-0 pb-2 pt-1 pl-6 pr-3 [&_.ant-timeline-item-content]:min-w-0 [&_.ant-timeline-item-content]:max-w-full">
+            {/* Extra left padding: Timeline rail uses negative inline margins; ancestors use overflow-hidden (Hub tabs). */}
             <Timeline
               items={sortedActivities.map((item) => {
                 const traceForObs =
@@ -326,47 +336,47 @@ export default function Activity({ embedded = false }: { embedded?: boolean } = 
                   color: ACTIVITY_COLORS[item.type] || 'gray',
                   icon: (
                     <div
-                      className={`
-                      w-8 h-8 rounded-md flex items-center justify-center
-                      ${
+                      className={`flex items-center justify-center ${
                         item.type === 'error'
-                          ? 'bg-red-100 dark:bg-red-900/30 text-red-500'
+                          ? 'text-red-500'
                           : item.type === 'tool_call' || item.type === 'tool'
-                          ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-500'
+                          ? 'text-purple-500 dark:text-purple-400'
                           : item.type === 'message'
-                          ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-500'
+                          ? 'text-blue-500 dark:text-blue-400'
                           : item.type === 'channel'
-                          ? 'bg-cyan-100 dark:bg-cyan-900/30 text-cyan-500'
+                          ? 'text-cyan-600 dark:text-cyan-400'
                           : item.type === 'session'
-                          ? 'bg-green-100 dark:bg-green-900/30 text-green-500'
-                          : 'bg-gray-100 dark:bg-gray-700 text-gray-500'
-                      }
-                    `}
+                          ? 'text-emerald-600 dark:text-emerald-400'
+                          : 'text-gray-500 dark:text-gray-400'
+                      }`}
                     >
                       <ActivityIcon type={item.type} />
                     </div>
                   ),
                   content: (
-                    <div className="pb-4">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-medium text-gray-900 dark:text-gray-100">
+                    <div className="pb-4 min-w-0 max-w-full">
+                      <div className="flex min-w-0 items-start gap-2 flex-wrap">
+                        <span className="min-w-0 max-w-full break-words font-medium text-gray-900 dark:text-gray-100">
                           {item.title}
                         </span>
                         <Tag
                           color={ACTIVITY_COLORS[item.type] || 'default'}
-                          className="text-xs"
+                          className="shrink-0 text-xs"
                         >
                           {item.type}
                         </Tag>
                       </div>
-                      {item.description && (
-                        <Text type="secondary" className="text-sm block mt-1">
+                      {item.description ? (
+                        <p
+                          className="mb-0 mt-1 line-clamp-4 min-w-0 max-w-full text-sm leading-relaxed text-gray-500 [overflow-wrap:anywhere] break-words dark:text-gray-400"
+                          title={item.description}
+                        >
                           {item.description}
-                        </Text>
-                      )}
+                        </p>
+                      ) : null}
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2">
                         <div className="flex items-center gap-1 text-xs text-gray-400">
-                          <ClockCircleOutlined />
+                          <FieldTimeOutlined />
                           <span>{formatTimeAgo(item.timestamp)}</span>
                         </div>
                         <Space size="small" wrap className="text-xs">
@@ -390,14 +400,36 @@ export default function Activity({ embedded = false }: { embedded?: boolean } = 
                 };
               })}
             />
-          </Card>
+          </div>
         ) : (
-          <Card
-            className="flex min-h-0 flex-1 flex-col rounded-md border border-gray-200/80 dark:border-gray-700/60 [&_.ant-card-body]:flex [&_.ant-card-body]:min-h-0 [&_.ant-card-body]:flex-1 [&_.ant-card-body]:flex-col [&_.ant-card-body]:items-center [&_.ant-card-body]:justify-center"
-          >
+          <div className="flex min-h-[min(280px,50vh)] flex-1 flex-col items-center justify-center py-12">
             <Empty description={t('activity.empty')} />
-          </Card>
+          </div>
         )}
+      </div>
+
+      {!error && (activityItems.length > 0 || activityHasMore || page > 1) ? (
+        <div className="flex shrink-0 justify-end border-t border-gray-200/90 pt-3 dark:border-gray-700/60">
+          <Pagination
+            className="!m-0"
+            size="small"
+            current={page}
+            pageSize={pageSize}
+            total={paginationTotal}
+            showSizeChanger
+            pageSizeOptions={[10, 20, 50, 100]}
+            showLessItems
+            onChange={(nextPage, nextSize) => {
+              if (nextSize !== pageSize) {
+                setPageSize(nextSize);
+                setPage(1);
+              } else {
+                setPage(nextPage);
+              }
+            }}
+          />
+        </div>
+      ) : null}
       </div>
 
       <Drawer
@@ -419,7 +451,10 @@ export default function Activity({ embedded = false }: { embedded?: boolean } = 
               </Tag>
             </div>
             {detailItem.description ? (
-              <Paragraph type="secondary" className="!mb-0 text-sm">
+              <Paragraph
+                type="secondary"
+                className="!mb-0 max-w-full text-sm [overflow-wrap:anywhere] break-words"
+              >
                 {detailItem.description}
               </Paragraph>
             ) : null}

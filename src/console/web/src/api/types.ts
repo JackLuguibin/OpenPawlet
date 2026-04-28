@@ -415,6 +415,11 @@ export interface ActivityItem {
   metadata?: Record<string, unknown>;
 }
 
+export interface ActivityFeedPage {
+  items: ActivityItem[];
+  has_more?: boolean;
+}
+
 // Channel refresh result
 export interface ChannelRefreshResult {
   name: string;

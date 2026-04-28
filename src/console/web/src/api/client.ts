@@ -24,7 +24,7 @@ import type {
   ToolCallLog,
   RuntimeLogsData,
   BatchDeleteResponse,
-  ActivityItem,
+  ActivityFeedPage,
   ChannelRefreshResult,
   MCPTestResult,
   ObservabilityResponse,
@@ -994,15 +994,20 @@ export async function deleteSessionsBatch(
 // Activity Feed
 // ====================
 
-export async function getRecentActivity(
-  limit = 20,
-  botId?: string | null,
-  activityType?: string
-): Promise<ActivityItem[]> {
-  const params = new URLSearchParams({ limit: String(limit) });
+export async function getRecentActivity(opts: {
+  botId?: string | null;
+  activityType?: string;
+  skip?: number;
+  limit?: number;
+}): Promise<ActivityFeedPage> {
+  const { botId, activityType, skip = 0, limit = 20 } = opts;
+  const params = new URLSearchParams({
+    skip: String(skip),
+    limit: String(limit),
+  });
   if (botId) params.append('bot_id', botId);
   if (activityType) params.append('activity_type', activityType);
-  return fetchJson<ActivityItem[]>(`${API_BASE}/activity?${params}`);
+  return fetchJson<ActivityFeedPage>(`${API_BASE}/activity?${params}`);
 }
 
 // ====================

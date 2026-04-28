@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from console.server.models.activity import ActivityItem
+from console.server.models.activity import ActivityFeedPage, ActivityItem
 from console.server.models.agent_runtime import (
     RuntimeAgentStatus,
     RuntimeControlResult,
@@ -119,6 +119,7 @@ from console.server.models.workspace import (
 )
 
 __all__ = [
+    "ActivityFeedPage",
     "ActivityItem",
     "AddCategoryBody",
     "Agent",

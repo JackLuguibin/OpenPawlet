@@ -472,7 +472,8 @@
     "viewDetails": "Details",
     "detailTitle": "Activity detail",
     "detailHint": "Raw metadata from the agent observability buffer.",
-    "openInObservability": "Open in Observability"
+    "openInObservability": "Open in Observability",
+    "pageStatsDetail": "{{count}} on this page · {{detail}}"
   },
   "memoryAndProfile": {
     "pageTitle": "Memory & profile",

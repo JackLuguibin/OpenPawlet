@@ -472,7 +472,8 @@
     "viewDetails": "查看详情",
     "detailTitle": "活动详情",
     "detailHint": "来自智能体可观测性缓冲区的原始元数据。",
-    "openInObservability": "在可观测性中打开"
+    "openInObservability": "在可观测性中打开",
+    "pageStatsDetail": "本页 {{count}} 条 · {{detail}}"
   },
   "memoryAndProfile": {
     "pageTitle": "记忆与人设",

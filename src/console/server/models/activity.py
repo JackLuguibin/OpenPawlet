@@ -18,3 +18,12 @@ class ActivityItem(BaseModel):
     description: str | None = None
     timestamp: str
     metadata: dict[str, Any] | None = None
+
+
+class ActivityFeedPage(BaseModel):
+    """Paged activity slice (newest-first); `has_more` means more items exist after this page."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[ActivityItem]
+    has_more: bool = False

@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import {
   HeartOutlined,
   BarChartOutlined,
-  ThunderboltOutlined,
+  BranchesOutlined,
   FileTextOutlined,
   DeploymentUnitOutlined,
 } from '@ant-design/icons';
@@ -70,7 +70,7 @@ export default function ObservabilityHub() {
       },
       {
         key: 'activity',
-        icon: <ThunderboltOutlined />,
+        icon: <BranchesOutlined />,
         label: t('observabilityHub.tabActivity'),
         content: <Activity embedded />,
       },
