@@ -5,6 +5,7 @@ import {
   Card,
   Modal,
   Input,
+  InputNumber,
   Form,
   Select,
   Tooltip,
@@ -18,6 +19,8 @@ import {
   Upload,
   Switch,
   Collapse,
+  Row,
+  Col,
 } from 'antd';
 import {
   AgentProfilePanel,
@@ -51,6 +54,17 @@ import {
 } from './agents/agentsUtils';
 
 const { TextArea } = Input;
+
+/** Shared modal layout for agent create/edit forms (scroll + viewport sizing). */
+const AGENT_FORM_MODAL_STYLES = {
+  header: { marginBottom: 0 },
+  body: {
+    paddingTop: 8,
+    maxHeight: 'min(560px, calc(100vh - 160px))',
+    overflowY: 'auto' as const,
+    overflowX: 'hidden' as const,
+  },
+};
 
 type CategoryDef = { key: string; label: string; color: string };
 
@@ -766,14 +780,16 @@ export default function Agents({ embedded = false }: { embedded?: boolean } = {}
         confirmLoading={createMutation.isPending}
         okButtonProps={{ disabled: !formData.name.trim() }}
         width={640}
+        centered
         destroyOnHidden
-        styles={{ body: { maxHeight: '60vh', overflowY: 'auto' } }}
+        styles={AGENT_FORM_MODAL_STYLES}
       >
-        <Form layout="vertical" className="pt-2">
-          <Typography.Text type="secondary" strong className="text-xs uppercase tracking-wide">
-            {t('agents.sectionBasic')}
-          </Typography.Text>
-          <Divider className="!mt-1 !mb-3" />
+        <Form layout="vertical" size="middle" requiredMark={false} className="pt-1">
+          <Divider titlePlacement="start" plain className="!mt-0 !mb-4">
+            <Typography.Text type="secondary" strong className="text-xs uppercase tracking-wide">
+              {t('agents.sectionBasic')}
+            </Typography.Text>
+          </Divider>
           <Form.Item label={t('agents.agentName')} required>
             <Input
               placeholder={t('agents.agentNamePlaceholder')}
@@ -802,10 +818,11 @@ export default function Agents({ embedded = false }: { embedded?: boolean } = {}
             />
           </Form.Item>
 
-          <Typography.Text type="secondary" strong className="text-xs uppercase tracking-wide mt-4 block">
-            {t('agents.sectionModel')}
-          </Typography.Text>
-          <Divider className="!mt-1 !mb-3" />
+          <Divider titlePlacement="start" plain className="!mt-6 !mb-4">
+            <Typography.Text type="secondary" strong className="text-xs uppercase tracking-wide">
+              {t('agents.sectionModel')}
+            </Typography.Text>
+          </Divider>
           <Form.Item
             label={t('agentProfile.providerInstance', 'LLM provider instance')}
             extra={t(
@@ -827,46 +844,47 @@ export default function Agents({ embedded = false }: { embedded?: boolean } = {}
               className="w-full"
             />
           </Form.Item>
-          <div className="grid grid-cols-2 gap-4">
-            <Form.Item label={t('agents.model')}>
-              <Select
-                placeholder={t('agents.modelPlaceholder')}
-                value={formData.model || undefined}
-                onChange={(v) => setFormData({ ...formData, model: v || null })}
-                allowClear
-                showSearch
-                optionFilterProp="value"
-                options={
-                  (botStatus?.model ? [botStatus.model] : []).map((m) => ({
-                    value: m,
-                    label: m,
-                  }))
-                }
-                className="w-full"
-              />
-            </Form.Item>
-            <Form.Item label={t('agents.temperature')}>
-              <Input
-                type="number"
-                step="0.1"
-                min="0"
-                max="2"
-                placeholder={t('agents.temperaturePlaceholder')}
-                value={formData.temperature ?? ''}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    temperature: e.target.value ? parseFloat(e.target.value) : null,
-                  })
-                }
-              />
-            </Form.Item>
-          </div>
+          <Row gutter={[16, 0]}>
+            <Col xs={24} sm={12}>
+              <Form.Item label={t('agents.model')}>
+                <Select
+                  placeholder={t('agents.modelPlaceholder')}
+                  value={formData.model || undefined}
+                  onChange={(v) => setFormData({ ...formData, model: v || null })}
+                  allowClear
+                  showSearch
+                  optionFilterProp="value"
+                  options={
+                    (botStatus?.model ? [botStatus.model] : []).map((m) => ({
+                      value: m,
+                      label: m,
+                    }))
+                  }
+                  className="w-full"
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
+              <Form.Item label={t('agents.temperature')}>
+                <InputNumber
+                  min={0}
+                  max={2}
+                  step={0.1}
+                  placeholder={t('agents.temperaturePlaceholder')}
+                  value={formData.temperature ?? undefined}
+                  onChange={(v) => setFormData({ ...formData, temperature: v ?? null })}
+                  className="w-full"
+                  changeOnWheel={false}
+                />
+              </Form.Item>
+            </Col>
+          </Row>
 
-          <Typography.Text type="secondary" strong className="text-xs uppercase tracking-wide mt-4 block">
-            {t('agents.sectionPromptSkills')}
-          </Typography.Text>
-          <Divider className="!mt-1 !mb-3" />
+          <Divider titlePlacement="start" plain className="!mt-2 !mb-4">
+            <Typography.Text type="secondary" strong className="text-xs uppercase tracking-wide">
+              {t('agents.sectionPromptSkills')}
+            </Typography.Text>
+          </Divider>
           <Form.Item label={t('agents.systemPrompt')}>
             <TextArea
               rows={4}
@@ -937,14 +955,16 @@ export default function Agents({ embedded = false }: { embedded?: boolean } = {}
         confirmLoading={updateMutation.isPending}
         okButtonProps={{ disabled: !formData.name.trim() }}
         width={640}
+        centered
         destroyOnHidden
-        styles={{ body: { maxHeight: '60vh', overflowY: 'auto' } }}
+        styles={AGENT_FORM_MODAL_STYLES}
       >
-        <Form layout="vertical" className="pt-2">
-          <Typography.Text type="secondary" strong className="text-xs uppercase tracking-wide">
-            {t('agents.sectionBasic')}
-          </Typography.Text>
-          <Divider className="!mt-1 !mb-3" />
+        <Form layout="vertical" size="middle" requiredMark={false} className="pt-1">
+          <Divider titlePlacement="start" plain className="!mt-0 !mb-4">
+            <Typography.Text type="secondary" strong className="text-xs uppercase tracking-wide">
+              {t('agents.sectionBasic')}
+            </Typography.Text>
+          </Divider>
           <Form.Item label={t('agents.agentName')} required>
             <Input
               placeholder={t('agents.agentNamePlaceholderShort')}
@@ -971,50 +991,52 @@ export default function Agents({ embedded = false }: { embedded?: boolean } = {}
             />
           </Form.Item>
 
-          <Typography.Text type="secondary" strong className="text-xs uppercase tracking-wide mt-4 block">
-            {t('agents.sectionModel')}
-          </Typography.Text>
-          <Divider className="!mt-1 !mb-3" />
-          <div className="grid grid-cols-2 gap-4">
-            <Form.Item label={t('agents.model')}>
-              <Select
-                placeholder={t('agents.modelPlaceholder')}
-                value={formData.model || undefined}
-                onChange={(v) => setFormData({ ...formData, model: v || null })}
-                allowClear
-                showSearch
-                optionFilterProp="value"
-                options={
-                  (botStatus?.model ? [botStatus.model] : []).map((m) => ({
-                    value: m,
-                    label: m,
-                  }))
-                }
-                className="w-full"
-              />
-            </Form.Item>
-            <Form.Item label={t('agents.temperature')}>
-              <Input
-                type="number"
-                step="0.1"
-                min="0"
-                max="2"
-                placeholder={t('agents.temperaturePlaceholder')}
-                value={formData.temperature ?? ''}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    temperature: e.target.value ? parseFloat(e.target.value) : null,
-                  })
-                }
-              />
-            </Form.Item>
-          </div>
+          <Divider titlePlacement="start" plain className="!mt-6 !mb-4">
+            <Typography.Text type="secondary" strong className="text-xs uppercase tracking-wide">
+              {t('agents.sectionModel')}
+            </Typography.Text>
+          </Divider>
+          <Row gutter={[16, 0]}>
+            <Col xs={24} sm={12}>
+              <Form.Item label={t('agents.model')}>
+                <Select
+                  placeholder={t('agents.modelPlaceholder')}
+                  value={formData.model || undefined}
+                  onChange={(v) => setFormData({ ...formData, model: v || null })}
+                  allowClear
+                  showSearch
+                  optionFilterProp="value"
+                  options={
+                    (botStatus?.model ? [botStatus.model] : []).map((m) => ({
+                      value: m,
+                      label: m,
+                    }))
+                  }
+                  className="w-full"
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
+              <Form.Item label={t('agents.temperature')}>
+                <InputNumber
+                  min={0}
+                  max={2}
+                  step={0.1}
+                  placeholder={t('agents.temperaturePlaceholder')}
+                  value={formData.temperature ?? undefined}
+                  onChange={(v) => setFormData({ ...formData, temperature: v ?? null })}
+                  className="w-full"
+                  changeOnWheel={false}
+                />
+              </Form.Item>
+            </Col>
+          </Row>
 
-          <Typography.Text type="secondary" strong className="text-xs uppercase tracking-wide mt-4 block">
-            {t('agents.sectionPromptSkills')}
-          </Typography.Text>
-          <Divider className="!mt-1 !mb-3" />
+          <Divider titlePlacement="start" plain className="!mt-2 !mb-4">
+            <Typography.Text type="secondary" strong className="text-xs uppercase tracking-wide">
+              {t('agents.sectionPromptSkills')}
+            </Typography.Text>
+          </Divider>
           <Form.Item label={t('agents.systemPrompt')}>
             <TextArea
               rows={4}
@@ -1067,10 +1089,11 @@ export default function Agents({ embedded = false }: { embedded?: boolean } = {}
             />
           </Form.Item>
 
-          <Typography.Text type="secondary" strong className="text-xs uppercase tracking-wide mt-4 block">
-            {t('agents.sectionStatus')}
-          </Typography.Text>
-          <Divider className="!mt-1 !mb-3" />
+          <Divider titlePlacement="start" plain className="!mt-2 !mb-4">
+            <Typography.Text type="secondary" strong className="text-xs uppercase tracking-wide">
+              {t('agents.sectionStatus')}
+            </Typography.Text>
+          </Divider>
           <Form.Item label={t('common.enabled')}>
             <Switch
               checked={formData.enabled}
@@ -1079,14 +1102,16 @@ export default function Agents({ embedded = false }: { embedded?: boolean } = {}
           </Form.Item>
 
           <Collapse
-            className="mt-4"
+            ghost
+            bordered={false}
+            className="mt-2 bg-transparent"
             items={[
               {
                 key: 'profile',
                 label: (
-                  <span className="text-xs uppercase tracking-wide font-semibold">
+                  <Typography.Text type="secondary" strong className="text-xs uppercase tracking-wide">
                     {t('agentProfile.collapseTitle', 'Independent persona / tools / model')}
-                  </span>
+                  </Typography.Text>
                 ),
                 children: (
                   <AgentProfilePanel
