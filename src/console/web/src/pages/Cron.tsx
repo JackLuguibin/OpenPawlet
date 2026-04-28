@@ -22,7 +22,6 @@ import {
   DeleteOutlined,
   EditOutlined,
   HistoryOutlined,
-  SyncOutlined,
   RobotOutlined,
   ToolOutlined,
   ApiOutlined,
@@ -335,27 +334,22 @@ export default function Cron({ embedded = false }: { embedded?: boolean } = {}) 
         styles={{ body: { padding: 0 } }}
       >
         <div className="grid divide-y divide-gray-100 dark:divide-gray-800 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-          <div className="flex items-center gap-3 p-4 sm:p-5">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-blue-100 dark:bg-blue-950/50">
-              <SyncOutlined className="text-lg text-blue-600 dark:text-blue-400" />
-            </div>
-            <div className="min-w-0">
-              <Text type="secondary" className="text-xs block mb-0.5">
-                {t('cron.serviceLabel')}
-              </Text>
-              <div className="font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2 flex-wrap">
-                {cronStatus?.enabled ? (
-                  <>
-                    <Badge status="processing" color="#22c55e" />
-                    <span>{t('cron.serviceRunning')}</span>
-                  </>
-                ) : (
-                  <>
-                    <Badge status="default" />
-                    <span>{t('cron.serviceStopped')}</span>
-                  </>
-                )}
-              </div>
+          <div className="flex flex-col justify-center gap-0.5 p-4 sm:p-5">
+            <Text type="secondary" className="text-xs">
+              {t('cron.serviceLabel')}
+            </Text>
+            <div className="font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2 flex-wrap">
+              {cronStatus?.enabled ? (
+                <>
+                  <Badge status="processing" color="#22c55e" />
+                  <span>{t('cron.serviceRunning')}</span>
+                </>
+              ) : (
+                <>
+                  <Badge status="default" />
+                  <span>{t('cron.serviceStopped')}</span>
+                </>
+              )}
             </div>
           </div>
           <div className="flex flex-col justify-center gap-0.5 p-4 sm:p-5">
@@ -384,10 +378,7 @@ export default function Cron({ embedded = false }: { embedded?: boolean } = {}) 
 
       <Card
         title={
-          <span className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-gray-100">
-            <span className="flex h-8 w-8 items-center justify-center rounded-md bg-gray-100 dark:bg-gray-800">
-              <SyncOutlined className="text-blue-500 dark:text-blue-400 text-sm" />
-            </span>
+          <span className="text-base font-semibold text-gray-900 dark:text-gray-100">
             {t('cron.taskListTitle')}
           </span>
         }
