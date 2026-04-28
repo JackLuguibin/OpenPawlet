@@ -37,7 +37,7 @@ from nanobot.agent.tools.web import WebFetchTool, WebSearchTool
 from nanobot.bus.envelope import TARGET_BROADCAST
 from nanobot.bus.events import AgentEvent, InboundMessage
 from nanobot.bus.queue import MessageBus
-from nanobot.config.profile import AgentProfile
+from nanobot.config.profile import AgentProfile, profile_dir
 from nanobot.config.schema import (
     AgentDefaults,
     ExecToolConfig,
@@ -355,23 +355,40 @@ class SubagentManager:
         origin: dict[str, str],
         resolved: ResolvedProfile | None,
     ) -> ToolRegistry:
-        """Register sub-agent tools, honouring the profile's allowed_tools whitelist."""
+        """Register sub-agent tools, honouring the profile's allowed_tools whitelist.
+
+        Independent personas (``resolved is not None``) are *always* sandboxed
+        to their own ``<workspace>/agents/<id>/`` directory. The profile's
+        ``restrict_to_workspace`` flag cannot weaken this guarantee — once an
+        agent is created with its own profile we treat the per-agent directory
+        as a hard boundary so the sub-agent cannot reach into the main bot's
+        files or escape into the broader filesystem.
+        """
         if resolved is not None:
             web = resolved.web_config
             exec_cfg = resolved.exec_config
-            restrict = resolved.restrict_to_workspace
             allowed = resolved.allowed_tools
             max_chars = resolved.max_tool_result_chars
+            agent_root = profile_dir(self.workspace, resolved.profile.id).resolve()
+            allowed_dir: Path | None = agent_root
+            tool_workspace: Path = agent_root
+            restrict = True
         else:
             web = self.web_config
             exec_cfg = self.exec_config
             restrict = self.restrict_to_workspace
             allowed = None
             max_chars = self.max_tool_result_chars
+            agent_root = None
+            allowed_dir = self.workspace if (restrict or exec_cfg.sandbox) else None
+            tool_workspace = self.workspace
         del max_chars  # currently informational; runner pulls it from spec
 
         tools = ToolRegistry()
-        allowed_dir = self.workspace if (restrict or exec_cfg.sandbox) else None
+        # Read-only auxiliary roots. Built-in skills are always readable so
+        # the persona prompts/skill summaries still work; the sub-agent has
+        # no way to write back into them because every write tool is bound
+        # to ``allowed_dir`` (the per-agent directory for personas).
         extra_read = [BUILTIN_SKILLS_DIR] if allowed_dir else None
 
         def _register(name: str, factory) -> None:
@@ -382,36 +399,36 @@ class SubagentManager:
         _register(
             "read_file",
             lambda: ReadFileTool(
-                workspace=self.workspace,
+                workspace=tool_workspace,
                 allowed_dir=allowed_dir,
                 extra_allowed_dirs=extra_read,
             ),
         )
         _register(
             "write_file",
-            lambda: WriteFileTool(workspace=self.workspace, allowed_dir=allowed_dir),
+            lambda: WriteFileTool(workspace=tool_workspace, allowed_dir=allowed_dir),
         )
         _register(
             "edit_file",
-            lambda: EditFileTool(workspace=self.workspace, allowed_dir=allowed_dir),
+            lambda: EditFileTool(workspace=tool_workspace, allowed_dir=allowed_dir),
         )
         _register(
             "list_dir",
-            lambda: ListDirTool(workspace=self.workspace, allowed_dir=allowed_dir),
+            lambda: ListDirTool(workspace=tool_workspace, allowed_dir=allowed_dir),
         )
         _register(
             "glob",
-            lambda: GlobTool(workspace=self.workspace, allowed_dir=allowed_dir),
+            lambda: GlobTool(workspace=tool_workspace, allowed_dir=allowed_dir),
         )
         _register(
             "grep",
-            lambda: GrepTool(workspace=self.workspace, allowed_dir=allowed_dir),
+            lambda: GrepTool(workspace=tool_workspace, allowed_dir=allowed_dir),
         )
         if exec_cfg.enable:
             _register(
                 "exec",
                 lambda: ExecTool(
-                    working_dir=str(self.workspace),
+                    working_dir=str(tool_workspace),
                     timeout=exec_cfg.timeout,
                     restrict_to_workspace=restrict,
                     sandbox=exec_cfg.sandbox,
@@ -507,6 +524,20 @@ class SubagentManager:
         )
 
         try:
+            # When running with an independent persona, materialise the
+            # per-agent directory up-front so ExecTool's cwd resolves and any
+            # filesystem tool can write inside its own sandbox even on first
+            # use. The directory is the hard boundary enforced below.
+            if resolved is not None:
+                try:
+                    profile_dir(self.workspace, resolved.profile.id).mkdir(
+                        parents=True, exist_ok=True
+                    )
+                except OSError as exc:  # pragma: no cover - defensive
+                    logger.debug(
+                        "Subagent [{}] profile dir mkdir failed: {}", task_id, exc
+                    )
+
             tools = self._build_subagent_tools(
                 task_id=task_id, origin=origin, resolved=resolved
             )

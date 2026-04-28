@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from nanobot.agent.profile_resolver import ProfileStore
+from nanobot.agent.profile_resolver import ProfileStore, resolve_profile
 from nanobot.agent.subagent import SubagentManager, SubagentStatus
 from nanobot.bus.queue import MessageBus
 from nanobot.config.profile import (
@@ -176,7 +176,13 @@ async def test_profile_status_records_profile_id(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_inline_profile_skips_disk(tmp_path: Path) -> None:
+async def test_inline_profile_does_not_persist_profile_json(tmp_path: Path) -> None:
+    """Inline profiles should not materialise ``profile.json`` on disk.
+
+    The per-agent sandbox directory is allowed (and required) to exist so
+    file/exec tools have a hard boundary to operate within, but the
+    ``profile.json`` file is reserved for ``ProfileStore.save`` callers.
+    """
     mgr = _mgr(tmp_path)
     mgr._announce_result = AsyncMock()
     captured: dict[str, object] = {}
@@ -200,5 +206,123 @@ async def test_inline_profile_skips_disk(tmp_path: Path) -> None:
     )
     await mgr._running_tasks[task_id]
     assert captured["model"] == "ephemeral-m"
-    # Inline profile must not write to disk.
-    assert not (tmp_path / "agents" / "ad-hoc").exists()
+    # Inline profile must not persist its config file (only the sandbox dir).
+    assert not (tmp_path / "agents" / "ad-hoc" / "profile.json").exists()
+
+
+# ---------------------------------------------------------------------------
+# Sandbox boundary tests — profile-driven sub-agents are locked to their own
+# ``<workspace>/agents/<id>/`` directory and cannot reach into the main bot
+# workspace or escape into the broader filesystem.
+# ---------------------------------------------------------------------------
+
+
+def _build_resolved(workspace: Path, profile: AgentProfile):
+    """Helper: resolve *profile* against a default base for tool tests."""
+    return resolve_profile(
+        profile,
+        base_defaults=AgentDefaults(model="m"),
+        base_tools=ToolsConfig(),
+        workspace=workspace,
+    )
+
+
+def test_profile_subagent_filesystem_locked_to_agent_dir(tmp_path: Path) -> None:
+    """File tools must reject paths outside ``<workspace>/agents/<id>/``."""
+    profile = AgentProfile(id="boxed", name="Boxed")
+    mgr = _mgr(tmp_path)
+    resolved = _build_resolved(tmp_path, profile)
+    tools = mgr._build_subagent_tools(
+        task_id="t1",
+        origin={"channel": "cli", "chat_id": "direct"},
+        resolved=resolved,
+    )
+
+    write_file = tools.get("write_file")
+    agent_root = tmp_path / "agents" / "boxed"
+    agent_root.mkdir(parents=True, exist_ok=True)
+
+    # A pre-existing file just outside the sandbox we will try (and fail) to
+    # overwrite from inside the sub-agent.
+    (tmp_path / "secret.txt").write_text("top-secret", encoding="utf-8")
+
+    import asyncio
+
+    async def _try_writes():
+        ok = await write_file.execute(path="note.txt", content="hi")
+        # Try to climb out of the sandbox into the bot workspace.
+        outside_relative = await write_file.execute(
+            path="../../secret.txt", content="hijacked"
+        )
+        # Try an absolute path into the parent workspace.
+        outside_absolute = await write_file.execute(
+            path=str(tmp_path / "secret.txt"), content="hijacked"
+        )
+        return ok, outside_relative, outside_absolute
+
+    ok, out_rel, out_abs = asyncio.run(_try_writes())
+
+    # In-sandbox write succeeded.
+    assert "Error" not in str(ok), ok
+    assert (agent_root / "note.txt").read_text(encoding="utf-8") == "hi"
+    # Out-of-sandbox attempts must be refused and leave the original file intact.
+    assert "outside allowed directory" in str(out_rel) or "Error" in str(out_rel)
+    assert "outside allowed directory" in str(out_abs) or "Error" in str(out_abs)
+    assert (tmp_path / "secret.txt").read_text(encoding="utf-8") == "top-secret"
+
+
+def test_profile_cannot_relax_sandbox_via_restrict_flag(tmp_path: Path) -> None:
+    """``restrict_to_workspace=False`` on the profile must NOT widen the sandbox."""
+    profile = AgentProfile(
+        id="loose",
+        name="Loose",
+        tools_overrides=ToolsConfigOverride(restrict_to_workspace=False),
+    )
+    mgr = _mgr(tmp_path)
+    resolved = _build_resolved(tmp_path, profile)
+    # Even though the profile asks for an unrestricted workspace, the manager
+    # forces a per-agent sandbox.
+    assert resolved.restrict_to_workspace is False  # what the profile *asked* for
+
+    tools = mgr._build_subagent_tools(
+        task_id="t2",
+        origin={"channel": "cli", "chat_id": "direct"},
+        resolved=resolved,
+    )
+    read_file = tools.get("read_file")
+    (tmp_path / "leak.txt").write_text("nope", encoding="utf-8")
+
+    import asyncio
+
+    result = asyncio.run(read_file.execute(path=str(tmp_path / "leak.txt")))
+    assert "outside allowed directory" in str(result) or "Error" in str(result)
+
+
+def test_profile_exec_cwd_is_agent_dir(tmp_path: Path) -> None:
+    """ExecTool on a profiled sub-agent must run inside the per-agent dir."""
+    profile = AgentProfile(id="runner", name="Runner")
+    mgr = _mgr(tmp_path)
+    resolved = _build_resolved(tmp_path, profile)
+    tools = mgr._build_subagent_tools(
+        task_id="t3",
+        origin={"channel": "cli", "chat_id": "direct"},
+        resolved=resolved,
+    )
+    exec_tool = tools.get("exec")
+    expected_root = (tmp_path / "agents" / "runner").resolve()
+    assert Path(exec_tool.working_dir).resolve() == expected_root
+    assert exec_tool.restrict_to_workspace is True
+
+
+def test_no_profile_keeps_legacy_workspace_behaviour(tmp_path: Path) -> None:
+    """Inherited (no profile) sub-agents keep the historical workspace scope."""
+    mgr = _mgr(tmp_path)
+    tools = mgr._build_subagent_tools(
+        task_id="t4",
+        origin={"channel": "cli", "chat_id": "direct"},
+        resolved=None,
+    )
+    read_file = tools.get("read_file")
+    # Without restrict_to_workspace the legacy path leaves allowed_dir unset.
+    assert read_file._allowed_dir is None
+    assert read_file._workspace == tmp_path
