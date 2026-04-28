@@ -51,7 +51,7 @@ from nanobot.agent.tools.self import MyTool
 from nanobot.agent.tools.shell import ExecTool
 from nanobot.agent.tools.spawn import SpawnTool
 from nanobot.agent.tools.web import WebFetchTool, WebSearchTool
-from nanobot.bus.events import InboundMessage, OutboundMessage
+from nanobot.bus.events import InboundMessage, OutboundMessage, peer_user_visible_from_llm_event_block
 from nanobot.bus.queue import MessageBus
 from nanobot.command import CommandContext, CommandRouter, register_builtin_commands
 from nanobot.config.schema import AgentDefaults, Config
@@ -1758,9 +1758,6 @@ class AgentLoop:
             role, content = entry.get("role"), entry.get("content")
             if role == "assistant" and not content and not entry.get("tool_calls"):
                 continue  # skip empty assistant messages — they poison session context
-            _tr = getattr(self, "_session_transcript", None)
-            if _tr and _tr.enabled and not m.get("_transcript_written"):
-                _tr.append_raw_turn_message(session.key, m)
             if role == "tool":
                 if isinstance(content, str) and len(content) > self.max_tool_result_chars:
                     entry["content"] = truncate_text_fn(content, self.max_tool_result_chars)
@@ -1770,32 +1767,42 @@ class AgentLoop:
                         continue
                     entry["content"] = filtered
             elif role == "user":
-                if isinstance(content, str) and content.startswith(
-                    ContextBuilder._RUNTIME_CONTEXT_TAG
-                ):
-                    # Strip the entire runtime-context block (including any session summary).
-                    # The block is bounded by _RUNTIME_CONTEXT_TAG and _RUNTIME_CONTEXT_END.
+                uc = entry.get("content")
+                if isinstance(uc, str) and uc.startswith(ContextBuilder._RUNTIME_CONTEXT_TAG):
                     end_marker = ContextBuilder._RUNTIME_CONTEXT_END
-                    end_pos = content.find(end_marker)
+                    end_pos = uc.find(end_marker)
                     if end_pos >= 0:
-                        after = content[end_pos + len(end_marker) :].lstrip("\n")
+                        after = uc[end_pos + len(end_marker) :].lstrip("\n")
                         if after:
                             entry["content"] = after
                         else:
                             continue
                     else:
-                        # Fallback: no end marker found, strip the tag prefix
-                        after_tag = content[len(ContextBuilder._RUNTIME_CONTEXT_TAG) :].lstrip("\n")
+                        after_tag = uc[len(ContextBuilder._RUNTIME_CONTEXT_TAG) :].lstrip("\n")
                         if after_tag.strip():
                             entry["content"] = after_tag
                         else:
                             continue
-                if isinstance(content, list):
-                    filtered = self._sanitize_persisted_blocks(content, drop_runtime=True)
+                if isinstance(entry.get("content"), str):
+                    peer = peer_user_visible_from_llm_event_block(entry["content"])
+                    if peer is not None:
+                        entry["content"] = peer["content"]
+                        entry["injected_event"] = "agent_direct"
+                        sid = peer.get("sender_agent_id")
+                        if sid:
+                            entry["sender_agent_id"] = sid
+                uc = entry.get("content")
+                if isinstance(uc, list):
+                    filtered = self._sanitize_persisted_blocks(uc, drop_runtime=True)
                     if not filtered:
                         continue
                     entry["content"] = filtered
+                elif isinstance(uc, str) and not uc.strip():
+                    continue
             entry.setdefault("timestamp", timestamp(self.timezone))
+            _tr = getattr(self, "_session_transcript", None)
+            if _tr and _tr.enabled and not m.get("_transcript_written"):
+                _tr.append_raw_turn_message(session.key, entry)
             session.messages.append(entry)
             session.updated_at = local_now(self.timezone)
 

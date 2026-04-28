@@ -1,7 +1,9 @@
 import { memo, type ReactNode } from "react";
-import { RobotOutlined, UserOutlined } from "@ant-design/icons";
+import { RobotOutlined, TeamOutlined, UserOutlined } from "@ant-design/icons";
+import { useTranslation } from "react-i18next";
 import { Markdown } from "../../components/Markdown";
 import type { ToolCall } from "../../api/types";
+import { formatPeerAgentLabel } from "./agentEventDisplay";
 
 /**
  * Single chat row used by the virtualized list. The row is intentionally a
@@ -24,6 +26,9 @@ export interface MessageRowMsg {
   created_at?: string;
   timestamp?: string;
   source?: "user" | "main_agent" | "sub_agent" | "tool_call";
+  /** Inbound ``agent.direct`` row (peer agent → this session). */
+  injected_event?: string;
+  sender_agent_id?: string;
   tool_calls?: ToolCall[];
   reasoning_content?: string;
 }
@@ -37,9 +42,11 @@ interface MessageRowProps {
 }
 
 function MessageRowComponent({ msg, extraAbove, formattedTime }: MessageRowProps) {
+  const { t } = useTranslation();
   const isUser = msg.role === "user";
   const isAssistant = msg.role === "assistant";
   const isSystem = msg.role === "system";
+  const isPeerInbound = isUser && msg.injected_event === "agent_direct";
 
   // System notices ("Stopped N task(s).", restart confirmations, etc.) render
   // as a centered, low-emphasis pill so they read as out-of-band notifications
@@ -62,17 +69,21 @@ function MessageRowComponent({ msg, extraAbove, formattedTime }: MessageRowProps
   return (
     <div
       className={`flex gap-3 w-full min-w-0 overflow-visible ${
-        isUser ? "flex-row-reverse" : ""
+        isUser && !isPeerInbound ? "flex-row-reverse" : ""
       }`}
     >
       <div
         className={`w-10 h-10 min-w-[2.5rem] min-h-[2.5rem] rounded-md flex items-center justify-center flex-shrink-0 overflow-visible p-1.5 box-border ${
-          isUser
-            ? "bg-sky-500 dark:bg-sky-600 text-white"
-            : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300"
+          isPeerInbound
+            ? "bg-violet-500 dark:bg-violet-600 text-white"
+            : isUser
+              ? "bg-sky-500 dark:bg-sky-600 text-white"
+              : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300"
         }`}
       >
-        {isUser ? (
+        {isPeerInbound ? (
+          <TeamOutlined style={{ fontSize: 18 }} />
+        ) : isUser ? (
           <UserOutlined style={{ fontSize: 18 }} />
         ) : (
           <RobotOutlined style={{ fontSize: 18 }} />
@@ -80,15 +91,26 @@ function MessageRowComponent({ msg, extraAbove, formattedTime }: MessageRowProps
       </div>
       <div
         className={`relative rounded-md px-5 py-4 ${
-          isUser
-            ? "shrink-0 w-fit max-w-[min(100%,85%)] min-w-[8rem] bg-sky-50 dark:bg-sky-950/45 text-slate-800 dark:text-slate-100 border border-sky-200/90 dark:border-sky-800/55 shadow-sm rounded-br-sm"
-            : "flex-1 min-w-0 mr-[calc(2.5rem+0.75rem)] bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm rounded-bl-sm"
+          isPeerInbound
+            ? "flex-1 min-w-0 mr-[calc(2.5rem+0.75rem)] bg-violet-50 dark:bg-violet-950/35 text-slate-800 dark:text-slate-100 border border-violet-200/90 dark:border-violet-800/55 shadow-sm rounded-bl-sm"
+            : isUser
+              ? "shrink-0 w-fit max-w-[min(100%,85%)] min-w-[8rem] bg-sky-50 dark:bg-sky-950/45 text-slate-800 dark:text-slate-100 border border-sky-200/90 dark:border-sky-800/55 shadow-sm rounded-br-sm"
+              : "flex-1 min-w-0 mr-[calc(2.5rem+0.75rem)] bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm rounded-bl-sm"
         }`}
       >
+        {isPeerInbound ? (
+          <div className="text-xs font-medium text-violet-800 dark:text-violet-200 mb-2 tracking-wide uppercase">
+            {t("chat.peerAgentInbound", {
+              id: formatPeerAgentLabel(msg.sender_agent_id),
+            })}
+          </div>
+        ) : null}
         {extraAbove}
         <div
           className={`prose prose-sm max-w-none ${
-            isUser ? "prose-slate dark:prose-invert" : "dark:prose-invert"
+            isUser && !isPeerInbound
+              ? "prose-slate dark:prose-invert"
+              : "dark:prose-invert"
           } ${
             isAssistant &&
             (msg.reasoning_content || (msg.tool_calls?.length ?? 0) > 0)
@@ -101,7 +123,7 @@ function MessageRowComponent({ msg, extraAbove, formattedTime }: MessageRowProps
         {formattedTime ? (
           <div
             className={`mt-2 text-xs ${
-              isUser
+              isUser && !isPeerInbound
                 ? "text-slate-500 dark:text-slate-400"
                 : "text-gray-400 dark:text-gray-500"
             }`}

@@ -26,6 +26,7 @@ from nanobot.bus.events import (
     AgentEvent,
     InboundMessage,
     build_request_reply_event,
+    peer_user_visible_from_llm_event_block,
     render_agent_event_for_llm,
 )
 from nanobot.bus.queue import MessageBus
@@ -382,3 +383,25 @@ def test_render_agent_event_for_llm_inserts_reply_banner() -> None:
     assert "[REPLY REQUIRED]" in text
     assert "m-test" in text
     assert "reply_to_agent_request" in text
+
+
+def test_peer_user_visible_from_llm_event_block_strips_wire_format() -> None:
+    ev = AgentEvent(
+        topic="agent.direct",
+        payload={
+            "content": "你好",
+            "message_id": "m-1",
+            "sender_agent_id": "agent-vv",
+        },
+        source_agent="agent-vv",
+        target=target_for_agent("agent-main"),
+    )
+    rendered = render_agent_event_for_llm(ev)
+    got = peer_user_visible_from_llm_event_block(rendered)
+    assert got == {"content": "你好", "sender_agent_id": "agent-vv"}
+
+
+def test_peer_user_visible_none_for_other_topics() -> None:
+    ev = AgentEvent(topic="system.ping", payload={"content": "x"}, source_agent="a", target="broadcast")
+    rendered = render_agent_event_for_llm(ev)
+    assert peer_user_visible_from_llm_event_block(rendered) is None

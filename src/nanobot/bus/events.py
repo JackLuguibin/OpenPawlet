@@ -8,6 +8,7 @@ unified queue continue to work without modification.
 """
 
 import json
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -180,6 +181,45 @@ def should_handle_direct_for_session(ev: AgentEvent, session_key: str | None) ->
     """
     _ = session_key
     return True
+
+
+_EVENT_HEAD_RE = re.compile(
+    r"^\[event\]\s+topic=(?P<topic>\S+)\s+from=(?P<from_id>\S+)\s+target=(?P<target>\S+)\s*$",
+    re.MULTILINE,
+)
+
+
+def peer_user_visible_from_llm_event_block(text: str) -> dict[str, str] | None:
+    """Extract human-visible text from :func:`render_agent_event_for_llm` output.
+
+    Session persistence uses this so console chat history does not surface raw
+    ``[event]`` / JSON wire dumps for ``agent.direct`` deliveries—the model still
+    sees the full block via the in-memory turn, but stored rows carry only the
+    peer message body plus optional ``sender_agent_id`` metadata.
+    """
+    stripped = text.strip()
+    if not stripped.startswith("[event]"):
+        return None
+    m = _EVENT_HEAD_RE.match(stripped.split("\n", 1)[0])
+    if not m or m.group("topic") != "agent.direct":
+        return None
+    brace = stripped.find("{")
+    if brace < 0:
+        return None
+    try:
+        payload = json.loads(stripped[brace:])
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    body = payload.get("content")
+    if not isinstance(body, str) or not body.strip():
+        return None
+    out: dict[str, str] = {"content": body.strip()}
+    sender = payload.get("sender_agent_id")
+    if isinstance(sender, str) and sender.strip():
+        out["sender_agent_id"] = sender.strip()
+    return out
 
 
 def render_agent_event_for_llm(ev: AgentEvent, *, max_body_chars: int | None = None) -> str:

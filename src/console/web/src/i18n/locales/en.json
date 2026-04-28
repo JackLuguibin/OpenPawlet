@@ -93,6 +93,7 @@
   },
   "chat": {
     "inputPlaceholder": "Type a message…",
+    "peerAgentInbound": "Message from agent {{id}}",
     "generating": "Generating…",
     "inputHint": "Enter to send · Shift+Enter for new line",
     "contextTooltip": "Context: estimated / window · % used (refreshed via /status after each reply)",

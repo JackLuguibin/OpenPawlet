@@ -34,6 +34,9 @@ export interface Message {
    * client falls back to a deterministic hash; see `groupAssistantReplies`.
    */
   reply_group_id?: string;
+  /** Session row from ``agent.direct`` injection (peer agent message). */
+  injected_event?: string;
+  sender_agent_id?: string;
 }
 
 /**

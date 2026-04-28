@@ -6,7 +6,8 @@ import pytest
 
 from nanobot.agent.context import ContextBuilder
 from nanobot.agent.loop import AgentLoop
-from nanobot.bus.events import InboundMessage
+from nanobot.bus.envelope import target_for_agent
+from nanobot.bus.events import AgentEvent, InboundMessage, render_agent_event_for_llm
 from nanobot.bus.queue import MessageBus
 from nanobot.session.manager import Session
 
@@ -26,6 +27,29 @@ def _make_full_loop(tmp_path: Path) -> AgentLoop:
     provider = MagicMock()
     provider.get_default_model.return_value = "test-model"
     return AgentLoop(bus=MessageBus(), provider=provider, workspace=tmp_path, model="test-model")
+
+
+def test_save_turn_peer_agent_direct_unwraps_for_history() -> None:
+    loop = _mk_loop()
+    session = Session(key="test:peer-direct")
+    runtime = (
+        ContextBuilder._RUNTIME_CONTEXT_TAG
+        + "\nCurrent Time: now\n"
+        + ContextBuilder._RUNTIME_CONTEXT_END
+    )
+    ev = AgentEvent(
+        topic="agent.direct",
+        payload={"content": "hello from vv", "sender_agent_id": "agent-vv"},
+        source_agent="agent-vv",
+        target=target_for_agent("agent-main"),
+    )
+    wire = render_agent_event_for_llm(ev)
+    merged = f"{runtime}\n\n{wire}"
+    loop._save_turn(session, [{"role": "user", "content": merged}], skip=0)
+    assert len(session.messages) == 1
+    assert session.messages[0]["content"] == "hello from vv"
+    assert session.messages[0]["injected_event"] == "agent_direct"
+    assert session.messages[0]["sender_agent_id"] == "agent-vv"
 
 
 def test_save_turn_skips_multimodal_user_when_only_runtime_context() -> None:

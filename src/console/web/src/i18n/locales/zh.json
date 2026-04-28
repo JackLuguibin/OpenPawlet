@@ -93,6 +93,7 @@
   },
   "chat": {
     "inputPlaceholder": "输入消息…",
+    "peerAgentInbound": "来自 Agent {{id}} 的消息",
     "generating": "正在生成…",
     "inputHint": "Enter 发送 · Shift+Enter 换行",
     "contextTooltip": "上下文：估算用量 / 窗口 · 使用占比（每次回复后通过 /status 刷新）",

@@ -52,6 +52,8 @@ class SessionTranscriptWriter:
             "reasoning_content",
             "thinking_blocks",
             "reply_group_id",
+            "injected_event",
+            "sender_agent_id",
         ):
             if key in m:
                 entry[key] = m[key]

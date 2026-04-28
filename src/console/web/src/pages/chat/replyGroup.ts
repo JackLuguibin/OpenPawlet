@@ -1,6 +1,7 @@
 import type { ToolCall } from "../../api/types";
 import { normalizeToolCallsArray } from "../../utils/toolCalls";
 import type { Message } from "./types";
+import { tryUnwrapPeerAgentInboundText } from "./agentEventDisplay";
 
 /**
  * Split an agent `tool_hint` into multiple lines so back-to-back calls like
@@ -155,6 +156,21 @@ export function normalizeMessageForChatRender(msg: Message): Message {
     typeof msg.reasoning_content === "string" && msg.reasoning_content.trim()
       ? msg.reasoning_content
       : extractReasoningFromThinkingBlocks(msg.thinking_blocks);
+
+  let content =
+    typeof msg.content === "string" ? msg.content : String(msg.content ?? "");
+  let injected_event = msg.injected_event;
+  let sender_agent_id = msg.sender_agent_id;
+
+  if (msg.role === "user" && !injected_event) {
+    const peer = tryUnwrapPeerAgentInboundText(content);
+    if (peer) {
+      content = peer.content;
+      injected_event = "agent_direct";
+      sender_agent_id = peer.sender_agent_id;
+    }
+  }
+
   const normalizedSource =
     msg.source ??
     (msg.role === "user"
@@ -162,11 +178,13 @@ export function normalizeMessageForChatRender(msg: Message): Message {
       : msg.role === "assistant"
         ? "main_agent"
         : undefined);
+
   return {
     ...msg,
-    content:
-      typeof msg.content === "string" ? msg.content : String(msg.content ?? ""),
+    content,
     source: normalizedSource,
+    ...(injected_event ? { injected_event } : {}),
+    ...(sender_agent_id ? { sender_agent_id } : {}),
     ...(normalizedToolCalls.length > 0 ? { tool_calls: normalizedToolCalls } : {}),
     ...(normalizedReasoning ? { reasoning_content: normalizedReasoning } : {}),
   };
