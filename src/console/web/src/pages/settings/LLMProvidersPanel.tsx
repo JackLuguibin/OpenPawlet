@@ -304,12 +304,17 @@ export default function LLMProvidersPanel({ embedded = false }: { embedded?: boo
         showIcon
         message={t('llmProviders.intro')}
         description={t('llmProviders.introDesc')}
+        className="!border-blue-200/70 dark:!border-blue-900/40"
       />
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <Text strong>{t('llmProviders.title')}</Text>
-          <Tag color="blue">{instances.length}</Tag>
+          <Text strong className="text-[14px]">
+            {t('llmProviders.title')}
+          </Text>
+          <Tag bordered={false} className="!bg-gray-100 dark:!bg-gray-800 !text-gray-600 dark:!text-gray-300">
+            {instances.length}
+          </Tag>
         </div>
         <Space>
           <Button
@@ -337,7 +342,7 @@ export default function LLMProvidersPanel({ embedded = false }: { embedded?: boo
             <Card
               key={inst.id}
               size="small"
-              className="rounded-lg border-gray-200 dark:border-gray-700"
+              className="rounded border border-gray-200 dark:border-gray-800 transition-colors hover:border-gray-300 dark:hover:border-gray-700"
               styles={{ body: { padding: 12 } }}
             >
               <div className="flex items-start justify-between gap-2">

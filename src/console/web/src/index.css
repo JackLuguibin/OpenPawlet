@@ -7,6 +7,20 @@
   line-height: 1.5;
   font-weight: 400;
   color-scheme: light dark;
+  /* Shared surface tokens used by .surface-* helpers below. */
+  --op-border: #e5e7eb;
+  --op-border-strong: #d4d8dd;
+  --op-surface: #ffffff;
+  --op-surface-muted: #fafbfc;
+  --op-text-muted: #6b7280;
+}
+
+.dark {
+  --op-border: #1f2937;
+  --op-border-strong: #2a3441;
+  --op-surface: #0f1318;
+  --op-surface-muted: #0b1118;
+  --op-text-muted: #9ca3af;
 }
 
 html,
@@ -25,12 +39,16 @@ html,
 body {
   margin: 0;
   overflow: hidden;
+  /* Smooth out body type globally so headings/labels feel lighter and crisper. */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
-/* Custom scrollbar */
+/* Slim, cool-toned scrollbars so they feel like part of the line system. */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -38,26 +56,84 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #94a3b8;
-  border-radius: 4px;
+  background: rgba(100, 116, 139, 0.35);
+  border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #64748b;
+  background: rgba(71, 85, 105, 0.55);
 }
 
 .dark ::-webkit-scrollbar-thumb {
-  background: #475569;
+  background: rgba(148, 163, 184, 0.18);
 }
 
 .dark ::-webkit-scrollbar-thumb:hover {
-  background: #64748b;
+  background: rgba(148, 163, 184, 0.32);
 }
 
-/* Focus ring */
+/* Subdued focus ring; keeps accessibility but removes visual weight. */
 *:focus-visible {
-  outline: 2px solid #3b82f6;
+  outline: 1.5px solid rgba(37, 99, 235, 0.55);
   outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* ------------------------------------------------------------------
+ * Global "minimal line" surface helpers.
+ * Use these instead of ad-hoc rounded/shadow classes for a consistent,
+ * line-driven look across the console.
+ * ----------------------------------------------------------------- */
+.surface-card {
+  background: var(--op-surface);
+  border: 1px solid var(--op-border);
+  border-radius: 6px;
+}
+
+.surface-card-muted {
+  background: var(--op-surface-muted);
+  border: 1px solid var(--op-border);
+  border-radius: 6px;
+}
+
+.surface-divider {
+  border-color: var(--op-border);
+}
+
+/* Antd Card defaults: kill the drop shadow so cards read as outlined
+ * surfaces, and tone the border down to match the design tokens. */
+.ant-card {
+  box-shadow: none !important;
+}
+.ant-card.ant-card-bordered {
+  border-color: var(--op-border);
+}
+.ant-card-hoverable:hover {
+  box-shadow: none !important;
+  border-color: var(--op-border-strong);
+  transition: border-color 120ms ease;
+}
+
+/* Antd Modal/Drawer: flatten the heavy default shadow on light backgrounds. */
+.ant-modal .ant-modal-content,
+.ant-drawer .ant-drawer-content {
+  box-shadow: 0 6px 24px rgba(15, 23, 42, 0.08);
+}
+
+/* Antd Tabs (line type): make the underline a touch thicker and the
+ * inactive labels lighter so the active state reads clearly. */
+.ant-tabs-top > .ant-tabs-nav::before,
+.ant-tabs-bottom > .ant-tabs-nav::before {
+  border-bottom-color: var(--op-border);
+}
+.ant-tabs .ant-tabs-ink-bar {
+  height: 2px;
+}
+
+/* Antd Menu (sider): remove the inset selection bar so the line layout stays clean. */
+.ant-menu-inline .ant-menu-item::after,
+.ant-menu-vertical .ant-menu-item::after {
+  display: none;
 }
 
 /* Hide scrollbars while keeping scroll behavior */

@@ -44,9 +44,9 @@ import Cron from './Cron';
 
 const { Text } = Typography;
 
-/** Shared card chrome (border, radius). */
+/** Shared card chrome (border, radius). Flat, line-only surface. */
 const SETTINGS_CARD_SURFACE =
-  'w-full rounded-md shadow-sm border border-gray-200/80 dark:border-gray-700/80';
+  'w-full rounded border border-gray-200 dark:border-gray-800 shadow-none';
 
 /** Card grows to fill tab pane; header stays visible, body scrolls. */
 const SETTINGS_SCROLL_CARD_CLASS = `${SETTINGS_CARD_SURFACE} min-h-0 flex flex-1 flex-col`;

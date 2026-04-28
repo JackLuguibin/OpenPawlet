@@ -58,12 +58,12 @@ export function HubShell<T extends string>({
   return (
     <PageLayout className="min-h-0 flex-1 overflow-hidden">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <header className="shrink-0 pb-3">
-          <h1 className="m-0 text-2xl font-semibold tracking-tight text-gray-900 dark:text-white">
+        <header className="shrink-0 pb-2">
+          <h1 className="m-0 text-[20px] font-semibold leading-tight tracking-tight text-gray-900 dark:text-white">
             {title}
           </h1>
           {subtitle ? (
-            <p className="mt-1 max-w-2xl text-sm leading-relaxed text-gray-500 dark:text-gray-400">
+            <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-gray-500 dark:text-gray-400">
               {subtitle}
             </p>
           ) : null}
@@ -75,6 +75,7 @@ export function HubShell<T extends string>({
           items={items}
           type={tabsType}
           tabBarExtraContent={tabBarExtra}
+          size="small"
           destroyOnHidden
         />
       </div>

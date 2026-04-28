@@ -60,20 +60,22 @@ type NavItem = {
 
 function SidebarBrand({ collapsed, brand, tagline }: { collapsed: boolean; brand: string; tagline: string }) {
   return (
-    <div className="h-16 flex items-center px-4 border-b border-gray-200 dark:border-gray-800">
-      <div className="flex h-10 w-10 items-center justify-center flex-shrink-0">
+    <div className="h-14 flex items-center px-4 border-b border-gray-200 dark:border-gray-800">
+      <div className="flex h-8 w-8 items-center justify-center flex-shrink-0">
         <img
           src="/openpawlet-icon.png"
           alt={brand}
-          className="h-10 w-10 object-contain"
+          className="h-8 w-8 object-contain"
         />
       </div>
       {!collapsed && (
-        <div className="ml-3 flex flex-col">
-          <span className="text-base font-semibold leading-tight text-gray-900 dark:text-white">
+        <div className="ml-2.5 flex flex-col">
+          <span className="text-[15px] font-medium leading-tight tracking-tight text-gray-900 dark:text-white">
             {brand}
           </span>
-          <span className="-mt-0.5 text-[10px] text-gray-400">{tagline}</span>
+          <span className="mt-0.5 text-[10px] uppercase tracking-[0.12em] text-gray-400">
+            {tagline}
+          </span>
         </div>
       )}
     </div>
@@ -223,28 +225,29 @@ export default function Layout({ children }: LayoutProps) {
   );
 
   const sidebarContent = (
-    <div className="flex h-full flex-col bg-white dark:bg-gray-900">
+    <div className="flex h-full flex-col bg-white dark:bg-gray-950">
       <SidebarBrand
         collapsed={sidebarCollapsed}
         brand={t('layout.brand')}
         tagline={t('layout.tagline')}
       />
-      <nav className="flex-1 overflow-y-auto no-scrollbar py-2">
+      <nav className="flex-1 overflow-y-auto no-scrollbar py-3">
         <Menu
           mode="inline"
           selectedKeys={[selectedKey]}
           inlineCollapsed={sidebarCollapsed}
           items={menuItems}
-          style={{ background: 'transparent', borderRight: 'none' }}
+          style={{ background: 'transparent', borderRight: 'none', fontSize: 13 }}
         />
       </nav>
-      <div className="px-2 py-1 border-t border-gray-200 dark:border-gray-800">
+      <div className="px-2 py-2 border-t border-gray-200 dark:border-gray-800">
         <Button
           type="text"
           size="small"
           block
           onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
           icon={sidebarCollapsed ? <RightOutlined /> : <LeftOutlined />}
+          className="!text-gray-500 hover:!text-gray-800 dark:hover:!text-gray-200"
         >
           {!sidebarCollapsed && t('layout.collapse')}
         </Button>
@@ -257,7 +260,7 @@ export default function Layout({ children }: LayoutProps) {
       <Button
         type="text"
         onClick={() => setMobileMenuOpen(true)}
-        className="lg:!hidden !fixed top-3 left-3 z-50 !bg-white dark:!bg-gray-800 !border !border-gray-200 dark:!border-gray-700 !shadow-md"
+        className="lg:!hidden !fixed top-3 left-3 z-50 !bg-white dark:!bg-gray-950 !border !border-gray-200 dark:!border-gray-800"
         aria-label={t('layout.openMenu')}
         icon={<MenuOutlined />}
       />
@@ -277,8 +280,8 @@ export default function Layout({ children }: LayoutProps) {
 
       <Sider
         collapsed={sidebarCollapsed}
-        collapsedWidth={80}
-        width={256}
+        collapsedWidth={72}
+        width={232}
         trigger={null}
         breakpoint="lg"
         className="!hidden lg:!block !bg-transparent border-r border-gray-200 dark:border-gray-800"
@@ -288,20 +291,21 @@ export default function Layout({ children }: LayoutProps) {
       </Sider>
 
       <AntdLayout className="flex-1 min-w-0 flex flex-col overflow-hidden bg-transparent">
-        <Header className="!h-16 !leading-none !px-4 lg:!px-6 !bg-white/90 dark:!bg-gray-900/90 backdrop-blur-sm border-b border-gray-200 dark:border-gray-800 flex items-center justify-between sticky top-0 z-20">
+        <Header className="!h-14 !leading-none !px-4 lg:!px-6 !bg-white dark:!bg-gray-950 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between sticky top-0 z-20">
           <div className="flex items-center gap-3 min-w-0 pl-10 lg:pl-0">
             <button
               type="button"
               title={wsUi.title}
               onClick={() => window.location.reload()}
-              className="inline-flex h-6 items-center gap-2 rounded px-2 text-xs leading-none text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+              className="inline-flex h-7 items-center gap-2 rounded px-2 text-[12px] leading-none text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
             >
               <Badge status={wsUi.badge} />
-              <span className="text-xs text-gray-600 dark:text-gray-400">{wsUi.label}</span>
+              <span className="text-[12px] text-gray-500 dark:text-gray-400">{wsUi.label}</span>
             </button>
             {bots.length > 0 && (
               <Select
                 size="small"
+                variant="borderless"
                 value={activeBotId}
                 onChange={(val) => void handleBotChange(val)}
                 className="min-w-[140px]"
@@ -314,13 +318,14 @@ export default function Layout({ children }: LayoutProps) {
             <WebSocketDebugPanel />
             <Select
               size="small"
+              variant="borderless"
               value={i18n.language.startsWith('zh') ? 'zh' : 'en'}
               onChange={(lng) => void i18n.changeLanguage(lng)}
               options={[
                 { value: 'zh', label: t('layout.langZhShort') },
                 { value: 'en', label: t('layout.langEnShort') },
               ]}
-              className="w-[72px]"
+              className="w-[68px]"
               aria-label={t('layout.language')}
             />
             <Segmented

@@ -535,10 +535,12 @@ export default function Dashboard() {
       {/* Header */}
       <div className="flex shrink-0 items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
+          <h1 className="m-0 text-[20px] font-semibold leading-tight tracking-tight text-gray-900 dark:text-white">
             {t('dashboard.title')}
           </h1>
-          <p className="text-sm text-gray-500 mt-1">{t('dashboard.subtitle')}</p>
+          <p className="mt-1 text-[13px] leading-relaxed text-gray-500 dark:text-gray-400">
+            {t('dashboard.subtitle')}
+          </p>
         </div>
         <Space>
           {displayStatus?.running && (
@@ -569,7 +571,7 @@ export default function Dashboard() {
       </div>
 
       <div className={DASHBOARD_STAT_GRID_CLASS}>
-        <Card size="small" hoverable className={DASHBOARD_STAT_CARD_CLASS}>
+        <Card size="small" className={DASHBOARD_STAT_CARD_CLASS}>
           <Statistic
             title={t('dashboard.statStatus')}
             value={displayStatus?.running ? t('dashboard.statRunning') : t('dashboard.statStopped')}
@@ -583,28 +585,28 @@ export default function Dashboard() {
             }
           />
         </Card>
-        <Card size="small" hoverable className={DASHBOARD_STAT_CARD_CLASS}>
+        <Card size="small" className={DASHBOARD_STAT_CARD_CLASS}>
           <Statistic
             title={t('dashboard.statUptime')}
             value={displayStatus?.running && displayStatus?.uptime_seconds ? formatUptime(displayStatus.uptime_seconds) : '-'}
-            prefix={<ClockCircleOutlined className="text-blue-500" />}
+            prefix={<ClockCircleOutlined className="text-gray-400" />}
           />
         </Card>
-        <Card size="small" hoverable className={DASHBOARD_STAT_CARD_CLASS}>
+        <Card size="small" className={DASHBOARD_STAT_CARD_CLASS}>
           <Statistic
             title={t('dashboard.statActiveSessions')}
             value={displayStatus?.active_sessions ?? 0}
-            prefix={<TeamOutlined className="text-purple-500" />}
+            prefix={<TeamOutlined className="text-gray-400" />}
           />
         </Card>
-        <Card size="small" hoverable className={DASHBOARD_STAT_CARD_CLASS}>
+        <Card size="small" className={DASHBOARD_STAT_CARD_CLASS}>
           <Statistic
             title={t('dashboard.statMessagesToday')}
             value={displayStatus?.messages_today ?? 0}
-            prefix={<MessageOutlined className="text-orange-500" />}
+            prefix={<MessageOutlined className="text-gray-400" />}
           />
         </Card>
-        <Card size="small" hoverable className={DASHBOARD_STAT_CARD_CLASS}>
+        <Card size="small" className={DASHBOARD_STAT_CARD_CLASS}>
           <Statistic
             title={t('dashboard.statTokensToday')}
             value={
@@ -612,10 +614,10 @@ export default function Dashboard() {
                 ? formatTokenCount(displayStatus.token_usage.total_tokens)
                 : '-'
             }
-            prefix={<ThunderboltOutlined className="text-amber-500" />}
+            prefix={<ThunderboltOutlined className="text-gray-400" />}
           />
         </Card>
-        <Card size="small" hoverable className={DASHBOARD_STAT_CARD_CLASS}>
+        <Card size="small" className={DASHBOARD_STAT_CARD_CLASS}>
           <Statistic
             title={t('dashboard.statCostToday')}
             value={
@@ -623,7 +625,7 @@ export default function Dashboard() {
                 ? formatCost(displayStatus.token_usage.cost_usd)
                 : '-'
             }
-            prefix={<DollarOutlined className="text-green-500" />}
+            prefix={<DollarOutlined className="text-gray-400" />}
           />
         </Card>
       </div>
@@ -634,14 +636,16 @@ export default function Dashboard() {
           {/* One wrapping row: model | stats | sparkline; sparkline drops to its own full-width row only on very narrow screens */}
           <div className="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-4">
             <div className="flex min-w-0 shrink-0 items-center gap-3">
-              <div className="shrink-0 rounded-md bg-blue-100 p-2.5 dark:bg-blue-900/30">
-                <ThunderboltOutlined className="text-lg text-blue-600" />
+              <div className="shrink-0 flex h-9 w-9 items-center justify-center rounded border border-gray-200 dark:border-gray-700">
+                <ThunderboltOutlined className="text-base text-gray-500 dark:text-gray-400" />
               </div>
               <div className="min-w-0">
                 <Text type="secondary" className="text-xs">
                   {t('dashboard.currentModel')}
                 </Text>
-                <p className="break-words text-base font-semibold">{displayStatus.model}</p>
+                <p className="break-words text-[15px] font-semibold tracking-tight">
+                  {displayStatus.model}
+                </p>
               </div>
             </div>
             {displayStatus?.token_usage &&
