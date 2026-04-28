@@ -17,12 +17,16 @@ import {
   Card,
   Typography,
   Space,
-  Radio,
   Select,
   Alert,
   Tooltip,
   Table,
   Empty,
+  Segmented,
+  Divider,
+  Row,
+  Col,
+  theme,
 } from 'antd';
 import {
   SaveOutlined,
@@ -93,6 +97,7 @@ function readSettingsTab(searchParams: URLSearchParams): SettingsTab {
 }
 
 export default function Settings() {
+  const { token } = theme.useToken();
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { addToast, currentBotId } = useAppStore();
@@ -446,82 +451,109 @@ export default function Settings() {
           className={SETTINGS_SCROLL_CARD_CLASS}
           styles={{
             header: SETTINGS_SCROLL_CARD_STYLES.header,
-            body: { ...SETTINGS_SCROLL_CARD_STYLES.body, paddingTop: 4 },
+            body: {
+              ...SETTINGS_SCROLL_CARD_STYLES.body,
+              paddingTop: token.paddingLG,
+              paddingBottom: token.paddingLG,
+              paddingInline: token.paddingLG,
+            },
           }}
         >
-          <Form form={form} layout="vertical" className="w-full">
-            <Form.Item
-              label={t('settings.model')}
-              name="model"
-              extra={t('settings.modelExtra')}
-            >
-              <AutoComplete
-                className="w-full"
-                size="large"
-                placeholder={t('settings.modelPh')}
-                options={[
-                  ...(status?.model ? [{ value: status.model }] : []),
-                  { value: 'anthropic/claude-opus-4-5' },
-                  { value: 'openai/gpt-4o' },
-                  { value: 'deepseek-v3.2' },
-                  { value: 'deepseek/deepseek-chat' },
-                  { value: 'openrouter/openai/gpt-4o' },
-                ].filter((o, i, arr) => arr.findIndex((x) => x.value === o.value) === i)}
-                filterOption={(input, option) =>
-                  (option?.value ?? '').toLowerCase().includes((input || '').toLowerCase())
-                }
-              />
-            </Form.Item>
+          <Text type="secondary" className="mb-6 block text-sm leading-relaxed">
+            {t('settings.agentDefaultsHint')}
+          </Text>
+          <Form
+            form={form}
+            layout="vertical"
+            colon={false}
+            requiredMark={false}
+            className="max-w-[680px]"
+            labelAlign="left"
+          >
+            <Typography.Title level={5} className="!mb-3 !mt-0 !text-base !font-semibold">
+              {t('settings.sectionModelEnvironment')}
+            </Typography.Title>
+            <Row gutter={[token.marginLG, token.marginSM]}>
+              <Col xs={24} lg={12}>
+                <Form.Item
+                  label={t('settings.model')}
+                  name="model"
+                  tooltip={{ title: t('settings.modelExtra') }}
+                >
+                  <AutoComplete
+                    className="w-full max-w-full"
+                    size="middle"
+                    placeholder={t('settings.modelPh')}
+                    options={[
+                      ...(status?.model ? [{ value: status.model }] : []),
+                      { value: 'anthropic/claude-opus-4-5' },
+                      { value: 'openai/gpt-4o' },
+                      { value: 'deepseek-v3.2' },
+                      { value: 'deepseek/deepseek-chat' },
+                      { value: 'openrouter/openai/gpt-4o' },
+                    ].filter((o, i, arr) => arr.findIndex((x) => x.value === o.value) === i)}
+                    filterOption={(input, option) =>
+                      (option?.value ?? '').toLowerCase().includes((input || '').toLowerCase())
+                    }
+                  />
+                </Form.Item>
+              </Col>
+              <Col xs={24} lg={12}>
+                <Form.Item
+                  label={t('settings.provider')}
+                  name="provider"
+                  tooltip={{ title: t('settings.providerExtra') }}
+                >
+                  <AutoComplete
+                    className="w-full max-w-full"
+                    size="middle"
+                    placeholder={t('settings.providerPh')}
+                    options={[
+                      { value: 'auto' },
+                      ...PROVIDER_NAMES.map((p) => ({ value: p })),
+                    ].filter((o, i, arr) => arr.findIndex((x) => x.value === o.value) === i)}
+                    filterOption={(input, option) =>
+                      (option?.value ?? '').toLowerCase().includes((input || '').toLowerCase())
+                    }
+                  />
+                </Form.Item>
+              </Col>
+            </Row>
 
-            <Form.Item
-              label={t('settings.provider')}
-              name="provider"
-              extra={t('settings.providerExtra')}
-            >
-              <AutoComplete
-                className="w-full"
-                size="large"
-                placeholder={t('settings.providerPh')}
+            <Form.Item label={t('settings.reasoningEffort')} name="reasoning_effort" className="!mb-6">
+              <Segmented
+                block
+                size="middle"
                 options={[
-                  { value: 'auto' },
-                  ...PROVIDER_NAMES.map((p) => ({ value: p })),
-                ].filter((o, i, arr) => arr.findIndex((x) => x.value === o.value) === i)}
-                filterOption={(input, option) =>
-                  (option?.value ?? '').toLowerCase().includes((input || '').toLowerCase())
-                }
+                  { label: t('settings.reasoningLow'), value: 'low' },
+                  { label: t('settings.reasoningMedium'), value: 'medium' },
+                  { label: t('settings.reasoningHigh'), value: 'high' },
+                ]}
               />
-            </Form.Item>
-
-            <Form.Item label={t('settings.reasoningEffort')} name="reasoning_effort">
-              <Radio.Group
-                buttonStyle="solid"
-                size="large"
-                className="flex w-full [&_.ant-radio-button-wrapper]:flex-1 [&_.ant-radio-button-wrapper]:text-center"
-              >
-                <Radio.Button value="low">{t('settings.reasoningLow')}</Radio.Button>
-                <Radio.Button value="medium">{t('settings.reasoningMedium')}</Radio.Button>
-                <Radio.Button value="high">{t('settings.reasoningHigh')}</Radio.Button>
-              </Radio.Group>
             </Form.Item>
 
             <Form.Item
               label={t('settings.workspace')}
               name="workspace"
-              extra={t('settings.workspaceExtra')}
+              tooltip={{ title: t('settings.workspaceExtra') }}
             >
-              <Input className="w-full" placeholder={t('settings.workspacePh')} size="large" />
+              <Input
+                className="font-mono text-sm"
+                placeholder={t('settings.workspacePh')}
+                size="middle"
+              />
             </Form.Item>
 
             <Form.Item
               label={t('settings.timezone')}
               name="timezone"
-              extra={t('settings.timezoneExtra')}
+              tooltip={{ title: t('settings.timezoneExtra') }}
             >
               <Select
                 allowClear
                 showSearch
                 className="w-full"
-                size="large"
+                size="middle"
                 placeholder={t('settings.timezonePh')}
                 options={timeZoneOptions}
                 optionFilterProp="value"
@@ -530,33 +562,54 @@ export default function Settings() {
               />
             </Form.Item>
 
-            <Form.Item
-              label={
-                <span>
-                  {t('settings.maxTokens')}{' '}
-                  <Text type="secondary" className="text-xs font-normal">
-                    {t('settings.maxTokensRange')}
-                  </Text>
-                </span>
-              }
-              name="max_tokens"
-            >
-              <InputNumber min={1} max={200000} className="w-full" size="large" />
-            </Form.Item>
+            <Divider className="my-7" />
 
-            <Form.Item
-              label={
-                <span>
-                  {t('settings.contextWindow')}{' '}
-                  <Text type="secondary" className="text-xs font-normal">
-                    {t('settings.contextWindowRange')}
-                  </Text>
-                </span>
-              }
-              name="context_window_tokens"
-            >
-              <InputNumber min={1} max={1000000} className="w-full" size="large" />
-            </Form.Item>
+            <Typography.Title level={5} className="!mb-4 !mt-0 !text-base !font-semibold">
+              {t('settings.sectionSampling')}
+            </Typography.Title>
+
+            <Row gutter={[token.marginLG, token.marginSM]}>
+              <Col xs={24} sm={12}>
+                <Form.Item
+                  label={
+                    <span>
+                      {t('settings.maxTokens')}{' '}
+                      <Text type="secondary" className="text-xs font-normal">
+                        {t('settings.maxTokensRange')}
+                      </Text>
+                    </span>
+                  }
+                  name="max_tokens"
+                >
+                  <InputNumber
+                    min={1}
+                    max={200000}
+                    size="middle"
+                    className="!w-full max-w-[220px]"
+                  />
+                </Form.Item>
+              </Col>
+              <Col xs={24} sm={12}>
+                <Form.Item
+                  label={
+                    <span>
+                      {t('settings.contextWindow')}{' '}
+                      <Text type="secondary" className="text-xs font-normal">
+                        {t('settings.contextWindowRange')}
+                      </Text>
+                    </span>
+                  }
+                  name="context_window_tokens"
+                >
+                  <InputNumber
+                    min={1}
+                    max={1000000}
+                    size="middle"
+                    className="!w-full max-w-[220px]"
+                  />
+                </Form.Item>
+              </Col>
+            </Row>
 
             <Form.Item
               label={
@@ -569,7 +622,14 @@ export default function Settings() {
               }
               name="max_iterations"
             >
-              <Slider min={1} max={100} marks={{ 1: '1', 50: '50', 100: '100' }} tooltip={{ formatter: (v) => (v !== undefined ? v : '') }} />
+              <div className="max-w-xl pt-1">
+                <Slider
+                  min={1}
+                  max={100}
+                  marks={{ 1: '1', 50: '50', 100: '100' }}
+                  tooltip={{ formatter: (v) => (v !== undefined ? String(v) : '') }}
+                />
+              </div>
             </Form.Item>
 
             <Form.Item
@@ -582,14 +642,17 @@ export default function Settings() {
                 </span>
               }
               name="temperature"
+              className="!mb-0"
             >
-              <Slider
-                min={0}
-                max={2}
-                step={0.1}
-                marks={{ 0: '0.0', 1: '1.0', 2: '2.0' }}
-                tooltip={{ formatter: (v) => (v !== undefined ? v.toFixed(1) : '') }}
-              />
+              <div className="max-w-xl pt-1">
+                <Slider
+                  min={0}
+                  max={2}
+                  step={0.1}
+                  marks={{ 0: '0.0', 1: '1.0', 2: '2.0' }}
+                  tooltip={{ formatter: (v) => (v !== undefined ? v.toFixed(1) : '') }}
+                />
+              </div>
             </Form.Item>
           </Form>
         </Card>
@@ -740,6 +803,8 @@ export default function Settings() {
         onChange={(key) => setActiveTab(key as SettingsTab)}
         items={tabItems}
         className="hub-shell-tabs"
+        size="large"
+        tabBarGutter={token.margin}
       />
     </PageLayout>
   );
