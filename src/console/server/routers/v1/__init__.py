@@ -18,6 +18,7 @@ from . import (
     env,
     health,
     health_audit,
+    llm_providers,
     mcp,
     memory,
     metrics,
@@ -62,3 +63,4 @@ api_router.include_router(workspace.router)
 api_router.include_router(activity.router)
 api_router.include_router(queues.router)
 api_router.include_router(metrics.router)
+api_router.include_router(llm_providers.router)

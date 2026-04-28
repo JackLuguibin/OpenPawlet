@@ -407,6 +407,7 @@ _PROFILE_OVERRIDE_FIELDS: tuple[str, ...] = (
     "skills_denylist",
     "use_own_bootstrap",
     "inherit_main_bootstrap",
+    "provider_instance_id",
 )
 
 

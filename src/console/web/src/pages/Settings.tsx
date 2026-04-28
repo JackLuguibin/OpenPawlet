@@ -18,10 +18,7 @@ import {
   Space,
   Radio,
   Select,
-  Tag,
   Alert,
-  Collapse,
-  Empty,
 } from 'antd';
 import {
   SaveOutlined,
@@ -40,12 +37,8 @@ import { useAppStore } from '../store';
 import { formatQueryError } from '../utils/errors';
 import { getCommonTimeZoneSelectOptions } from '../utils/timezones';
 import { PageLayout } from '../components/PageLayout';
-import {
-  PROVIDER_NAMES,
-  type ProviderFormEntry,
-  buildProvidersPayload,
-  providerDisplayName,
-} from './settings/providersUtils';
+import { PROVIDER_NAMES } from './settings/providersUtils';
+import LLMProvidersPanel from './settings/LLMProvidersPanel';
 import Channels from './Channels';
 import Cron from './Cron';
 
@@ -161,41 +154,6 @@ export default function Settings() {
     }
   }, [envData]);
 
-  const [providerForm, setProviderForm] = useState<Record<string, ProviderFormEntry>>({});
-  const [providerFilter, setProviderFilter] = useState('');
-  const filteredProviderNames = useMemo(() => {
-    const q = providerFilter.trim().toLowerCase();
-    if (!q) return [...PROVIDER_NAMES];
-    return PROVIDER_NAMES.filter(
-      (name) =>
-        name.toLowerCase().includes(q) ||
-        providerDisplayName(name, t).toLowerCase().includes(q)
-    );
-  }, [providerFilter, t]);
-
-  useEffect(() => {
-    const raw = (config as Record<string, unknown>)?.providers as Record<string, Record<string, unknown>> | undefined;
-    if (!raw) {
-      const empty: ProviderFormEntry = { apiKey: '', apiBase: '', extraHeadersJson: '' };
-      setProviderForm(Object.fromEntries(PROVIDER_NAMES.map((name) => [name, empty])));
-      return;
-    }
-    const next: Record<string, ProviderFormEntry> = {};
-    for (const name of PROVIDER_NAMES) {
-      const p = raw[name] ?? raw[name.replace(/_/g, '')] ?? {};
-      const apiKey = (p.apiKey ?? p.api_key ?? '') as string;
-      const apiBase = (p.apiBase ?? p.api_base ?? '') as string;
-      const extra = p.extraHeaders ?? p.extra_headers;
-      const extraHeadersJson =
-        typeof extra === 'object' && extra !== null
-          ? JSON.stringify(extra, null, 2)
-          : typeof extra === 'string'
-            ? extra
-            : '';
-      next[name] = { apiKey, apiBase, extraHeadersJson };
-    }
-    setProviderForm(next);
-  }, [config]);
 
   useEffect(() => {
     if (config) {
@@ -226,7 +184,6 @@ export default function Settings() {
   const saveSettingsMutation = useMutation({
     mutationFn: async () => {
       const values = await form.validateFields();
-      const providersPayload = buildProvidersPayload(providerForm);
       await api.updateConfig(
         'agents',
         {
@@ -244,7 +201,6 @@ export default function Settings() {
         },
         currentBotId
       );
-      await api.updateConfig('providers', providersPayload, currentBotId);
       await api.updateConfig(
         'tools',
         { restrictToWorkspace: values.restrict_to_workspace },
@@ -285,17 +241,6 @@ export default function Settings() {
       if (k) vars[k] = value ?? '';
     }
     updateEnvMutation.mutate(vars);
-  };
-
-  const setProviderField = (
-    name: string,
-    field: keyof ProviderFormEntry,
-    value: string
-  ) => {
-    setProviderForm((prev) => ({
-      ...prev,
-      [name]: { ...(prev[name] ?? { apiKey: '', apiBase: '', extraHeadersJson: '' }), [field]: value },
-    }));
   };
 
   const handleExportConfig = () => {
@@ -564,110 +509,13 @@ export default function Settings() {
         </span>
       ),
       children: (
-        <div className="flex min-h-0 min-w-0 w-full flex-1 flex-col gap-4">
-          <Card
-            title={t('settings.providersCardTitle')}
-            className={SETTINGS_SCROLL_CARD_CLASS}
-            styles={{
-              header: SETTINGS_SCROLL_CARD_STYLES.header,
-              body: { ...SETTINGS_SCROLL_CARD_STYLES.body, paddingTop: 12 },
-            }}
-            extra={
-              <Input.Search
-                allowClear
-                placeholder={t('settings.searchProviders')}
-                value={providerFilter}
-                onChange={(e) => setProviderFilter(e.target.value)}
-                className="w-[min(100%,11rem)] sm:w-52"
-                size="middle"
-              />
-            }
-          >
-            <Alert
-              title={t('settings.providersWarnTitle')}
-              description={t('settings.providersWarnDesc')}
-              type="warning"
-              showIcon
-              className="mb-4"
-            />
-            {filteredProviderNames.length === 0 ? (
-              <Empty className="py-6" description={t('settings.noMatchingProviders')} />
-            ) : (
-              <div className="pr-0.5">
-                <Collapse
-                  defaultActiveKey={[]}
-                  expandIconPlacement="end"
-                  className="bg-transparent"
-                  items={filteredProviderNames.map((name) => {
-                    const entry = providerForm[name] ?? {
-                      apiKey: '',
-                      apiBase: '',
-                      extraHeadersJson: '',
-                    };
-                    const hasKey = Boolean(entry.apiKey?.trim());
-                    return {
-                      key: name,
-                      label: (
-                        <span className="flex min-w-0 flex-1 items-center gap-2">
-                          <span className="truncate font-medium text-gray-900 dark:text-gray-100">
-                            {providerDisplayName(name, t)}
-                          </span>
-                          {hasKey && (
-                            <Tag color="success" className="m-0 shrink-0">
-                              {t('common.configured')}
-                            </Tag>
-                          )}
-                        </span>
-                      ),
-                      children: (
-                        <div className="grid grid-cols-1 gap-4">
-                          <div>
-                            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                              {t('settings.apiKey')}
-                            </label>
-                            <Input.Password
-                              placeholder={t('settings.apiKeyPh')}
-                              value={entry.apiKey}
-                              onChange={(e) => setProviderField(name, 'apiKey', e.target.value)}
-                              className="font-mono"
-                              size="large"
-                            />
-                          </div>
-                          <div>
-                            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                              {t('settings.apiBase')}
-                            </label>
-                            <Input
-                              placeholder={t('settings.apiBasePh')}
-                              value={entry.apiBase}
-                              onChange={(e) => setProviderField(name, 'apiBase', e.target.value)}
-                              className="font-mono"
-                              size="large"
-                            />
-                          </div>
-                          <div>
-                            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                              {t('settings.extraHeaders')}
-                            </label>
-                            <Input.TextArea
-                              placeholder={t('settings.extraHeadersPh')}
-                              value={entry.extraHeadersJson}
-                              onChange={(e) =>
-                                setProviderField(name, 'extraHeadersJson', e.target.value)
-                              }
-                              rows={3}
-                              className="font-mono text-sm"
-                            />
-                          </div>
-                        </div>
-                      ),
-                    };
-                  })}
-                />
-              </div>
-            )}
-          </Card>
-        </div>
+        <Card
+          title={t('llmProviders.title')}
+          className={SETTINGS_SCROLL_CARD_CLASS}
+          styles={SETTINGS_SCROLL_CARD_STYLES}
+        >
+          <LLMProvidersPanel embedded />
+        </Card>
       ),
     },
     {

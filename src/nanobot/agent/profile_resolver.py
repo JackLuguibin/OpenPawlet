@@ -56,6 +56,10 @@ class ResolvedProfile:
     allowed_tools: set[str] | None  # ``None`` = inherit (no whitelist)
     extra_system_prompt: str | None  # console-style ``system_prompt``
     bootstrap_text: str  # SOUL/USER/AGENTS/TOOLS rendered block
+    # When set, the runtime should build a dedicated provider for this
+    # profile via ``build_provider_for_instance(instance_id=...)`` and use
+    # it instead of the inherited main-agent provider.
+    provider_instance_id: str | None = None
 
     @property
     def model(self) -> str:
@@ -248,6 +252,9 @@ def resolve_profile(
         overrides.model = profile.model
     if profile.temperature is not None and overrides.temperature is None:
         overrides.temperature = profile.temperature
+    # Direct ``provider_instance_id`` on the profile takes precedence
+    # over the same field nested under ``overrides``.
+    instance_id = (profile.provider_instance_id or overrides.provider_instance_id or "").strip()
 
     defaults = merge_agent_defaults(base_defaults, overrides)
     tools = merge_tools_config(base_tools, profile.tools_overrides)
@@ -268,6 +275,7 @@ def resolve_profile(
         allowed_tools=allowed,
         extra_system_prompt=extra_prompt,
         bootstrap_text=bootstrap_text,
+        provider_instance_id=instance_id or None,
     )
 
 

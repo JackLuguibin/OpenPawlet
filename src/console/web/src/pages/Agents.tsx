@@ -80,6 +80,26 @@ export default function Agents({ embedded = false }: { embedded?: boolean } = {}
   const [editExtras, setEditExtras] = useState<AgentProfileExtras>(() =>
     extractExtrasFromAgent(null),
   );
+  const [createExtras, setCreateExtras] = useState<AgentProfileExtras>(() =>
+    extractExtrasFromAgent(null),
+  );
+
+  const llmProvidersQuery = useQuery({
+    queryKey: ['llm-providers', currentBotId],
+    queryFn: () => api.listLLMProviders(currentBotId!),
+    enabled: !!currentBotId,
+  });
+  const llmProviderOptions = useMemo(() => {
+    const rows = llmProvidersQuery.data ?? [];
+    return [
+      { value: '', label: t('agentProfile.providerInherit', '— inherit from main —') },
+      ...rows.map((inst) => ({
+        value: inst.id,
+        label: `${inst.name} (${inst.provider}${inst.model ? ' · ' + inst.model : ''})`,
+        title: inst.description ?? '',
+      })),
+    ];
+  }, [llmProvidersQuery.data, t]);
   const [formData, setFormData] = useState<AgentCreateRequest>({
     name: '',
     description: '',
@@ -166,8 +186,15 @@ export default function Agents({ embedded = false }: { embedded?: boolean } = {}
   });
 
   const createMutation = useMutation({
-    mutationFn: async (input: { payload: AgentCreateRequest; displayCategory: string }) => {
-      const agent = await api.createAgent(currentBotId!, input.payload);
+    mutationFn: async (input: {
+      payload: AgentCreateRequest;
+      displayCategory: string;
+      extras?: AgentProfileExtras;
+    }) => {
+      const enrichedPayload: AgentCreateRequest = input.extras
+        ? { ...input.payload, provider_instance_id: input.extras.provider_instance_id ?? null }
+        : input.payload;
+      const agent = await api.createAgent(currentBotId!, enrichedPayload);
       await api.setCategoryOverride(
         currentBotId!,
         agent.id,
@@ -254,6 +281,7 @@ export default function Agents({ embedded = false }: { embedded?: boolean } = {}
       collaborators: [],
       enabled: true,
     });
+    setCreateExtras(extractExtrasFromAgent(null));
     setCreateFormCategory('general');
     setTopicIssues({
       invalidFormat: [],
@@ -333,6 +361,7 @@ export default function Agents({ embedded = false }: { embedded?: boolean } = {}
       createMutation.mutate({
         payload: { ...formData, topics },
         displayCategory: createFormCategory,
+        extras: createExtras,
       });
     }
   };
@@ -776,6 +805,27 @@ export default function Agents({ embedded = false }: { embedded?: boolean } = {}
             {t('agents.sectionModel')}
           </Typography.Text>
           <Divider className="!mt-1 !mb-3" />
+          <Form.Item
+            label={t('agentProfile.providerInstance', 'LLM provider instance')}
+            extra={t(
+              'agentProfile.providerInstanceExtra',
+              'Bind this agent to a configured provider (multi-key + fail-over). Falls back to main when unset.',
+            )}
+          >
+            <Select
+              showSearch
+              allowClear
+              optionFilterProp="label"
+              value={createExtras.provider_instance_id ?? ''}
+              onChange={(v) =>
+                setCreateExtras({ ...createExtras, provider_instance_id: v ? v : null })
+              }
+              options={llmProviderOptions}
+              loading={llmProvidersQuery.isLoading}
+              placeholder={t('agentProfile.providerInstancePh', 'Pick a provider instance')}
+              className="w-full"
+            />
+          </Form.Item>
           <div className="grid grid-cols-2 gap-4">
             <Form.Item label={t('agents.model')}>
               <Select

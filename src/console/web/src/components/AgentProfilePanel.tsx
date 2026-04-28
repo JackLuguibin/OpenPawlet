@@ -57,6 +57,8 @@ export interface AgentProfileExtras {
   skills_denylist?: string[];
   use_own_bootstrap?: boolean;
   inherit_main_bootstrap?: boolean;
+  /** Bind this agent to a specific LLM provider instance (id from /llm-providers). */
+  provider_instance_id?: string | null;
 }
 
 interface Props {
@@ -92,7 +94,7 @@ export function AgentProfilePanel({ agent, extras, onChange }: Props) {
       {
         key: 'model',
         label: t('agentProfile.tabModel', 'Model & Params'),
-        children: <ModelParamsTab extras={extras} setField={setField} />,
+        children: <ModelParamsTab extras={extras} setField={setField} botId={currentBotId} />,
       },
       {
         key: 'tools',
@@ -273,13 +275,50 @@ function BootstrapEditor({
 function ModelParamsTab({
   extras,
   setField,
+  botId,
 }: {
   extras: AgentProfileExtras;
   setField: <K extends keyof AgentProfileExtras>(field: K, value: AgentProfileExtras[K]) => void;
+  botId: string | null;
 }) {
   const { t } = useTranslation();
+  const providersQuery = useQuery({
+    queryKey: ['llm-providers', botId],
+    queryFn: () => api.listLLMProviders(botId!),
+    enabled: !!botId,
+  });
+  const providerOptions = useMemo(() => {
+    const rows = providersQuery.data ?? [];
+    return [
+      { value: '', label: t('agentProfile.providerInherit', '— inherit from main —') },
+      ...rows.map((inst) => ({
+        value: inst.id,
+        label: `${inst.name} (${inst.provider}${inst.model ? ' · ' + inst.model : ''})`,
+        title: inst.description ?? '',
+      })),
+    ];
+  }, [providersQuery.data, t]);
+
   return (
     <Form layout="vertical" className="pt-2">
+      <Form.Item
+        label={t('agentProfile.providerInstance', 'LLM provider instance')}
+        extra={t(
+          'agentProfile.providerInstanceExtra',
+          'Bind this agent to a configured provider (multi-key + fail-over). Falls back to main when unset.',
+        )}
+      >
+        <Select
+          showSearch
+          allowClear
+          optionFilterProp="label"
+          value={extras.provider_instance_id ?? ''}
+          onChange={(v) => setField('provider_instance_id', v ? v : null)}
+          options={providerOptions}
+          loading={providersQuery.isLoading}
+          placeholder={t('agentProfile.providerInstancePh', 'Pick a provider instance')}
+        />
+      </Form.Item>
       <div className="grid grid-cols-2 gap-4">
         <Form.Item label={t('agentProfile.maxTokens', 'max_tokens (null = inherit)')}>
           <InputNumber
@@ -443,6 +482,7 @@ export function extractExtrasFromAgent(agent: Agent | null | undefined): AgentPr
       skills_denylist: [],
       use_own_bootstrap: true,
       inherit_main_bootstrap: false,
+      provider_instance_id: null,
     };
   }
   return {
@@ -459,6 +499,7 @@ export function extractExtrasFromAgent(agent: Agent | null | undefined): AgentPr
     skills_denylist: agent.skills_denylist ?? [],
     use_own_bootstrap: agent.use_own_bootstrap ?? true,
     inherit_main_bootstrap: agent.inherit_main_bootstrap ?? false,
+    provider_instance_id: agent.provider_instance_id ?? null,
   };
 }
 
@@ -482,5 +523,6 @@ export function applyExtrasToUpdate(
     skills_denylist: extras.skills_denylist ?? [],
     use_own_bootstrap: extras.use_own_bootstrap ?? true,
     inherit_main_bootstrap: extras.inherit_main_bootstrap ?? false,
+    provider_instance_id: extras.provider_instance_id ?? null,
   };
 }

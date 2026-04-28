@@ -47,7 +47,20 @@ async def put_config(
     body: ConfigPutBody,
     bot_id: str | None = Query(default=None, alias="bot_id"),
 ) -> DataResponse[ConfigSection]:
-    """Merge ``data`` into ``section`` and save ``config.json``."""
+    """Merge ``data`` into ``section`` and save ``config.json``.
+
+    Writing to ``providers`` via this endpoint is rejected — provider
+    credentials now live in ``llm_providers.json`` and must be edited
+    via the dedicated ``/llm-providers`` API.
+    """
+    if body.section == "providers":
+        raise HTTPException(
+            status_code=410,
+            detail=(
+                "Editing providers via /config is no longer supported. "
+                "Use /api/v1/bots/{bot_id}/llm-providers instead."
+            ),
+        )
     path = resolve_config_path(bot_id)
     merged = merge_config_section(path, body.section, body.data)
     ok, errors = validate_core_config(merged)

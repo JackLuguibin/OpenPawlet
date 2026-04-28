@@ -152,6 +152,17 @@ async def _build_embedded_runtime(app: FastAPI) -> Any | None:
         except Exception:  # noqa: BLE001 - never block runtime over auto-fill
             logger.exception("[config] auto-fill of nanobot config failed; continuing")
 
+        # One-shot migration: legacy ProvidersConfig → llm_providers.json.
+        # Idempotent (skips workspaces that already have instances).
+        try:
+            from nanobot.config.loader import load_config
+            from nanobot.providers.migrate import migrate_legacy_providers
+
+            cfg = load_config()
+            migrate_legacy_providers(cfg.workspace_path, cfg)
+        except Exception:  # noqa: BLE001 - migration must never block startup
+            logger.exception("[migrate] legacy provider migration failed; continuing")
+
         return EmbeddedNanobot.from_environment(
             websocket_host=settings.nanobot_gateway_host,
             websocket_port=settings.nanobot_gateway_port,

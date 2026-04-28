@@ -431,9 +431,9 @@ def _make_provider(config: Config):
     Delegates to :func:`nanobot.providers.factory.build_provider` and renders
     configuration errors via ``rich`` before exiting.
     """
-    from nanobot.providers.factory import build_provider
+    from nanobot.providers.factory import build_default_provider
 
-    return build_provider(config, error_handler=_cli_provider_error)
+    return build_default_provider(config, error_handler=_cli_provider_error)
 
 
 def _load_runtime_config(config: str | None = None, workspace: str | None = None) -> Config:

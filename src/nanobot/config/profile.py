@@ -116,6 +116,10 @@ class AgentDefaultsOverride(Base):
     reasoning_effort: str | None = None
     timezone: str | None = None
     disabled_skills: list[str] | None = None
+    # Bind this profile to a specific :class:`LLMProviderInstance` id
+    # (see ``nanobot/providers/instances.py``).  When set, the runtime
+    # builds a dedicated, fail-over-aware provider for the profile.
+    provider_instance_id: str | None = None
 
 
 class AgentProfile(Base):
@@ -141,6 +145,10 @@ class AgentProfile(Base):
     temperature: float | None = None
     system_prompt: str | None = None  # Extra system block (Console "context note" semantics)
     skills: list[str] | None = None  # Skill *allowlist*; None = inherit main
+    # Direct shortcut for picking an LLM provider instance from the UI
+    # without round-tripping through ``overrides``.  Resolution gives this
+    # priority over ``overrides.provider_instance_id`` when both are set.
+    provider_instance_id: str | None = None
 
     # Full overrides (any field can be ``None`` to inherit).
     overrides: AgentDefaultsOverride = Field(default_factory=AgentDefaultsOverride)

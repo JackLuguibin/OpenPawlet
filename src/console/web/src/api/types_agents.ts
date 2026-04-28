@@ -31,6 +31,12 @@ export interface Agent {
   skills_denylist?: string[];
   use_own_bootstrap?: boolean;
   inherit_main_bootstrap?: boolean;
+  /**
+   * Bind this agent to one configured LLM provider instance (see
+   * llm_providers.json). Takes precedence over the bare ``model`` field
+   * for routing.
+   */
+  provider_instance_id?: string | null;
   // Read-only (server-stamped) flags reflecting on-disk bootstrap files.
   has_soul?: boolean;
   has_user?: boolean;
@@ -62,6 +68,7 @@ export interface AgentCreateRequest {
   skills_denylist?: string[] | null;
   use_own_bootstrap?: boolean | null;
   inherit_main_bootstrap?: boolean | null;
+  provider_instance_id?: string | null;
 }
 
 export interface AgentUpdateRequest {
@@ -87,6 +94,7 @@ export interface AgentUpdateRequest {
   skills_denylist?: string[] | null;
   use_own_bootstrap?: boolean | null;
   inherit_main_bootstrap?: boolean | null;
+  provider_instance_id?: string | null;
 }
 
 export interface AgentBootstrapFiles {

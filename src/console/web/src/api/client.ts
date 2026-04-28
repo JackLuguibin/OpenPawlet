@@ -1466,3 +1466,160 @@ export async function clearQueueDedupe(
     body: JSON.stringify({ scope }),
   });
 }
+
+// ====================
+// LLM Provider Instances API
+// ====================
+
+export async function listLLMProviders(
+  botId: string,
+): Promise<import('./types_llm_providers').LLMProviderInstance[]> {
+  return fetchJson<import('./types_llm_providers').LLMProviderInstance[]>(
+    `${API_BASE}/bots/${encodeURIComponent(botId)}/llm-providers`,
+  );
+}
+
+export async function getLLMProvider(
+  botId: string,
+  instanceId: string,
+): Promise<import('./types_llm_providers').LLMProviderInstance> {
+  return fetchJson<import('./types_llm_providers').LLMProviderInstance>(
+    `${API_BASE}/bots/${encodeURIComponent(botId)}/llm-providers/${encodeURIComponent(instanceId)}`,
+  );
+}
+
+export async function createLLMProvider(
+  botId: string,
+  body: import('./types_llm_providers').LLMProviderInstanceCreate,
+): Promise<import('./types_llm_providers').LLMProviderInstance> {
+  return fetchJson<import('./types_llm_providers').LLMProviderInstance>(
+    `${API_BASE}/bots/${encodeURIComponent(botId)}/llm-providers`,
+    {
+      method: 'POST',
+      body: JSON.stringify(body),
+    },
+  );
+}
+
+export async function updateLLMProvider(
+  botId: string,
+  instanceId: string,
+  body: import('./types_llm_providers').LLMProviderInstanceUpdate,
+): Promise<import('./types_llm_providers').LLMProviderInstance> {
+  return fetchJson<import('./types_llm_providers').LLMProviderInstance>(
+    `${API_BASE}/bots/${encodeURIComponent(botId)}/llm-providers/${encodeURIComponent(instanceId)}`,
+    {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    },
+  );
+}
+
+export async function deleteLLMProvider(
+  botId: string,
+  instanceId: string,
+): Promise<{ status: string }> {
+  return fetchJson<{ status: string }>(
+    `${API_BASE}/bots/${encodeURIComponent(botId)}/llm-providers/${encodeURIComponent(instanceId)}`,
+    { method: 'DELETE' },
+  );
+}
+
+export async function testLLMProvider(
+  botId: string,
+  instanceId: string,
+): Promise<import('./types_llm_providers').LLMProviderTestResult> {
+  return fetchJson<import('./types_llm_providers').LLMProviderTestResult>(
+    `${API_BASE}/bots/${encodeURIComponent(botId)}/llm-providers/${encodeURIComponent(instanceId)}/test`,
+    { method: 'POST' },
+  );
+}
+
+export async function listLLMProviderRegistry(
+  botId: string,
+): Promise<import('./types_llm_providers').LLMProviderRegistryEntry[]> {
+  return fetchJson<import('./types_llm_providers').LLMProviderRegistryEntry[]>(
+    `${API_BASE}/bots/${encodeURIComponent(botId)}/llm-providers/registry`,
+  );
+}
+
+// ----------------------------------------------------------------------
+// Per-instance API key sub-resource
+// ----------------------------------------------------------------------
+
+const KEYS_BASE = (botId: string, instanceId: string) =>
+  `${API_BASE}/bots/${encodeURIComponent(botId)}/llm-providers/${encodeURIComponent(instanceId)}/keys`;
+
+export async function listLLMProviderKeys(
+  botId: string,
+  instanceId: string,
+): Promise<import('./types_llm_providers').MaskedApiKey[]> {
+  return fetchJson<import('./types_llm_providers').MaskedApiKey[]>(
+    KEYS_BASE(botId, instanceId),
+  );
+}
+
+export async function addLLMProviderKey(
+  botId: string,
+  instanceId: string,
+  body: import('./types_llm_providers').ApiKeyAddBody,
+): Promise<import('./types_llm_providers').MaskedApiKey> {
+  return fetchJson<import('./types_llm_providers').MaskedApiKey>(
+    KEYS_BASE(botId, instanceId),
+    {
+      method: 'POST',
+      body: JSON.stringify(body),
+    },
+  );
+}
+
+export async function patchLLMProviderKey(
+  botId: string,
+  instanceId: string,
+  keyId: string,
+  body: import('./types_llm_providers').ApiKeyPatchBody,
+): Promise<import('./types_llm_providers').MaskedApiKey> {
+  return fetchJson<import('./types_llm_providers').MaskedApiKey>(
+    `${KEYS_BASE(botId, instanceId)}/${encodeURIComponent(keyId)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    },
+  );
+}
+
+export async function deleteLLMProviderKey(
+  botId: string,
+  instanceId: string,
+  keyId: string,
+): Promise<{ status: string }> {
+  return fetchJson<{ status: string }>(
+    `${KEYS_BASE(botId, instanceId)}/${encodeURIComponent(keyId)}`,
+    { method: 'DELETE' },
+  );
+}
+
+export async function reorderLLMProviderKeys(
+  botId: string,
+  instanceId: string,
+  orderedIds: string[],
+): Promise<import('./types_llm_providers').MaskedApiKey[]> {
+  return fetchJson<import('./types_llm_providers').MaskedApiKey[]>(
+    `${KEYS_BASE(botId, instanceId)}/reorder`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ orderedIds }),
+    },
+  );
+}
+
+export async function revealLLMProviderKey(
+  botId: string,
+  instanceId: string,
+  keyId: string,
+): Promise<import('./types_llm_providers').ApiKeyRevealResult> {
+  return fetchJson<import('./types_llm_providers').ApiKeyRevealResult>(
+    `${KEYS_BASE(botId, instanceId)}/${encodeURIComponent(keyId)}/reveal`,
+    { method: 'POST' },
+  );
+}

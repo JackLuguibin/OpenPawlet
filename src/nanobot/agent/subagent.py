@@ -559,6 +559,16 @@ class SubagentManager:
                 effective_max_chars = self.max_tool_result_chars
                 effective_max_iter = 15
 
+            # If the profile explicitly bound to an LLM provider instance,
+            # build a fail-over-aware provider on demand and use a runner
+            # backed by it.  Falls back silently to the inherited runner
+            # when the instance can't be resolved (e.g. user deleted it).
+            runner_for_task = self.runner
+            if resolved is not None and resolved.provider_instance_id:
+                provider_for_profile = self._build_profile_provider(resolved)
+                if provider_for_profile is not None:
+                    runner_for_task = AgentRunner(provider_for_profile)
+
             runtime = ContextBuilder._build_runtime_context(
                 origin["channel"],
                 origin["chat_id"],
@@ -574,7 +584,7 @@ class SubagentManager:
             # working on the first turn.
             self._flush_initial_messages(sub_session_key, messages)
 
-            result = await self.runner.run(
+            result = await runner_for_task.run(
                 AgentRunSpec(
                     initial_messages=messages,
                     tools=tools,
@@ -872,6 +882,35 @@ class SubagentManager:
             lines.append("Failure:")
             lines.append(f"- {result.error}")
         return "\n".join(lines) or (result.error or "Error: subagent execution failed.")
+
+    def _build_profile_provider(self, resolved: ResolvedProfile) -> LLMProvider | None:
+        """Construct a dedicated provider for a profile's ``provider_instance_id``.
+
+        Returns ``None`` (and logs a warning) when the instance is missing
+        or cannot be instantiated, letting the caller fall back to the
+        main agent's inherited provider.
+        """
+        instance_id = resolved.provider_instance_id
+        if not instance_id:
+            return None
+        try:
+            from nanobot.config.loader import load_config
+            from nanobot.providers.factory import build_provider_for_instance
+
+            config = load_config()
+            return build_provider_for_instance(
+                instance_id=instance_id,
+                config=config,
+                attach_token_usage=False,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning(
+                "Failed to build provider for profile {} instance {}: {}",
+                resolved.profile.id,
+                instance_id,
+                exc,
+            )
+            return None
 
     def _build_subagent_prompt(self) -> str:
         """Build a focused system prompt for the subagent."""

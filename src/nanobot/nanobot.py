@@ -46,9 +46,9 @@ def _resolve_config(
 
 def _build_agent_loop(config: Config, *, bus: MessageBus | None = None) -> AgentLoop:
     """Construct an :class:`AgentLoop` from a fully-resolved ``Config``."""
-    from nanobot.providers.factory import build_provider
+    from nanobot.providers.factory import build_default_provider
 
-    provider = build_provider(config)
+    provider = build_default_provider(config)
     defaults = config.agents.defaults
     return AgentLoop(
         bus=bus or MessageBus(),

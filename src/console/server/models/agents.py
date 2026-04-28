@@ -38,6 +38,10 @@ class Agent(BaseModel):
     skills_denylist: list[str] = Field(default_factory=list)
     use_own_bootstrap: bool = True
     inherit_main_bootstrap: bool = False
+    # When set, the runtime resolves the model + credentials from the
+    # named LLM provider instance (see ``nanobot/providers/instances.py``).
+    # Takes precedence over the bare ``model`` field for routing.
+    provider_instance_id: str | None = None
     # Read-only flags reflecting whether this agent's bootstrap files exist
     # under ``<workspace>/agents/<id>/``. The router populates these on read;
     # ignored on write.
@@ -75,6 +79,7 @@ class AgentCreateRequest(BaseModel):
     skills_denylist: list[str] | None = None
     use_own_bootstrap: bool | None = None
     inherit_main_bootstrap: bool | None = None
+    provider_instance_id: str | None = None
 
 
 class AgentUpdateRequest(BaseModel):
@@ -104,6 +109,7 @@ class AgentUpdateRequest(BaseModel):
     skills_denylist: list[str] | None = None
     use_own_bootstrap: bool | None = None
     inherit_main_bootstrap: bool | None = None
+    provider_instance_id: str | None = None
 
 
 class AgentStatus(BaseModel):
