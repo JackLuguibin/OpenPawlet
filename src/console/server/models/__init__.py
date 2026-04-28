@@ -84,6 +84,13 @@ from console.server.models.skills import (
     SkillCreateBody,
     SkillInfo,
 )
+from console.server.models.skills_git import (
+    SkillsGitAuth,
+    SkillsGitConfig,
+    SkillsGitRepo,
+    SkillsGitRepoUpsertBody,
+    SkillsGitSyncResult,
+)
 from console.server.models.status import StatusResponse
 from console.server.models.teams import (
     AddTeamMemberBody,
@@ -181,6 +188,11 @@ __all__ = [
     "SkillContentResponse",
     "SkillCreateBody",
     "SkillInfo",
+    "SkillsGitAuth",
+    "SkillsGitConfig",
+    "SkillsGitRepo",
+    "SkillsGitRepoUpsertBody",
+    "SkillsGitSyncResult",
     "StatusResponse",
     "Team",
     "TeamCreateRequest",

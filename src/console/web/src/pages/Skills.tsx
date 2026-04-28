@@ -14,6 +14,7 @@ import {
   Row,
   Col,
   Dropdown,
+  Collapse,
 } from 'antd';
 import {
   ReadOutlined,
@@ -27,6 +28,8 @@ import {
   CaretRightOutlined,
   CaretDownOutlined,
   InfoCircleOutlined,
+  GithubOutlined,
+  CloudDownloadOutlined,
 } from '@ant-design/icons';
 import { Markdown } from '../components/Markdown';
 import { useTranslation } from 'react-i18next';
@@ -49,6 +52,7 @@ import {
   normalizeSkillBundlePath,
   workspaceSkillTreeToBundleRows,
 } from './skills/skillsBundleUtils';
+import { SkillsGitSourcesCard } from './skills/SkillsGitSourcesCard';
 
 const { Text } = Typography;
 
@@ -453,6 +457,8 @@ export default function Skills({ embedded = false }: { embedded?: boolean }) {
   const editSkillDraftName = Form.useWatch('name', skillEditForm) as string | undefined;
   const [registryUrl, setRegistryUrl] = useState('');
   const [registrySearch, setRegistrySearch] = useState('');
+  const [gitRepoCount, setGitRepoCount] = useState(0);
+  const [sourcesActiveKeys, setSourcesActiveKeys] = useState<string[]>([]);
   const [createBundleFiles, setCreateBundleFiles] = useState<BundleEntryRow[]>([]);
   const [createActiveFile, setCreateActiveFile] = useState<
     'skill' | 'bundle-root' | string
@@ -987,7 +993,7 @@ export default function Skills({ embedded = false }: { embedded?: boolean }) {
   }) => (
     <div
       className={`
-        group flex items-center justify-between gap-4 px-5 py-4 rounded-md
+        group flex items-center justify-between gap-4 px-4 py-3 rounded-md
         border border-gray-200/70 dark:border-gray-700/60
         bg-white dark:bg-gray-800/50
         hover:border-primary-300/60 dark:hover:border-primary-500/40
@@ -1018,159 +1024,249 @@ export default function Skills({ embedded = false }: { embedded?: boolean }) {
     </div>
   );
 
-  const mainColumn = (
-    <>
-      {!embedded && (
-        <div className="shrink-0">
-          <h1 className="text-xl sm:text-2xl font-semibold text-gray-900 dark:text-gray-100">
-            {t('skills.title')}
-          </h1>
-          <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5 hidden sm:block">
-            {t('skills.subtitle')}
-          </p>
-        </div>
-      )}
+  const builtinSkills = useMemo(
+    () => (skills || []).filter((s) => s.source === 'builtin'),
+    [skills],
+  );
+  const workspaceSkills = useMemo(
+    () => (skills || []).filter((s) => s.source === 'workspace'),
+    [skills],
+  );
+  const activeSkillCount =
+    activeTab === 'builtin' ? builtinSkills.length : workspaceSkills.length;
 
-      {/* Registry: URL + search in one row on wide screens */}
-      <div className="p-4 rounded-md border border-gray-200/80 dark:border-gray-700/60 bg-white dark:bg-gray-800/40 shrink-0">
-        <p className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2 m-0">
-          {t('skills.registryTitle')}
-        </p>
-        {/* h-9 matches App ConfigProvider controlHeight 36 */}
-        <div className="flex flex-col gap-2 min-[500px]:flex-row min-[500px]:items-center min-[500px]:gap-2">
-          <div className="flex min-h-9 min-w-0 items-stretch min-[500px]:min-h-0 min-[500px]:flex-1 min-[500px]:h-9">
-            <Input
-              placeholder={t('skills.registryUrlPlaceholder')}
-              value={registryUrl}
-              onChange={(e) => setRegistryUrl(e.target.value)}
-              className="h-full min-h-9 w-full min-[500px]:min-h-0 border-gray-300 dark:border-gray-600 [&_.ant-input-affix-wrapper]:!h-full [&_.ant-input-affix-wrapper]:!min-h-0 [&_.ant-input]:!h-full [&_.ant-input]:!leading-[22px]"
-              size="middle"
-              allowClear
-            />
+  const sourcesPanelItems = useMemo(
+    () => [
+      {
+        key: 'git',
+        label: (
+          <div className="flex w-full items-center justify-between gap-3 pr-1">
+            <div className="flex items-center gap-2 min-w-0">
+              <GithubOutlined className="text-primary-500 dark:text-primary-400 shrink-0" />
+              <span className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                {t('skillsGit.title')}
+              </span>
+              <Tag className="!m-0 shrink-0" color={gitRepoCount > 0 ? 'blue' : 'default'}>
+                {t('skills.countSummary', { count: gitRepoCount })}
+              </Tag>
+            </div>
           </div>
-          <div className="flex w-full min-w-0 flex-row items-center gap-2 min-[500px]:contents">
-            <div className="flex min-h-9 min-w-0 flex-1 items-stretch min-[500px]:h-9 min-[500px]:w-[12rem] min-[500px]:min-h-0 min-[500px]:flex-initial md:w-[18rem]">
+        ),
+        children: (
+          <SkillsGitSourcesCard
+            bare
+            currentBotId={currentBotId}
+            onSkillsChanged={invalidateSkillsAndWorkspaceFiles}
+            onRepoCountChange={setGitRepoCount}
+          />
+        ),
+      },
+      {
+        key: 'registry',
+        label: (
+          <div className="flex w-full items-center justify-between gap-3 pr-1">
+            <div className="flex items-center gap-2 min-w-0">
+              <CloudDownloadOutlined className="text-primary-500 dark:text-primary-400 shrink-0" />
+              <span className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                {t('skills.registryTitle')}
+              </span>
+              {registryUrl.trim() && (
+                <Tag className="!m-0 shrink-0" color="geekblue">
+                  {t('skills.countSummary', { count: registrySkills.length })}
+                </Tag>
+              )}
+            </div>
+          </div>
+        ),
+        children: (
+          <div className="flex flex-col gap-3">
+            <p className="text-xs text-gray-500 dark:text-gray-400 m-0">
+              {t('skills.registryHint')}
+            </p>
+            <div className="flex flex-col gap-2 min-[500px]:flex-row min-[500px]:items-stretch">
+              <Input
+                placeholder={t('skills.registryUrlPlaceholder')}
+                value={registryUrl}
+                onChange={(e) => setRegistryUrl(e.target.value)}
+                className="min-[500px]:flex-1"
+                size="middle"
+                allowClear
+              />
               <Input.Search
                 placeholder={t('skills.registrySearchPlaceholder')}
                 value={registrySearch}
                 onChange={(e) => setRegistrySearch(e.target.value)}
-                onSearch={() => queryClient.invalidateQueries({ queryKey: ['skills-registry'] })}
+                onSearch={() =>
+                  queryClient.invalidateQueries({ queryKey: ['skills-registry'] })
+                }
                 loading={registryLoading}
                 enterButton={t('skills.search')}
                 disabled={!registryUrl.trim()}
-                className={`
-                  h-full min-h-9 w-full min-[500px]:min-h-0
-                  !flex !flex-row !items-stretch
-                  [&_.ant-input-group]:!flex [&_.ant-input-group]:!h-full [&_.ant-input-group]:!min-h-0 [&_.ant-input-group]:!items-stretch
-                  [&_.ant-input-affix-wrapper]:!h-full [&_.ant-input-affix-wrapper]:!min-h-0 [&_.ant-input-affix-wrapper]:!min-w-0 [&_.ant-input-affix-wrapper]:!flex-1
-                  [&_.ant-input]:!h-full [&_.ant-input]:!leading-[22px]
-                  [&_.ant-btn]:!h-full [&_.ant-btn]:!min-h-0 [&_.ant-btn]:!min-w-[4.5rem] [&_.ant-btn]:!shrink-0 [&_.ant-btn]:!self-stretch
-                `}
                 size="middle"
                 allowClear
+                className="min-[500px]:w-[18rem] md:w-[22rem]"
               />
             </div>
-            <div className="flex h-9 min-w-0 shrink-0 items-stretch">
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={() => setSkillCreateModal(true)}
-                className="!inline-flex !h-full !min-h-0 !items-center !justify-center !px-3 shadow-md shadow-primary-500/25"
-              >
-                <span className="hidden sm:inline">{t('skills.addSkill')}</span>
-              </Button>
-            </div>
-          </div>
-        </div>
-        <div className="mt-3">
-          {registryUrl.trim() && (
-            registrySkills.length === 0 ? (
-              <div className="rounded-md border border-dashed border-gray-200 dark:border-gray-600/80 bg-gray-50/80 dark:bg-gray-900/30 py-8 px-4">
-                <Empty
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  description={registryLoading ? t('common.loading') : t('skills.registryEmpty')}
-                />
-              </div>
-            ) : (
-              <div className="space-y-3 max-h-[min(24rem,40vh)] overflow-y-auto pr-1 -mr-1">
-                {registrySkills.map((s: RegistrySkill) => {
-                  const installed = skills?.some((sk) => sk.name === s.name);
-                  return (
-                    <div
-                      key={s.name}
-                      className="flex items-center justify-between px-4 py-3 rounded bg-gray-50 dark:bg-gray-800/60 border border-gray-100 dark:border-gray-700/50 hover:border-primary-200 dark:hover:border-primary-500/30 transition-colors"
-                    >
-                      <div>
-                        <p className="font-medium text-gray-900 dark:text-gray-100">{s.name}</p>
-                        <Text type="secondary" className="text-xs">
-                          {s.description || '-'}
-                        </Text>
-                      </div>
-                      <Button
-                        type="primary"
-                        size="small"
-                        disabled={!!installed}
-                        loading={installFromRegistryMutation.isPending}
-                        onClick={() => installFromRegistryMutation.mutate(s.name)}
-                        className="!rounded-md"
+            {registryUrl.trim() &&
+              (registrySkills.length === 0 ? (
+                <div className="rounded-md border border-dashed border-gray-200 dark:border-gray-600/80 bg-gray-50/80 dark:bg-gray-900/30 py-4 px-4">
+                  <Empty
+                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                    styles={{ image: { height: 40 } }}
+                    description={
+                      registryLoading
+                        ? t('common.loading')
+                        : t('skills.registryEmpty')
+                    }
+                  />
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-[min(20rem,38vh)] overflow-y-auto pr-1 -mr-1">
+                  {registrySkills.map((s: RegistrySkill) => {
+                    const installed = skills?.some((sk) => sk.name === s.name);
+                    return (
+                      <div
+                        key={s.name}
+                        className="flex items-center justify-between gap-3 px-3 py-2 rounded bg-gray-50 dark:bg-gray-800/60 border border-gray-100 dark:border-gray-700/50 hover:border-primary-200 dark:hover:border-primary-500/30 transition-colors"
                       >
-                        {installed ? t('skills.installedLabel') : t('skills.install')}
-                      </Button>
-                    </div>
-                  );
-                })}
-              </div>
-            )
-          )}
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium text-gray-900 dark:text-gray-100 m-0 truncate">
+                            {s.name}
+                          </p>
+                          <Text type="secondary" className="text-xs line-clamp-1 block">
+                            {s.description || '-'}
+                          </Text>
+                        </div>
+                        <Button
+                          type="primary"
+                          size="small"
+                          disabled={!!installed}
+                          loading={installFromRegistryMutation.isPending}
+                          onClick={() => installFromRegistryMutation.mutate(s.name)}
+                          className="!rounded-md shrink-0"
+                        >
+                          {installed ? t('skills.installedLabel') : t('skills.install')}
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+          </div>
+        ),
+      },
+    ],
+    [
+      currentBotId,
+      gitRepoCount,
+      installFromRegistryMutation,
+      invalidateSkillsAndWorkspaceFiles,
+      queryClient,
+      registryLoading,
+      registrySearch,
+      registrySkills,
+      registryUrl,
+      skills,
+      t,
+    ],
+  );
+
+  const mainColumn = (
+    <>
+      {!embedded && (
+        <div className="shrink-0 flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="text-xl sm:text-2xl font-semibold text-gray-900 dark:text-gray-100 m-0">
+              {t('skills.title')}
+            </h1>
+            <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5 hidden sm:block m-0">
+              {t('skills.subtitle')}
+            </p>
+          </div>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => setSkillCreateModal(true)}
+            className="shadow-md shadow-primary-500/25 shrink-0"
+          >
+            {t('skills.addSkill')}
+          </Button>
         </div>
-      </div>
+      )}
+
+      {embedded && (
+        <div className="shrink-0 flex justify-end">
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => setSkillCreateModal(true)}
+            className="shadow-md shadow-primary-500/25"
+          >
+            {t('skills.addSkill')}
+          </Button>
+        </div>
+      )}
+
+      <Collapse
+        items={sourcesPanelItems}
+        activeKey={sourcesActiveKeys}
+        onChange={(keys) =>
+          setSourcesActiveKeys(Array.isArray(keys) ? keys : [keys].filter(Boolean) as string[])
+        }
+        bordered
+        expandIconPosition="end"
+        className="shrink-0 [&_.ant-collapse-header]:!items-center [&_.ant-collapse-content-box]:!pt-3"
+      />
 
       {skillsLoading ? (
         <div className="flex-1 flex items-center justify-center min-h-[12rem]">
           <Spin size="large" />
         </div>
       ) : !skills || skills.length === 0 ? (
-        <div className="flex-1 flex flex-col items-center justify-center min-h-[min(20rem,45vh)] rounded-md border border-dashed border-gray-200/90 dark:border-gray-700/70 bg-gray-50/50 dark:bg-gray-800/20 px-6 py-10">
+        <div className="flex-1 flex flex-col items-center justify-center min-h-[min(16rem,35vh)] rounded-md border border-dashed border-gray-200/90 dark:border-gray-700/70 bg-gray-50/50 dark:bg-gray-800/20 px-6 py-8">
           <Empty description={t('skills.noSkills')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
         </div>
       ) : (
-        <div className="flex flex-col flex-1 min-h-0 gap-3">
-          <div className="flex shrink-0 items-start gap-2 rounded-md border border-primary-200/60 bg-primary-50/40 px-3 py-2 text-xs text-gray-600 dark:border-primary-800/50 dark:bg-primary-950/30 dark:text-gray-400">
-            <InfoCircleOutlined className="mt-0.5 shrink-0 text-primary-500 dark:text-primary-400" />
+        <div className="flex flex-col flex-1 min-h-0 gap-2">
+          <div className="flex shrink-0 items-center gap-2 rounded-md border border-primary-200/60 bg-primary-50/40 px-3 py-1.5 text-xs text-gray-600 dark:border-primary-800/50 dark:bg-primary-950/30 dark:text-gray-400">
+            <InfoCircleOutlined className="shrink-0 text-primary-500 dark:text-primary-400" />
             <span>{t('skills.restartCompact')}</span>
           </div>
-          <div className="flex border-b border-gray-200 dark:border-gray-700 mb-0 gap-0 shrink-0">
-            {skillTabs.map(({ key, label }) => (
-              <button
-                key={key}
-                onClick={() => setActiveTab(key)}
-                className={`
-                  relative px-4 py-2.5 text-sm font-medium transition-all duration-200
-                  ${activeTab === key
-                    ? 'text-primary-600 dark:text-primary-400'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-                  }
-                `}
-              >
-                {label}
-                {activeTab === key && (
-                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500 rounded-full" />
-                )}
-              </button>
-            ))}
+          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-gray-200 dark:border-gray-700">
+            <div className="flex gap-0">
+              {skillTabs.map(({ key, label }) => (
+                <button
+                  key={key}
+                  onClick={() => setActiveTab(key)}
+                  className={`
+                    relative px-4 py-2 text-sm font-medium transition-all duration-200
+                    ${activeTab === key
+                      ? 'text-primary-600 dark:text-primary-400'
+                      : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                    }
+                  `}
+                >
+                  {label}
+                  {activeTab === key && (
+                    <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500 rounded-full" />
+                  )}
+                </button>
+              ))}
+            </div>
+            <span className="text-xs text-gray-500 dark:text-gray-400 pr-1">
+              {t('skills.countSummary', { count: activeSkillCount })}
+            </span>
           </div>
 
           <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pt-1 pb-1">
             {activeTab === 'builtin' ? (
-              skills.filter((s) => s.source === 'builtin').length === 0 ? (
+              builtinSkills.length === 0 ? (
                 <div className="flex min-h-0 flex-1 flex-col items-center justify-center py-6">
                   <Empty description={t('skills.emptyBuiltin')} />
                 </div>
               ) : (
-                <div className="space-y-3">
-                  {skills
-                    .filter((s) => s.source === 'builtin')
-                    .map((skill) => (
+                <div className="space-y-2">
+                  {builtinSkills.map((skill) => (
                       <SkillItemCard key={skill.name} skill={skill} source="builtin">
                         <Button
                           type="text"
@@ -1208,15 +1304,13 @@ export default function Skills({ embedded = false }: { embedded?: boolean }) {
                     ))}
                 </div>
               )
-            ) : skills.filter((s) => s.source === 'workspace').length === 0 ? (
+            ) : workspaceSkills.length === 0 ? (
               <div className="flex min-h-0 flex-1 flex-col items-center justify-center py-6">
                 <Empty description={t('skills.emptyWorkspace')} />
               </div>
             ) : (
-              <div className="space-y-3">
-                {skills
-                  .filter((s) => s.source === 'workspace')
-                  .map((skill) => (
+              <div className="space-y-2">
+                {workspaceSkills.map((skill) => (
                     <SkillItemCard key={skill.name} skill={skill} source="workspace">
                       <Button
                         type="text"

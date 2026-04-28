@@ -274,9 +274,23 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if not embedded_disabled():
         await start_embedded_runtime(app)
 
+    # Start Skills git auto-sync scheduler (independent of nanobot runtime).
+    try:
+        from console.server.skills_git_scheduler import attach_to_app
+
+        attach_to_app(app).start()
+    except Exception:  # noqa: BLE001 - scheduler is optional, never block boot
+        logger.exception("[skills-git] failed to start scheduler; continuing")
+
     try:
         yield
     finally:
+        sched = getattr(app.state, "skills_git_scheduler", None)
+        if sched is not None:
+            try:
+                await sched.stop()
+            except Exception:  # pragma: no cover - best effort shutdown
+                logger.exception("[skills-git] scheduler shutdown failed")
         embedded = getattr(app.state, "embedded", None)
         if embedded is not None:
             try:

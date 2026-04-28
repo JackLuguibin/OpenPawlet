@@ -26,6 +26,7 @@ from . import (
     runtime_logs,
     sessions,
     skills,
+    skills_git,
     status,
     teams,
     tools,
@@ -53,6 +54,7 @@ api_router.include_router(memory.router)
 api_router.include_router(bot_files.router)
 api_router.include_router(config.router)
 api_router.include_router(skills.router)
+api_router.include_router(skills_git.router)
 api_router.include_router(env.router)
 api_router.include_router(cron.router)
 api_router.include_router(control.router)

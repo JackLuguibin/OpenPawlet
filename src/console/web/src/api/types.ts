@@ -256,6 +256,58 @@ export interface SkillInfo {
   available?: boolean;
 }
 
+// ====================
+// Skills Git source repos
+// ====================
+
+export type SkillsGitRepoKind = 'single' | 'multi';
+export type SkillsGitAuthKind = 'none' | 'token' | 'ssh';
+
+export interface SkillsGitAuth {
+  kind: SkillsGitAuthKind;
+  token_env?: string | null;
+  username?: string | null;
+  ssh_key_path?: string | null;
+  ssh_passphrase_env?: string | null;
+}
+
+export interface SkillsGitRepo {
+  id: string;
+  name: string;
+  url: string;
+  branch?: string | null;
+  kind: SkillsGitRepoKind;
+  target?: string | null;
+  auth: SkillsGitAuth;
+  auto_update: boolean;
+  interval_minutes: number;
+  last_sync_at?: string | null;
+  last_sync_status?: 'ok' | 'error' | 'pending' | null;
+  last_sync_message?: string | null;
+  last_commit_sha?: string | null;
+}
+
+export interface SkillsGitRepoUpsertBody {
+  name: string;
+  url: string;
+  branch?: string | null;
+  kind: SkillsGitRepoKind;
+  target?: string | null;
+  auth: SkillsGitAuth;
+  auto_update: boolean;
+  interval_minutes: number;
+}
+
+export interface SkillsGitSyncResult {
+  id: string;
+  name: string;
+  status: 'ok' | 'error';
+  message: string;
+  commit_sha?: string | null;
+  synced_skills: string[];
+  duration_ms?: number | null;
+}
+
 export type WSMessageType =
   | 'chat_token'
   | 'chat_done'

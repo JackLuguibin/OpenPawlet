@@ -16,6 +16,9 @@ import type {
   SessionDetail,
   StatusResponse,
   SkillInfo,
+  SkillsGitRepo,
+  SkillsGitRepoUpsertBody,
+  SkillsGitSyncResult,
   ToolCallLog,
   RuntimeLogsData,
   BatchDeleteResponse,
@@ -599,6 +602,72 @@ export async function deleteSkill(
     {
       method: 'DELETE',
     }
+  );
+}
+
+// ====================
+// Skills Git source repos API
+// ====================
+
+export async function listSkillsGitRepos(
+  botId?: string | null
+): Promise<SkillsGitRepo[]> {
+  return fetchJson<SkillsGitRepo[]>(`${API_BASE}/skills/git${botQuery(botId)}`);
+}
+
+export async function createSkillsGitRepo(
+  body: SkillsGitRepoUpsertBody,
+  botId?: string | null
+): Promise<SkillsGitRepo> {
+  return fetchJson<SkillsGitRepo>(`${API_BASE}/skills/git${botQuery(botId)}`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+export async function updateSkillsGitRepo(
+  repoId: string,
+  body: SkillsGitRepoUpsertBody,
+  botId?: string | null
+): Promise<SkillsGitRepo> {
+  return fetchJson<SkillsGitRepo>(
+    appendBotQuery(`${API_BASE}/skills/git/${encodeURIComponent(repoId)}`, botId),
+    {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }
+  );
+}
+
+export async function deleteSkillsGitRepo(
+  repoId: string,
+  botId?: string | null
+): Promise<{ status: string; name: string }> {
+  return fetchJson(
+    appendBotQuery(`${API_BASE}/skills/git/${encodeURIComponent(repoId)}`, botId),
+    { method: 'DELETE' }
+  );
+}
+
+export async function syncSkillsGitRepo(
+  repoId: string,
+  botId?: string | null
+): Promise<SkillsGitSyncResult> {
+  return fetchJson<SkillsGitSyncResult>(
+    appendBotQuery(
+      `${API_BASE}/skills/git/${encodeURIComponent(repoId)}/sync`,
+      botId
+    ),
+    { method: 'POST' }
+  );
+}
+
+export async function syncAllSkillsGitRepos(
+  botId?: string | null
+): Promise<SkillsGitSyncResult[]> {
+  return fetchJson<SkillsGitSyncResult[]>(
+    `${API_BASE}/skills/git/sync-all${botQuery(botId)}`,
+    { method: 'POST' }
   );
 }
 
