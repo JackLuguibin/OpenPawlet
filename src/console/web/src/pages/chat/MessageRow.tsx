@@ -107,7 +107,7 @@ function MessageRowComponent({ msg, extraAbove, formattedTime }: MessageRowProps
         ) : null}
         {extraAbove}
         <div
-          className={`prose prose-sm max-w-none ${
+          className={`prose prose-sm max-w-none min-w-0 w-full break-anywhere ${
             isUser && !isPeerInbound
               ? "prose-slate dark:prose-invert"
               : "dark:prose-invert"
