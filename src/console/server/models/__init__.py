@@ -47,7 +47,13 @@ from console.server.models.config import (
     ConfigSection,
     ConfigValidateResponse,
 )
-from console.server.models.cron import CronAddRequest, CronJob, CronStatus
+from console.server.models.cron import (
+    CronAddRequest,
+    CronHistoryRun,
+    CronJob,
+    CronStatus,
+    CronUpdateRequest,
+)
 from console.server.models.echo import EchoRequest, EchoResponse
 from console.server.models.env import EnvPutBody, EnvPutResponse, EnvResponse
 from console.server.models.errors import ErrorDetail, ErrorResponse
@@ -141,8 +147,10 @@ __all__ = [
     "CreateBotRequest",
     "CreateSessionBody",
     "CronAddRequest",
+    "CronHistoryRun",
     "CronJob",
     "CronStatus",
+    "CronUpdateRequest",
     "DataResponse",
     "DelegateTaskRequest",
     "DelegateTaskResponse",

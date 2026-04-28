@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class CronSchedule(BaseModel):
@@ -72,6 +72,20 @@ class CronAddRequest(BaseModel):
     delete_after_run: bool | None = None
 
 
+class CronUpdateRequest(BaseModel):
+    """PUT /cron/{job_id} body. Any field omitted is left untouched."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = None
+    schedule: CronSchedule | None = None
+    message: str | None = None
+    deliver: bool | None = None
+    channel: str | None = None
+    to: str | None = None
+    delete_after_run: bool | None = None
+
+
 class CronStatus(BaseModel):
     """GET /cron/status."""
 
@@ -83,7 +97,14 @@ class CronStatus(BaseModel):
 
 
 class CronHistoryRun(BaseModel):
-    """Single run record in history map values."""
+    """One execution record returned to the client.
+
+    Includes the job snapshot at execution time so the UI can show which
+    agent / skills / tools / prompt were used – the underlying nanobot
+    cron service stores ``run_at_ms``/``status``/``duration_ms``/``error``;
+    the prompt-side fields are derived from the job's persisted ``message``
+    metadata block (see ``cronMetadata.ts`` on the web client).
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -91,6 +112,18 @@ class CronHistoryRun(BaseModel):
     status: str
     duration_ms: float
     error: str | None = None
+    # Job snapshot fields (echoed for convenient rendering).
+    job_id: str
+    job_name: str
+    # Decoded metadata (parsed best-effort from ``payload.message``).
+    agent_id: str | None = None
+    skills: list[str] = Field(default_factory=list)
+    mcp_servers: list[str] = Field(default_factory=list)
+    tools: list[str] = Field(default_factory=list)
+    prompt: str = ""
+    deliver: bool | None = None
+    channel: str | None = None
+    to: str | None = None
 
 
 def placeholder_cron_job(*, job_id: str = "stub-job") -> CronJob:

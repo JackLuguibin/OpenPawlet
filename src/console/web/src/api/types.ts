@@ -489,10 +489,38 @@ export interface CronAddRequest {
   delete_after_run?: boolean;
 }
 
+export interface CronUpdateRequest {
+  name?: string;
+  schedule?: CronSchedule;
+  message?: string;
+  deliver?: boolean;
+  channel?: string | null;
+  to?: string | null;
+  delete_after_run?: boolean;
+}
+
 export interface CronStatus {
   enabled: boolean;
   jobs: number;
   next_wake_at_ms: number | null;
+}
+
+/** Per-execution record returned by ``GET /cron/history``. */
+export interface CronHistoryRun {
+  run_at_ms: number;
+  status: 'ok' | 'error' | 'skipped' | string;
+  duration_ms: number;
+  error?: string | null;
+  job_id: string;
+  job_name: string;
+  agent_id?: string | null;
+  skills: string[];
+  mcp_servers: string[];
+  tools: string[];
+  prompt: string;
+  deliver?: boolean | null;
+  channel?: string | null;
+  to?: string | null;
 }
 
 // Bot profile files (SOUL, USER, HEARTBEAT, TOOLS, AGENTS)

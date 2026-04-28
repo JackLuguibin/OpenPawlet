@@ -1,22 +1,18 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Badge,
   Button,
   Card,
   List,
-  Modal,
-  Form,
-  Input,
-  Select,
-  InputNumber,
-  Switch,
   Popconfirm,
   Spin,
   Alert,
   Empty,
   Space,
+  Switch,
   Tag,
+  Tooltip,
   Typography,
 } from 'antd';
 import {
@@ -24,10 +20,14 @@ import {
   PlusOutlined,
   PlayCircleOutlined,
   DeleteOutlined,
+  EditOutlined,
+  HistoryOutlined,
   ClockCircleOutlined,
   SyncOutlined,
-  DownOutlined,
-  UpOutlined,
+  RobotOutlined,
+  ToolOutlined,
+  ApiOutlined,
+  ThunderboltOutlined,
 } from '@ant-design/icons';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
@@ -35,10 +35,20 @@ import * as api from '../api/client';
 import { useAppStore } from '../store';
 import { useBots } from '../hooks/useBots';
 import { PageLayout } from '../components/PageLayout';
-import type { CronJob, CronScheduleKind } from '../api/types';
+import type { CronAddRequest, CronJob } from '../api/types';
 import { formatQueryError } from '../utils/errors';
 import { useAgentTimeZone } from '../hooks/useAgentTimeZone';
 import { formatAgentLocaleString } from '../utils/agentDatetime';
+import {
+  decodeCronMessage,
+  isMetadataExpired,
+  isMetadataNotYetActive,
+  type CronTaskMetadata,
+} from '../utils/cronMetadata';
+import { CronTaskFormModal } from './cron/CronTaskFormModal';
+import { CronHistoryDrawer } from './cron/CronHistoryDrawer';
+
+const { Text } = Typography;
 
 function formatSchedule(
   job: CronJob,
@@ -82,70 +92,81 @@ function isOverdue(job: CronJob): boolean {
   return job.state.next_run_at_ms < Date.now();
 }
 
-function CronJobDetails({
-  job,
+function MetadataChips({
+  meta,
+  agentName,
+  t,
+}: {
+  meta: CronTaskMetadata;
+  agentName?: string;
+  t: TFunction;
+}) {
+  const skills = meta.skills ?? [];
+  const tools = meta.tools ?? [];
+  const mcps = meta.mcpServers ?? [];
+  const showAny = agentName || skills.length || tools.length || mcps.length;
+  if (!showAny) return null;
+  return (
+    <Space size={[4, 4]} wrap className="mt-1">
+      {agentName && (
+        <Tag icon={<RobotOutlined />} color="geekblue">
+          {agentName}
+        </Tag>
+      )}
+      {skills.length > 0 && (
+        <Tooltip title={skills.join(', ')}>
+          <Tag icon={<ThunderboltOutlined />} color="purple">
+            {t('cron.chipSkills', { count: skills.length })}
+          </Tag>
+        </Tooltip>
+      )}
+      {tools.length > 0 && (
+        <Tooltip title={tools.join(', ')}>
+          <Tag icon={<ToolOutlined />} color="cyan">
+            {t('cron.chipTools', { count: tools.length })}
+          </Tag>
+        </Tooltip>
+      )}
+      {mcps.length > 0 && (
+        <Tooltip title={mcps.join(', ')}>
+          <Tag icon={<ApiOutlined />} color="gold">
+            {t('cron.chipMcp', { count: mcps.length })}
+          </Tag>
+        </Tooltip>
+      )}
+    </Space>
+  );
+}
+
+function WindowChips({
+  meta,
+  t,
   agentTz,
   locale,
 }: {
-  job: CronJob;
+  meta: CronTaskMetadata;
+  t: TFunction;
   agentTz: string;
   locale: string;
 }) {
-  const { t } = useTranslation();
-  const { currentBotId } = useAppStore();
-  const { data: historyData } = useQuery({
-    queryKey: ['cron-history', currentBotId, job.id],
-    queryFn: () => api.getCronHistory(currentBotId, job.id),
-    enabled: Boolean(currentBotId) && !!job.id,
-  });
-  const history = historyData?.[job.id] || [];
-
+  if (!meta.startAtMs && !meta.endAtMs) return null;
   return (
-    <div className="space-y-2 mt-2 pl-0 pt-2 border-t border-gray-100 dark:border-gray-700">
-      {job.payload.message && (
-        <div className="text-sm text-gray-500 break-words">
-          {t('cron.detailInstruction')} {job.payload.message}
-        </div>
+    <Space size={[4, 4]} wrap className="mt-1">
+      {meta.startAtMs && (
+        <Tag color={isMetadataNotYetActive(meta) ? 'orange' : 'default'}>
+          {t('cron.windowFrom', {
+            time: formatAgentLocaleString(meta.startAtMs, agentTz, locale),
+          })}
+        </Tag>
       )}
-      <div className="text-xs text-gray-400">
-        {t('cron.detailNextRun')}{' '}
-        {formatNextRun(job.state.next_run_at_ms, t, agentTz, locale)}
-        {job.state.last_run_at_ms && (
-          <>
-            {' '}
-            · {t('cron.detailLastRun')}{' '}
-            {formatAgentLocaleString(job.state.last_run_at_ms, agentTz, locale)}
-          </>
-        )}
-      </div>
-      {history.length > 0 && (
-        <div className="mt-2">
-          <div className="text-xs font-medium text-gray-500 mb-1">{t('cron.historyTitle')}</div>
-          <div className="space-y-1 max-h-32 overflow-y-auto">
-            {[...history].reverse().slice(0, 10).map((h, i) => (
-              <div
-                key={`${h.run_at_ms}-${i}`}
-                className="flex items-center justify-between text-xs py-0.5 border-b border-gray-50 dark:border-gray-800 last:border-0"
-              >
-                <span className="text-gray-500">
-                  {formatAgentLocaleString(h.run_at_ms, agentTz, locale)}
-                </span>
-                <Space size={4}>
-                  <Tag color={h.status === 'ok' ? 'green' : 'red'} className="m-0 text-xs">
-                    {h.status === 'ok' ? t('cron.runOk') : t('cron.runFail')}
-                  </Tag>
-                  <span className="text-gray-400">
-                    {h.duration_ms < 1000
-                      ? `${h.duration_ms}ms`
-                      : `${(h.duration_ms / 1000).toFixed(1)}s`}
-                  </span>
-                </Space>
-              </div>
-            ))}
-          </div>
-        </div>
+      {meta.endAtMs && (
+        <Tag color={isMetadataExpired(meta) ? 'red' : 'default'}>
+          {t('cron.windowTo', {
+            time: formatAgentLocaleString(meta.endAtMs, agentTz, locale),
+          })}
+        </Tag>
       )}
-    </div>
+    </Space>
   );
 }
 
@@ -156,20 +177,11 @@ export default function Cron({ embedded = false }: { embedded?: boolean } = {}) 
   const agentTz = useAgentTimeZone();
   const locale = i18n.language.startsWith('zh') ? 'zh-CN' : 'en-US';
   const { data: bots = [], isLoading: botsLoading, isFetched: botsFetched } = useBots();
-  const [addModalOpen, setAddModalOpen] = useState(false);
-  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
-  const [form] = Form.useForm();
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingJob, setEditingJob] = useState<CronJob | null>(null);
+  const [historyJob, setHistoryJob] = useState<CronJob | null>(null);
 
   const waitingBot = botsFetched && bots.length > 0 && !currentBotId;
-
-  const toggleExpand = (jobId: string) => {
-    setExpandedKeys((prev) => {
-      const next = new Set(prev);
-      if (next.has(jobId)) next.delete(jobId);
-      else next.add(jobId);
-      return next;
-    });
-  };
 
   const { data: jobs = [], isLoading, error, refetch } = useQuery({
     queryKey: ['cron', currentBotId],
@@ -183,40 +195,33 @@ export default function Cron({ embedded = false }: { embedded?: boolean } = {}) 
     enabled: Boolean(currentBotId),
   });
 
+  const { data: agents = [] } = useQuery({
+    queryKey: ['cron-page-agents', currentBotId],
+    queryFn: () => (currentBotId ? api.listAgents(currentBotId) : Promise.resolve([])),
+    enabled: Boolean(currentBotId),
+  });
+
+  const agentNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const a of agents) map.set(a.id, a.name);
+    return map;
+  }, [agents]);
+
+  const decodedJobs = useMemo(
+    () =>
+      jobs.map((j) => {
+        const { meta, prompt } = decodeCronMessage(j.payload?.message ?? '');
+        return { job: j, meta, prompt };
+      }),
+    [jobs],
+  );
+
   const addMutation = useMutation({
-    mutationFn: (values: {
-      name: string;
-      scheduleKind: CronScheduleKind;
-      every_seconds?: number;
-      cron_expr?: string;
-      cron_tz?: string;
-      message: string;
-    }) => {
-      let schedule: { kind: CronScheduleKind; every_ms?: number; expr?: string; tz?: string };
-      if (values.scheduleKind === 'every' && values.every_seconds) {
-        schedule = { kind: 'every', every_ms: values.every_seconds * 1000 };
-      } else if (values.scheduleKind === 'cron' && values.cron_expr) {
-        schedule = {
-          kind: 'cron',
-          expr: values.cron_expr,
-          tz: values.cron_tz || undefined,
-        };
-      } else {
-        throw new Error(t('cron.errInvalidSchedule'));
-      }
-      return api.addCronJob(
-        {
-          name: values.name,
-          schedule,
-          message: values.message || '',
-        },
-        currentBotId
-      );
-    },
+    mutationFn: (payload: CronAddRequest) => api.addCronJob(payload, currentBotId),
     onSuccess: () => {
       addToast({ type: 'success', message: t('cron.added') });
-      setAddModalOpen(false);
-      form.resetFields();
+      setFormOpen(false);
+      setEditingJob(null);
       queryClient.invalidateQueries({ queryKey: ['cron', currentBotId] });
       queryClient.invalidateQueries({ queryKey: ['cron-status', currentBotId] });
     },
@@ -253,8 +258,8 @@ export default function Cron({ embedded = false }: { embedded?: boolean } = {}) 
     onError: (e) => addToast({ type: 'error', message: formatQueryError(e) }),
   });
 
-  const handleAdd = () => {
-    form.validateFields().then((values) => addMutation.mutate(values));
+  const handleSubmit = (payload: CronAddRequest) => {
+    addMutation.mutate(payload);
   };
 
   if (botsLoading || waitingBot) {
@@ -286,15 +291,13 @@ export default function Cron({ embedded = false }: { embedded?: boolean } = {}) 
       <PageLayout variant="bleed" embedded={embedded}>
         <Alert
           type="error"
-          title={t('cron.loadFailed')}
+          message={t('cron.loadFailed')}
           description={formatQueryError(error)}
           showIcon
         />
       </PageLayout>
     );
   }
-
-  const { Text } = Typography;
 
   const enabledCount = jobs.filter((j) => j.enabled).length;
 
@@ -321,7 +324,14 @@ export default function Cron({ embedded = false }: { embedded?: boolean } = {}) 
           <Button icon={<ReloadOutlined />} onClick={() => refetch()}>
             <span className="hidden sm:inline">{t('common.refresh')}</span>
           </Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setAddModalOpen(true)}>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => {
+              setEditingJob(null);
+              setFormOpen(true);
+            }}
+          >
             {t('cron.addTask')}
           </Button>
         </Space>
@@ -412,7 +422,10 @@ export default function Cron({ embedded = false }: { embedded?: boolean } = {}) 
             <Button
               type="primary"
               icon={<PlusOutlined />}
-              onClick={() => setAddModalOpen(true)}
+              onClick={() => {
+                setEditingJob(null);
+                setFormOpen(true);
+              }}
               className="mt-4"
             >
               {t('cron.addTask')}
@@ -422,81 +435,94 @@ export default function Cron({ embedded = false }: { embedded?: boolean } = {}) 
           <div className="min-h-0 flex-1 overflow-y-auto pr-0.5">
             <List
               split={false}
-              dataSource={jobs}
-              renderItem={(job) => {
-                const isExpanded = expandedKeys.has(job.id);
-                const hasDetails =
-                  job.payload.message ||
-                  job.state.next_run_at_ms ||
-                  job.state.last_run_at_ms;
+              dataSource={decodedJobs}
+              renderItem={({ job, meta, prompt }) => {
+                const agentName = meta.agentId ? agentNameById.get(meta.agentId) : undefined;
+                const expired = isMetadataExpired(meta);
+                const notYet = isMetadataNotYetActive(meta);
                 return (
                   <List.Item
-                    className={`mb-2 rounded border border-gray-100 bg-gray-50/80 px-3 py-2 transition-colors last:mb-0 dark:border-gray-800 dark:bg-gray-800/25 ${!job.enabled ? 'opacity-70' : 'hover:border-gray-200 dark:hover:border-gray-700'}`}
-                    actions={[
-                      hasDetails && (
-                        <Button
-                          key="expand"
-                          type="text"
-                          size="small"
-                          icon={isExpanded ? <UpOutlined /> : <DownOutlined />}
-                          onClick={() => toggleExpand(job.id)}
-                          className="!text-gray-500"
-                        />
-                      ),
-                      <Button
-                        key="run"
-                        type="link"
-                        size="small"
-                        icon={<PlayCircleOutlined />}
-                        loading={runMutation.isPending}
-                        onClick={() => runMutation.mutate(job.id)}
-                      >
-                        {t('cron.runNow')}
-                      </Button>,
-                      <Switch
-                        key="enable"
-                        size="small"
-                        checked={job.enabled}
-                        loading={enableMutation.isPending}
-                        onChange={(checked) =>
-                          enableMutation.mutate({ jobId: job.id, enabled: checked })
-                        }
-                      />,
-                      <Popconfirm
-                        key="delete"
-                        title={t('cron.deleteConfirmTitle')}
-                        onConfirm={() => removeMutation.mutate(job.id)}
-                      >
-                        <Button type="link" danger size="small" icon={<DeleteOutlined />}>
-                          {t('common.delete')}
-                        </Button>
-                      </Popconfirm>,
-                    ].filter(Boolean)}
+                    className={`mb-2 flex flex-col items-stretch gap-2 rounded border border-gray-100 bg-gray-50/80 px-3 py-2 transition-colors last:mb-0 dark:border-gray-800 dark:bg-gray-800/25 ${
+                      !job.enabled
+                        ? 'opacity-70'
+                        : 'hover:border-gray-200 dark:hover:border-gray-700'
+                    }`}
                   >
-                    <List.Item.Meta
-                      avatar={
-                        <Tag color={job.enabled ? 'green' : 'default'}>
-                          {job.enabled ? t('cron.tagEnabled') : t('cron.tagDisabled')}
-                        </Tag>
-                      }
-                      title={
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-medium">{job.name}</span>
+                    <div className="flex w-full items-start justify-between gap-3 flex-wrap">
+                      <div className="min-w-0 flex-1">
+                        <Space size={6} wrap>
+                          <Tag color={job.enabled ? 'green' : 'default'}>
+                            {job.enabled ? t('cron.tagEnabled') : t('cron.tagDisabled')}
+                          </Tag>
+                          <Text strong>{job.name}</Text>
                           {isOverdue(job) && <Tag color="orange">{t('cron.tagOverdue')}</Tag>}
+                          {expired && <Tag color="red">{t('cron.tagExpired')}</Tag>}
+                          {notYet && <Tag color="blue">{t('cron.tagNotYet')}</Tag>}
                           {job.state.last_status === 'error' && (
                             <Tag color="red">{t('cron.tagLastFailed')}</Tag>
                           )}
-                          <Text type="secondary" className="text-sm font-normal">
+                          <Text type="secondary" className="text-xs">
                             {formatSchedule(job, t, agentTz, locale)}
                           </Text>
-                        </div>
-                      }
-                      description={
-                        isExpanded && hasDetails ? (
-                          <CronJobDetails job={job} agentTz={agentTz} locale={locale} />
-                        ) : null
-                      }
-                    />
+                          <Text type="secondary" className="text-xs">
+                            · {t('cron.detailNextRun')}{' '}
+                            {formatNextRun(job.state.next_run_at_ms, t, agentTz, locale)}
+                          </Text>
+                        </Space>
+                        <MetadataChips meta={meta} agentName={agentName} t={t} />
+                        <WindowChips meta={meta} t={t} agentTz={agentTz} locale={locale} />
+                        {prompt && (
+                          <div className="mt-1 max-w-2xl break-words text-xs text-gray-500">
+                            <span className="font-medium">{t('cron.detailInstruction')} </span>
+                            {prompt.length > 160 ? `${prompt.slice(0, 160)}…` : prompt}
+                          </div>
+                        )}
+                      </div>
+                      <Space size={4} className="shrink-0">
+                        <Tooltip title={t('cron.historyView')}>
+                          <Button
+                            type="text"
+                            size="small"
+                            icon={<HistoryOutlined />}
+                            onClick={() => setHistoryJob(job)}
+                          />
+                        </Tooltip>
+                        <Tooltip title={t('common.edit')}>
+                          <Button
+                            type="text"
+                            size="small"
+                            icon={<EditOutlined />}
+                            onClick={() => {
+                              setEditingJob(job);
+                              setFormOpen(true);
+                            }}
+                          />
+                        </Tooltip>
+                        <Tooltip title={t('cron.runNow')}>
+                          <Button
+                            type="text"
+                            size="small"
+                            icon={<PlayCircleOutlined />}
+                            loading={runMutation.isPending}
+                            onClick={() => runMutation.mutate(job.id)}
+                          />
+                        </Tooltip>
+                        <Switch
+                          size="small"
+                          checked={job.enabled}
+                          loading={enableMutation.isPending}
+                          onChange={(checked) =>
+                            enableMutation.mutate({ jobId: job.id, enabled: checked })
+                          }
+                        />
+                        <Popconfirm
+                          title={t('cron.deleteConfirmTitle')}
+                          onConfirm={() => removeMutation.mutate(job.id)}
+                        >
+                          <Button type="text" danger size="small" icon={<DeleteOutlined />} />
+                        </Popconfirm>
+                      </Space>
+                    </div>
                   </List.Item>
                 );
               }}
@@ -505,72 +531,27 @@ export default function Cron({ embedded = false }: { embedded?: boolean } = {}) 
         )}
       </Card>
 
-      <Modal
-        title={t('cron.modalAddTitle')}
-        open={addModalOpen}
-        onOk={handleAdd}
+      <CronTaskFormModal
+        open={formOpen}
+        botId={currentBotId}
+        job={editingJob}
+        loading={addMutation.isPending}
         onCancel={() => {
-          setAddModalOpen(false);
-          form.resetFields();
+          setFormOpen(false);
+          setEditingJob(null);
         }}
-        confirmLoading={addMutation.isPending}
-        okText={t('cron.modalAddOk')}
-        cancelText={t('common.cancel')}
-      >
-        <Form
-          form={form}
-          layout="vertical"
-          initialValues={{ scheduleKind: 'every', every_seconds: 3600 }}
-        >
-          <Form.Item name="name" label={t('cron.fieldName')} rules={[{ required: true }]}>
-            <Input placeholder={t('cron.fieldNamePh')} />
-          </Form.Item>
-          <Form.Item name="scheduleKind" label={t('cron.fieldScheduleKind')}>
-            <Select
-              options={[
-                { value: 'every', label: t('cron.scheduleEvery') },
-                { value: 'cron', label: t('cron.scheduleCron') },
-              ]}
-            />
-          </Form.Item>
-          <Form.Item
-            noStyle
-            shouldUpdate={(prev, curr) => prev.scheduleKind !== curr.scheduleKind}
-          >
-            {({ getFieldValue }) =>
-              getFieldValue('scheduleKind') === 'every' ? (
-                <Form.Item
-                  name="every_seconds"
-                  label={t('cron.fieldEverySeconds')}
-                  rules={[{ required: true }]}
-                >
-                  <InputNumber
-                    min={60}
-                    placeholder={t('cron.fieldEverySecondsPh')}
-                    className="w-full"
-                  />
-                </Form.Item>
-              ) : (
-                <>
-                  <Form.Item
-                    name="cron_expr"
-                    label={t('cron.fieldCronExpr')}
-                    rules={[{ required: true }]}
-                  >
-                    <Input placeholder={t('cron.fieldCronExprPh')} />
-                  </Form.Item>
-                  <Form.Item name="cron_tz" label={t('cron.fieldCronTz')}>
-                    <Input placeholder={t('cron.fieldCronTzPh')} />
-                  </Form.Item>
-                </>
-              )
-            }
-          </Form.Item>
-          <Form.Item name="message" label={t('cron.fieldMessage')}>
-            <Input.TextArea rows={3} placeholder={t('cron.fieldMessagePh')} />
-          </Form.Item>
-        </Form>
-      </Modal>
+        onSubmit={handleSubmit}
+      />
+
+      <CronHistoryDrawer
+        open={!!historyJob}
+        job={historyJob}
+        botId={currentBotId}
+        agentTz={agentTz}
+        locale={locale}
+        agentNameById={agentNameById}
+        onClose={() => setHistoryJob(null)}
+      />
     </PageLayout>
   );
 }

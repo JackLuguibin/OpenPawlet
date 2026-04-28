@@ -1,0 +1,511 @@
+import { useEffect, useMemo, useState } from 'react';
+import {
+  Modal,
+  Form,
+  Input,
+  Select,
+  InputNumber,
+  Tabs,
+  DatePicker,
+  Row,
+  Col,
+  Tag,
+  Tooltip,
+  Alert,
+  Switch,
+} from 'antd';
+import { useTranslation } from 'react-i18next';
+import { useQuery } from '@tanstack/react-query';
+import dayjs, { type Dayjs } from 'dayjs';
+import * as api from '../../api/client';
+import type { CronAddRequest, CronJob, CronScheduleKind } from '../../api/types';
+import {
+  encodeCronMessage,
+  decodeCronMessage,
+  summarizeCron,
+  type CronTaskMetadata,
+} from '../../utils/cronMetadata';
+import { COMMON_IANA_TIME_ZONES } from '../../utils/timezones';
+import { CronExpressionBuilder } from './CronExpressionBuilder';
+
+const { TextArea } = Input;
+
+export interface CronTaskFormModalProps {
+  open: boolean;
+  botId: string | null;
+  /** When provided, the modal is in edit mode (display only — backend stub). */
+  job?: CronJob | null;
+  loading?: boolean;
+  onCancel: () => void;
+  onSubmit: (payload: CronAddRequest) => void;
+}
+
+interface FormValues {
+  name: string;
+  agentId?: string | null;
+  skills?: string[];
+  mcpServers?: string[];
+  tools?: string[];
+  scheduleKind: CronScheduleKind;
+  every_seconds?: number;
+  cron_expr?: string;
+  cron_tz?: string;
+  prompt?: string;
+  windowEnabled?: boolean;
+  startAt?: Dayjs | null;
+  endAt?: Dayjs | null;
+}
+
+const DEFAULT_VALUES: FormValues = {
+  name: '',
+  agentId: null,
+  skills: [],
+  mcpServers: [],
+  tools: [],
+  scheduleKind: 'cron',
+  every_seconds: 3600,
+  cron_expr: '0 9 * * *',
+  cron_tz: '',
+  prompt: '',
+  windowEnabled: false,
+  startAt: null,
+  endAt: null,
+};
+
+export function CronTaskFormModal(props: CronTaskFormModalProps) {
+  const { open, botId, job, loading, onCancel, onSubmit } = props;
+  const { t } = useTranslation();
+  const [form] = Form.useForm<FormValues>();
+
+  const { data: agents = [] } = useQuery({
+    queryKey: ['cron-form-agents', botId],
+    queryFn: () => (botId ? api.listAgents(botId) : Promise.resolve([])),
+    enabled: open && Boolean(botId),
+  });
+
+  const { data: skills = [] } = useQuery({
+    queryKey: ['cron-form-skills', botId],
+    queryFn: () => api.listSkills(botId),
+    enabled: open && Boolean(botId),
+  });
+
+  const { data: mcpServers = [] } = useQuery({
+    queryKey: ['cron-form-mcp', botId],
+    queryFn: () => api.getMCPServers(botId),
+    enabled: open && Boolean(botId),
+  });
+
+  const [toolNames, setToolNames] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!open) return;
+    const initial: FormValues = { ...DEFAULT_VALUES };
+    if (job) {
+      const decoded = decodeCronMessage(job.payload?.message ?? '');
+      initial.name = job.name;
+      initial.agentId = decoded.meta.agentId ?? null;
+      initial.skills = decoded.meta.skills ?? [];
+      initial.mcpServers = decoded.meta.mcpServers ?? [];
+      initial.tools = decoded.meta.tools ?? [];
+      initial.prompt = decoded.prompt;
+      initial.windowEnabled = Boolean(decoded.meta.startAtMs || decoded.meta.endAtMs);
+      initial.startAt = decoded.meta.startAtMs ? dayjs(decoded.meta.startAtMs) : null;
+      initial.endAt = decoded.meta.endAtMs ? dayjs(decoded.meta.endAtMs) : null;
+      const sched = job.schedule;
+      if (sched.kind === 'every' && sched.every_ms) {
+        initial.scheduleKind = 'every';
+        initial.every_seconds = Math.max(1, Math.round(sched.every_ms / 1000));
+      } else if (sched.kind === 'cron' && sched.expr) {
+        initial.scheduleKind = 'cron';
+        initial.cron_expr = sched.expr;
+        initial.cron_tz = sched.tz ?? '';
+      } else if (sched.kind === 'at' && sched.at_ms) {
+        initial.scheduleKind = 'at';
+        initial.startAt = dayjs(sched.at_ms);
+      }
+      setToolNames(decoded.meta.tools ?? []);
+    } else {
+      setToolNames([]);
+    }
+    form.resetFields();
+    form.setFieldsValue(initial);
+  }, [open, job, form]);
+
+  const handleOk = async () => {
+    try {
+      const values = await form.validateFields();
+      let schedule:
+        | { kind: 'every'; every_ms: number }
+        | { kind: 'cron'; expr: string; tz?: string }
+        | { kind: 'at'; at_ms: number };
+
+      if (values.scheduleKind === 'every') {
+        if (!values.every_seconds || values.every_seconds <= 0) {
+          throw new Error(t('cron.errInvalidSchedule'));
+        }
+        schedule = { kind: 'every', every_ms: values.every_seconds * 1000 };
+      } else if (values.scheduleKind === 'cron') {
+        if (!values.cron_expr) throw new Error(t('cron.errInvalidSchedule'));
+        schedule = {
+          kind: 'cron',
+          expr: values.cron_expr.trim(),
+          tz: values.cron_tz?.trim() || undefined,
+        };
+      } else {
+        if (!values.startAt) throw new Error(t('cron.errInvalidSchedule'));
+        schedule = { kind: 'at', at_ms: values.startAt.valueOf() };
+      }
+
+      const meta: CronTaskMetadata = {
+        agentId: values.agentId || null,
+        skills: values.skills ?? [],
+        mcpServers: values.mcpServers ?? [],
+        tools: values.tools ?? [],
+        startAtMs:
+          values.windowEnabled && values.startAt && values.scheduleKind !== 'at'
+            ? values.startAt.valueOf()
+            : null,
+        endAtMs: values.windowEnabled && values.endAt ? values.endAt.valueOf() : null,
+      };
+
+      const message = encodeCronMessage(values.prompt ?? '', meta);
+
+      onSubmit({
+        name: values.name.trim(),
+        schedule,
+        message,
+      });
+    } catch {
+      // validation errors are surfaced inline by AntD
+    }
+  };
+
+  const skillOptions = useMemo(
+    () =>
+      skills.map((s) => ({
+        label: s.name,
+        value: s.name,
+        title: s.description || s.name,
+      })),
+    [skills],
+  );
+
+  const mcpOptions = useMemo(
+    () => mcpServers.map((m) => ({ label: m.name, value: m.name, title: m.name })),
+    [mcpServers],
+  );
+
+  const tzOptions = useMemo(
+    () => COMMON_IANA_TIME_ZONES.map((tz) => ({ label: tz, value: tz })),
+    [],
+  );
+
+  const agentOptions = useMemo(() => {
+    const opts = agents
+      .filter((a) => a.enabled !== false)
+      .map((a) => ({ label: a.name, value: a.id, title: a.description || a.name }));
+    return [{ label: t('cron.fieldAgentNone'), value: '' }, ...opts];
+  }, [agents, t]);
+
+  const isEdit = !!job;
+
+  return (
+    <Modal
+      title={isEdit ? t('cron.modalEditTitle') : t('cron.modalAddTitle')}
+      open={open}
+      onOk={handleOk}
+      onCancel={onCancel}
+      confirmLoading={loading}
+      okText={isEdit ? t('common.save') : t('cron.modalAddOk')}
+      cancelText={t('common.cancel')}
+      width={720}
+      destroyOnHidden
+    >
+      <Form form={form} layout="vertical" initialValues={DEFAULT_VALUES} preserve={false}>
+        <Form.Item
+          name="name"
+          label={t('cron.fieldName')}
+          rules={[{ required: true, message: t('cron.fieldName') }]}
+        >
+          <Input placeholder={t('cron.fieldNamePh')} />
+        </Form.Item>
+
+        <Tabs
+          defaultActiveKey="target"
+          items={[
+            {
+              key: 'target',
+              label: t('cron.tabTarget'),
+              children: (
+                <>
+                  <Form.Item
+                    name="agentId"
+                    label={t('cron.fieldAgent')}
+                    tooltip={t('cron.fieldAgentTip')}
+                  >
+                    <Select
+                      allowClear
+                      showSearch
+                      placeholder={t('cron.fieldAgentPh')}
+                      options={agentOptions}
+                      optionFilterProp="label"
+                    />
+                  </Form.Item>
+
+                  <Form.Item
+                    name="skills"
+                    label={t('cron.fieldSkills')}
+                    tooltip={t('cron.fieldSkillsTip')}
+                  >
+                    <Select
+                      mode="multiple"
+                      allowClear
+                      placeholder={t('cron.fieldSkillsPh')}
+                      options={skillOptions}
+                      optionFilterProp="label"
+                      maxTagCount="responsive"
+                    />
+                  </Form.Item>
+
+                  <Form.Item
+                    name="mcpServers"
+                    label={t('cron.fieldMcpServers')}
+                    tooltip={t('cron.fieldMcpServersTip')}
+                  >
+                    <Select
+                      mode="multiple"
+                      allowClear
+                      placeholder={t('cron.fieldMcpServersPh')}
+                      options={mcpOptions}
+                      optionFilterProp="label"
+                      maxTagCount="responsive"
+                    />
+                  </Form.Item>
+
+                  <Form.Item
+                    name="tools"
+                    label={t('cron.fieldTools')}
+                    tooltip={t('cron.fieldToolsTip')}
+                  >
+                    <Select
+                      mode="tags"
+                      allowClear
+                      placeholder={t('cron.fieldToolsPh')}
+                      tokenSeparators={[',', ' ']}
+                      value={toolNames}
+                      onChange={(v) => setToolNames(v as string[])}
+                      maxTagCount="responsive"
+                    />
+                  </Form.Item>
+
+                  <Form.Item
+                    name="prompt"
+                    label={t('cron.fieldPrompt')}
+                    tooltip={t('cron.fieldPromptTip')}
+                    rules={[
+                      { required: true, message: t('cron.fieldPromptRequired') },
+                    ]}
+                  >
+                    <TextArea rows={5} placeholder={t('cron.fieldPromptPh')} />
+                  </Form.Item>
+                </>
+              ),
+            },
+            {
+              key: 'schedule',
+              label: t('cron.tabSchedule'),
+              children: (
+                <>
+                  <Form.Item name="scheduleKind" label={t('cron.fieldScheduleKind')}>
+                    <Select
+                      options={[
+                        { value: 'cron', label: t('cron.scheduleCron') },
+                        { value: 'every', label: t('cron.scheduleEvery') },
+                        { value: 'at', label: t('cron.scheduleAt') },
+                      ]}
+                    />
+                  </Form.Item>
+                  <Form.Item
+                    noStyle
+                    shouldUpdate={(prev, curr) => prev.scheduleKind !== curr.scheduleKind}
+                  >
+                    {({ getFieldValue }) => {
+                      const kind: CronScheduleKind = getFieldValue('scheduleKind');
+                      if (kind === 'every') {
+                        return (
+                          <Form.Item
+                            name="every_seconds"
+                            label={t('cron.fieldEverySeconds')}
+                            rules={[{ required: true }]}
+                          >
+                            <InputNumber
+                              min={1}
+                              placeholder={t('cron.fieldEverySecondsPh')}
+                              className="w-full"
+                            />
+                          </Form.Item>
+                        );
+                      }
+                      if (kind === 'cron') {
+                        return (
+                          <>
+                            <Form.Item
+                              name="cron_expr"
+                              label={t('cron.fieldCronExpr')}
+                              rules={[{ required: true }]}
+                            >
+                              <Input placeholder={t('cron.fieldCronExprPh')} />
+                            </Form.Item>
+                            <Form.Item
+                              shouldUpdate={(prev, curr) => prev.cron_expr !== curr.cron_expr}
+                              noStyle
+                            >
+                              {({ getFieldValue: g, setFieldValue }) => (
+                                <CronExpressionBuilder
+                                  value={g('cron_expr') || ''}
+                                  onChange={(expr) => setFieldValue('cron_expr', expr)}
+                                />
+                              )}
+                            </Form.Item>
+                            <Form.Item
+                              shouldUpdate={(prev, curr) => prev.cron_expr !== curr.cron_expr}
+                              noStyle
+                            >
+                              {({ getFieldValue: g }) => {
+                                const expr: string = g('cron_expr') || '';
+                                const summary = summarizeCron(expr, t);
+                                return summary ? (
+                                  <Alert
+                                    type="info"
+                                    showIcon
+                                    className="mb-3"
+                                    message={summary}
+                                  />
+                                ) : null;
+                              }}
+                            </Form.Item>
+                            <Form.Item name="cron_tz" label={t('cron.fieldCronTz')}>
+                              <Select
+                                allowClear
+                                showSearch
+                                placeholder={t('cron.fieldCronTzPh')}
+                                options={tzOptions}
+                              />
+                            </Form.Item>
+                          </>
+                        );
+                      }
+                      return (
+                        <Form.Item
+                          name="startAt"
+                          label={t('cron.fieldRunAt')}
+                          rules={[{ required: true }]}
+                        >
+                          <DatePicker
+                            showTime
+                            className="w-full"
+                            placeholder={t('cron.fieldRunAtPh')}
+                          />
+                        </Form.Item>
+                      );
+                    }}
+                  </Form.Item>
+                </>
+              ),
+            },
+            {
+              key: 'window',
+              label: t('cron.tabWindow'),
+              children: (
+                <>
+                  <Form.Item
+                    name="windowEnabled"
+                    label={t('cron.fieldWindowEnabled')}
+                    tooltip={t('cron.fieldWindowEnabledTip')}
+                    valuePropName="checked"
+                  >
+                    <Switch />
+                  </Form.Item>
+                  <Form.Item
+                    noStyle
+                    shouldUpdate={(prev, curr) =>
+                      prev.windowEnabled !== curr.windowEnabled ||
+                      prev.scheduleKind !== curr.scheduleKind
+                    }
+                  >
+                    {({ getFieldValue }) => {
+                      const enabled = getFieldValue('windowEnabled');
+                      const kind: CronScheduleKind = getFieldValue('scheduleKind');
+                      if (!enabled) return null;
+                      return (
+                        <Row gutter={12}>
+                          <Col span={12}>
+                            <Form.Item
+                              name="startAt"
+                              label={t('cron.fieldStartAt')}
+                              tooltip={
+                                kind === 'at' ? t('cron.fieldStartAtAtTip') : undefined
+                              }
+                            >
+                              <DatePicker
+                                showTime
+                                className="w-full"
+                                placeholder={t('cron.fieldStartAtPh')}
+                                disabled={kind === 'at'}
+                              />
+                            </Form.Item>
+                          </Col>
+                          <Col span={12}>
+                            <Form.Item name="endAt" label={t('cron.fieldEndAt')}>
+                              <DatePicker
+                                showTime
+                                className="w-full"
+                                placeholder={t('cron.fieldEndAtPh')}
+                              />
+                            </Form.Item>
+                          </Col>
+                        </Row>
+                      );
+                    }}
+                  </Form.Item>
+                  <Alert
+                    type="warning"
+                    showIcon
+                    className="mt-2"
+                    message={t('cron.windowNote')}
+                  />
+                </>
+              ),
+            },
+          ]}
+        />
+
+        <div className="mt-3 flex flex-wrap gap-1">
+          <Tooltip title={t('cron.scheduleSummaryTip')}>
+            <Tag color="blue">{t('cron.scheduleSummaryLabel')}</Tag>
+          </Tooltip>
+          <Form.Item
+            shouldUpdate={(prev, curr) =>
+              prev.scheduleKind !== curr.scheduleKind ||
+              prev.cron_expr !== curr.cron_expr ||
+              prev.every_seconds !== curr.every_seconds ||
+              prev.startAt !== curr.startAt
+            }
+            noStyle
+          >
+            {({ getFieldValue }) => {
+              const kind: CronScheduleKind = getFieldValue('scheduleKind');
+              if (kind === 'cron') return <span>{getFieldValue('cron_expr') || '—'}</span>;
+              if (kind === 'every')
+                return <span>{t('cron.everySeconds', { count: getFieldValue('every_seconds') || 0 })}</span>;
+              const at: Dayjs | null = getFieldValue('startAt');
+              return <span>{at ? at.format('YYYY-MM-DD HH:mm:ss') : '—'}</span>;
+            }}
+          </Form.Item>
+        </div>
+      </Form>
+    </Modal>
+  );
+}
+
+export default CronTaskFormModal;

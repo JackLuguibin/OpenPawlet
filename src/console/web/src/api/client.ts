@@ -8,8 +8,10 @@ import type {
   ChannelStatus,
   ConfigSection,
   CronAddRequest,
+  CronHistoryRun,
   CronJob,
   CronStatus,
+  CronUpdateRequest,
   MCPStatus,
   MemoryResponse,
   SessionInfo,
@@ -781,11 +783,27 @@ export async function getCronStatus(botId?: string | null): Promise<CronStatus> 
 export async function getCronHistory(
   botId?: string | null,
   jobId?: string | null
-): Promise<Record<string, Array<{ run_at_ms: number; status: string; duration_ms: number; error?: string }>>> {
+): Promise<Record<string, CronHistoryRun[]>> {
   const params = new URLSearchParams();
   if (botId) params.set('bot_id', botId);
   if (jobId) params.set('job_id', jobId);
-  return fetchJson(`${API_BASE}/cron/history?${params}`);
+  return fetchJson<Record<string, CronHistoryRun[]>>(
+    `${API_BASE}/cron/history?${params}`,
+  );
+}
+
+export async function updateCronJob(
+  jobId: string,
+  data: CronUpdateRequest,
+  botId?: string | null,
+): Promise<CronJob> {
+  return fetchJson<CronJob>(
+    appendBotQuery(`${API_BASE}/cron/${encodeURIComponent(jobId)}`, botId),
+    {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    },
+  );
 }
 
 // ====================

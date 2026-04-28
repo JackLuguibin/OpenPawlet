@@ -50,7 +50,7 @@ class SkillsGitScheduler:
             return
         try:
             await asyncio.wait_for(task, timeout=10)
-        except (asyncio.TimeoutError, asyncio.CancelledError):
+        except (TimeoutError, asyncio.CancelledError):
             task.cancel()
         finally:
             self._task = None
@@ -65,7 +65,7 @@ class SkillsGitScheduler:
                 logger.exception("[skills-git] scheduler tick failed")
             try:
                 await asyncio.wait_for(self._stop.wait(), timeout=_TICK_SECONDS)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 continue
 
     async def _tick_once(self) -> None:
