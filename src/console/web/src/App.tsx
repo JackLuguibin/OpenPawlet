@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { ConfigProvider, theme as antdTheme, App as AntdApp, Spin } from 'antd';
 import enUS from 'antd/locale/en_US';
 import zhCN from 'antd/locale/zh_CN';
@@ -14,9 +14,42 @@ const ChatHub = lazy(() => import('./pages/ChatHub'));
 const Workspace = lazy(() => import('./pages/Workspace'));
 const Settings = lazy(() => import('./pages/Settings'));
 const TeamDetail = lazy(() => import('./pages/TeamDetail'));
-const AgentsHub = lazy(() => import('./pages/AgentsHub'));
-const KnowledgeHub = lazy(() => import('./pages/KnowledgeHub'));
-const ObservabilityHub = lazy(() => import('./pages/ObservabilityHub'));
+
+// Standalone pages — each former Hub tab now lives at its own URL so that
+// the new sidebar can deep-link directly into the panel users want.
+const AgentTeamsPage = lazy(() =>
+  import('./pages/standalone').then((m) => ({ default: m.AgentTeamsPage })),
+);
+const RuntimePage = lazy(() =>
+  import('./pages/standalone').then((m) => ({ default: m.RuntimePage })),
+);
+const SkillsPage = lazy(() =>
+  import('./pages/standalone').then((m) => ({ default: m.SkillsPage })),
+);
+const McpPage = lazy(() =>
+  import('./pages/standalone').then((m) => ({ default: m.McpPage })),
+);
+const MemoryProfilePage = lazy(() =>
+  import('./pages/standalone').then((m) => ({ default: m.MemoryProfilePage })),
+);
+const ActivityPage = lazy(() =>
+  import('./pages/standalone').then((m) => ({ default: m.ActivityPage })),
+);
+const LogsPage = lazy(() =>
+  import('./pages/standalone').then((m) => ({ default: m.LogsPage })),
+);
+const QueuesPage = lazy(() =>
+  import('./pages/standalone').then((m) => ({ default: m.QueuesPage })),
+);
+const TracesPage = lazy(() =>
+  import('./pages/standalone').then((m) => ({ default: m.TracesPage })),
+);
+const ChannelsPage = lazy(() =>
+  import('./pages/standalone').then((m) => ({ default: m.ChannelsPage })),
+);
+const CronPage = lazy(() =>
+  import('./pages/standalone').then((m) => ({ default: m.CronPage })),
+);
 
 function resolveIsDark(theme: 'light' | 'dark' | 'system'): boolean {
   if (theme === 'dark') return true;
@@ -34,57 +67,83 @@ function PageLoading() {
   );
 }
 
+/**
+ * Map legacy `?section=` / `?tab=` deep links onto the new dedicated routes.
+ *
+ * The previous app used Hub pages with sub-tabs encoded in the query string
+ * (e.g. `/agents?section=runtime` -> `/runtime`). Bookmarks stay valid.
+ */
+const LEGACY_REDIRECTS: Record<string, Record<string, string>> = {
+  '/agents': { runtime: '/runtime' },
+  '/knowledge': {
+    skills: '/skills',
+    mcp: '/mcp',
+    memory: '/memory',
+    profile: '/memory?section=profile',
+  },
+  '/observability': {
+    health: '/dashboard',
+    trace: '/traces',
+    activity: '/activity',
+    logs: '/logs',
+    queues: '/queues',
+  },
+  '/settings': { channels: '/channels', cron: '/cron' },
+};
+
+function LegacyDeepLinkRedirect() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  useEffect(() => {
+    const table = LEGACY_REDIRECTS[location.pathname];
+    if (!table) return;
+    const params = new URLSearchParams(location.search);
+    const key = location.pathname === '/settings' ? 'tab' : 'section';
+    const value = params.get(key);
+    const target = value ? table[value] : undefined;
+    if (target) {
+      navigate(target, { replace: true });
+    }
+  }, [location.pathname, location.search, navigate]);
+  return null;
+}
+
 function AppRoutes() {
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100">
+      <LegacyDeepLinkRedirect />
       <Layout>
         <Suspense fallback={<PageLoading />}>
           <Routes>
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/" element={<Navigate to="/chat" replace />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/chat" element={<ChatHub />} />
             <Route path="/chat/:sessionKey" element={<ChatHub />} />
-            <Route path="/agents" element={<AgentsHub />} />
-            <Route path="/teams/:teamId" element={<TeamDetail />} />
-            <Route path="/knowledge" element={<KnowledgeHub />} />
             <Route path="/workspace" element={<Workspace />} />
-            <Route path="/observability" element={<ObservabilityHub />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/teams/:teamId" element={<TeamDetail />} />
 
-            {/* Legacy routes: keep old bookmarks/share-links working by
-                redirecting them into the new Hub pages with the matching
-                ?section= sub-tab. */}
-            <Route path="/sessions" element={<Navigate to="/chat" replace />} />
-            <Route path="/runtime" element={<Navigate to="/agents?section=runtime" replace />} />
+            {/* Independent pages — each used to live as a tab inside an
+                AgentsHub / KnowledgeHub / ObservabilityHub shell. */}
+            <Route path="/agents" element={<AgentTeamsPage />} />
             <Route path="/teams" element={<Navigate to="/agents?section=teams" replace />} />
-            <Route path="/mcp" element={<Navigate to="/knowledge?section=mcp" replace />} />
-            <Route path="/skills" element={<Navigate to="/knowledge" replace />} />
-            <Route path="/memory" element={<Navigate to="/knowledge?section=memory" replace />} />
-            <Route
-              path="/bot-profile"
-              element={<Navigate to="/knowledge?section=profile" replace />}
-            />
-            <Route
-              path="/health"
-              element={<Navigate to="/observability?section=health" replace />}
-            />
-            <Route
-              path="/activity"
-              element={<Navigate to="/observability?section=activity" replace />}
-            />
-            <Route
-              path="/logs"
-              element={<Navigate to="/observability?section=logs" replace />}
-            />
-            <Route
-              path="/queues"
-              element={<Navigate to="/observability?section=queues" replace />}
-            />
-            <Route
-              path="/channels"
-              element={<Navigate to="/settings?tab=channels" replace />}
-            />
-            <Route path="/cron" element={<Navigate to="/settings?tab=cron" replace />} />
+            <Route path="/runtime" element={<RuntimePage />} />
+            <Route path="/skills" element={<SkillsPage />} />
+            <Route path="/mcp" element={<McpPage />} />
+            <Route path="/memory" element={<MemoryProfilePage />} />
+            <Route path="/bot-profile" element={<Navigate to="/memory?section=profile" replace />} />
+            <Route path="/activity" element={<ActivityPage />} />
+            <Route path="/logs" element={<LogsPage />} />
+            <Route path="/queues" element={<QueuesPage />} />
+            <Route path="/traces" element={<TracesPage />} />
+            <Route path="/channels" element={<ChannelsPage />} />
+            <Route path="/cron" element={<CronPage />} />
+
+            {/* Legacy hub URLs and ?section= deep links — redirect to the
+                new dedicated routes so old bookmarks keep working. */}
+            <Route path="/sessions" element={<Navigate to="/chat" replace />} />
+            <Route path="/knowledge" element={<Navigate to="/skills" replace />} />
+            <Route path="/observability" element={<Navigate to="/dashboard" replace />} />
           </Routes>
         </Suspense>
       </Layout>

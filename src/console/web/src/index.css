@@ -148,7 +148,7 @@ body {
 
 /*
  * HubShell tabs: make the active pane fill the remaining vertical space so
- * embedded pages (Health, Logs, Activity, ...) can scroll inside.
+ * embedded pages (Logs, Activity, …) can scroll inside.
  */
 .hub-shell-tabs.ant-tabs {
   display: flex;

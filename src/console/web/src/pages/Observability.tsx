@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import {
   Tag,
   Button,
@@ -18,7 +18,6 @@ import {
 } from 'antd';
 import {
   ReloadOutlined,
-  HeartOutlined,
   InfoCircleOutlined,
   RightOutlined,
   DownOutlined,
@@ -307,7 +306,6 @@ function ObservabilityEventRow({ ev, dateLocale, t, onOpenDetail, showTraceIdCol
 
 export default function Observability({ embedded = false }: { embedded?: boolean } = {}) {
   const { t, i18n } = useTranslation();
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { currentBotId } = useAppStore();
   const [traceIdFilter, setTraceIdFilter] = useState('');
@@ -472,16 +470,6 @@ export default function Observability({ embedded = false }: { embedded?: boolean
                   icon={<InfoCircleOutlined />}
                   aria-label={t('observability.subtitle')}
                 />
-              </Tooltip>
-              <Tooltip title={t('observability.linkHealth')}>
-                <Button
-                  size="small"
-                  icon={<HeartOutlined />}
-                  onClick={() => navigate('/observability?section=health')}
-                  aria-label={t('observability.linkHealth')}
-                >
-                  <span className="hidden md:inline">{t('observability.linkHealth')}</span>
-                </Button>
               </Tooltip>
               <Button
                 type="primary"

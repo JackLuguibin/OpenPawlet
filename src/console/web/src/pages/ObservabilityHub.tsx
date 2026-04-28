@@ -2,29 +2,21 @@ import { useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
-  HeartOutlined,
   BarChartOutlined,
   BranchesOutlined,
   FileTextOutlined,
   DeploymentUnitOutlined,
 } from '@ant-design/icons';
 import { HubShell, type HubTabItem } from '../components/HubShell';
-import Health from './Health';
 import Observability from './Observability';
 import Activity from './Activity';
 import Logs from './Logs';
 import Queues from './Queues';
 
-type ObsSection = 'health' | 'trace' | 'activity' | 'logs' | 'queues';
+type ObsSection = 'trace' | 'activity' | 'logs' | 'queues';
 
 const SECTION_QUERY = 'section';
-const VALID_SECTIONS: ReadonlyArray<ObsSection> = [
-  'health',
-  'trace',
-  'activity',
-  'logs',
-  'queues',
-];
+const VALID_SECTIONS: ReadonlyArray<ObsSection> = ['trace', 'activity', 'logs', 'queues'];
 
 function readSection(searchParams: URLSearchParams): ObsSection {
   const raw = searchParams.get(SECTION_QUERY) as ObsSection | null;
@@ -32,7 +24,7 @@ function readSection(searchParams: URLSearchParams): ObsSection {
   // The Observability subpage also uses ?trace_id=... as a deeplink; default to
   // the trace tab when a trace_id is provided so the link target shows up.
   if (searchParams.get('trace_id')) return 'trace';
-  return 'health';
+  return 'trace';
 }
 
 export default function ObservabilityHub() {
@@ -44,7 +36,7 @@ export default function ObservabilityHub() {
     (next: ObsSection) => {
       const params = new URLSearchParams(searchParams);
       params.delete('trace_id');
-      if (next === 'health') {
+      if (next === 'trace') {
         params.delete(SECTION_QUERY);
       } else {
         params.set(SECTION_QUERY, next);
@@ -56,12 +48,6 @@ export default function ObservabilityHub() {
 
   const tabs: HubTabItem<ObsSection>[] = useMemo(
     () => [
-      {
-        key: 'health',
-        icon: <HeartOutlined />,
-        label: t('observabilityHub.tabHealth'),
-        content: <Health embedded />,
-      },
       {
         key: 'trace',
         icon: <BarChartOutlined />,

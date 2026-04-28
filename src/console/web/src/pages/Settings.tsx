@@ -25,12 +25,10 @@ import {
   DownloadOutlined,
   KeyOutlined,
   CodeOutlined,
-  MobileOutlined,
   ToolOutlined,
   EnvironmentOutlined,
   PlusOutlined,
   DeleteOutlined,
-  ClockCircleOutlined,
 } from '@ant-design/icons';
 import * as api from '../api/client';
 import { useAppStore } from '../store';
@@ -39,8 +37,6 @@ import { getCommonTimeZoneSelectOptions } from '../utils/timezones';
 import { PageLayout } from '../components/PageLayout';
 import { PROVIDER_NAMES } from './settings/providersUtils';
 import LLMProvidersPanel from './settings/LLMProvidersPanel';
-import Channels from './Channels';
-import Cron from './Cron';
 
 const { Text } = Typography;
 
@@ -64,8 +60,6 @@ type SettingsTab =
   | 'general'
   | 'providers'
   | 'tools'
-  | 'channels'
-  | 'cron'
   | 'environment';
 
 interface FormData {
@@ -85,8 +79,6 @@ const VALID_SETTINGS_TABS: ReadonlyArray<SettingsTab> = [
   'general',
   'providers',
   'tools',
-  'channels',
-  'cron',
   'environment',
 ];
 
@@ -600,32 +592,6 @@ export default function Settings() {
             )}
           </div>
           </Card>
-        </div>
-      ),
-    },
-    {
-      key: 'channels',
-      label: (
-        <span className="flex items-center gap-1.5">
-          <MobileOutlined /> {t('settings.tabChannels')}
-        </span>
-      ),
-      children: (
-        <div className="flex min-h-0 min-w-0 w-full flex-1 flex-col overflow-hidden">
-          <Channels embedded />
-        </div>
-      ),
-    },
-    {
-      key: 'cron',
-      label: (
-        <span className="flex items-center gap-1.5">
-          <ClockCircleOutlined /> {t('settings.tabCron')}
-        </span>
-      ),
-      children: (
-        <div className="flex min-h-0 min-w-0 w-full flex-1 flex-col overflow-hidden">
-          <Cron embedded />
         </div>
       ),
     },
