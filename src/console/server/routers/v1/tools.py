@@ -1,4 +1,4 @@
-"""Tool call logs read from optional ``.nanobot_console/tool_logs.json``."""
+"""Tool call logs read from optional ``.openpawlet_console/tool_logs.json``."""
 
 from __future__ import annotations
 

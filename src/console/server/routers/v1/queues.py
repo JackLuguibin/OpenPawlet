@@ -2,7 +2,7 @@
 
 Historically these endpoints proxied to a separate ``open-pawlet-queue-manager``
 broker.  In the consolidated single-process layout the message bus is the
-in-memory :class:`~nanobot.bus.queue.MessageBus`, so the proxy was removed
+in-memory :class:`~openpawlet.bus.queue.MessageBus`, so the proxy was removed
 and these routes now report the local queue state directly via
 :mod:`console.server.queues_router`.
 """

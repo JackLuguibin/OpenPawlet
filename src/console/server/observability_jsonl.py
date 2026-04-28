@@ -1,4 +1,4 @@
-"""Read agent observability events from nanobot JSONL files (no gateway request)."""
+"""Read agent observability events from OpenPawlet JSONL files (no gateway request)."""
 
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ def read_recent_observability_dicts(
     Session runs append to ``observability/sessions/{safe_session_key}/events_*.jsonl``;
     events without a session use ``observability/events_*.jsonl``.
 
-    Same row shape as nanobot ``buffer.record_event`` (``ts``, ``event``, ``trace_id``, ...).
+    Same row shape as OpenPawlet ``buffer.record_event`` (``ts``, ``event``, ``trace_id``, ...).
 
     Returns ``(rows, source_label, error)`` when the directory is missing, there are no
     files yet, or read fails.
@@ -45,7 +45,7 @@ def read_recent_observability_dicts(
         return (
             [],
             label,
-            "No observability/ directory under the workspace (nanobot has not created it yet).",
+            "No observability/ directory under the workspace (OpenPawlet has not created it yet).",
         )
     files = _sorted_newest_event_files(obs_dir)
     if not files:

@@ -9,7 +9,7 @@ from pydantic import ValidationError
 from console.server.bot_workspace import read_bot_runtime
 from console.server.models.channels import ChannelRefreshResult
 from console.server.models.status import ChannelStatus
-from console.server.nanobot_user_config import (
+from console.server.openpawlet_user_config import (
     build_config_response,
     load_raw_config,
     merge_config_section,
@@ -69,21 +69,61 @@ def plugin_channel_names(bot_id: str | None) -> list[str]:
     return sorted(names)
 
 
+def _discover_available_channel_names() -> list[str]:
+    """Return all installable channel plugin names (built-in + entry-point).
+
+    Failures are swallowed: discovery should never break the API surface.
+    Returns an empty list when the openpawlet package is unavailable for any
+    reason (e.g. broken install during dev). Names are de-duplicated.
+    """
+    try:
+        from openpawlet.channels.registry import (
+            discover_channel_names,
+            discover_plugins,
+        )
+    except Exception:  # noqa: BLE001 - keep API resilient
+        return []
+    names: set[str] = set()
+    try:
+        names.update(discover_channel_names())
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        names.update(discover_plugins().keys())
+    except Exception:  # noqa: BLE001
+        pass
+    return sorted(names)
+
+
 def list_channel_statuses(bot_id: str | None) -> list[ChannelStatus]:
-    """Build channel rows from ``channels`` in ``config.json`` plus runtime."""
+    """Build channel rows for the UI.
+
+    Includes every channel plugin currently installed (built-in modules and
+    external entry points) so the user always sees a card per channel even
+    when ``config.json`` has no entry for it yet. Channels missing from
+    ``channels`` in the config show up as disabled rows so the user can
+    open Edit, fill in credentials and enable them.
+    """
     path = resolve_config_path(bot_id)
     raw = load_raw_config(path)
-    channels_raw = raw.get("channels")
-    if not isinstance(channels_raw, dict):
-        return []
+    channels_raw = raw.get("channels") if isinstance(raw.get("channels"), dict) else {}
     running, _ = read_bot_runtime(bot_id)
+
+    configured: dict[str, dict[str, Any]] = {}
+    for name, value in channels_raw.items():
+        if _is_channel_plugin_entry(name, value):
+            configured[name] = value
+
+    all_names = set(configured.keys()) | set(_discover_available_channel_names())
     rows: list[ChannelStatus] = []
-    for name in sorted(channels_raw.keys()):
-        value = channels_raw[name]
-        if not _is_channel_plugin_entry(name, value):
-            continue
-        channel_dict = value
-        enabled = _enabled_from_config(channel_dict)
+    for name in sorted(all_names):
+        channel_dict = configured.get(name)
+        if channel_dict is None:
+            # Plugin is installed but not yet configured: render as disabled
+            # template card so the Channels page is never empty out of the box.
+            enabled = False
+        else:
+            enabled = _enabled_from_config(channel_dict)
         status = _runtime_status(enabled, running)
         rows.append(
             ChannelStatus(

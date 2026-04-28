@@ -9,7 +9,7 @@ import Input from "antd/es/input";
 import type { TextAreaRef } from "antd/es/input/TextArea";
 
 import { formatCompactTokenCount } from "./statusParse";
-import type { NanobotContextUsage } from "./types";
+import type { OpenPawletContextUsage } from "./types";
 
 export interface ChatInputProps {
   inputRef: RefObject<TextAreaRef | null>;
@@ -20,7 +20,7 @@ export interface ChatInputProps {
   onStop: () => void;
   isStreaming: boolean;
   showContextMeter: boolean;
-  contextUsage: NanobotContextUsage | null;
+  contextUsage: OpenPawletContextUsage | null;
   contextLoading: boolean;
 }
 

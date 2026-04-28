@@ -15,36 +15,36 @@ from console.server.models.observability import (
     AgentObservabilityEvent,
     AgentObservabilityTimeline,
     ConsoleObservabilityInfo,
-    NanobotGatewayInfo,
+    OpenPawletGatewayInfo,
 )
-from console.server.nanobot_user_config import resolve_config_path
 from console.server.observability_jsonl import read_recent_observability_dicts
-from nanobot.config.loader import load_config
+from console.server.openpawlet_user_config import resolve_config_path
+from openpawlet.config.loader import load_config
 
 router = APIRouter(tags=["Observability"])
 
 
-def _embedded_runtime_info(request: Request, settings: ServerSettings) -> NanobotGatewayInfo:
+def _embedded_runtime_info(request: Request, settings: ServerSettings) -> OpenPawletGatewayInfo:
     """Build the gateway block from the in-process embedded runtime.
 
     The 0.3.x layout collapsed the gateway into the console process, so
     HTTP-probing ``ws://127.0.0.1:8765`` (which only speaks WebSocket)
     always returned an error and made the dashboard look unhealthy.  We
-    report the actual EmbeddedNanobot state here instead.
+    report the actual EmbeddedOpenPawlet state here instead.
     """
     embedded = getattr(request.app.state, "embedded", None)
     endpoint = (
-        f"in-process://{settings.nanobot_gateway_host}:{settings.nanobot_gateway_port}"
+        f"in-process://{settings.openpawlet_gateway_host}:{settings.openpawlet_gateway_port}"
     )
     if embedded is None:
-        return NanobotGatewayInfo(
+        return OpenPawletGatewayInfo(
             endpoint=endpoint,
             ok=False,
             status="degraded",
             error="Embedded runtime is not running",
         )
     uptime = float(getattr(embedded, "uptime_s", 0.0))
-    return NanobotGatewayInfo(
+    return OpenPawletGatewayInfo(
         endpoint=endpoint,
         ok=True,
         status="ok",
@@ -71,7 +71,7 @@ async def get_observability(
                 status="ok",
                 version=settings.version,
             ),
-            nanobot_gateway=_embedded_runtime_info(request, settings),
+            openpawlet_gateway=_embedded_runtime_info(request, settings),
         )
     )
 
@@ -82,7 +82,7 @@ async def get_observability_timeline(
     limit: int = Query(default=200, ge=1, le=2000),
     trace_id: str | None = Query(default=None, alias="trace_id"),
 ) -> DataResponse[AgentObservabilityTimeline]:
-    """Agent trace from JSONL under the bot workspace (LLM / tool / run; same paths nanobot appends to)."""
+    """Agent trace from JSONL under the bot workspace (LLM / tool / run; same paths OpenPawlet appends to)."""
     path = resolve_config_path(bot_id)
     _ = load_config(path)
     raw_list, source, err = read_recent_observability_dicts(

@@ -25,7 +25,7 @@ async def test_mcp(
     name: str,
     bot_id: str | None = Query(default=None, alias="bot_id"),
 ) -> DataResponse[MCPTestResult]:
-    """Connectivity check (stub — use running nanobot for real MCP tests)."""
+    """Connectivity check (stub — use running OpenPawlet for real MCP tests)."""
     _ = bot_id
     return DataResponse(data=MCPTestResult(name=name, success=True, message=None, latency_ms=0.0))
 

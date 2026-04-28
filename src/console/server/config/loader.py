@@ -1,8 +1,8 @@
 """JSON config file loader for the OpenPawlet console server.
 
-The optional ``nanobot_web.json`` lives next to the nanobot config
-(``~/.nanobot/`` by default, see :func:`nanobot.config.get_config_path`). Its
-top-level ``server`` key mirrors the ``NANOBOT_SERVER_*`` environment
+The optional ``openpawlet_web.json`` lives next to the OpenPawlet config
+(``~/.openpawlet/`` by default, see :func:`openpawlet.config.get_config_path`). Its
+top-level ``server`` key mirrors the ``OPENPAWLET_SERVER_*`` environment
 variables; any field not present falls back to env / defaults (see
 :class:`ServerSettings` for the full resolution order).
 
@@ -23,19 +23,19 @@ from loguru import logger
 
 from console.server.config.schema import ServerSettings
 
-CONFIG_FILENAME = "nanobot_web.json"
+CONFIG_FILENAME = "openpawlet_web.json"
 _SERVER_KEY = "server"
 
 
 def find_config_file() -> Path:
-    """Return the path to ``nanobot_web.json`` next to the nanobot config file."""
-    from nanobot.config import get_config_path
+    """Return the path to ``openpawlet_web.json`` next to the OpenPawlet config file."""
+    from openpawlet.config import get_config_path
 
     return get_config_path().parent / CONFIG_FILENAME
 
 
 def load_config_file(config_path: Path | None = None) -> dict[str, Any]:
-    """Return the ``server`` section from ``nanobot_web.json``, or empty dict.
+    """Return the ``server`` section from ``openpawlet_web.json``, or empty dict.
 
     Uses ``find_config_file()`` when ``config_path`` is omitted. Malformed
     files are logged and treated as empty so a bad file never prevents the
@@ -72,7 +72,7 @@ def load_config_file(config_path: Path | None = None) -> dict[str, Any]:
 
 
 def write_default_config(config_path: Path | None = None) -> Path:
-    """Write a default ``nanobot_web.json`` and return its path.
+    """Write a default ``openpawlet_web.json`` and return its path.
 
     The file always reflects the **schema defaults** regardless of the
     surrounding environment — i.e. env vars or a pre-existing JSON file do
@@ -116,7 +116,7 @@ def _server_defaults() -> dict[str, Any]:
 
 
 def ensure_server_config(config_path: Path | None = None) -> bool:
-    """Auto-fill any missing fields in an existing ``nanobot_web.json``.
+    """Auto-fill any missing fields in an existing ``openpawlet_web.json``.
 
     The file is **not** created when it doesn't already exist: that matches
     the broader "settings JSON is opt-in" policy (the user has to run

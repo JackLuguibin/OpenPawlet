@@ -3,9 +3,9 @@
 Settings are resolved in this priority order (highest wins):
 
 1. Arguments passed to :class:`ServerSettings` directly (``__init__`` kwargs)
-2. ``NANOBOT_SERVER_*`` environment variables
+2. ``OPENPAWLET_SERVER_*`` environment variables
 3. ``.env`` file in the current working directory (optional)
-4. ``~/.nanobot/nanobot_web.json`` under the ``server`` key (optional)
+4. ``~/.openpawlet/openpawlet_web.json`` under the ``server`` key (optional)
 5. Built-in defaults on each field
 
 The JSON file is **opt-in**: it is no longer written automatically on first
@@ -48,7 +48,7 @@ class JsonServerFileSource(PydanticBaseSettingsSource):
     """Pydantic-settings source that reads the ``server`` section of a JSON file.
 
     The file path is resolved lazily via :func:`console.server.config.loader
-    .find_config_file` so tests can override ``nanobot.config.loader`` state
+    .find_config_file` so tests can override ``openpawlet.config.loader`` state
     without triggering an import cycle at class definition time.
     """
 
@@ -97,7 +97,7 @@ class ServerSettings(BaseSettings):
     """
 
     model_config = SettingsConfigDict(
-        env_prefix="NANOBOT_SERVER_",
+        env_prefix="OPENPAWLET_SERVER_",
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
@@ -134,7 +134,7 @@ class ServerSettings(BaseSettings):
     )
     title: str = Field(default="OpenPawlet Console", description="API title")
     description: str = Field(
-        default="HTTP API for nanobot console management",
+        default="HTTP API for OpenPawlet console management",
         description="API description",
     )
     version: str = Field(
@@ -154,14 +154,14 @@ class ServerSettings(BaseSettings):
         default="/openapi.json",
         description="OpenAPI schema path; set to empty string to disable.",
     )
-    nanobot_gateway_host: str = Field(
+    openpawlet_gateway_host: str = Field(
         default="127.0.0.1",
         description=(
             "Loopback host on which the in-process WebSocketChannel listens; "
-            "the FastAPI app reverse-proxies /nanobot-ws/* to it."
+            "the FastAPI app reverse-proxies /openpawlet-ws/* to it."
         ),
     )
-    nanobot_gateway_port: int = Field(
+    openpawlet_gateway_port: int = Field(
         default=8765,
         ge=1,
         le=65535,

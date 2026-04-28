@@ -1,4 +1,4 @@
-"""Long-term memory and history under ``<workspace>/memory/`` (nanobot workspace)."""
+"""Long-term memory and history under ``<workspace>/memory/`` (OpenPawlet workspace)."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ router = APIRouter(tags=["Memory"])
 async def get_memory(
     bot_id: str | None = Query(default=None, alias="bot_id"),
 ) -> DataResponse[MemoryResponse]:
-    """Return long-term memory and history (same files as nanobot ``MemoryStore``)."""
+    """Return long-term memory and history (same files as OpenPawlet ``MemoryStore``)."""
     long_term = read_memory_text(bot_id, "long_term")
     history = read_memory_text(bot_id, "history")
     return DataResponse(data=MemoryResponse(long_term=long_term, history=history))

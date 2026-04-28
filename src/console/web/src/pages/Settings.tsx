@@ -176,7 +176,7 @@ export default function Settings() {
       };
 
       form.setFieldsValue({
-        workspace: (defaults?.workspace as string) ?? '~/.nanobot/workspace',
+        workspace: (defaults?.workspace as string) ?? '~/.openpawlet/workspace',
         model: (defaults?.model as string) ?? '',
         provider: (defaults?.provider as string) ?? 'auto',
         timezone: (raw('timezone', 'timezone', 'UTC') as string) || 'UTC',
@@ -263,7 +263,7 @@ export default function Settings() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'nanobot-config.json';
+    a.download = 'openpawlet-config.json';
     a.click();
     URL.revokeObjectURL(url);
     addToast({ type: 'success', message: t('settings.exported') });

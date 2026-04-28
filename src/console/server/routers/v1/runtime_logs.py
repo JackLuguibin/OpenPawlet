@@ -1,4 +1,4 @@
-"""Read tail of local ``~/.nanobot/logs`` files (console server)."""
+"""Read tail of local ``~/.openpawlet/logs`` files (console server)."""
 
 from __future__ import annotations
 

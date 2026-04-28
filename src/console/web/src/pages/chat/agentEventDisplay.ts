@@ -29,7 +29,7 @@ export interface PeerAgentUnwrap {
 
 /** If text is ``render_agent_event_for_llm`` output for ``agent.direct``, return body. */
 export function tryUnwrapPeerAgentInboundText(raw: string): PeerAgentUnwrap | null {
-  let text = stripRuntimeContextPrefix(raw).trim();
+  const text = stripRuntimeContextPrefix(raw).trim();
   if (!text.startsWith("[event]")) {
     return null;
   }

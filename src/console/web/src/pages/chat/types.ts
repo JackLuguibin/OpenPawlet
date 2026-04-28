@@ -54,10 +54,10 @@ export interface TrackedToolCall {
 }
 
 /**
- * Parsed nanobot `/status` payload (or legacy plain-text variant) reduced to
+ * Parsed OpenPawlet `/status` payload (or legacy plain-text variant) reduced to
  * the context-meter slice the chat input needs.
  */
-export interface NanobotContextUsage {
+export interface OpenPawletContextUsage {
   tokens_estimate: number;
   window_total: number;
   percent_used: number;

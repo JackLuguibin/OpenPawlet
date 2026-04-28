@@ -1,6 +1,6 @@
 """Helpers for tagging Console-originated frames with a Queue Manager envelope.
 
-The Console WebSocket proxy is a transparent tunnel to the nanobot
+The Console WebSocket proxy is a transparent tunnel to the OpenPawlet
 gateway.  To reach business-level "exactly once", we need every logical
 user-initiated frame (a chat message, a /stop command, ...) to carry a
 stable ``message_id`` so the broker can dedupe replays after restarts
@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from nanobot.bus.envelope import (
+from openpawlet.bus.envelope import (
     KEY_DEDUPE_KEY,
     KEY_MESSAGE_ID,
     KEY_TRACE_ID,

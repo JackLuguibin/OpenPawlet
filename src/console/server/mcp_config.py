@@ -1,12 +1,12 @@
-"""Build :class:`MCPStatus` rows from nanobot ``config.json``."""
+"""Build :class:`MCPStatus` rows from OpenPawlet ``config.json``."""
 
 from __future__ import annotations
 
 from typing import Literal
 
 from console.server.models.status import MCPStatus
-from console.server.nanobot_user_config import resolve_config_path
-from nanobot.config.loader import load_config
+from console.server.openpawlet_user_config import resolve_config_path
+from openpawlet.config.loader import load_config
 
 
 def mcp_statuses_for_bot(bot_id: str | None) -> list[MCPStatus]:

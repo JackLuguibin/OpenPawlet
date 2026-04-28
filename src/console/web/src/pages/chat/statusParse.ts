@@ -1,6 +1,6 @@
 import type { StreamChunk } from "../../api/types";
-import { extractNanobotStatusContext } from "../../utils/nanobotStatusContext";
-import type { NanobotContextUsage } from "./types";
+import { extractOpenPawletStatusContext } from "../../utils/openpawletStatusContext";
+import type { OpenPawletContextUsage } from "./types";
 
 /**
  * Pull the first balanced `{ ... }` object out of an arbitrary text blob.
@@ -54,12 +54,12 @@ export function parseCompactTokenCountFragment(token: string): number | null {
 }
 
 /**
- * Parse the plain-text `/status` body that nanobot emits as `event: message`,
+ * Parse the plain-text `/status` body that OpenPawlet emits as `event: message`,
  * e.g. `📚 Context: 8k/65k (15% of input budget)`.
  */
-export function parseNanobotStatusPlainText(
+export function parseOpenPawletStatusPlainText(
   raw: string,
-): NanobotContextUsage | null {
+): OpenPawletContextUsage | null {
   const lineMatch = /Context:\s*(\S+)\s*\/\s*(\S+)\s*\(\s*(\d+(?:\.\d+)?)\s*%/i.exec(
     raw,
   );
@@ -84,9 +84,9 @@ export function parseNanobotStatusPlainText(
  * or without surrounding chatter). Falls back to plain-text parsing when no
  * usable JSON object is recovered.
  */
-export function parseNanobotStatusJson(
+export function parseOpenPawletStatusJson(
   raw: string,
-): NanobotContextUsage | null {
+): OpenPawletContextUsage | null {
   const trimmed = raw.trim();
   if (!trimmed) {
     return null;
@@ -102,7 +102,7 @@ export function parseNanobotStatusJson(
   for (const candidate of candidates) {
     try {
       const data = JSON.parse(candidate) as Record<string, unknown>;
-      const ctx = extractNanobotStatusContext(data);
+      const ctx = extractOpenPawletStatusContext(data);
       if (!ctx) {
         continue;
       }
@@ -124,7 +124,7 @@ export function parseNanobotStatusJson(
       continue;
     }
   }
-  return parseNanobotStatusPlainText(trimmed);
+  return parseOpenPawletStatusPlainText(trimmed);
 }
 
 /**

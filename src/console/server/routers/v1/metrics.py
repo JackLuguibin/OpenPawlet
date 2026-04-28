@@ -57,7 +57,7 @@ async def get_metrics(request: Request) -> PlainTextResponse:
         _line(
             "openpawlet_runtime_ready",
             runtime_ready,
-            help_text="1 when the embedded nanobot runtime is up, 0 otherwise.",
+            help_text="1 when the embedded OpenPawlet runtime is up, 0 otherwise.",
         )
     )
 

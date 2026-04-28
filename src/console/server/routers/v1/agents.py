@@ -117,7 +117,7 @@ def _decorate_with_bootstrap_flags(
 def _migrate_legacy_agents_in_file(
     bot_id: str, agents_legacy: list[Any], data: dict[str, Any]
 ) -> None:
-    """One-time: copy ``.nanobot_console/agents.json`` ``agents`` array to per-agent dirs."""
+    """One-time: copy ``.openpawlet_console/agents.json`` ``agents`` array to per-agent dirs."""
     for item in agents_legacy:
         if not isinstance(item, dict):
             continue
@@ -140,7 +140,7 @@ def _migrate_legacy_agents_in_file(
 
 
 def _load_raw_state(bot_id: str) -> dict[str, Any]:
-    """Load agent rows from ``workspace/agents/``; metadata from ``.nanobot_console/agents.json``."""
+    """Load agent rows from ``workspace/agents/``; metadata from ``.openpawlet_console/agents.json``."""
     path = agents_state_path(bot_id)
     data = load_json_file(path, None)
     if not isinstance(data, dict):

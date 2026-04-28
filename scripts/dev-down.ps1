@@ -2,7 +2,7 @@ $ErrorActionPreference = "SilentlyContinue"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $ports = @(3000, 3001, 8000, 8765)
-$namePattern = "^(python|console|nanobot|node|esbuild)(\.exe)?$"
+$namePattern = "^(python|console|openpawlet|node|esbuild)(\.exe)?$"
 
 Write-Output "[dev-down] stopping OpenPawlet related processes..."
 

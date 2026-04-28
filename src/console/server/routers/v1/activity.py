@@ -1,4 +1,4 @@
-"""Activity feed from nanobot observability buffer (same source as /observability/timeline)."""
+"""Activity feed from OpenPawlet observability buffer (same source as /observability/timeline)."""
 
 from __future__ import annotations
 
@@ -7,10 +7,10 @@ from loguru import logger
 
 from console.server.activity_feed import observability_rows_to_activity_items
 from console.server.bot_workspace import workspace_root
-from console.server.models import ActivityFeedPage, DataResponse
-from console.server.nanobot_user_config import resolve_config_path
+from console.server.models import ActivityFeedPage, ActivityItem, DataResponse
 from console.server.observability_jsonl import read_recent_observability_dicts
-from nanobot.config.loader import load_config
+from console.server.openpawlet_user_config import resolve_config_path
+from openpawlet.config.loader import load_config
 
 router = APIRouter(tags=["Activity"])
 

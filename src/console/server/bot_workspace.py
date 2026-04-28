@@ -12,11 +12,11 @@ from fastapi import HTTPException
 from loguru import logger
 
 from console.server.json_utils import load_json_file, save_json_file
-from console.server.nanobot_user_config import resolve_config_path
-from nanobot.config.loader import load_config
-from nanobot.utils.helpers import local_now
+from console.server.openpawlet_user_config import resolve_config_path
+from openpawlet.config.loader import load_config
+from openpawlet.config.paths import workspace_console_subdir
+from openpawlet.utils.helpers import local_now
 
-_CONSOLE_DIR = ".nanobot_console"
 _RUNTIME_STATE_FILE = "runtime_state.json"
 _MEMORY_DIR = "memory"
 _AGENTS_FILE = "agents.json"
@@ -31,7 +31,7 @@ _PROFILE_FILES: dict[str, str] = {
     "tools": "TOOLS.md",
     "agents": "AGENTS.md",
 }
-# Matches ``nanobot.agent.memory.MemoryStore`` (MEMORY.md + HISTORY.md).
+# Matches ``openpawlet.agent.memory.MemoryStore`` (MEMORY.md + HISTORY.md).
 _MEMORY_FILES = {"long_term": "MEMORY.md", "history": "HISTORY.md"}
 # Older console builds used these names under the same directory.
 _MEMORY_LEGACY = {"long_term": "long_term.md", "history": "history.md"}
@@ -44,7 +44,7 @@ def _workspace_root_uncached(path: Path) -> Path:
 
 
 def workspace_root(bot_id: str | None) -> Path:
-    """Return expanded workspace directory from nanobot ``config.json``.
+    """Return expanded workspace directory from OpenPawlet ``config.json``.
 
     Cached by ``(path, mtime_ns)`` so /api/v1 routers that touch it on
     every request (status, dashboard, sessions, observability, ...) do
@@ -58,7 +58,7 @@ def workspace_root(bot_id: str | None) -> Path:
 def console_state_dir(bot_id: str | None) -> Path:
     """Directory for console-managed JSON state (under workspace)."""
     root = workspace_root(bot_id)
-    d = root / _CONSOLE_DIR
+    d = workspace_console_subdir(root)
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -237,7 +237,7 @@ def profile_file_path(bot_id: str | None, key: str) -> Path:
 def read_memory_text(bot_id: str | None, kind: str) -> str:
     """Read long-term or history from ``<workspace>/memory/``.
 
-    Prefers nanobot's ``MEMORY.md`` / ``HISTORY.md``, then legacy ``long_term.md`` /
+    Prefers OpenPawlet's ``MEMORY.md`` / ``HISTORY.md``, then legacy ``long_term.md`` /
     ``history.md``.
     """
     if kind not in _MEMORY_FILES:
@@ -338,8 +338,8 @@ def teams_state_path(bot_id: str | None) -> Path:
 
 
 def save_active_team_gateway(bot_id: str | None, team_id: str, room_id: str) -> None:
-    """Persist which team+room the nanobot gateway should bind on next startup."""
-    from nanobot.utils.team_gateway_runtime import active_team_gateway_path
+    """Persist which team+room the OpenPawlet gateway should bind on next startup."""
+    from openpawlet.utils.team_gateway_runtime import active_team_gateway_path
 
     tid = (team_id or "").strip()
     rid = (room_id or "").strip()
@@ -354,7 +354,7 @@ def save_active_team_gateway(bot_id: str | None, team_id: str, room_id: str) -> 
 
 def clear_active_team_gateway_for_team(bot_id: str | None, team_id: str) -> None:
     """Remove gateway pointer when it references the deleted team."""
-    from nanobot.utils.team_gateway_runtime import active_team_gateway_path
+    from openpawlet.utils.team_gateway_runtime import active_team_gateway_path
 
     tid = (team_id or "").strip()
     if not tid:
@@ -377,7 +377,7 @@ def tool_logs_path(bot_id: str | None) -> Path:
 
 def iso_now() -> str:
     """ISO-8601 ``now`` in the configured agent timezone (see ``agents.defaults.timezone``)."""
-    from console.server.nanobot_user_config import read_default_timezone, resolve_config_path
+    from console.server.openpawlet_user_config import read_default_timezone, resolve_config_path
 
     return local_now(read_default_timezone(resolve_config_path(None))).isoformat()
 

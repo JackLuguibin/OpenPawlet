@@ -15,10 +15,10 @@ import type { StreamChunk } from '../api/types';
 
 /**
  * Origin of a chat stream chunk. `console` is the FastAPI `/ws/state` push,
- * `nanobot` is the built-in nanobot `/nanobot-ws` channel.  Handlers can use
+ * `openpawlet` is the built-in OpenPawlet `/openpawlet-ws` channel. Handlers can use
  * this tag to dedupe when both transports are active (see Chat.tsx).
  */
-export type ChatChunkSource = "console" | "nanobot";
+export type ChatChunkSource = "console" | "openpawlet";
 
 // Global chat message handler registry (used by Chat.tsx for WS streaming)
 type ChatMessageHandler = (chunk: StreamChunk, source: ChatChunkSource) => void;
@@ -35,10 +35,10 @@ function _dispatchChat(chunk: StreamChunk, source: ChatChunkSource) {
   }
 }
 
-/** Dispatch a chat stream chunk (e.g. from nanobot `ws` channel WebSocket). */
+/** Dispatch a chat stream chunk (e.g. from OpenPawlet `ws` channel WebSocket). */
 export function dispatchChatChunk(
   chunk: StreamChunk,
-  source: ChatChunkSource = "nanobot",
+  source: ChatChunkSource = "openpawlet",
 ) {
   _dispatchChat(chunk, source);
 }
@@ -203,7 +203,7 @@ export function useWebSocket() {
           'session_key', 'tool_call',
           'tool_result', 'tool_progress', 'channel_notice', 'subagent_start',
           'subagent_done', 'assistant_message', 'error',
-          'nanobot_status_json',
+          'openpawlet_status_json',
         ];
         if (chatTypes.includes(message.type)) {
           _dispatchChat(message as StreamChunk, "console");

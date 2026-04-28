@@ -1,6 +1,6 @@
 """Background scheduler that polls configured Skills git repos.
 
-Lives entirely in the console process (not the embedded nanobot runtime)
+Lives entirely in the console process (not the embedded OpenPawlet runtime)
 so it stays available even when the runtime is in degraded mode.  We use
 a single lightweight ``asyncio`` loop that wakes every minute, checks
 which repos are due, and fans them out through the same engine the HTTP

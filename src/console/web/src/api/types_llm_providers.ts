@@ -1,4 +1,4 @@
-// LLM provider instance types (mirrors src/nanobot/providers/instances.py
+// LLM provider instance types (mirrors src/openpawlet/providers/instances.py
 // and src/console/server/routers/v1/llm_providers.py).
 //
 // API keys are returned in their **masked** form. The plaintext value is

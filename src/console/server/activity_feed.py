@@ -1,4 +1,4 @@
-"""Map nanobot observability buffer rows to console ActivityItem for the activity feed."""
+"""Map OpenPawlet observability buffer rows to console ActivityItem for the activity feed."""
 
 from __future__ import annotations
 

@@ -16,7 +16,7 @@ import type { TrackedToolCall } from "./types";
 import type { ToolCall } from "../../api/types";
 
 interface StreamingAssistantBubbleProps {
-  /** Channel-notice strings emitted by nanobot before the first token. */
+  /** Channel-notice strings emitted by OpenPawlet before the first token. */
   streamingChannelNotices: string[];
   /** Reasoning text streamed before the final answer. */
   streamingReasoningContent: string;

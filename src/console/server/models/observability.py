@@ -16,7 +16,7 @@ class ConsoleObservabilityInfo(BaseModel):
     version: str = Field(description="Console server / API version string")
 
 
-class NanobotGatewayInfo(BaseModel):
+class OpenPawletGatewayInfo(BaseModel):
     """``GET {gateway}/health`` probe from the bot config's gateway host:port."""
 
     model_config = ConfigDict(extra="forbid")
@@ -25,9 +25,9 @@ class NanobotGatewayInfo(BaseModel):
     ok: bool = Field(description="True when HTTP 200 and body looks healthy")
     status: str | None = Field(default=None, description="`status` field from JSON body if present")
     version: str | None = Field(
-        default=None, description="`version` from nanobot gateway if present"
+        default=None, description="`version` from OpenPawlet gateway if present"
     )
-    uptime_s: float | None = Field(default=None, description="`uptime_s` from nanobot if present")
+    uptime_s: float | None = Field(default=None, description="`uptime_s` from OpenPawlet if present")
     error: str | None = Field(default=None, description="Probe or parse error, when not ok")
 
 
@@ -37,7 +37,7 @@ class ObservabilityResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     console: ConsoleObservabilityInfo
-    nanobot_gateway: NanobotGatewayInfo
+    openpawlet_gateway: OpenPawletGatewayInfo
 
 
 class AgentObservabilityEvent(BaseModel):

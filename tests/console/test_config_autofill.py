@@ -2,7 +2,7 @@
 
 These pin two important behaviours:
 
-* Missing nanobot/server schema fields are filled in from defaults so users
+* Missing OpenPawlet/server schema fields are filled in from defaults so users
   on freshly-upgraded builds get new options without hand-editing files.
 * The auto-fill is a no-op when the file is already up to date — repeated
   startups must not bump the file's mtime, which would otherwise invalidate
@@ -23,7 +23,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from console.server.config.loader import ensure_server_config  # noqa: E402
-from console.server.nanobot_user_config import ensure_full_config  # noqa: E402
+from console.server.openpawlet_user_config import ensure_full_config  # noqa: E402
 
 
 def test_ensure_full_config_noop_when_file_missing(tmp_path: Path) -> None:
@@ -90,15 +90,15 @@ def test_ensure_full_config_skips_invalid_files(tmp_path: Path) -> None:
 
 
 def test_ensure_server_config_noop_when_file_missing(tmp_path: Path) -> None:
-    """nanobot_web.json is opt-in; auto-fill never creates it."""
-    target = tmp_path / "nanobot_web.json"
+    """openpawlet_web.json is opt-in; auto-fill never creates it."""
+    target = tmp_path / "openpawlet_web.json"
     assert ensure_server_config(target) is False
     assert not target.exists()
 
 
 def test_ensure_server_config_fills_missing_fields(tmp_path: Path) -> None:
     """A sparse server section gains every defaulted field."""
-    target = tmp_path / "nanobot_web.json"
+    target = tmp_path / "openpawlet_web.json"
     target.write_text(
         json.dumps({"server": {"port": 9100}, "extra": {"foo": "bar"}}),
         encoding="utf-8",
@@ -116,7 +116,7 @@ def test_ensure_server_config_fills_missing_fields(tmp_path: Path) -> None:
 
 
 def test_ensure_server_config_is_idempotent(tmp_path: Path) -> None:
-    target = tmp_path / "nanobot_web.json"
+    target = tmp_path / "openpawlet_web.json"
     target.write_text(json.dumps({"server": {"port": 9100}}), encoding="utf-8")
 
     assert ensure_server_config(target) is True
@@ -129,7 +129,7 @@ def test_ensure_server_config_is_idempotent(tmp_path: Path) -> None:
 @pytest.mark.parametrize("payload", ["{not valid json", '"a string"'])
 def test_ensure_server_config_skips_unreadable_files(tmp_path: Path, payload: str) -> None:
     """Garbage on disk must not be overwritten silently."""
-    target = tmp_path / "nanobot_web.json"
+    target = tmp_path / "openpawlet_web.json"
     target.write_text(payload, encoding="utf-8")
 
     assert ensure_server_config(target) is False

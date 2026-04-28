@@ -7,6 +7,8 @@ import type {
   WSMessage,
 } from '../api/types';
 
+import { OPENPAWLET_LOCAL_STORAGE_KEYS } from '../constants/localStorage';
+
 type Theme = 'light' | 'dark' | 'system';
 
 type ToastType = 'success' | 'error' | 'info' | 'warning';
@@ -18,11 +20,14 @@ interface Toast {
   duration?: number;
 }
 
-/** Ring-buffer cap for WebSocket debug panes (Console /ws + Nanobot channel); prevents unbounded memory. */
+/** Ring-buffer cap for WebSocket debug panes (Console /ws + OpenPawlet channel); prevents unbounded memory. */
 const WS_DEBUG_MAX_STORED_MESSAGES = 5000;
 
+const THEME_STORAGE_KEY = OPENPAWLET_LOCAL_STORAGE_KEYS.theme;
+const CURRENT_BOT_STORAGE_KEY = OPENPAWLET_LOCAL_STORAGE_KEYS.currentBotId;
+
 const getInitialTheme = (): Theme => {
-  const stored = localStorage.getItem('nanobot-theme') as Theme | null;
+  const stored = localStorage.getItem(THEME_STORAGE_KEY) as Theme | null;
   if (stored) return stored;
   if (window.matchMedia('(prefers-color-scheme: dark)').matches) return 'dark';
   return 'light';
@@ -72,16 +77,16 @@ interface AppState {
   /** True while the socket is opening or handshaking (not yet OPEN). */
   wsConnecting: boolean;
   wsMessages: WSMessage[];
-  /** Raw frames from nanobot `/nanobot-ws` (chat streaming channel); for debug UI only. */
-  nanobotWsDebugLines: { ts: number; body: string }[];
+  /** Raw frames from OpenPawlet `/openpawlet-ws` (chat streaming channel); for debug UI only. */
+  openpawletWsDebugLines: { ts: number; body: string }[];
 
-  /** Nanobot built-in channel WS (Chat `/nanobot-ws`); for header when console push is off. */
+  /** OpenPawlet built-in channel WS (Chat `/openpawlet-ws`); for header when console push is off. */
   agentWsLinked: boolean;
   agentWsReady: boolean;
-  /** Raw `chat_id` from nanobot `ready`; used as `chat_id` on outbound WS payloads. */
-  nanobotChatId: string | null;
+  /** Raw `chat_id` from OpenPawlet `ready`; used as `chat_id` on outbound WS payloads. */
+  openpawletChatId: string | null;
   /** `websocket:` + `ready.chat_id`; canonical session key for JSONL, routing, and outbound `session_key`. */
-  nanobotClientId: string | null;
+  openpawletClientId: string | null;
 
   // Actions
   setSidebarCollapsed: (collapsed: boolean) => void;
@@ -104,13 +109,13 @@ interface AppState {
   setWSConnecting: (connecting: boolean) => void;
   addWSMessage: (message: WSMessage) => void;
   clearWSMessages: () => void;
-  addNanobotWsDebugLine: (body: string) => void;
-  clearNanobotWsDebug: () => void;
+  addOpenPawletWsDebugLine: (body: string) => void;
+  clearOpenPawletWsDebug: () => void;
 
   setAgentWsLinked: (linked: boolean) => void;
   setAgentWsReady: (ready: boolean) => void;
-  setNanobotChatId: (chatId: string | null) => void;
-  setNanobotClientId: (clientId: string | null) => void;
+  setOpenPawletChatId: (chatId: string | null) => void;
+  setOpenPawletClientId: (clientId: string | null) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -118,7 +123,7 @@ export const useAppStore = create<AppState>((set) => ({
   sidebarCollapsed: false,
   theme: getInitialTheme(),
   currentSessionKey: null,
-  currentBotId: localStorage.getItem('nanobot-current-bot-id') || null,
+  currentBotId: localStorage.getItem(CURRENT_BOT_STORAGE_KEY) || null,
 
   // Initial Data State
   status: null,
@@ -135,28 +140,28 @@ export const useAppStore = create<AppState>((set) => ({
   wsConnected: false,
   wsConnecting: false,
   wsMessages: [],
-  nanobotWsDebugLines: [],
+  openpawletWsDebugLines: [],
 
   agentWsLinked: false,
   agentWsReady: false,
-  nanobotChatId: null,
-  nanobotClientId: null,
+  openpawletChatId: null,
+  openpawletClientId: null,
 
   // Actions
   setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
   setTheme: (theme) => {
-    localStorage.setItem('nanobot-theme', theme);
+    localStorage.setItem(THEME_STORAGE_KEY, theme);
     applyTheme(theme);
     set({ theme });
   },
   setCurrentSessionKey: (key) => set({ currentSessionKey: key }),
   setCurrentBotId: (botId) => {
-    localStorage.setItem('nanobot-current-bot-id', botId || '');
+    localStorage.setItem(CURRENT_BOT_STORAGE_KEY, botId || '');
     set({
       currentBotId: botId,
       currentSessionKey: null,
-      nanobotChatId: null,
-      nanobotClientId: null,
+      openpawletChatId: null,
+      openpawletClientId: null,
     });
   },
 
@@ -201,21 +206,21 @@ export const useAppStore = create<AppState>((set) => ({
       };
     }),
   clearWSMessages: () => set({ wsMessages: [] }),
-  addNanobotWsDebugLine: (body) =>
+  addOpenPawletWsDebugLine: (body) =>
     set((state) => {
       const line = { ts: Date.now(), body: body.slice(0, 8000) };
-      const next = [...state.nanobotWsDebugLines, line];
+      const next = [...state.openpawletWsDebugLines, line];
       return {
-        nanobotWsDebugLines:
+        openpawletWsDebugLines:
           next.length > WS_DEBUG_MAX_STORED_MESSAGES
             ? next.slice(-WS_DEBUG_MAX_STORED_MESSAGES)
             : next,
       };
     }),
-  clearNanobotWsDebug: () => set({ nanobotWsDebugLines: [] }),
+  clearOpenPawletWsDebug: () => set({ openpawletWsDebugLines: [] }),
 
   setAgentWsLinked: (linked) => set({ agentWsLinked: linked }),
   setAgentWsReady: (ready) => set({ agentWsReady: ready }),
-  setNanobotChatId: (chatId) => set({ nanobotChatId: chatId }),
-  setNanobotClientId: (clientId) => set({ nanobotClientId: clientId }),
+  setOpenPawletChatId: (chatId) => set({ openpawletChatId: chatId }),
+  setOpenPawletClientId: (clientId) => set({ openpawletClientId: clientId }),
 }));

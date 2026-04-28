@@ -3,7 +3,7 @@
 The legacy ``open-pawlet-queue-manager`` broker used to expose these
 endpoints over a separate FastAPI process backed by ZeroMQ sockets and a
 shared idempotency store.  In the consolidated single-process layout the
-queue is the in-memory :class:`~nanobot.bus.queue.MessageBus`, so this
+queue is the in-memory :class:`~openpawlet.bus.queue.MessageBus`, so this
 module reports the live queue depth instead and exposes admin write
 endpoints as best-effort no-ops (returning ``409 disabled`` to make the
 behaviour explicit to existing UIs that still call them).
@@ -21,7 +21,7 @@ from fastapi.responses import JSONResponse, Response
 from loguru import logger
 
 if TYPE_CHECKING:
-    from nanobot.bus.queue import MessageBus
+    from openpawlet.bus.queue import MessageBus
 
 
 _MODE_TAG = "in_process"

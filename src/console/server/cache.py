@@ -1,6 +1,6 @@
 """Lightweight in-memory caches used by the console server.
 
-The console resolves the same nanobot ``config.json`` on every API
+The console resolves the same OpenPawlet ``config.json`` on every API
 request (``workspace_root``, ``read_default_model``,
 ``read_default_timezone``, ``build_config_response``, ...).  At idle the
 overhead is small but a 5 s polling SPA hits ``/api/v1/status`` 12

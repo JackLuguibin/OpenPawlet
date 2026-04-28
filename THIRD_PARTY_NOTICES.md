@@ -8,7 +8,7 @@ OpenPawlet Python distribution (`pip install open-pawlet`).
 ## KaTeX — math rendering (MIT)
 
 - **Source**: https://github.com/KaTeX/KaTeX
-- **Bundled**: `nanobot/web/dist/assets/index-*.{js,css}`
+- **Bundled**: `src/console/web/dist/assets/index-*.{js,css}` (console SPA build output)
 
 ```
 The MIT License (MIT)
@@ -39,7 +39,7 @@ SOFTWARE.
 ## KaTeX Fonts — math typography (SIL OFL 1.1)
 
 - **Source**: https://github.com/KaTeX/KaTeX/tree/main/src/fonts
-- **Bundled**: `nanobot/web/dist/assets/KaTeX_*.{woff2,woff,ttf}`
+- **Bundled**: `src/console/web/dist/assets/KaTeX_*.{woff2,woff,ttf}` (console SPA build output)
 
 The fonts are redistributed unmodified.
 

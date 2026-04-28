@@ -1,7 +1,7 @@
 """Embedded-runtime startup/shutdown management for the FastAPI app.
 
 The console server is the single process that hosts the SPA, the REST API,
-the OpenAI-compatible surface and the embedded nanobot runtime.  This module
+the OpenAI-compatible surface and the embedded OpenPawlet runtime.  This module
 owns the runtime side of that lifecycle so ``app.py`` only has to wire it
 into FastAPI's ``lifespan`` hook.
 """
@@ -43,7 +43,7 @@ def _env_flag(name: str, default: bool = False) -> bool:
 
 
 def embedded_disabled() -> bool:
-    """Return True when the embedded nanobot runtime should not be started."""
+    """Return True when the embedded OpenPawlet runtime should not be started."""
     return _env_flag(_EMBEDDED_DISABLE_ENV)
 
 
@@ -120,23 +120,49 @@ def _heal_team_rooms_for_active_bot(active_bot_id: str | None) -> None:
         save_active_team_gateway(active_bot_id, last_team_id, last_room_id)
 
 
+class ProviderNotConfiguredError(RuntimeError):
+    """Raised when no usable LLM provider credentials are configured.
+
+    The console catches this distinctly from generic construction failures
+    so it can enter degraded mode with a friendly log message instead of
+    a giant traceback, allowing the user to finish provider setup via the
+    UI and then trigger a runtime swap.
+    """
+
+
+def _console_provider_factory(config: Any) -> Any:
+    """Build the LLM provider for the embedded runtime in console mode.
+
+    Unlike the CLI factory (which prints a rich error and calls
+    ``typer.Exit``), this raises :class:`ProviderNotConfiguredError` so
+    the FastAPI lifespan can degrade gracefully and keep the SPA usable
+    for completing provider configuration.
+    """
+    from openpawlet.providers.factory import build_default_provider
+
+    def _raise(message: str) -> Any:
+        raise ProviderNotConfiguredError(message)
+
+    return build_default_provider(config, error_handler=_raise)
+
+
 async def _build_embedded_runtime(app: FastAPI) -> Any | None:
-    """Construct (but do not start) the embedded ``EmbeddedNanobot`` instance.
+    """Construct (but do not start) the embedded ``EmbeddedOpenPawlet`` instance.
 
     Returns ``None`` and logs the failure when construction fails.
     """
     try:
-        from console.server.nanobot_user_config import (
+        from console.server.openpawlet_user_config import (
             ensure_full_config,
             resolve_config_path,
         )
-        from nanobot.config.loader import set_config_path as _set_nanobot_config_path
-        from nanobot.runtime.embedded import EmbeddedNanobot
+        from openpawlet.config.loader import set_config_path as _set_openpawlet_config_path
+        from openpawlet.runtime.embedded import EmbeddedOpenPawlet
 
         settings: ServerSettings = app.state.settings
 
         # When the console has an "active" non-default bot, retarget the
-        # nanobot config loader at its per-bot config.json before
+        # OpenPawlet config loader at its per-bot config.json before
         # constructing the runtime.
         active_bot_id = getattr(app.state, "active_bot_id", None)
         if active_bot_id:
@@ -145,18 +171,28 @@ async def _build_embedded_runtime(app: FastAPI) -> Any | None:
             if active_bot_id != DEFAULT_BOT_ID:
                 row = get_registry().get(active_bot_id)
                 if row is not None:
-                    _set_nanobot_config_path(Path(str(row["config_path"])))
+                    _set_openpawlet_config_path(Path(str(row["config_path"])))
 
         try:
-            ensure_full_config(resolve_config_path(active_bot_id))
+            cfg_path = resolve_config_path(active_bot_id)
+            # Bootstrap a minimal config.json on first console boot so the UI
+            # has a real file to edit (Settings → Providers etc.) and so the
+            # downstream auto-fill / migration steps have something to act on.
+            if not cfg_path.exists():
+                from openpawlet.config.loader import save_config
+                from openpawlet.config.schema import Config
+
+                save_config(Config(), cfg_path)
+                logger.info("[config] bootstrapped default config at {}", cfg_path)
+            ensure_full_config(cfg_path)
         except Exception:  # noqa: BLE001 - never block runtime over auto-fill
-            logger.exception("[config] auto-fill of nanobot config failed; continuing")
+            logger.exception("[config] auto-fill of OpenPawlet config failed; continuing")
 
         # One-shot migration: legacy ProvidersConfig → llm_providers.json.
         # Idempotent (skips workspaces that already have instances).
         try:
-            from nanobot.config.loader import load_config
-            from nanobot.providers.migrate import (
+            from openpawlet.config.loader import load_config
+            from openpawlet.providers.migrate import (
                 heal_unusable_legacy_instances,
                 migrate_legacy_providers,
             )
@@ -171,22 +207,45 @@ async def _build_embedded_runtime(app: FastAPI) -> Any | None:
         except Exception:  # noqa: BLE001 - migration must never block startup
             logger.exception("[migrate] legacy provider migration failed; continuing")
 
-        return EmbeddedNanobot.from_environment(
-            websocket_host=settings.nanobot_gateway_host,
-            websocket_port=settings.nanobot_gateway_port,
-            websocket_path="/",
-            websocket_requires_token=False,
+        # Build the runtime via the same recipe as ``from_environment`` but
+        # with a console-friendly provider factory that raises
+        # ``ProviderNotConfiguredError`` instead of calling ``typer.Exit``.
+        from openpawlet.cli.commands import _load_runtime_config
+
+        cfg = _load_runtime_config(None, None)
+        ws_cfg_raw = getattr(cfg.channels, "websocket", None)
+        ws_cfg: dict[str, Any] = dict(ws_cfg_raw) if isinstance(ws_cfg_raw, dict) else {}
+        ws_cfg["enabled"] = True
+        ws_cfg["host"] = settings.openpawlet_gateway_host
+        ws_cfg["port"] = settings.openpawlet_gateway_port
+        ws_cfg["path"] = "/"
+        ws_cfg["websocket_requires_token"] = False
+        setattr(cfg.channels, "websocket", ws_cfg)
+
+        return EmbeddedOpenPawlet(
+            config=cfg,
+            verbose=False,
+            provider_factory=_console_provider_factory,
         )
+    except ProviderNotConfiguredError as exc:
+        logger.warning(
+            "Embedded OpenPawlet runtime not started: {}. "
+            "Console will run in degraded mode; configure an LLM provider "
+            "in the UI (Settings → Providers) and the runtime will start "
+            "on the next bot switch or server restart.",
+            exc,
+        )
+        return None
     except Exception:  # noqa: BLE001 - degraded mode keeps the UI usable
         logger.exception(
-            "Failed to construct embedded nanobot runtime; console will start in degraded mode"
+            "Failed to construct embedded OpenPawlet runtime; console will start in degraded mode"
         )
         return None
 
 
 def _attach_runtime_to_app(app: FastAPI, embedded: Any) -> None:
     """Publish the running ``embedded`` graph onto ``app.state``."""
-    from nanobot.runtime.agent_manager import UnifiedAgentManager
+    from openpawlet.runtime.agent_manager import UnifiedAgentManager
 
     app.state.embedded = embedded
     app.state.agent_loop = embedded.agent
@@ -204,9 +263,9 @@ def _detach_runtime_state(app: FastAPI) -> None:
 
 
 async def start_embedded_runtime(app: FastAPI) -> Any | None:
-    """Construct and start the embedded nanobot runtime.
+    """Construct and start the embedded OpenPawlet runtime.
 
-    Returns the running ``EmbeddedNanobot`` on success, or ``None`` when the
+    Returns the running ``EmbeddedOpenPawlet`` on success, or ``None`` when the
     runtime could not be constructed or failed to start.  Either failure
     leaves the FastAPI app in degraded mode.
     """
@@ -222,7 +281,7 @@ async def start_embedded_runtime(app: FastAPI) -> Any | None:
     try:
         await embedded.start()
     except Exception:  # noqa: BLE001 - keep API alive even if runtime fails
-        logger.exception("Embedded nanobot runtime failed to start; degraded mode")
+        logger.exception("Embedded OpenPawlet runtime failed to start; degraded mode")
         return None
 
     _attach_runtime_to_app(app, embedded)
@@ -264,18 +323,18 @@ def _ensure_active_bot_id(app: FastAPI) -> None:
 
 
 def _ensure_server_config() -> None:
-    """Auto-fill any newly-introduced fields in ``nanobot_web.json`` once per boot."""
+    """Auto-fill any newly-introduced fields in ``openpawlet_web.json`` once per boot."""
     try:
         from console.server.config import ensure_server_config
 
         ensure_server_config()
     except Exception:  # noqa: BLE001 - server settings already resolved above
-        logger.exception("[config] auto-fill of nanobot_web.json failed; continuing")
+        logger.exception("[config] auto-fill of openpawlet_web.json failed; continuing")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Bring the embedded nanobot runtime up alongside the HTTP server."""
+    """Bring the embedded OpenPawlet runtime up alongside the HTTP server."""
     settings: ServerSettings = app.state.settings
     logger.info(
         "Starting OpenPawlet console server {version} - listening on {host}:{port}",
@@ -293,7 +352,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if not embedded_disabled():
         await start_embedded_runtime(app)
 
-    # Start Skills git auto-sync scheduler (independent of nanobot runtime).
+    # Start Skills git auto-sync scheduler (independent of OpenPawlet runtime).
     try:
         from console.server.skills_git_scheduler import attach_to_app
 
@@ -315,7 +374,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             try:
                 await embedded.stop()
             except Exception:  # pragma: no cover - best effort shutdown
-                logger.exception("Embedded nanobot runtime shutdown failed")
+                logger.exception("Embedded OpenPawlet runtime shutdown failed")
         logger.info("Shutting down OpenPawlet console server")
 
 

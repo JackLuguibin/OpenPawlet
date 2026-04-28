@@ -12,12 +12,12 @@ from console.server.bot_workspace import workspace_root
 from console.server.json_utils import is_metadata_row, iter_jsonl_file
 from console.server.models.status import TokenUsage
 from console.server.models.usage import UsageHistoryItem
-from console.server.nanobot_user_config import (
+from console.server.openpawlet_user_config import (
     read_default_model,
     read_default_timezone,
     resolve_config_path,
 )
-from nanobot.session.manager import SessionManager
+from openpawlet.session.manager import SessionManager
 
 
 def _today_in_config_tz(iana: str | None) -> date:

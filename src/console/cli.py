@@ -2,13 +2,13 @@
 
 The console is now a single-process FastAPI application: it hosts the
 REST surface, the OpenAI-compatible ``/v1/*`` endpoints, the queue
-admin routes, the SPA static assets and the embedded nanobot runtime
+admin routes, the SPA static assets and the embedded OpenPawlet runtime
 (agent loop, channels, cron, heartbeat) inside one event loop.  Hence
 this CLI exposes only three subcommands:
 
 * ``console start``  - run the unified server (production-style; serves
   the prebuilt SPA from ``src/console/web/dist``).
-* ``console init-config``  - write a default ``nanobot_web.json``.
+* ``console init-config``  - write a default ``openpawlet_web.json``.
 * ``console web ...``  - run the Vite dev server / production build.
 """
 
@@ -155,7 +155,7 @@ def _warn_if_publicly_bound(host: str, port: int) -> None:
 
 
 def _run_start(*, mount_spa: bool = True) -> None:
-    """Run the unified FastAPI app (REST + SPA + OpenAI + queues + nanobot)."""
+    """Run the unified FastAPI app (REST + SPA + OpenAI + queues + OpenPawlet)."""
     settings = get_settings()
     if _is_bind_address_in_use(settings.host, settings.port):
         _wait_forever_until_interrupted(
@@ -177,7 +177,7 @@ def _run_start(*, mount_spa: bool = True) -> None:
 
 
 def _run_init_config(force: bool = False) -> None:
-    """Write a default ``nanobot_web.json`` next to the nanobot config file."""
+    """Write a default ``openpawlet_web.json`` next to the agent ``config.json``."""
     path = find_config_file()
     if path.exists() and not force:
         raise SystemExit(f"Config already exists at {path}. Pass --force to overwrite.")
@@ -192,7 +192,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
             "OpenPawlet console: unified FastAPI server (REST + SPA + OpenAI "
-            "API + queues admin + embedded nanobot)."
+            "API + queues admin + embedded OpenPawlet)."
         ),
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -200,7 +200,7 @@ def main() -> None:
     start_parser = subparsers.add_parser(
         "start",
         help=(
-            "Run the unified server. The embedded nanobot runtime "
+            "Run the unified server. The embedded OpenPawlet runtime "
             "(agent + channels + cron + heartbeat) starts in the same "
             "event loop, so a single HTTP port serves everything."
         ),
@@ -222,7 +222,7 @@ def main() -> None:
 
     init_parser = subparsers.add_parser(
         "init-config",
-        help="Write a default nanobot_web.json next to the nanobot config.",
+        help="Write a default openpawlet_web.json next to the agent config.",
     )
     init_parser.add_argument(
         "--force",

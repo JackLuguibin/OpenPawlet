@@ -39,7 +39,7 @@ class Agent(BaseModel):
     use_own_bootstrap: bool = True
     inherit_main_bootstrap: bool = False
     # When set, the runtime resolves the model + credentials from the
-    # named LLM provider instance (see ``nanobot/providers/instances.py``).
+    # named LLM provider instance (see ``openpawlet/providers/instances.py``).
     # Takes precedence over the bare ``model`` field for routing.
     provider_instance_id: str | None = None
     # Read-only flags reflecting whether this agent's bootstrap files exist

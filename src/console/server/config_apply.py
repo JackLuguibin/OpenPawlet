@@ -3,7 +3,7 @@
 Save endpoints (``PUT /api/v1/config`` and the LLM-providers routes)
 forward each save through :func:`apply_config_change`. The helper inspects
 the diff between the previous and the new on-disk config and decides per
-field whether a hot-apply is sufficient or whether the embedded nanobot
+field whether a hot-apply is sufficient or whether the embedded OpenPawlet
 runtime must be rebuilt via :func:`console.server.lifespan.swap_runtime`.
 
 Hot-apply contract
@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
-from nanobot.config.schema import Config
+from openpawlet.config.schema import Config
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
@@ -74,7 +74,7 @@ def needs_runtime_swap(old: dict[str, Any], new: dict[str, Any]) -> bool:
 
 def _apply_ssrf_whitelist(new_cfg: Config) -> None:
     """Re-publish the SSRF whitelist; safe to call repeatedly."""
-    from nanobot.security.network import configure_ssrf_whitelist
+    from openpawlet.security.network import configure_ssrf_whitelist
 
     configure_ssrf_whitelist(new_cfg.tools.ssrf_whitelist)
 
@@ -144,7 +144,7 @@ def _sync_exec_allowed_env_keys(
     """Mirror the user's "allow exec" toggles into ``tools.exec.allowedEnvKeys``.
 
     The exec tool builds a strict env allowlist for sandboxed subprocesses
-    (see :class:`nanobot.agent.tools.shell.ExecTool._build_env`); without
+    (see :class:`openpawlet.agent.tools.shell.ExecTool._build_env`); without
     this sync, env vars added through the UI would never be visible to
     ``exec`` calls even after ``os.environ`` has been updated.
 
@@ -154,7 +154,7 @@ def _sync_exec_allowed_env_keys(
     if exec_visible_keys is None:
         return False
 
-    from console.server.nanobot_user_config import (
+    from console.server.openpawlet_user_config import (
         load_raw_config,
         resolve_config_path,
         save_full_config,
@@ -286,8 +286,8 @@ def apply_providers_change(app: FastAPI) -> bool:
         return False
 
     try:
-        from nanobot.config.loader import load_config, resolve_config_env_vars
-        from nanobot.providers.factory import build_default_provider
+        from openpawlet.config.loader import load_config, resolve_config_env_vars
+        from openpawlet.providers.factory import build_default_provider
 
         cfg = resolve_config_env_vars(load_config())
         new_provider = build_default_provider(cfg)

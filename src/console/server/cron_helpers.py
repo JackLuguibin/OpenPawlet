@@ -1,6 +1,6 @@
 """Helpers shared by the ``/cron`` API for service access and message metadata.
 
-The console embeds nanobot in-process via ``app.state.embedded.cron`` (see
+The console embeds OpenPawlet in-process via ``app.state.embedded.cron`` (see
 ``console/server/lifespan.py``). Whenever it is available we operate against
 that live ``CronService`` instance so we don't fight it for the on-disk
 ``jobs.json`` mutex. When the embedded runtime is degraded (degraded mode),
@@ -24,7 +24,7 @@ from typing import Any
 
 from fastapi import Request
 
-from nanobot.cron.service import CronService
+from openpawlet.cron.service import CronService
 
 _META_RE = re.compile(r"^<!--cron-meta:(\{.*?\})-->\r?\n?", re.DOTALL)
 
@@ -108,13 +108,13 @@ def _resolve_store_path(bot_id: str | None) -> Path | None:
 
     For an explicit ``bot_id`` we honor :func:`workspace_root` (which routes
     through the multi-bot registry). For the default bot (``bot_id is
-    None``) we prefer nanobot's globally-set config path so embedded /
+    None``) we prefer OpenPawlet's globally-set config path so embedded /
     test setups that bypass the console bot registry still resolve a
     workspace deterministically.
     """
     if bot_id is None:
         try:
-            import nanobot.config.loader as _loader
+            import openpawlet.config.loader as _loader
 
             # Only honor the global override when a caller explicitly set
             # one (e.g. embedded runtime or test fixtures); otherwise fall
@@ -134,7 +134,7 @@ def _resolve_store_path(bot_id: str | None) -> Path | None:
 
 
 def cron_job_to_dict(job: Any) -> dict[str, Any]:
-    """Serialize a nanobot ``CronJob`` to the public API shape (snake_case)."""
+    """Serialize an OpenPawlet ``CronJob`` to the public API shape (snake_case)."""
     sched = job.schedule
     state = job.state
     payload = job.payload

@@ -1,4 +1,4 @@
-"""Read/write nanobot chat sessions under ``<workspace>/sessions/*.jsonl``."""
+"""Read/write OpenPawlet chat sessions under ``<workspace>/sessions/*.jsonl``."""
 
 from __future__ import annotations
 
@@ -14,9 +14,9 @@ from console.server.json_utils import (
     iter_jsonl_dicts,
     read_utf8_file,
 )
-from console.server.nanobot_user_config import read_default_timezone, resolve_config_path
-from nanobot.session.manager import Session, SessionManager, get_runtime_manager
-from nanobot.utils.helpers import safe_filename
+from console.server.openpawlet_user_config import read_default_timezone, resolve_config_path
+from openpawlet.session.manager import Session, SessionManager, get_runtime_manager
+from openpawlet.utils.helpers import safe_filename
 
 
 def _read_utf8_file(path: Path) -> str | None:

@@ -37,7 +37,7 @@ from console.server.models.skills_git import (
     SkillsGitRepo,
     SkillsGitSyncResult,
 )
-from console.server.nanobot_user_config import env_file_path
+from console.server.openpawlet_user_config import env_file_path
 
 _CURSOR_SKILLS = Path(".cursor") / "skills"
 _SKILLS_GIT_CACHE_DIR = Path(".cursor") / ".skills-git-cache"

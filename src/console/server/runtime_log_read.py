@@ -7,7 +7,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from nanobot.config.paths import get_logs_dir
+from openpawlet.config.paths import get_logs_dir
 
 _LOG_NAMES = {"console": "console.log"}
 

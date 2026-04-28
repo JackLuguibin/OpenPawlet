@@ -5,8 +5,8 @@ import path from 'path'
 
 const host = process.env.VITE_API_HOST || 'localhost'
 const port = process.env.VITE_API_PORT || '8000'
-const nanobotWsHost = process.env.VITE_NANOBOT_WS_HOST || 'localhost'
-const nanobotWsPort = process.env.VITE_NANOBOT_WS_PORT || '8765'
+const openpawletWsHost = process.env.VITE_OPENPAWLET_WS_HOST || 'localhost'
+const openpawletWsPort = process.env.VITE_OPENPAWLET_WS_PORT || '8765'
 
 /**
  * Vite logs many proxied WebSocket errors at error level. Suppress only common,
@@ -218,12 +218,12 @@ export default defineConfig({
         ws: true,
         changeOrigin: true,
       },
-      // nanobot built-in `nanobot.channels.websocket`; strips prefix so `/?client_id=...` hits WS path
-      '/nanobot-ws': {
-        target: `ws://${nanobotWsHost}:${nanobotWsPort}`,
+      // OpenPawlet built-in `openpawlet.channels.websocket`; strips prefix so `/?client_id=...` hits WS path
+      '/openpawlet-ws': {
+        target: `ws://${openpawletWsHost}:${openpawletWsPort}`,
         ws: true,
         changeOrigin: true,
-        rewrite: (p) => p.replace(/^\/nanobot-ws/, '') || '/',
+        rewrite: (p) => p.replace(/^\/openpawlet-ws/, '') || '/',
       },
       // Queue admin stream (FastAPI WS route registered by queues_router).
       // ``/queues/stream`` is the canonical path; ``/queues-ws`` is kept as a

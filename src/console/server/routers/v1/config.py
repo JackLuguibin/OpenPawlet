@@ -1,4 +1,4 @@
-"""Configuration: read/write nanobot ``config.json``."""
+"""Configuration: read/write OpenPawlet ``config.json``."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from console.server.models import (
     ConfigValidateResponse,
     DataResponse,
 )
-from console.server.nanobot_user_config import (
+from console.server.openpawlet_user_config import (
     build_config_response,
     load_raw_config,
     merge_config_section,
@@ -23,7 +23,7 @@ from console.server.nanobot_user_config import (
     validate_core_config,
 )
 from console.server.state_hub_helpers import push_after_config_change
-from nanobot.config.schema import Config
+from openpawlet.config.schema import Config
 
 router = APIRouter(tags=["Config"])
 
@@ -94,7 +94,7 @@ async def put_config(
 async def get_config_schema(
     bot_id: str | None = Query(default=None, alias="bot_id"),
 ) -> DataResponse[Any]:
-    """JSON Schema for nanobot :class:`~nanobot.config.schema.Config`."""
+    """JSON Schema for OpenPawlet :class:`~openpawlet.config.schema.Config`."""
     _ = bot_id
     return DataResponse(data=Config.model_json_schema())
 

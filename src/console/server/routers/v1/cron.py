@@ -1,6 +1,6 @@
 """Cron scheduler API.
 
-The console embeds nanobot in-process and shares its ``CronService``
+The console embeds OpenPawlet in-process and shares its ``CronService``
 instance via ``app.state.embedded.cron`` (see ``console/server/lifespan.py``).
 This router is a thin façade on top of that service so the SPA can
 list / add / update / enable / run cron jobs and inspect run history.
@@ -8,7 +8,7 @@ list / add / update / enable / run cron jobs and inspect run history.
 When the embedded runtime is unavailable (degraded mode) we fall back to
 constructing a transient ``CronService`` bound to the same on-disk store
 ``<workspace>/cron/jobs.json``; the underlying service uses a file lock and
-an ``action.jsonl`` write-ahead queue so two processes (console + nanobot
+an ``action.jsonl`` write-ahead queue so two processes (console + OpenPawlet
 CLI) can read/write safely.
 """
 
@@ -32,13 +32,13 @@ from console.server.models import (
 )
 from console.server.models.base import OkWithJobId
 from console.server.models.cron import CronHistoryRun, placeholder_cron_status
-from nanobot.cron.types import CronSchedule as NanobotCronSchedule
+from openpawlet.cron.types import CronSchedule as OpenPawletCronSchedule
 
 router = APIRouter(tags=["Cron"])
 
 
-def _to_nanobot_schedule(s: Any) -> NanobotCronSchedule:
-    return NanobotCronSchedule(
+def _to_openpawlet_schedule(s: Any) -> OpenPawletCronSchedule:
+    return OpenPawletCronSchedule(
         kind=s.kind,
         at_ms=s.at_ms,
         every_ms=s.every_ms,
@@ -74,7 +74,7 @@ async def add_cron_job(
     try:
         job = svc.add_job(
             name=body.name,
-            schedule=_to_nanobot_schedule(body.schedule),
+            schedule=_to_openpawlet_schedule(body.schedule),
             message=body.message or "",
             deliver=bool(body.deliver) if body.deliver is not None else False,
             channel=body.channel,
@@ -104,13 +104,13 @@ async def update_cron_job(
     if body.name is not None:
         kwargs["name"] = body.name
     if body.schedule is not None:
-        kwargs["schedule"] = _to_nanobot_schedule(body.schedule)
+        kwargs["schedule"] = _to_openpawlet_schedule(body.schedule)
     if body.message is not None:
         kwargs["message"] = body.message
     if body.deliver is not None:
         kwargs["deliver"] = bool(body.deliver)
     # ``channel`` and ``to`` distinguish unset vs explicit-null; the
-    # nanobot service uses ``...`` as its leave-untouched sentinel.
+    # OpenPawlet service uses ``...`` as its leave-untouched sentinel.
     kwargs["channel"] = body.channel if body.channel is not None else sentinel
     kwargs["to"] = body.to if body.to is not None else sentinel
     if body.delete_after_run is not None:

@@ -154,13 +154,13 @@ export interface HealthIssue {
   metadata?: Record<string, unknown>;
 }
 
-/** GET /observability — console API + nanobot gateway /health probe */
+/** GET /observability — console API + OpenPawlet gateway /health probe */
 export interface ConsoleObservabilityInfo {
   status: string;
   version: string;
 }
 
-export interface NanobotGatewayObservability {
+export interface OpenPawletGatewayObservability {
   endpoint: string;
   ok: boolean;
   status?: string | null;
@@ -171,10 +171,10 @@ export interface NanobotGatewayObservability {
 
 export interface ObservabilityResponse {
   console: ConsoleObservabilityInfo;
-  nanobot_gateway: NanobotGatewayObservability;
+  openpawlet_gateway: OpenPawletGatewayObservability;
 }
 
-/** GET /observability/timeline — run / LLM / tool events from nanobot JSONL under workspace */
+/** GET /observability/timeline — run / LLM / tool events from OpenPawlet JSONL under workspace */
 export interface AgentObservabilityEvent {
   ts: number;
   event: string;
@@ -312,7 +312,7 @@ export type WSMessageType =
   | 'chat_token'
   | 'chat_done'
   | 'chat_start'
-  /** One streaming segment ended (nanobot `stream_end`); not the full assistant turn. */
+  /** One streaming segment ended (OpenPawlet `stream_end`); not the full assistant turn. */
   | 'stream_frame_end'
   | 'session_key'
   | 'tool_call'
@@ -326,10 +326,10 @@ export type WSMessageType =
   | 'subagent_start'
   | 'subagent_done'
   | 'assistant_message'
-  /** nanobot `event: message` — status / retry lines until `chat_end` */
+  /** OpenPawlet `event: message` — status / retry lines until `chat_end` */
   | 'channel_notice'
-  /** nanobot `event: message` with empty `text` and JSON status in `data` (`/status-json`) */
-  | 'nanobot_status_json'
+  /** OpenPawlet `event: message` with empty `text` and JSON status in `data` (`/status-json`) */
+  | 'openpawlet_status_json'
   /** Welcome frame from `/ws/state` after the upgrade settles. */
   | 'welcome'
   /** Server-side keepalive ping; SPA replies are not required. */
@@ -367,11 +367,11 @@ export interface StreamChunk {
   content?: string;
   session_key?: string;
   tool_call?: ToolCall;
-  /** 与 HTTP ChatResponse 一致：一次回复中的多段工具调用（如 nanobot WebSocket 帧内嵌） */
+  /** 与 HTTP ChatResponse 一致：一次回复中的多段工具调用（如 OpenPawlet WebSocket 帧内嵌） */
   tool_calls?: ToolCall[];
   /** 模型在发起工具调用前的推理/说明，用于在 UI 中作为调用原因展示 */
   reasoning_content?: string;
-  /** When true, append `reasoning_content` to the current streaming reasoning (nanobot `event: reasoning`). */
+  /** When true, append `reasoning_content` to the current streaming reasoning (OpenPawlet `event: reasoning`). */
   reasoning_append?: boolean;
   tool_name?: string;
   tool_result?: string;
@@ -379,7 +379,7 @@ export interface StreamChunk {
   done?: boolean;
   /** 消息来源，用于 chat_done / assistant_message */
   source?: MessageSource;
-  /** nanobot `stream_end` / `delta` optional stream segment id (same id within one streamed segment). */
+  /** OpenPawlet `stream_end` / `delta` optional stream segment id (same id within one streamed segment). */
   stream_id?: unknown;
   // Subagent event fields
   subagent_id?: string;
@@ -389,7 +389,7 @@ export interface StreamChunk {
   status?: 'ok' | 'error';
   /**
    * UUID identifying the entire assistant reply for one user turn (server-issued).
-   * Present on every nanobot WebSocket frame for the turn so the chat UI can
+   * Present on every OpenPawlet WebSocket frame for the turn so the chat UI can
    * group streamed deltas / tool events / final answer into one bubble.
    */
   reply_group_id?: string;

@@ -32,7 +32,7 @@ from console.server.models.skills import (
     RegistrySearchItem,
     SkillContentBody,
 )
-from console.server.nanobot_user_config import (
+from console.server.openpawlet_user_config import (
     load_raw_config,
     resolve_config_path,
 )

@@ -23,7 +23,7 @@ from console.server.models import (
     SkillsGitRepoUpsertBody,
     SkillsGitSyncResult,
 )
-from console.server.nanobot_user_config import (
+from console.server.openpawlet_user_config import (
     load_raw_config,
     resolve_config_path,
     save_full_config,

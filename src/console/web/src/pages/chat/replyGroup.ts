@@ -25,7 +25,7 @@ export function toolCallArgumentsPayloadScore(
 /**
  * Merge successive `chat_token` / `tool_event` batches: keep prior tool calls
  * and append new ids; for the same id, prefer richer arguments and the latest
- * result. (Nanobot often sends one batch per tool round — the old
+ * result. (OpenPawlet often sends one batch per tool round — the old
  * implementation only returned `incoming.length` entries and dropped earlier
  * calls.)
  */

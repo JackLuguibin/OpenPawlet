@@ -43,7 +43,7 @@ def push_status_snapshot(bot_id: str | None) -> None:
         from console.server.dashboard_metrics import collect_dashboard_metrics
         from console.server.mcp_config import mcp_statuses_for_bot
         from console.server.models.status import placeholder_status
-        from console.server.nanobot_user_config import (
+        from console.server.openpawlet_user_config import (
             read_default_model,
             resolve_config_path,
         )

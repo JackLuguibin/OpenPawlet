@@ -1,7 +1,7 @@
 """Tests for the multi-instance ``BotsRegistry``.
 
 These tests run the registry against a temporary HOME so they never
-touch the real ``~/.nanobot/`` tree on the developer's machine.
+touch the real ``~/.openpawlet/`` tree on the developer's machine.
 """
 
 from __future__ import annotations
@@ -25,14 +25,14 @@ from console.server.bots_registry import (  # noqa: E402
 
 @pytest.fixture(autouse=True)
 def isolated_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Redirect ``Path.home()`` so no test touches the real nanobot dir."""
+    """Redirect ``Path.home()`` so no test touches the real config dir."""
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
     return tmp_path
 
 
 def _registry(home: Path) -> BotsRegistry:
-    return BotsRegistry(root=home / ".nanobot")
+    return BotsRegistry(root=home / ".openpawlet")
 
 
 def test_default_bot_is_seeded(isolated_home: Path) -> None:
@@ -70,7 +70,7 @@ def test_set_default_unknown_returns_false(isolated_home: Path) -> None:
 
 def test_resolve_config_path_falls_back_to_legacy(isolated_home: Path) -> None:
     reg = _registry(isolated_home)
-    expected = isolated_home / ".nanobot" / "config.json"
+    expected = isolated_home / ".openpawlet" / "config.json"
     assert reg.resolve_config_path(None) == expected
     assert reg.resolve_config_path(DEFAULT_BOT_ID) == expected
 

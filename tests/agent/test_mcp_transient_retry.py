@@ -1,6 +1,5 @@
 """Tests for MCP tool/resource/prompt transient error retry."""
 
-import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -9,7 +8,7 @@ from mcp import types as mcp_types
 from mcp.shared.exceptions import McpError
 from mcp.types import ErrorData
 
-from nanobot.agent.tools.mcp import (
+from openpawlet.agent.tools.mcp import (
     MCPPromptWrapper,
     MCPResourceWrapper,
     MCPToolWrapper,
@@ -95,7 +94,7 @@ async def test_tool_retries_on_transient_error():
 
     wrapper = MCPToolWrapper(session, "test_server", _make_tool_def(), tool_timeout=5)
 
-    with patch("nanobot.agent.tools.mcp.asyncio.sleep", new_callable=AsyncMock):
+    with patch("openpawlet.agent.tools.mcp.asyncio.sleep", new_callable=AsyncMock):
         output = await wrapper.execute(foo="bar")
 
     assert output == "ok"
@@ -112,7 +111,7 @@ async def test_tool_fails_after_retry_exhausted():
 
     wrapper = MCPToolWrapper(session, "test_server", _make_tool_def(), tool_timeout=5)
 
-    with patch("nanobot.agent.tools.mcp.asyncio.sleep", new_callable=AsyncMock):
+    with patch("openpawlet.agent.tools.mcp.asyncio.sleep", new_callable=AsyncMock):
         output = await wrapper.execute()
 
     assert "failed after retry" in output
@@ -138,7 +137,7 @@ async def test_tool_no_retry_on_non_transient_error():
 async def test_tool_no_retry_on_timeout():
     """Timeouts should not trigger retry (they have their own handling)."""
     session = AsyncMock()
-    session.call_tool = AsyncMock(side_effect=asyncio.TimeoutError())
+    session.call_tool = AsyncMock(side_effect=TimeoutError())
 
     wrapper = MCPToolWrapper(session, "test_server", _make_tool_def(), tool_timeout=5)
     output = await wrapper.execute()
@@ -172,7 +171,7 @@ async def test_tool_retry_on_connection_reset():
 
     wrapper = MCPToolWrapper(session, "test_server", _make_tool_def(), tool_timeout=5)
 
-    with patch("nanobot.agent.tools.mcp.asyncio.sleep", new_callable=AsyncMock):
+    with patch("openpawlet.agent.tools.mcp.asyncio.sleep", new_callable=AsyncMock):
         output = await wrapper.execute()
 
     assert output == "recovered"
@@ -188,7 +187,7 @@ async def test_tool_retry_on_end_of_stream():
 
     wrapper = MCPToolWrapper(session, "test_server", _make_tool_def(), tool_timeout=5)
 
-    with patch("nanobot.agent.tools.mcp.asyncio.sleep", new_callable=AsyncMock):
+    with patch("openpawlet.agent.tools.mcp.asyncio.sleep", new_callable=AsyncMock):
         output = await wrapper.execute()
 
     assert output == "back"
@@ -224,7 +223,7 @@ async def test_resource_retries_on_transient_error():
 
     wrapper = MCPResourceWrapper(session, "test_server", _make_resource_def())
 
-    with patch("nanobot.agent.tools.mcp.asyncio.sleep", new_callable=AsyncMock):
+    with patch("openpawlet.agent.tools.mcp.asyncio.sleep", new_callable=AsyncMock):
         output = await wrapper.execute()
 
     assert output == "data"
@@ -240,7 +239,7 @@ async def test_resource_fails_after_retry_exhausted():
 
     wrapper = MCPResourceWrapper(session, "test_server", _make_resource_def())
 
-    with patch("nanobot.agent.tools.mcp.asyncio.sleep", new_callable=AsyncMock):
+    with patch("openpawlet.agent.tools.mcp.asyncio.sleep", new_callable=AsyncMock):
         output = await wrapper.execute()
 
     assert "failed after retry" in output
@@ -293,7 +292,7 @@ async def test_prompt_retries_on_transient_error():
 
     wrapper = MCPPromptWrapper(session, "test_server", _make_prompt_def())
 
-    with patch("nanobot.agent.tools.mcp.asyncio.sleep", new_callable=AsyncMock):
+    with patch("openpawlet.agent.tools.mcp.asyncio.sleep", new_callable=AsyncMock):
         output = await wrapper.execute()
 
     assert output == "prompt text"
@@ -309,7 +308,7 @@ async def test_prompt_fails_after_retry_exhausted():
 
     wrapper = MCPPromptWrapper(session, "test_server", _make_prompt_def())
 
-    with patch("nanobot.agent.tools.mcp.asyncio.sleep", new_callable=AsyncMock):
+    with patch("openpawlet.agent.tools.mcp.asyncio.sleep", new_callable=AsyncMock):
         output = await wrapper.execute()
 
     assert "failed after retry" in output

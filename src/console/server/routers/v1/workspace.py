@@ -1,4 +1,4 @@
-"""Workspace file browser backed by the nanobot workspace directory."""
+"""Workspace file browser backed by the OpenPawlet workspace directory."""
 
 from __future__ import annotations
 

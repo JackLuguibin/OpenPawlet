@@ -2,7 +2,7 @@
 
 The console persists a number of small JSON state files
 (``agents.json``, ``teams.json``, ``runtime_state.json``, ...) under
-``<workspace>/.nanobot_console/``.  Mutations are issued from concurrent
+``<workspace>/.openpawlet_console/``.  Mutations are issued from concurrent
 HTTP handlers, which used to follow an unlocked
 ``load_json_file -> mutate -> save_json_file`` pattern that is racy in
 two ways:

@@ -21,7 +21,7 @@ from fastapi import APIRouter, Query, Request
 from console.server.config_apply import apply_env_change
 from console.server.models import DataResponse
 from console.server.models.env import EnvPutBody, EnvPutResponse, EnvResponse
-from console.server.nanobot_user_config import (
+from console.server.openpawlet_user_config import (
     env_file_path,
     load_raw_config,
     parse_dotenv_file,

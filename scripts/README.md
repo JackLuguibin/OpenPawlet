@@ -4,7 +4,7 @@ Maintenance scripts for this repository. They are **not** shipped in the `open-p
 
 ## `bump_open_pawlet_version.py`
 
-Bumps the **open-pawlet** release version consistently across the repo. Semantics follow **SemVer 2.0.0**; version strings are **PEP 440** (PyPI-compatible). The **nanobot** framework version is **not** managed as a separate target by this script (it still follows existing `pyproject.toml` / package metadata logic). **Bridge** (`bridge/package.json`, `bridge/src/whatsapp.ts`) versions are **not** updated here; keep them on their own release cadence if needed.
+Bumps the **open-pawlet** release version consistently across the repo. Semantics follow **SemVer 2.0.0**; version strings are **PEP 440** (PyPI-compatible). The bundled **OpenPawlet** framework version is **not** managed as a separate target by this script (it still follows existing `pyproject.toml` / package metadata logic). **Bridge** (`bridge/package.json`, `bridge/src/whatsapp.ts`) versions are **not** updated here; keep them on their own release cadence if needed.
 
 ### Requirements
 

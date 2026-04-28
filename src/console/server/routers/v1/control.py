@@ -19,7 +19,7 @@ from console.server.models import (
     RuntimeControlResult,
     RuntimeSubagentStartBody,
 )
-from console.server.nanobot_user_config import BOT_ID_DESCRIPTION
+from console.server.openpawlet_user_config import BOT_ID_DESCRIPTION
 
 router = APIRouter(tags=["Control"])
 

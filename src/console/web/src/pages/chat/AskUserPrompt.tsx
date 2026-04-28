@@ -100,7 +100,7 @@ interface AskUserPromptProps {
   toolCall: ToolCall;
   /**
    * Submit the selected/typed answer. The parent is expected to push the
-   * text as a normal user message; nanobot will route it back as the
+   * text as a normal user message; OpenPawlet will route it back as the
    * matching tool result automatically.
    */
   onAnswer: (text: string) => void;

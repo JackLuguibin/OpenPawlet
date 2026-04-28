@@ -106,7 +106,7 @@ function toolResultTextFromUnknown(value: unknown): string | undefined {
 }
 
 /**
- * Normalize `tool_results` from nanobot WebSocket `tool_event` frames (shapes vary by backend).
+ * Normalize `tool_results` from OpenPawlet WebSocket `tool_event` frames (shapes vary by backend).
  */
 export function normalizeToolResultItems(raw: unknown): ToolCall[] {
   if (!Array.isArray(raw)) {

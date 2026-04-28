@@ -43,6 +43,17 @@ from console.server.bot_workspace import workspace_root
 from console.server.config_apply import apply_providers_change
 from console.server.models import DataResponse, OkBody
 from console.server.state_hub_helpers import push_after_config_change
+from openpawlet.providers.instances import (
+    ALL_FAILOVER_TRIGGERS,
+    DEFAULT_FAILOVER_TRIGGERS,
+    ApiKeyEntry,
+    LLMProviderInstance,
+    LLMProviderStore,
+    generate_api_key_id,
+    generate_instance_id,
+    mask_api_key,
+)
+from openpawlet.providers.registry import PROVIDERS
 
 
 def _after_provider_change(request: Request, bot_id: str | None) -> None:
@@ -54,17 +65,7 @@ def _after_provider_change(request: Request, bot_id: str | None) -> None:
     """
     push_after_config_change(bot_id)
     apply_providers_change(request.app)
-from nanobot.providers.instances import (
-    ALL_FAILOVER_TRIGGERS,
-    DEFAULT_FAILOVER_TRIGGERS,
-    ApiKeyEntry,
-    LLMProviderInstance,
-    LLMProviderStore,
-    generate_api_key_id,
-    generate_instance_id,
-    mask_api_key,
-)
-from nanobot.providers.registry import PROVIDERS
+
 
 router = APIRouter(prefix="/bots/{bot_id}/llm-providers", tags=["LLM Providers"])
 
@@ -400,8 +401,8 @@ async def test_instance(bot_id: str, instance_id: str) -> DataResponse[LLMProvid
     """Best-effort credential test (one minimal chat call)."""
     import time
 
-    from nanobot.config.loader import load_config
-    from nanobot.providers.factory import build_provider_for_instance
+    from openpawlet.config.loader import load_config
+    from openpawlet.providers.factory import build_provider_for_instance
 
     _require_instance(bot_id, instance_id)
 

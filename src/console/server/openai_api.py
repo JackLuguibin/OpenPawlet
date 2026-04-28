@@ -1,9 +1,9 @@
 """OpenAI-compatible chat completions API mounted on the console FastAPI app.
 
 Provides ``/v1/chat/completions``, ``/v1/models`` and ``/v1/health`` against
-the in-process :class:`~nanobot.agent.loop.AgentLoop` set on ``app.state``.
+the in-process :class:`~openpawlet.agent.loop.AgentLoop` set on ``app.state``.
 
-This module replaces the standalone ``nanobot serve`` HTTP service: the
+This module replaces a legacy standalone HTTP gateway: the
 console FastAPI process now hosts the OpenAI surface directly, so callers
 talk to a single port instead of juggling separate gateway / API
 processes.
@@ -25,9 +25,9 @@ from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from loguru import logger
 
-from nanobot.config.paths import get_media_dir
-from nanobot.utils.helpers import safe_filename
-from nanobot.utils.runtime import EMPTY_FINAL_RESPONSE_MESSAGE
+from openpawlet.config.paths import get_media_dir
+from openpawlet.utils.helpers import safe_filename
+from openpawlet.utils.runtime import EMPTY_FINAL_RESPONSE_MESSAGE
 
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 _DATA_URL_RE = re.compile(r"^data:([^;]+);base64,(.+)$", re.DOTALL)
@@ -273,7 +273,7 @@ async def handle_chat_completions(request: Request) -> Response:
     if agent_loop is None:
         return _error_json(503, "agent runtime not ready", err_type="server_error")
     timeout_s: float = float(getattr(request.app.state, "request_timeout", 120.0))
-    model_name: str = str(getattr(request.app.state, "model_name", "nanobot"))
+    model_name: str = str(getattr(request.app.state, "model_name", "openpawlet"))
 
     stream = False
     try:
@@ -429,7 +429,7 @@ async def handle_chat_completions(request: Request) -> Response:
 
 async def handle_models(request: Request) -> JSONResponse:
     """``GET /v1/models``."""
-    model_name = str(getattr(request.app.state, "model_name", "nanobot"))
+    model_name = str(getattr(request.app.state, "model_name", "openpawlet"))
     return JSONResponse(
         {
             "object": "list",
@@ -438,7 +438,7 @@ async def handle_models(request: Request) -> JSONResponse:
                     "id": model_name,
                     "object": "model",
                     "created": 0,
-                    "owned_by": "nanobot",
+                    "owned_by": "openpawlet",
                 }
             ],
         }
@@ -453,7 +453,7 @@ async def handle_health(_request: Request) -> JSONResponse:
 def install_openai_routes(
     app: FastAPI,
     *,
-    model_name: str = "nanobot",
+    model_name: str = "openpawlet",
     request_timeout: float = 120.0,
     max_concurrency: int = _DEFAULT_CONCURRENCY,
 ) -> APIRouter:
@@ -473,15 +473,15 @@ def install_openai_routes(
     router.add_api_route("/v1/models", handle_models, methods=["GET"])
     router.add_api_route("/v1/health", handle_health, methods=["GET"])
     # Backwards-compatible alias for the legacy ``/health`` path that the
-    # standalone ``nanobot serve`` process used to expose at root level.
+    # standalone gateway process used to expose at root level.
     router.add_api_route("/health", handle_health, methods=["GET"])
     app.include_router(router)
     return router
 
 
-def create_app(agent_loop, model_name: str = "nanobot", request_timeout: float = 120.0) -> FastAPI:
+def create_app(agent_loop, model_name: str = "openpawlet", request_timeout: float = 120.0) -> FastAPI:
     """Create a standalone FastAPI app (kept for backwards compatibility)."""
-    app = FastAPI(title="nanobot-openai-api")
+    app = FastAPI(title="openpawlet-openai-api")
     app.state.agent_loop = agent_loop
     install_openai_routes(app, model_name=model_name, request_timeout=request_timeout)
     return app

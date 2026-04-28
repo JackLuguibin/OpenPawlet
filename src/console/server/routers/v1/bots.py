@@ -20,9 +20,9 @@ from console.server.models import (
     SetDefaultBotBody,
 )
 from console.server.models.bots import BotInfo
-from console.server.nanobot_user_config import read_default_timezone, resolve_config_path
+from console.server.openpawlet_user_config import read_default_timezone, resolve_config_path
 from console.server.state_hub import publish_bots_update
-from nanobot.utils.helpers import local_now
+from openpawlet.utils.helpers import local_now
 
 router = APIRouter(tags=["Bots"])
 
@@ -35,7 +35,7 @@ def _iso_mtime(path: Path, iana_tz: str | None) -> str:
 
 
 def _bot_info(bot_id: str | None) -> BotInfo:
-    """Build :class:`BotInfo` from registry row + nanobot config."""
+    """Build :class:`BotInfo` from registry row + OpenPawlet config."""
     registry = get_registry()
     target_id = bot_id or registry.default_id()
     row = registry.get(target_id) or registry.get(DEFAULT_BOT_ID)
@@ -47,7 +47,7 @@ def _bot_info(bot_id: str | None) -> BotInfo:
         ts = _iso_mtime(cfg_path, read_default_timezone(cfg_path))
         return BotInfo(
             id=DEFAULT_BOT_ID,
-            name="nanobot",
+            name="openpawlet",
             config_path=str(cfg_path.resolve()),
             workspace_path=str(ws),
             created_at=ts,

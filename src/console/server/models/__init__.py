@@ -64,8 +64,8 @@ from console.server.models.observability import (
     AgentObservabilityEvent,
     AgentObservabilityTimeline,
     ConsoleObservabilityInfo,
-    NanobotGatewayInfo,
     ObservabilityResponse,
+    OpenPawletGatewayInfo,
 )
 from console.server.models.runtime_logs import RuntimeLogChunk, RuntimeLogsData
 from console.server.models.sessions import (
@@ -170,7 +170,7 @@ __all__ = [
     "AgentObservabilityEvent",
     "AgentObservabilityTimeline",
     "ConsoleObservabilityInfo",
-    "NanobotGatewayInfo",
+    "OpenPawletGatewayInfo",
     "ObservabilityResponse",
     "OkBody",
     "OkWithAgentId",

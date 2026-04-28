@@ -10,7 +10,7 @@ export const LAST_CONSOLE_SESSION_STORAGE_KEY = "console_last_session_key";
  * Set from the "New chat" button so the bare-route bootstrap does not
  * auto-open an existing row while sessions still exist.
  */
-export const NANOBOT_CHAT_NEW_INTENT_STORAGE_KEY = "nanobot_chat_new_intent";
+export const OPENPAWLET_CHAT_NEW_INTENT_STORAGE_KEY = "openpawlet_chat_new_intent";
 
 /**
  * Canonical "last activity" timestamp for a session (newer = larger).
@@ -80,9 +80,9 @@ export function isSessionMissingError(error: unknown): boolean {
   return /\b404\b/.test(msg) || /not\s*found/i.test(msg);
 }
 
-export function readNanobotChatNewIntent(): boolean {
+export function readOpenPawletChatNewIntent(): boolean {
   try {
-    return sessionStorage.getItem(NANOBOT_CHAT_NEW_INTENT_STORAGE_KEY) === "1";
+    return sessionStorage.getItem(OPENPAWLET_CHAT_NEW_INTENT_STORAGE_KEY) === "1";
   } catch {
     return false;
   }

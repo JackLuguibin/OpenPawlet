@@ -1,4 +1,4 @@
-"""Chat sessions backed by nanobot workspace ``sessions/*.jsonl``."""
+"""Chat sessions backed by OpenPawlet workspace ``sessions/*.jsonl``."""
 
 from __future__ import annotations
 
@@ -57,7 +57,7 @@ from console.server.state_hub_helpers import (
     push_sessions_snapshot,
     push_status_snapshot,
 )
-from nanobot.utils.team_gateway_runtime import team_member_session_key
+from openpawlet.utils.team_gateway_runtime import team_member_session_key
 
 router = APIRouter(tags=["Sessions"])
 

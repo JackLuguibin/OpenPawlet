@@ -1,7 +1,7 @@
 [project]
 name = "open-pawlet"
 version = "0.3.0"
-description = "OpenPawlet console with embedded nanobot AI assistant framework"
+description = "OpenPawlet console with embedded OpenPawlet AI assistant framework"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
@@ -120,10 +120,10 @@ allow-direct-references = true
 [project.scripts]
 console = "console.cli:main"
 open-pawlet = "console.cli:main"
-nanobot = "nanobot.cli.commands:app"
+openpawlet = "openpawlet.cli.commands:app"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/console", "src/nanobot"]
+packages = ["src/console", "src/openpawlet"]
 exclude = [
     "/src/console/web/node_modules",
 ]
@@ -144,7 +144,7 @@ exclude = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["src/nanobot/tests"]
+testpaths = ["src/openpawlet/tests"]
 pythonpath = ["src"]
 
 [tool.ruff]
@@ -167,7 +167,7 @@ python_version = "3.12"
 strict = false
 
 [tool.coverage.run]
-source = ["nanobot", "console"]
+source = ["openpawlet", "console"]
 omit = ["tests/*", "**/tests/*"]
 
 [tool.coverage.report]

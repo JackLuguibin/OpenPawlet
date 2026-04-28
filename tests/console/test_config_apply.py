@@ -25,7 +25,7 @@ from console.server.config_apply import (  # noqa: E402
     apply_env_change,
     needs_runtime_swap,
 )
-from nanobot.config.schema import Config  # noqa: E402
+from openpawlet.config.schema import Config  # noqa: E402
 
 
 def _default_dict() -> dict:
@@ -271,7 +271,7 @@ async def test_apply_env_change_syncs_exec_allowlist(
 
     config_path = tmp_path / "config.json"
     monkeypatch.setattr(
-        "console.server.nanobot_user_config.resolve_config_path",
+        "console.server.openpawlet_user_config.resolve_config_path",
         lambda _bot_id: config_path,
     )
 
@@ -306,7 +306,7 @@ async def test_apply_env_change_skips_unknown_exec_keys(
 
     config_path = tmp_path / "config.json"
     monkeypatch.setattr(
-        "console.server.nanobot_user_config.resolve_config_path",
+        "console.server.openpawlet_user_config.resolve_config_path",
         lambda _bot_id: config_path,
     )
 

@@ -10,7 +10,7 @@ import { formatAgentLocaleTime } from '../utils/agentDatetime';
 const { Text } = Typography;
 
 /**
- * Shows live nanobot channel WebSocket frames. Data is stored in the global store;
+ * Shows live OpenPawlet channel WebSocket frames. Data is stored in the global store;
  * this panel only renders it.
  */
 export default function WebSocketDebugPanel() {
@@ -18,12 +18,12 @@ export default function WebSocketDebugPanel() {
   const agentTz = useAgentTimeZone();
   const locale = i18n.language.startsWith('zh') ? 'zh-CN' : 'en-US';
   const [open, setOpen] = useState(false);
-  const nanobotWsDebugLines = useAppStore((s) => s.nanobotWsDebugLines);
-  const clearNanobotWsDebug = useAppStore((s) => s.clearNanobotWsDebug);
+  const openpawletWsDebugLines = useAppStore((s) => s.openpawletWsDebugLines);
+  const clearOpenPawletWsDebug = useAppStore((s) => s.clearOpenPawletWsDebug);
 
-  const nanobotReversed = useMemo(
-    () => [...nanobotWsDebugLines].reverse(),
-    [nanobotWsDebugLines],
+  const openpawletWsLinesReversed = useMemo(
+    () => [...openpawletWsDebugLines].reverse(),
+    [openpawletWsDebugLines],
   );
 
   return (
@@ -52,17 +52,17 @@ export default function WebSocketDebugPanel() {
             <Button
               size="small"
               icon={<DeleteOutlined />}
-              onClick={() => clearNanobotWsDebug()}
-              disabled={nanobotWsDebugLines.length === 0}
+              onClick={() => clearOpenPawletWsDebug()}
+              disabled={openpawletWsDebugLines.length === 0}
             >
               {t('websocketDebug.clear')}
             </Button>
           </div>
-          {nanobotWsDebugLines.length === 0 ? (
+          {openpawletWsDebugLines.length === 0 ? (
             <Empty description={t('websocketDebug.empty')} />
           ) : (
             <div className="max-h-[calc(100vh-220px)] overflow-y-auto space-y-2 pr-1">
-              {nanobotReversed.map((line, index) => (
+              {openpawletWsLinesReversed.map((line, index) => (
                 <div key={`${line.ts}-${index}`}>
                   <Text type="secondary" className="text-[10px]">
                     {formatAgentLocaleTime(line.ts, agentTz, locale)}

@@ -21,7 +21,7 @@ Design goals:
       enqueue onto the hub's owning event loop via
       :meth:`asyncio.AbstractEventLoop.call_soon_threadsafe` so synchronous
       writers (``set_bot_running`` is called from request handlers but the
-      nanobot agent loop also writes session JSONL from a worker thread)
+      OpenPawlet agent loop also writes session JSONL from a worker thread)
       do not need to be ``async def``-aware.
 
 The frame shapes intentionally mirror the existing

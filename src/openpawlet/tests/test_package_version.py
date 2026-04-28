@@ -1,0 +1,40 @@
+from __future__ import annotations
+
+import subprocess
+import sys
+import textwrap
+import tomllib
+from pathlib import Path
+
+
+def test_source_checkout_import_uses_pyproject_version_without_metadata() -> None:
+    repo_root = Path(__file__).resolve().parents[3]
+    expected = tomllib.loads((repo_root / "pyproject.toml").read_text(encoding="utf-8"))["project"][
+        "version"
+    ]
+    script = textwrap.dedent(
+        f"""
+        import sys
+        import types
+
+        sys.path.insert(0, {str(repo_root / "src")!r})
+        fake = types.ModuleType("openpawlet.openpawlet")
+        fake.OpenPawlet = object
+        fake.RunResult = object
+        sys.modules["openpawlet.openpawlet"] = fake
+
+        import openpawlet
+
+        print(openpawlet.__version__)
+        """
+    )
+
+    proc = subprocess.run(
+        [sys.executable, "-S", "-c", script],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == expected

@@ -1,7 +1,7 @@
-"""Same-origin WebSocket reverse-proxy for the embedded nanobot gateway.
+"""Same-origin WebSocket reverse-proxy for the embedded OpenPawlet gateway.
 
 The embedded ``WebSocketChannel`` listens on a loopback port inside this
-process; the SPA still talks to it via ``/nanobot-ws/*`` so cookies, CORS
+process; the SPA still talks to it via ``/openpawlet-ws/*`` so cookies, CORS
 and request logging stay attached to the FastAPI surface.  This module
 owns the hardening (origin allowlist, query-key allowlist, frame size
 caps, simple sliding-window rate limiter) so ``app.py`` stays focused on
@@ -27,7 +27,7 @@ _WS_MAX_BINARY_BYTES = 256 * 1024
 _WS_MAX_FRAMES_PER_S = 100
 _WS_MAX_BYTES_PER_S = 1 * 1024 * 1024
 
-# Forwarded query keys for the nanobot WS handshake.  ``client_id`` and
+# Forwarded query keys for the OpenPawlet WS handshake.  ``client_id`` and
 # ``chat_id`` are critical: the embedded ``WebSocketChannel`` uses them to
 # identify the sender (allow_from check) and to resume the right per-chat
 # ``chat_id`` so follow-up messages append to the same
@@ -41,7 +41,7 @@ _WS_CLOSE_TOO_BIG = 1009
 
 
 def _origin_is_allowed(origin: str | None, cors_origins: list[str]) -> bool:
-    """True if *origin* may open a /nanobot-ws/* connection."""
+    """True if *origin* may open a /openpawlet-ws/* connection."""
     if origin is None or origin == "":
         return True
     if any(o.strip() == "*" for o in cors_origins):
@@ -113,35 +113,35 @@ async def _pump_client_to_remote(
                 text_bytes = len(text.encode("utf-8", errors="replace"))
                 if text_bytes > _WS_MAX_TEXT_BYTES:
                     logger.warning(
-                        "[nanobot-ws-proxy] text frame {} > {} bytes; closing",
+                        "[openpawlet-ws-proxy] text frame {} > {} bytes; closing",
                         text_bytes,
                         _WS_MAX_TEXT_BYTES,
                     )
                     await websocket.close(code=_WS_CLOSE_TOO_BIG)
                     break
                 if not rate_limiter.allow(text_bytes):
-                    logger.warning("[nanobot-ws-proxy] rate-limit hit; closing")
+                    logger.warning("[openpawlet-ws-proxy] rate-limit hit; closing")
                     await websocket.close(code=_WS_CLOSE_POLICY_VIOLATION)
                     break
                 await remote_ws.send(tag_inbound_text_frame(text))
             elif data is not None:
                 if len(data) > _WS_MAX_BINARY_BYTES:
                     logger.warning(
-                        "[nanobot-ws-proxy] binary frame {} > {} bytes; closing",
+                        "[openpawlet-ws-proxy] binary frame {} > {} bytes; closing",
                         len(data),
                         _WS_MAX_BINARY_BYTES,
                     )
                     await websocket.close(code=_WS_CLOSE_TOO_BIG)
                     break
                 if not rate_limiter.allow(len(data)):
-                    logger.warning("[nanobot-ws-proxy] rate-limit hit; closing")
+                    logger.warning("[openpawlet-ws-proxy] rate-limit hit; closing")
                     await websocket.close(code=_WS_CLOSE_POLICY_VIOLATION)
                     break
                 await remote_ws.send(data)
     except websockets.exceptions.ConnectionClosed:
         pass
     except Exception as exc:  # noqa: BLE001 - close both sides
-        logger.warning("[nanobot-ws-proxy] client->gateway error: {}", exc)
+        logger.warning("[openpawlet-ws-proxy] client->gateway error: {}", exc)
     finally:
         await remote_ws.close()
 
@@ -160,7 +160,7 @@ async def _pump_remote_to_client(
     except websockets.exceptions.ConnectionClosed:
         pass
     except Exception as exc:  # noqa: BLE001
-        logger.warning("[nanobot-ws-proxy] gateway->client error: {}", exc)
+        logger.warning("[openpawlet-ws-proxy] gateway->client error: {}", exc)
     finally:
         await _safe_ws_close(websocket)
 
@@ -172,11 +172,11 @@ async def proxy_websocket(
     gateway_port: int,
     cors_origins: list[str],
 ) -> None:
-    """Bidirectionally proxy a WebSocket to the in-process nanobot WS channel."""
+    """Bidirectionally proxy a WebSocket to the in-process OpenPawlet WS channel."""
     headers = {k.decode().lower(): v.decode() for k, v in websocket.scope.get("headers", [])}
     origin = headers.get("origin")
     if not _origin_is_allowed(origin, cors_origins):
-        logger.warning("[nanobot-ws-proxy] reject origin={!r}", origin)
+        logger.warning("[openpawlet-ws-proxy] reject origin={!r}", origin)
         await websocket.close(code=_WS_CLOSE_POLICY_VIOLATION)
         return
 
@@ -189,7 +189,7 @@ async def proxy_websocket(
         target_url = f"{target_url}?{query_string}"
 
     logger.debug(
-        "[nanobot-ws-proxy] open client={} -> {}:{}{}",
+        "[openpawlet-ws-proxy] open client={} -> {}:{}{}",
         websocket.client,
         gateway_host,
         gateway_port,
@@ -218,7 +218,7 @@ async def proxy_websocket(
 
     except OSError as exc:
         logger.warning(
-            "[nanobot-ws-proxy] cannot reach embedded gateway at ws://{}:{}{}: {}",
+            "[openpawlet-ws-proxy] cannot reach embedded gateway at ws://{}:{}{}: {}",
             gateway_host,
             gateway_port,
             target_path,
@@ -226,20 +226,20 @@ async def proxy_websocket(
         )
         await _safe_ws_close(websocket, code=1014)
     except Exception as exc:  # noqa: BLE001
-        logger.exception("[nanobot-ws-proxy] unexpected proxy error: {}", exc)
+        logger.exception("[openpawlet-ws-proxy] unexpected proxy error: {}", exc)
         await _safe_ws_close(websocket, code=1011)
 
 
-def mount_nanobot_ws_proxy(
+def mount_openpawlet_ws_proxy(
     app: FastAPI,
     gateway_host: str,
     gateway_port: int,
     cors_origins: list[str],
 ) -> None:
-    """Register the ``/nanobot-ws/`` WebSocket reverse-proxy route on *app*."""
+    """Register the ``/openpawlet-ws/`` WebSocket reverse-proxy route on *app*."""
 
-    @app.websocket("/nanobot-ws/{rest_path:path}")
-    async def nanobot_ws_proxy_route(websocket: WebSocket, rest_path: str) -> None:
+    @app.websocket("/openpawlet-ws/{rest_path:path}")
+    async def openpawlet_ws_proxy_route(websocket: WebSocket, rest_path: str) -> None:
         await proxy_websocket(
             websocket,
             rest_path,
@@ -249,10 +249,10 @@ def mount_nanobot_ws_proxy(
         )
 
     logger.info(
-        "[nanobot-ws-proxy] Proxying /nanobot-ws/* -> ws://{}:{} (in-process loopback)",
+        "[openpawlet-ws-proxy] Proxying /openpawlet-ws/* -> ws://{}:{} (in-process loopback)",
         gateway_host,
         gateway_port,
     )
 
 
-__all__ = ["mount_nanobot_ws_proxy", "proxy_websocket"]
+__all__ = ["mount_openpawlet_ws_proxy", "proxy_websocket"]

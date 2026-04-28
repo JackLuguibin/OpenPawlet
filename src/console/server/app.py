@@ -2,8 +2,8 @@
 
 This module is the single entry point for the consolidated OpenPawlet
 console.  In addition to the historical REST API + SPA hosting it now
-also owns the embedded nanobot runtime (agent loop, channels, cron,
-heartbeat) via :mod:`nanobot.runtime.embedded`, the OpenAI-compatible
+also owns the embedded OpenPawlet runtime (agent loop, channels, cron,
+heartbeat) via :mod:`openpawlet.runtime.embedded`, the OpenAI-compatible
 ``/v1/*`` surface and the ``/queues/*`` admin endpoints.  External
 clients therefore only ever need to talk to one HTTP port.
 """
@@ -25,7 +25,7 @@ from console.server.lifespan import lifespan, swap_runtime  # noqa: F401  (re-ex
 from console.server.openai_api import install_openai_routes
 from console.server.queues_router import install_queues_routes
 from console.server.routers import v1
-from console.server.ws_proxy import mount_nanobot_ws_proxy
+from console.server.ws_proxy import mount_openpawlet_ws_proxy
 from console.server.ws_state import state_ws_handler
 
 
@@ -108,19 +108,19 @@ def create_app(
     )
 
     app.include_router(v1.api_router, prefix=settings.api_prefix)
-    install_openai_routes(app, model_name="nanobot")
+    install_openai_routes(app, model_name="openpawlet")
     install_queues_routes(app)
 
     install_error_handlers(app)
 
     # Register WS proxy before the SPA catch-all so the path isn't swallowed.
-    # The "gateway" now lives in the same process via EmbeddedNanobot, but the
+    # The "gateway" now lives in the same process via EmbeddedOpenPawlet, but the
     # underlying WebSocketChannel still binds a loopback port for protocol
     # fidelity, so we proxy same-origin to it.
-    mount_nanobot_ws_proxy(
+    mount_openpawlet_ws_proxy(
         app,
-        settings.nanobot_gateway_host,
-        settings.nanobot_gateway_port,
+        settings.openpawlet_gateway_host,
+        settings.openpawlet_gateway_port,
         list(settings.cors_origins),
     )
 

@@ -1,7 +1,7 @@
-"""Multi-instance bot registry persisted under ``~/.nanobot/registry.json``.
+"""Multi-instance bot registry persisted under ``~/.openpawlet/registry.json``.
 
-The console historically supported a single nanobot config at
-``~/.nanobot/config.json``.  Adding multi-instance support lazily would
+The console historically supported a single OpenPawlet config at
+``~/.openpawlet/config.json``.  Adding multi-instance support lazily would
 mean every router that reads workspace state needs to know which bot it
 is operating on.  We instead introduce a single entry point - the
 :class:`BotsRegistry` - that maps an opaque ``bot_id`` to a per-bot
@@ -11,7 +11,7 @@ installations keep working without migration.
 
 Layout::
 
-    ~/.nanobot/
+    ~/.openpawlet/
         registry.json                  # {"bots": [...], "default": "default"}
         config.json                    # legacy single-bot config (treated as
                                        # the implicit "default" bot)
@@ -41,23 +41,23 @@ from loguru import logger
 DEFAULT_BOT_ID = "default"
 
 
-def _nanobot_root() -> Path:
-    """Return ``~/.nanobot`` (created on demand)."""
-    root = Path.home() / ".nanobot"
+def _openpawlet_state_dir() -> Path:
+    """Return ``~/.openpawlet`` (created on demand)."""
+    root = Path.home() / ".openpawlet"
     root.mkdir(parents=True, exist_ok=True)
     return root
 
 
 def _registry_path() -> Path:
-    return _nanobot_root() / "registry.json"
+    return _openpawlet_state_dir() / "registry.json"
 
 
 def _bots_root() -> Path:
-    return _nanobot_root() / "bots"
+    return _openpawlet_state_dir() / "bots"
 
 
 def _legacy_config_path() -> Path:
-    return _nanobot_root() / "config.json"
+    return _openpawlet_state_dir() / "config.json"
 
 
 class BotsRegistry:
@@ -65,12 +65,12 @@ class BotsRegistry:
 
     The class is intentionally small: it owns the JSON file schema, the
     on-disk layout under ``bots/<id>/`` and the bookkeeping needed by the
-    HTTP handlers.  Runtime lifecycle (per-bot ``EmbeddedNanobot``
+    HTTP handlers.  Runtime lifecycle (per-bot ``EmbeddedOpenPawlet``
     instances) is layered on top of this in P3b.
     """
 
     def __init__(self, root: Path | None = None) -> None:
-        self._root = root if root is not None else _nanobot_root()
+        self._root = root if root is not None else _openpawlet_state_dir()
         self._lock = RLock()
         self._file_lock = FileLock(str(self._root / "registry.json.lock"))
 
@@ -120,7 +120,7 @@ class BotsRegistry:
         """Make sure the implicit ``default`` bot is present in the registry.
 
         For backwards compatibility we never auto-rewrite the legacy
-        ``~/.nanobot/config.json``; we just expose it as a read-only
+        ``~/.openpawlet/config.json``; we just expose it as a read-only
         ``default`` entry so the SPA can render it like any other bot.
         """
         if any(b.get("id") == DEFAULT_BOT_ID for b in state["bots"]):
@@ -129,7 +129,7 @@ class BotsRegistry:
         # Deliberately do not point the default bot at a per-bot directory;
         # callers that need workspace_root() resolve it from the legacy
         # config to preserve historical behaviour.
-        ws = self._read_workspace_from_config(legacy_cfg) or _nanobot_root() / "workspace"
+        ws = self._read_workspace_from_config(legacy_cfg) or _openpawlet_state_dir() / "workspace"
         state["bots"].insert(
             0,
             self._row(
@@ -251,7 +251,7 @@ class BotsRegistry:
     def resolve_config_path(self, bot_id: str | None) -> Path:
         """Return the on-disk config.json path for *bot_id*.
 
-        Falls back to the legacy ``~/.nanobot/config.json`` when *bot_id*
+        Falls back to the legacy ``~/.openpawlet/config.json`` when *bot_id*
         is missing or unknown so single-bot deployments keep working with
         no migration required.
         """

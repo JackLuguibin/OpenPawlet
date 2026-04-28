@@ -1,8 +1,8 @@
 """Chat completion (stub).
 
 This endpoint is intentionally a **stub**. Real chat flows go through the
-nanobot gateway over WebSocket (see ``/nanobot-ws/*`` on the console and the
-frontend `NanobotWebsocketClient`); the HTTP route is only kept so generated
+OpenPawlet gateway over WebSocket (see ``/openpawlet-ws/*`` on the console and the
+frontend OpenPawlet channel WebSocket client); the HTTP route is only kept so generated
 clients continue to compile. It is marked ``deprecated`` in the OpenAPI
 schema so SDK users are steered toward the WebSocket channel.
 """
@@ -27,7 +27,7 @@ async def chat(body: ChatRequest) -> DataResponse[ChatResponse]:
     """Return an empty chat response.
 
     **Not implemented on the HTTP path.** The real chat pipeline is driven by
-    the nanobot gateway WebSocket; this route exists only for schema
+    the OpenPawlet gateway WebSocket; this route exists only for schema
     compatibility and always returns an empty ``message``.
     """
     sk = body.session_key or "stub-session"

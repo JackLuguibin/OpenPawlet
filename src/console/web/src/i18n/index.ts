@@ -4,6 +4,7 @@ import { initReactI18next } from 'react-i18next';
 
 import en from './locales/en.json';
 import zh from './locales/zh.json';
+import { OPENPAWLET_LOCAL_STORAGE_KEYS } from '../constants/localStorage';
 
 export const SUPPORTED_LOCALES = ['zh', 'en'] as const;
 export type AppLocale = (typeof SUPPORTED_LOCALES)[number];
@@ -28,7 +29,7 @@ void i18n
     detection: {
       order: ['localStorage', 'navigator'],
       caches: ['localStorage'],
-      lookupLocalStorage: 'nanobot-locale',
+      lookupLocalStorage: OPENPAWLET_LOCAL_STORAGE_KEYS.locale,
     },
   });
 

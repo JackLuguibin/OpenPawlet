@@ -11,11 +11,11 @@ import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useAppStore } from "../store";
 import {
-  disconnectNanobotChannelWebSocket,
-  resolveNanobotWsBase,
-  tryParseNanobotResumeChatId,
-  useNanobotChannelWebSocket,
-} from "../hooks/useNanobotChannelWebSocket";
+  disconnectOpenPawletChannelWebSocket,
+  resolveOpenPawletWsBase,
+  tryParseOpenPawletResumeChatId,
+  useOpenPawletChannelWebSocket,
+} from "../hooks/useOpenPawletChannelWebSocket";
 import type { ChatChunkSource } from "../hooks/useWebSocket";
 import { registerChatHandler, getWSRef } from "../hooks/useWebSocket";
 import { useAgentTimeZone } from "../hooks/useAgentTimeZone";
@@ -51,7 +51,7 @@ import { VirtualizedMessageList } from "./chat/VirtualizedMessageList";
 import { useVirtualListHandle } from "./chat/useVirtualListHandle";
 import type { Message, TrackedToolCall } from "./chat/types";
 import {
-  parseNanobotStatusJson,
+  parseOpenPawletStatusJson,
   resolveChatDonePrimaryText,
 } from "./chat/statusParse";
 import {
@@ -64,9 +64,9 @@ import {
   formatJsonlForDisplay,
   isSessionMissingError,
   LAST_CONSOLE_SESSION_STORAGE_KEY,
-  NANOBOT_CHAT_NEW_INTENT_STORAGE_KEY,
+  OPENPAWLET_CHAT_NEW_INTENT_STORAGE_KEY,
   pickLatestActiveSessionKey,
-  readNanobotChatNewIntent,
+  readOpenPawletChatNewIntent,
 } from "./chat/sessionUtils";
 import { MessageToolCallsBlock } from "./chat/MessageToolCalls";
 import { MessageThinkingBlock } from "./chat/MessageThinkingBlock";
@@ -75,7 +75,7 @@ import { ChatHeroSuggestions } from "./chat/ChatHeroSuggestions";
 import { JumpToBottomButton } from "./chat/JumpToBottomButton";
 import { StreamingAssistantBubble } from "./chat/StreamingAssistantBubble";
 import { SessionSidebarItem } from "./chat/SessionSidebarItem";
-import { useNanobotContextUsage } from "./chat/useNanobotContextUsage";
+import { useOpenPawletContextUsage } from "./chat/useOpenPawletContextUsage";
 import {
   CHAT_HISTORY_PAGE_SIZE,
   CHAT_HISTORY_TOP_TRIGGER_PX,
@@ -88,22 +88,22 @@ const CHAT_NEAR_BOTTOM_PX = 100;
 export default function Chat() {
   const { t, i18n } = useTranslation();
   const { sessionKey: paramSessionKey } = useParams();
-  const resumeNanobotChatUuid = useMemo(
-    () => tryParseNanobotResumeChatId(paramSessionKey),
+  const resumeOpenPawletChatUuid = useMemo(
+    () => tryParseOpenPawletResumeChatId(paramSessionKey),
     [paramSessionKey],
   );
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { currentSessionKey, setCurrentSessionKey, currentBotId, addToast } =
     useAppStore();
-  const nanobotClientId = useAppStore((s) => s.nanobotClientId);
+  const openpawletClientId = useAppStore((s) => s.openpawletClientId);
   const agentTz = useAgentTimeZone();
 
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const isStreamingRef = useRef(false);
-  /** True when `isStreaming` was set from nanobot WS `ready.session_busy` (turn in flight on server). */
+  /** True when `isStreaming` was set from OpenPawlet WS `ready.session_busy` (turn in flight on server). */
   const streamingPrimedByServerRef = useRef(false);
   useEffect(() => {
     isStreamingRef.current = isStreaming;
@@ -130,7 +130,7 @@ export default function Chat() {
     () => new Set(),
   );
   const [toolCalls, setToolCalls] = useState<TrackedToolCall[]>([]);
-  /** nanobot WebSocket 帧中的 tool_calls / reasoning_content（与正文并行展示） */
+  /** OpenPawlet WebSocket 帧中的 tool_calls / reasoning_content（与正文并行展示） */
   const [streamingPayloadToolCalls, setStreamingPayloadToolCalls] = useState<
     ToolCall[]
   >([]);
@@ -149,7 +149,7 @@ export default function Chat() {
   const [streamingToolProgress, setStreamingToolProgress] = useState<string[]>(
     [],
   );
-  /** nanobot `event: message` (retries, status) until `chat_end` */
+  /** OpenPawlet `event: message` (retries, status) until `chat_end` */
   const [streamingChannelNotices, setStreamingChannelNotices] = useState<
     string[]
   >([]);
@@ -246,8 +246,8 @@ export default function Chat() {
   const pendingStreamTokenDeltaRef = useRef("");
   /** Throttle transcript refetch triggered by in-flight tool events. */
   const transcriptSyncTimerRef = useRef<number | null>(null);
-  /** 新会话首条消息：等待 nanobot 内置 websocket 通道连接后再发送 */
-  const pendingNanobotOutboundRef = useRef<string | null>(null);
+  /** 新会话首条消息：等待 OpenPawlet 内置 websocket 通道连接后再发送 */
+  const pendingOpenPawletOutboundRef = useRef<string | null>(null);
 
   /** Cancel scheduled rAF and apply any buffered tokens so state matches streamingContentRef */
   const cancelStreamTokenFlush = useCallback(() => {
@@ -297,8 +297,8 @@ export default function Chat() {
     streamingPrimedByServerRef.current = false;
   }, [activeSessionKey]);
 
-  const nanobotWsBase = resolveNanobotWsBase();
-  const useNanobotChannel = nanobotWsBase.length > 0;
+  const openpawletWsBase = resolveOpenPawletWsBase();
+  const useOpenPawletChannel = openpawletWsBase.length > 0;
 
   const {
     data: sessions,
@@ -341,41 +341,41 @@ export default function Chat() {
     });
   }, [sessions]);
 
-  const onBareNanobotChatRoute =
-    useNanobotChannel && paramSessionKey === undefined;
+  const onBareOpenPawletChatRoute =
+    useOpenPawletChannel && paramSessionKey === undefined;
   // Bare `/chat` should not eagerly open a WebSocket: doing so makes the
-  // nanobot agent loop materialize an in-memory Session on the very first
+  // OpenPawlet agent loop materialize an in-memory Session on the very first
   // `/status` poll triggered after `ready`, which the SessionManager later
   // flushes to disk as an empty `sessions/*.jsonl` file (visible as a
   // ghost row in the sidebar after every backend restart). Only connect
   // when the user has explicitly opted into a new chat or when an
   // existing route is being resumed (`/chat/:key`).
-  const nanobotChannelWsEnabled =
-    useNanobotChannel &&
-    (!onBareNanobotChatRoute ||
+  const openpawletChannelWsEnabled =
+    useOpenPawletChannel &&
+    (!onBareOpenPawletChatRoute ||
       (!sessionsListPending &&
-        (sessionsListError || readNanobotChatNewIntent())));
+        (sessionsListError || readOpenPawletChatNewIntent())));
 
   useEffect(() => {
     if (paramSessionKey === undefined) {
       return;
     }
     try {
-      sessionStorage.removeItem(NANOBOT_CHAT_NEW_INTENT_STORAGE_KEY);
+      sessionStorage.removeItem(OPENPAWLET_CHAT_NEW_INTENT_STORAGE_KEY);
     } catch {
       // ignore
     }
   }, [paramSessionKey]);
 
   useEffect(() => {
-    if (!useNanobotChannel) {
+    if (!useOpenPawletChannel) {
       return;
     }
     const routeKey = paramSessionKey?.trim();
     if (routeKey) {
-      useAppStore.getState().setNanobotClientId(routeKey);
+      useAppStore.getState().setOpenPawletClientId(routeKey);
     }
-  }, [useNanobotChannel, paramSessionKey]);
+  }, [useOpenPawletChannel, paramSessionKey]);
 
   /**
    * After the session list loads, open the last-opened session if still present;
@@ -383,7 +383,7 @@ export default function Chat() {
    * "New chat" (storage flag) or when there are no sessions (new WS chat).
    */
   useEffect(() => {
-    if (!useNanobotChannel) {
+    if (!useOpenPawletChannel) {
       return;
     }
     if (paramSessionKey !== undefined) {
@@ -396,7 +396,7 @@ export default function Chat() {
     if (list.length === 0) {
       return;
     }
-    if (readNanobotChatNewIntent()) {
+    if (readOpenPawletChatNewIntent()) {
       return;
     }
     let stored: string | null = null;
@@ -415,7 +415,7 @@ export default function Chat() {
       storedKey.length > 0 && keys.has(storedKey) ? storedKey : fallback;
     navigate(`/chat/${encodeURIComponent(pick)}`, { replace: true });
   }, [
-    useNanobotChannel,
+    useOpenPawletChannel,
     paramSessionKey,
     sessionsListPending,
     sessionsListError,
@@ -424,7 +424,7 @@ export default function Chat() {
   ]);
 
   useEffect(() => {
-    if (!useNanobotChannel || !activeSessionKey) {
+    if (!useOpenPawletChannel || !activeSessionKey) {
       return;
     }
     const key = activeSessionKey.trim();
@@ -436,7 +436,7 @@ export default function Chat() {
     } catch {
       // ignore quota / private mode
     }
-  }, [useNanobotChannel, activeSessionKey]);
+  }, [useOpenPawletChannel, activeSessionKey]);
 
   /**
    * Bare `/chat` draft -> real session activation marker.
@@ -454,9 +454,9 @@ export default function Chat() {
    */
   const suppressSessionDetailForKeyRef = useRef<string | null>(null);
   /** Dedupe `createSession` + list invalidation when route/store deps churn with the same logical session. */
-  const ensuredNanobotConsoleSessionRef = useRef<string | null>(null);
+  const ensuredOpenPawletConsoleSessionRef = useRef<string | null>(null);
 
-  const onNanobotReadySessionBusy = useCallback((busy: boolean) => {
+  const onOpenPawletReadySessionBusy = useCallback((busy: boolean) => {
     if (busy) {
       streamingPrimedByServerRef.current = true;
       setIsStreaming(true);
@@ -466,23 +466,23 @@ export default function Chat() {
     }
   }, []);
 
-  const { sendMessage: sendNanobotMessage, ready: nanobotWsReady } =
-    useNanobotChannelWebSocket({
-      enabled: nanobotChannelWsEnabled,
+  const { sendMessage: sendOpenPawletMessage, ready: openpawletWsReady } =
+    useOpenPawletChannelWebSocket({
+      enabled: openpawletChannelWsEnabled,
       canonicalSessionKeyFromRoute: paramSessionKey ?? null,
-      resumeChatId: resumeNanobotChatUuid,
-      onReadySessionBusy: useNanobotChannel ? onNanobotReadySessionBusy : undefined,
+      resumeChatId: resumeOpenPawletChatUuid,
+      onReadySessionBusy: useOpenPawletChannel ? onOpenPawletReadySessionBusy : undefined,
     });
 
   /**
-   * nanobot `ready` 后由 `chat_id` 派生会话键 `websocket:<chat_id>`（见 `nanobotSessionKeyFromReadyChatId`）。
+   * OpenPawlet `ready` 后由 `chat_id` 派生会话键 `websocket:<chat_id>`（见 `openpawletSessionKeyFromReadyChatId`）。
    * 仅在“用户已经发送过首条消息（草稿激活）+ 当前仍处 `/chat` 草稿态”时建立控制台
    * `sessions/*.jsonl` 并把路由同步为该键。这样可以避免 ws 重连/ready 抖动反复
    * 触发新会话，主流聊天产品的“首条消息落地一个会话”行为。
    */
   useEffect(() => {
-    if (!useNanobotChannel || !nanobotClientId) {
-      ensuredNanobotConsoleSessionRef.current = null;
+    if (!useOpenPawletChannel || !openpawletClientId) {
+      ensuredOpenPawletConsoleSessionRef.current = null;
       return;
     }
     if (!draftSessionActivationRequestedRef.current) {
@@ -496,36 +496,36 @@ export default function Chat() {
       return;
     }
 
-    const dedupeKey = `${String(currentBotId ?? "")}:${nanobotClientId}`;
-    if (ensuredNanobotConsoleSessionRef.current === dedupeKey) {
+    const dedupeKey = `${String(currentBotId ?? "")}:${openpawletClientId}`;
+    if (ensuredOpenPawletConsoleSessionRef.current === dedupeKey) {
       return;
     }
-    ensuredNanobotConsoleSessionRef.current = dedupeKey;
+    ensuredOpenPawletConsoleSessionRef.current = dedupeKey;
 
     void api
-      .createSession(nanobotClientId, currentBotId)
+      .createSession(openpawletClientId, currentBotId)
       .then(() => {
         draftSessionActivationRequestedRef.current = false;
         queryClient.invalidateQueries({
           queryKey: ["sessions", currentBotId],
         });
-        setCurrentSessionKey(nanobotClientId);
-        navigate(`/chat/${encodeURIComponent(nanobotClientId)}`, {
+        setCurrentSessionKey(openpawletClientId);
+        navigate(`/chat/${encodeURIComponent(openpawletClientId)}`, {
           replace: true,
         });
         try {
-          sessionStorage.removeItem(NANOBOT_CHAT_NEW_INTENT_STORAGE_KEY);
+          sessionStorage.removeItem(OPENPAWLET_CHAT_NEW_INTENT_STORAGE_KEY);
         } catch {
           // ignore
         }
       })
       .catch((err) => {
-        ensuredNanobotConsoleSessionRef.current = null;
+        ensuredOpenPawletConsoleSessionRef.current = null;
         console.error("[chat] createSession after first outbound", err);
       });
   }, [
-    useNanobotChannel,
-    nanobotClientId,
+    useOpenPawletChannel,
+    openpawletClientId,
     currentBotId,
     paramSessionKey,
     navigate,
@@ -535,19 +535,19 @@ export default function Chat() {
   ]);
 
   const {
-    nanobotContextUsage,
-    setNanobotContextUsage,
+    openpawletContextUsage,
+    setOpenPawletContextUsage,
     statusJsonLoading,
-    scheduleNanobotStatusJson,
+    scheduleOpenPawletStatusJson,
     silentStatusJsonRef,
     silentStatusJsonBufferRef,
     expectStatusJsonTrailingChatDoneRef,
     completeSilentStatusJsonPoll,
-  } = useNanobotContextUsage({
-    useNanobotChannel,
-    nanobotWsReady,
+  } = useOpenPawletContextUsage({
+    useOpenPawletChannel,
+    openpawletWsReady,
     currentBotId,
-    sendNanobotMessage,
+    sendOpenPawletMessage,
     activeSessionKey,
   });
 
@@ -727,9 +727,9 @@ export default function Chat() {
     }
 
     const targetKey =
-      nanobotClientId &&
-      sessions.some((sessionRow) => sessionRow.key === nanobotClientId)
-        ? nanobotClientId
+      openpawletClientId &&
+      sessions.some((sessionRow) => sessionRow.key === openpawletClientId)
+        ? openpawletClientId
         : latestSessionKeyForSidebar;
     if (!targetKey) {
       return;
@@ -747,7 +747,7 @@ export default function Chat() {
     return () => window.clearTimeout(timer);
   }, [
     sessions,
-    nanobotClientId,
+    openpawletClientId,
     latestSessionKeyForSidebar,
     sessionsSidebarOpen,
     sessionsSidebarCollapsed,
@@ -760,13 +760,13 @@ export default function Chat() {
 
       if (isDeletingCurrent) {
         /**
-         * Required order for nanobot:
+         * Required order for OpenPawlet:
          * 1) Hard-close WS so no `ready` is processed for the session being removed.
          * 2) flushSync + navigate to the next session (or bare /chat).
          * 3) DELETE the jsonl on the server.
          */
-        if (useNanobotChannel) {
-          disconnectNanobotChannelWebSocket();
+        if (useOpenPawletChannel) {
+          disconnectOpenPawletChannelWebSocket();
         }
         suppressSessionDetailForKeyRef.current = key;
         void queryClient.cancelQueries({
@@ -840,8 +840,8 @@ export default function Chat() {
       const isDeletingCurrent = current.length > 0 && keySet.has(current);
 
       if (isDeletingCurrent) {
-        if (useNanobotChannel) {
-          disconnectNanobotChannelWebSocket();
+        if (useOpenPawletChannel) {
+          disconnectOpenPawletChannelWebSocket();
         }
         suppressSessionDetailForKeyRef.current = current;
         void queryClient.cancelQueries({
@@ -955,12 +955,12 @@ export default function Chat() {
   });
 
   /**
-   * nanobot 首条消息前勿对草稿 UUID 拉 JSONL（无文件或键与 agent 不一致）。
-   * 仅在路由已有 :sessionKey 或不用 nanobot WS 时请求。
+   * OpenPawlet 首条消息前勿对草稿 UUID 拉 JSONL（无文件或键与 agent 不一致）。
+   * 仅在路由已有 :sessionKey 或不用 OpenPawlet WS 时请求。
    */
   const shouldFetchSessionJsonl =
     Boolean(activeSessionKey) &&
-    (!useNanobotChannel || paramSessionKey !== undefined);
+    (!useOpenPawletChannel || paramSessionKey !== undefined);
 
   const sessionJsonlFetchSuppressedForDeletedRoute =
     suppressSessionDetailForKeyRef.current !== null &&
@@ -1187,7 +1187,7 @@ export default function Chat() {
       setMessages([]);
     }
     // Bare `/chat`: always show the welcome hero. Do not tie this to `activeSessionKey`:
-    // nanobot promotes `/chat` → `/chat/:id` before the first message, but the session
+    // OpenPawlet promotes `/chat` → `/chat/:id` before the first message, but the session
     // is still empty and should keep the hero until the user sends or history loads.
     if (paramSessionKey === undefined) {
       setShowSuggestions(true);
@@ -1471,9 +1471,9 @@ export default function Chat() {
     (chunk: StreamChunk, source: ChatChunkSource) => {
       // When both transports are configured, bind this page to a single
       // source to prevent duplicate tokens / `chat_done` events from
-      // console `/ws` and nanobot `/nanobot-ws` being merged into one stream.
-      if (useNanobotChannel) {
-        if (source !== "nanobot") {
+      // console `/ws` and OpenPawlet `/openpawlet-ws` being merged into one stream.
+      if (useOpenPawletChannel) {
+        if (source !== "openpawlet") {
           return;
         }
       } else if (source !== "console") {
@@ -1498,14 +1498,14 @@ export default function Chat() {
         }
         if (
           chunk.type === "chat_token" ||
-          chunk.type === "nanobot_status_json" ||
+          chunk.type === "openpawlet_status_json" ||
           chunk.type === "channel_notice"
         ) {
           const chunkText =
             typeof chunk.content === "string" ? chunk.content : "";
           silentStatusJsonBufferRef.current += chunkText;
           const assembled = silentStatusJsonBufferRef.current;
-          if (parseNanobotStatusJson(assembled) !== null) {
+          if (parseOpenPawletStatusJson(assembled) !== null) {
             completeSilentStatusJsonPoll(assembled, { fromEarlyParse: true });
           }
           return;
@@ -1526,11 +1526,11 @@ export default function Chat() {
         }
         return;
       }
-      if (chunk.type === "nanobot_status_json") {
+      if (chunk.type === "openpawlet_status_json") {
         const raw = typeof chunk.content === "string" ? chunk.content : "";
-        const parsed = parseNanobotStatusJson(raw);
+        const parsed = parseOpenPawletStatusJson(raw);
         if (parsed) {
-          setNanobotContextUsage(parsed);
+          setOpenPawletContextUsage(parsed);
         }
         return;
       }
@@ -1542,7 +1542,7 @@ export default function Chat() {
         const shouldAdoptServerSessionKey =
           !activeSessionKey ||
           draftSessionActivationRequestedRef.current ||
-          readNanobotChatNewIntent();
+          readOpenPawletChatNewIntent();
         if (!shouldAdoptServerSessionKey && nextKey !== activeSessionKey) {
           // Keep current thread stable during normal chatting; only draft/new
           // flows can adopt a new server session key.
@@ -1559,9 +1559,9 @@ export default function Chat() {
         setIsStreaming(true);
       } else if (chunk.type === "channel_notice" && chunk.content) {
         const noticeText = chunk.content as string;
-        const usageFromStatus = parseNanobotStatusJson(noticeText);
+        const usageFromStatus = parseOpenPawletStatusJson(noticeText);
         if (usageFromStatus) {
-          setNanobotContextUsage(usageFromStatus);
+          setOpenPawletContextUsage(usageFromStatus);
         }
         // After the assistant turn already finalized (e.g. after `/stop`
         // emitted `chat_end`, the trailing `Stopped N task(s).` confirmation
@@ -1584,8 +1584,8 @@ export default function Chat() {
               : {}),
           };
           setMessages((prev) => [...prev, systemMsg]);
-          if (useNanobotChannel) {
-            scheduleNanobotStatusJson();
+          if (useOpenPawletChannel) {
+            scheduleOpenPawletStatusJson();
           }
           return;
         }
@@ -1632,7 +1632,7 @@ export default function Chat() {
             streamingPayloadToolCallsRef.current = merged;
             setStreamingPayloadToolCalls(merged);
           } else {
-            /* nanobot may send tool_event after chat_end; merge into last assistant bubble. */
+            /* OpenPawlet may send tool_event after chat_end; merge into last assistant bubble. */
             streamingPayloadToolCallsRef.current = [];
             setStreamingPayloadToolCalls([]);
             setMessages((prev) => {
@@ -1851,7 +1851,7 @@ export default function Chat() {
         // Any throttled mid-turn transcript refresh is superseded by chat_done.
         cancelTranscriptSync();
         // When the turn ends with no actual content (e.g. the user pressed
-        // "Stop" and nanobot's `_dispatch` finally emits a bare `chat_end`
+        // "Stop" and OpenPawlet's `_dispatch` finally emits a bare `chat_end`
         // lifecycle frame after task cancellation), skip appending an empty
         // assistant bubble. The follow-up confirmation `message` frame
         // ("Stopped N task(s).") still arrives and is rendered through the
@@ -1863,8 +1863,8 @@ export default function Chat() {
         if (!hasRenderableContent) {
           streamingReplyGroupIdRef.current = null;
           setToolCalls([]);
-          if (useNanobotChannel) {
-            scheduleNanobotStatusJson();
+          if (useOpenPawletChannel) {
+            scheduleOpenPawletStatusJson();
           }
           return;
         }
@@ -1905,8 +1905,8 @@ export default function Chat() {
             };
           },
         );
-        if (useNanobotChannel) {
-          scheduleNanobotStatusJson();
+        if (useOpenPawletChannel) {
+          scheduleOpenPawletStatusJson();
         }
       }
     },
@@ -1919,12 +1919,12 @@ export default function Chat() {
       currentBotId,
       cancelStreamTokenFlush,
       completeSilentStatusJsonPoll,
-      scheduleNanobotStatusJson,
+      scheduleOpenPawletStatusJson,
       scheduleTranscriptSync,
       cancelTranscriptSync,
-      useNanobotChannel,
+      useOpenPawletChannel,
       expectStatusJsonTrailingChatDoneRef,
-      setNanobotContextUsage,
+      setOpenPawletContextUsage,
       silentStatusJsonBufferRef,
       silentStatusJsonRef,
     ],
@@ -1941,23 +1941,23 @@ export default function Chat() {
     return () => cancelTranscriptSync();
   }, [cancelTranscriptSync]);
 
-  // nanobot `ws` 频道：连接就绪后发送队列中的首条消息（新会话）
+  // OpenPawlet `ws` 频道：连接就绪后发送队列中的首条消息（新会话）
   useEffect(() => {
-    if (!useNanobotChannel || !nanobotWsReady) {
+    if (!useOpenPawletChannel || !openpawletWsReady) {
       return;
     }
-    const pending = pendingNanobotOutboundRef.current;
+    const pending = pendingOpenPawletOutboundRef.current;
     if (!pending) {
       return;
     }
     try {
-      sendNanobotMessage({
+      sendOpenPawletMessage({
         content: pending,
         botId: currentBotId,
       });
-      pendingNanobotOutboundRef.current = null;
+      pendingOpenPawletOutboundRef.current = null;
     } catch {
-      pendingNanobotOutboundRef.current = null;
+      pendingOpenPawletOutboundRef.current = null;
       cancelStreamTokenFlush();
       setIsStreaming(false);
       setStreamingContent("");
@@ -1968,10 +1968,10 @@ export default function Chat() {
       });
     }
   }, [
-    useNanobotChannel,
-    nanobotWsReady,
+    useOpenPawletChannel,
+    openpawletWsReady,
     currentBotId,
-    sendNanobotMessage,
+    sendOpenPawletMessage,
     addToast,
     cancelStreamTokenFlush,
     t,
@@ -2023,35 +2023,35 @@ export default function Chat() {
     streamingReasoningContentRef.current = "";
     streamingReplyGroupIdRef.current = null;
 
-    if (useNanobotChannel) {
+    if (useOpenPawletChannel) {
       if (!activeSessionKey) {
         // Bare `/chat` stays as draft until first message is sent. Once outbound
         // starts, mark activation and materialize the server session on `ready`.
         draftSessionActivationRequestedRef.current = true;
         setDraftSessionActivationTick((n) => n + 1);
-        // Opt-in flag to let `nanobotChannelWsEnabled` open the socket on the
+        // Opt-in flag to let `openpawletChannelWsEnabled` open the socket on the
         // bare `/chat` route. Without this, an empty sessions list keeps the
         // WS closed (avoiding the empty-session ghost on backend restart) and
         // pending messages would never reach the server.
         try {
-          sessionStorage.setItem(NANOBOT_CHAT_NEW_INTENT_STORAGE_KEY, "1");
+          sessionStorage.setItem(OPENPAWLET_CHAT_NEW_INTENT_STORAGE_KEY, "1");
         } catch {
           // ignore quota / private mode
         }
-        pendingNanobotOutboundRef.current = userMessage;
-        if (nanobotWsReady) {
+        pendingOpenPawletOutboundRef.current = userMessage;
+        if (openpawletWsReady) {
           try {
-            sendNanobotMessage({
+            sendOpenPawletMessage({
               content: userMessage,
               botId: currentBotId,
             });
-            pendingNanobotOutboundRef.current = null;
+            pendingOpenPawletOutboundRef.current = null;
           } catch {
             cancelStreamTokenFlush();
             setIsStreaming(false);
             setStreamingContent("");
             streamingContentRef.current = "";
-            pendingNanobotOutboundRef.current = null;
+            pendingOpenPawletOutboundRef.current = null;
             addToast({
               type: "error",
               message: t("chat.toastWsSendFailed"),
@@ -2060,12 +2060,12 @@ export default function Chat() {
         }
         return;
       }
-      if (!nanobotWsReady) {
-        pendingNanobotOutboundRef.current = userMessage;
+      if (!openpawletWsReady) {
+        pendingOpenPawletOutboundRef.current = userMessage;
         return;
       }
       try {
-        sendNanobotMessage({
+        sendOpenPawletMessage({
           content: userMessage,
           botId: currentBotId,
         });
@@ -2101,19 +2101,19 @@ export default function Chat() {
   };
 
   const handleStop = () => {
-    // Send `/stop` slash command to the active WebSocket so nanobot's
+    // Send `/stop` slash command to the active WebSocket so OpenPawlet's
     // command router cancels in-flight tasks for this session. The
     // server emits ``chat_end`` (lifecycle finally) followed by a
     // confirmation ``message`` frame ("Stopped N task(s).").
     let dispatched = false;
 
-    if (useNanobotChannel) {
-      if (nanobotWsReady) {
+    if (useOpenPawletChannel) {
+      if (openpawletWsReady) {
         try {
-          sendNanobotMessage({ content: "/stop", botId: currentBotId });
+          sendOpenPawletMessage({ content: "/stop", botId: currentBotId });
           dispatched = true;
         } catch (e) {
-          console.warn("[chat] failed to send /stop via nanobot ws", e);
+          console.warn("[chat] failed to send /stop via openpawlet ws", e);
         }
       }
     } else {
@@ -2193,7 +2193,7 @@ export default function Chat() {
   /**
    * Submit a user reply to a pending ``ask_user`` agent prompt rendered
    * inline in the message list. Pushes the chosen text through the same
-   * WS path as a normal message; nanobot routes it back as the matching
+   * WS path as a normal message; OpenPawlet routes it back as the matching
    * tool result (``pending_ask_user_id`` in ``agent/loop.py``).
    */
   const handleAskUserAnswer = useCallback(
@@ -2215,15 +2215,15 @@ export default function Chat() {
     draftSessionActivationRequestedRef.current = false;
     try {
       localStorage.removeItem(LAST_CONSOLE_SESSION_STORAGE_KEY);
-      sessionStorage.setItem(NANOBOT_CHAT_NEW_INTENT_STORAGE_KEY, "1");
+      sessionStorage.setItem(OPENPAWLET_CHAT_NEW_INTENT_STORAGE_KEY, "1");
     } catch {
       // ignore
     }
-    // Clear nanobot handshake state so the next WS uses a fresh placeholder and
+    // Clear OpenPawlet handshake state so the next WS uses a fresh placeholder and
     // `ready.client_id` drives the new session; otherwise stale ids keep the old
     // connection key and sidebar selection.
-    useAppStore.getState().setNanobotChatId(null);
-    useAppStore.getState().setNanobotClientId(null);
+    useAppStore.getState().setOpenPawletChatId(null);
+    useAppStore.getState().setOpenPawletClientId(null);
     setCurrentSessionKey(null);
     setMessages([]);
     setShowSuggestions(true);
@@ -2284,7 +2284,7 @@ export default function Chat() {
     [t],
   );
 
-  /** Message time in agent-configured IANA timezone (matches nanobot logs). */
+  /** Message time in agent-configured IANA timezone (matches OpenPawlet logs). */
   const formatMessageTime = (isoStr: string | undefined): string => {
     const locale = i18n.language.startsWith("zh") ? "zh-CN" : "en-US";
     return formatChatMessageTime(isoStr, agentTz, locale);
@@ -2866,8 +2866,8 @@ export default function Chat() {
                 onSend={handleSend}
                 onStop={handleStop}
                 isStreaming={isStreaming}
-                showContextMeter={useNanobotChannel}
-                contextUsage={nanobotContextUsage}
+                showContextMeter={useOpenPawletChannel}
+                contextUsage={openpawletContextUsage}
                 contextLoading={statusJsonLoading}
               />
             </div>

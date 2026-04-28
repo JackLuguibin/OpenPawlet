@@ -1,4 +1,4 @@
-"""Configuration section models (nanobot ``config.json`` envelope)."""
+"""Configuration section models (OpenPawlet ``config.json`` envelope)."""
 
 from __future__ import annotations
 

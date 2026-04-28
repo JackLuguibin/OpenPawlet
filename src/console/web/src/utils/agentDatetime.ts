@@ -1,6 +1,6 @@
 /**
  * Date/time display in the agent IANA timezone (``agents.defaults.timezone``),
- * so UI matches nanobot ``local_now(agents.defaults.timezone)`` (no process-wide TZ).
+ * so UI matches OpenPawlet ``local_now(agents.defaults.timezone)`` (no process-wide TZ).
  */
 
 export function parseAgentTimeZoneFromConfig(config: unknown): string {

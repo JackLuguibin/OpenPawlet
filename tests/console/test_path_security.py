@@ -1,7 +1,7 @@
 """Path traversal and symlink defenses for ``safe_join``.
 
 These tests target ``console.server.bot_workspace.safe_join`` directly so
-they do not need the FastAPI app or nanobot config; the regressions they
+they do not need the FastAPI app or OpenPawlet config; the regressions they
 guard against (escape via ``..``, symlinked parent, symlinked leaf) are
 the same that would otherwise let a malicious POST /workspace/file or
 PUT /skills/.../bundle write outside its controlled root.
