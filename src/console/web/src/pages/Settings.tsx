@@ -3,6 +3,7 @@ import type { CSSProperties } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
+import type { ColumnsType } from 'antd/es/table';
 import {
   Tabs,
   Form,
@@ -20,6 +21,8 @@ import {
   Select,
   Alert,
   Tooltip,
+  Table,
+  Empty,
 } from 'antd';
 import {
   SaveOutlined,
@@ -261,6 +264,99 @@ export default function Settings() {
     addToast({ type: 'success', message: t('settings.exported') });
   };
 
+  type EnvTableRow = {
+    rowIndex: number;
+    key: string;
+    value: string;
+    execVisible: boolean;
+  };
+
+  const envTableColumns: ColumnsType<EnvTableRow> = useMemo(
+    () => [
+      {
+        title: t('settings.envColKey'),
+        key: 'name',
+        width: 220,
+        render: (_, record) => (
+          <Input
+            placeholder={t('settings.envKeyPh')}
+            value={record.key}
+            onChange={(e) => {
+              const v = e.target.value;
+              setEnvEntries((prev) => {
+                const next = [...prev];
+                next[record.rowIndex] = { ...next[record.rowIndex], key: v };
+                return next;
+              });
+            }}
+            className="font-mono"
+          />
+        ),
+      },
+      {
+        title: t('settings.envColValue'),
+        key: 'value',
+        ellipsis: true,
+        render: (_, record) => (
+          <Input.Password
+            placeholder={t('settings.envValuePh')}
+            value={record.value}
+            onChange={(e) => {
+              const v = e.target.value;
+              setEnvEntries((prev) => {
+                const next = [...prev];
+                next[record.rowIndex] = { ...next[record.rowIndex], value: v };
+                return next;
+              });
+            }}
+            className="font-mono"
+          />
+        ),
+      },
+      {
+        title: t('settings.envExecVisibleLabel'),
+        key: 'exec',
+        width: 72,
+        align: 'center',
+        render: (_, record) => (
+          <Tooltip title={t('settings.envExecVisibleHint')}>
+            <Switch
+              size="small"
+              checked={record.execVisible}
+              onChange={(checked) => {
+                setEnvEntries((prev) => {
+                  const next = [...prev];
+                  next[record.rowIndex] = { ...next[record.rowIndex], execVisible: checked };
+                  return next;
+                });
+              }}
+            />
+          </Tooltip>
+        ),
+      },
+      {
+        title: t('settings.envColActions'),
+        key: 'actions',
+        width: 56,
+        align: 'center',
+        render: (_, record) => (
+          <Tooltip title={t('common.delete')}>
+            <Button
+              type="text"
+              danger
+              icon={<DeleteOutlined />}
+              aria-label={t('common.delete')}
+              onClick={() =>
+                setEnvEntries((prev) => prev.filter((_, i) => i !== record.rowIndex))
+              }
+            />
+          </Tooltip>
+        ),
+      },
+    ],
+    [t],
+  );
+
   const configRaw = config as Record<string, unknown> | undefined;
   const mcpServers = (configRaw?.tools as Record<string, unknown>)?.mcpServers as
     | Record<string, unknown>
@@ -280,85 +376,59 @@ export default function Settings() {
       className={SETTINGS_SCROLL_CARD_CLASS}
       styles={SETTINGS_SCROLL_CARD_STYLES}
     >
-      <Alert
-        title={t('settings.envAlertTitle')}
-        description={`${t('settings.envAlertDesc')} ${t('settings.envAlertDetail')}`}
-        type="info"
-        showIcon
-        className="mb-4"
-      />
-      {envLoading ? (
-        <Spin />
-      ) : (
-        <>
-          <div className="space-y-2">
-            {envEntries.map((entry, idx) => (
-              <div key={idx} className="flex gap-2 items-center">
-                <Input
-                  placeholder={t('settings.envKeyPh')}
-                  value={entry.key}
-                  onChange={(e) => {
-                    const next = [...envEntries];
-                    next[idx] = { ...next[idx], key: e.target.value };
-                    setEnvEntries(next);
-                  }}
-                  className="flex-1 font-mono"
-                />
-                <Input.Password
-                  placeholder={t('settings.envValuePh')}
-                  value={entry.value}
-                  onChange={(e) => {
-                    const next = [...envEntries];
-                    next[idx] = { ...next[idx], value: e.target.value };
-                    setEnvEntries(next);
-                  }}
-                  className="flex-1 font-mono"
-                />
-                <Tooltip title={t('settings.envExecVisibleHint')}>
-                  <div className="flex items-center gap-1 text-xs text-gray-500">
-                    <Switch
-                      size="small"
-                      checked={entry.execVisible}
-                      onChange={(checked) => {
-                        const next = [...envEntries];
-                        next[idx] = { ...next[idx], execVisible: checked };
-                        setEnvEntries(next);
-                      }}
-                    />
-                    <span className="whitespace-nowrap">
-                      {t('settings.envExecVisibleLabel')}
-                    </span>
-                  </div>
-                </Tooltip>
-                <Button
-                  type="text"
-                  danger
-                  icon={<DeleteOutlined />}
-                  onClick={() => setEnvEntries(envEntries.filter((_, i) => i !== idx))}
-                />
-              </div>
-            ))}
+      <div className="flex min-h-0 flex-1 flex-col gap-6">
+        <Alert
+          message={t('settings.envAlertDesc')}
+          description={t('settings.envAlertDetail')}
+          type="info"
+          showIcon
+        />
+        {envLoading ? (
+          <div className="flex justify-center py-16">
+            <Spin />
           </div>
-          <div className="flex gap-2">
-            <Button
-              icon={<PlusOutlined />}
-              onClick={() =>
-                setEnvEntries([...envEntries, { key: '', value: '', execVisible: false }])
-              }
-            >
-              {t('settings.envAdd')}
-            </Button>
-            <Button
-              type="primary"
-              icon={<SaveOutlined />}
-              loading={updateEnvMutation.isPending}
-              onClick={handleSaveEnv}
-            >
-              {t('settings.envSave')}
-            </Button>
-          </div>
-        </>
-      )}
+        ) : (
+          <>
+            <Table<EnvTableRow>
+              bordered
+              size="middle"
+              pagination={false}
+              rowKey={(r) => String(r.rowIndex)}
+              dataSource={envEntries.map((entry, idx) => ({
+                ...entry,
+                rowIndex: idx,
+              }))}
+              columns={envTableColumns}
+              className="[&_.ant-table-cell]:align-middle"
+              locale={{
+                emptyText: (
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('settings.envEmpty')} />
+                ),
+              }}
+              scroll={{ x: 'max-content' }}
+            />
+            <div className="flex flex-wrap items-center justify-between gap-3 border-0 border-t border-solid border-gray-200 pt-4 dark:border-gray-700">
+              <Button
+                type="dashed"
+                icon={<PlusOutlined />}
+                onClick={() =>
+                  setEnvEntries((prev) => [...prev, { key: '', value: '', execVisible: false }])
+                }
+              >
+                {t('settings.envAdd')}
+              </Button>
+              <Button
+                type="primary"
+                icon={<SaveOutlined />}
+                loading={updateEnvMutation.isPending}
+                onClick={handleSaveEnv}
+              >
+                {t('settings.envSave')}
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
     </Card>
   );
 
