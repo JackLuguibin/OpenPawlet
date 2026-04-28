@@ -36,6 +36,7 @@ import { useTranslation } from 'react-i18next';
 import * as api from '../api/client';
 import { useAppStore } from '../store';
 import { PageLayout } from '../components/PageLayout';
+import { PAGE_PRIMARY_TITLE_CLASS } from '../utils/pageTitleClasses';
 import { MARKDOWN_PROSE_CLASS_COMPACT } from '../utils/markdownProse';
 import { formatQueryError } from '../utils/errors';
 import {
@@ -442,7 +443,14 @@ function BundleEditorSection({
   );
 }
 
-export default function Skills({ embedded = false }: { embedded?: boolean }) {
+export default function Skills({
+  embedded = false,
+  /** Standalone /skills route: Cron-style title+subtitle+actions row (hub tabs keep toolbar only). */
+  standaloneSurface = false,
+}: {
+  embedded?: boolean;
+  standaloneSurface?: boolean;
+}) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { addToast, currentBotId } = useAppStore();
@@ -1171,41 +1179,40 @@ export default function Skills({ embedded = false }: { embedded?: boolean }) {
     ],
   );
 
-  const mainColumn = (
-    <>
-      {!embedded && (
-        <div className="shrink-0 flex flex-wrap items-center justify-between gap-3">
-          <div className="min-w-0">
-            <h1 className="text-xl sm:text-2xl font-semibold text-gray-900 dark:text-gray-100 m-0">
-              {t('skills.title')}
-            </h1>
-            <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5 hidden sm:block m-0">
-              {t('skills.subtitle')}
-            </p>
-          </div>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => setSkillCreateModal(true)}
-            className="shadow-md shadow-primary-500/25 shrink-0"
-          >
-            {t('skills.addSkill')}
-          </Button>
-        </div>
-      )}
+  const showCronHeadingRow = !embedded || standaloneSurface;
 
-      {embedded && (
-        <div className="shrink-0 flex justify-end">
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => setSkillCreateModal(true)}
-            className="shadow-md shadow-primary-500/25"
-          >
-            {t('skills.addSkill')}
-          </Button>
-        </div>
-      )}
+  const addSkillToolbar = (
+    <Space className="w-full sm:w-auto justify-end flex-wrap">
+      <Button
+        type="primary"
+        icon={<PlusOutlined />}
+        onClick={() => setSkillCreateModal(true)}
+        className="shadow-md shadow-primary-500/25 shrink-0"
+      >
+        {t('skills.addSkill')}
+      </Button>
+    </Space>
+  );
+
+  const headingRow = showCronHeadingRow ? (
+    <div className="flex shrink-0 flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="min-w-0">
+        <h1 className={PAGE_PRIMARY_TITLE_CLASS}>{t('skills.title')}</h1>
+        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 max-w-xl leading-relaxed">
+          {t('skills.subtitle')}
+        </p>
+      </div>
+      {addSkillToolbar}
+    </div>
+  ) : (
+    <div className="flex shrink-0 flex-col gap-4 sm:flex-row sm:items-center sm:justify-end">
+      {addSkillToolbar}
+    </div>
+  );
+
+  const mainColumn = (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-6 overflow-hidden">
+      {headingRow}
 
       <Collapse
         items={sourcesPanelItems}
@@ -1350,17 +1357,17 @@ export default function Skills({ embedded = false }: { embedded?: boolean }) {
         </div>
       )}
 
-    </>
+    </div>
   );
 
   return (
     <>
       {embedded ? (
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-hidden">
+        <PageLayout embedded className="min-h-0 flex-1 overflow-hidden">
           {mainColumn}
-        </div>
+        </PageLayout>
       ) : (
-        <PageLayout variant="bleed" className="gap-4">
+        <PageLayout variant="bleed" className="gap-6 md:p-8">
           {mainColumn}
         </PageLayout>
       )}

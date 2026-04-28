@@ -35,6 +35,7 @@ import { useAppStore } from '../store';
 import { formatQueryError } from '../utils/errors';
 import { getCommonTimeZoneSelectOptions } from '../utils/timezones';
 import { PageLayout } from '../components/PageLayout';
+import { PAGE_PRIMARY_TITLE_CLASS } from '../utils/pageTitleClasses';
 import { PROVIDER_NAMES } from './settings/providersUtils';
 import LLMProvidersPanel from './settings/LLMProvidersPanel';
 
@@ -609,9 +610,9 @@ export default function Settings() {
   return (
     <PageLayout variant="bleed" className="gap-6 md:p-8">
       {/* Header */}
-      <div className="flex shrink-0 flex-wrap items-start justify-between gap-4 border-b border-slate-200/90 pb-6 dark:border-slate-700/70">
+      <div className="flex shrink-0 flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 space-y-0.5">
-          <h1 className="text-2xl font-semibold tracking-tight text-gray-900 dark:text-white">
+          <h1 className={PAGE_PRIMARY_TITLE_CLASS}>
             {t('settings.title')}
           </h1>
           <p className="text-sm text-gray-500 dark:text-gray-400">

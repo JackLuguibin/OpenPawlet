@@ -37,6 +37,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store';
 import { PageLayout } from '../components/PageLayout';
+import { PAGE_PRIMARY_TITLE_CLASS } from '../utils/pageTitleClasses';
 import * as api from '../api/client';
 import { useAgentTimeZone } from '../hooks/useAgentTimeZone';
 import { formatAgentDateISO } from '../utils/agentDatetime';
@@ -511,7 +512,7 @@ export default function Agents({ embedded = false }: { embedded?: boolean } = {}
       <div className="shrink-0 rounded-xl border border-gray-200/80 bg-white/90 p-4 shadow-sm dark:border-gray-700/70 dark:bg-gray-800/60">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-gray-900 dark:text-gray-100">
+            <h1 className={PAGE_PRIMARY_TITLE_CLASS}>
               {t('agents.title')}
             </h1>
             <p className="mt-1.5 text-sm text-gray-500 dark:text-gray-400 hidden sm:block">

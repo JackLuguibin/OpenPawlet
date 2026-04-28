@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { PageLayout } from '../components/PageLayout';
+import { PAGE_PRIMARY_TITLE_CLASS } from '../utils/pageTitleClasses';
 import * as api from '../api/client';
 import type { TeamCreateRequest } from '../api/types_teams';
 
@@ -75,7 +76,7 @@ export default function Teams({ embedded = false }: { embedded?: boolean } = {})
         />
         <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-2xl space-y-2">
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50 sm:text-3xl">
+            <h1 className={PAGE_PRIMARY_TITLE_CLASS}>
               {t('teams.title')}
             </h1>
             <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-400">

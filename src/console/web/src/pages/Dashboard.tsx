@@ -28,6 +28,7 @@ import {
 import { EChartsWithResize, ModelPieChart, type EChartsOption } from '../components/ModelPieChart';
 import { formatTokenCount, formatCost } from '../utils/format';
 import { PageLayout } from '../components/PageLayout';
+import { PAGE_PRIMARY_TITLE_CLASS } from '../utils/pageTitleClasses';
 import { useBots } from '../hooks/useBots';
 import { useAgentTimeZone } from '../hooks/useAgentTimeZone';
 import { formatQueryError } from '../utils/errors';
@@ -535,7 +536,7 @@ export default function Dashboard() {
       {/* Header */}
       <div className="flex shrink-0 items-center justify-between">
         <div>
-          <h1 className="m-0 text-[20px] font-semibold leading-tight tracking-tight text-gray-900 dark:text-white">
+          <h1 className={PAGE_PRIMARY_TITLE_CLASS}>
             {t('dashboard.title')}
           </h1>
           <p className="mt-1 text-[13px] leading-relaxed text-gray-500 dark:text-gray-400">

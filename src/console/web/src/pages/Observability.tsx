@@ -31,6 +31,7 @@ import * as api from '../api/client';
 import { formatQueryError } from '../utils/errors';
 import { useAppStore } from '../store';
 import { PageLayout } from '../components/PageLayout';
+import { PAGE_PRIMARY_TITLE_GRADIENT_CLASS } from '../utils/pageTitleClasses';
 import { TraceGanttChart } from '../components/TraceGanttChart';
 import type { AgentObservabilityEvent } from '../api/types';
 import {
@@ -415,7 +416,7 @@ export default function Observability({ embedded = false }: { embedded?: boolean
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
-            <h1 className="bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-2xl font-bold text-transparent dark:from-white dark:to-gray-300">
+            <h1 className={PAGE_PRIMARY_TITLE_GRADIENT_CLASS}>
               {t('observability.title')}
             </h1>
           </div>

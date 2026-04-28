@@ -30,6 +30,7 @@ import * as api from '../api/client';
 import type { MCPStatus } from '../api/types';
 import { useAppStore } from '../store';
 import { PageLayout } from '../components/PageLayout';
+import { PAGE_PRIMARY_TITLE_CLASS } from '../utils/pageTitleClasses';
 import { formatQueryError } from '../utils/errors';
 import { useAgentTimeZone } from '../hooks/useAgentTimeZone';
 import { formatAgentLocaleString } from '../utils/agentDatetime';
@@ -55,7 +56,14 @@ function mcpStatusLabel(status: MCPStatus['status'], t: TFunction): string {
   return t(`mcp.status.${status}`);
 }
 
-export function MCPServersPanel({ embedded = false }: { embedded?: boolean }) {
+export function MCPServersPanel({
+  embedded = false,
+  /** Standalone /mcp route: one Cron-style title+subtitle+actions row (hub tabs keep toolbar only). */
+  standaloneSurface = false,
+}: {
+  embedded?: boolean;
+  standaloneSurface?: boolean;
+}) {
   const { t, i18n } = useTranslation();
   const queryClient = useQueryClient();
   const { addToast, currentBotId } = useAppStore();
@@ -115,29 +123,16 @@ export function MCPServersPanel({ embedded = false }: { embedded?: boolean }) {
   };
 
   if (isLoading) {
-    return embedded ? (
-      <div className="flex min-h-0 flex-1 flex-col items-center justify-center py-16">
-        <Spin size="large" />
-      </div>
-    ) : (
-      <PageLayout variant="center">
+    return (
+      <PageLayout variant="center" embedded={embedded}>
         <Spin size="large" />
       </PageLayout>
     );
   }
 
   if (error) {
-    return embedded ? (
-      <div className="shrink-0">
-        <Alert
-          type="error"
-          title={t('mcp.loadFailed')}
-          description={formatQueryError(error)}
-          showIcon
-        />
-      </div>
-    ) : (
-      <PageLayout variant="bleed">
+    return (
+      <PageLayout variant="bleed" embedded={embedded} className={embedded ? '' : 'gap-6 md:p-8'}>
         <Alert
           type="error"
           title={t('mcp.loadFailed')}
@@ -148,34 +143,38 @@ export function MCPServersPanel({ embedded = false }: { embedded?: boolean }) {
     );
   }
 
-  const headerRow = (
-    <div
-      className={`flex shrink-0 items-center ${
-        embedded ? 'justify-end' : 'justify-between'
-      }`}
-    >
-      {!embedded && (
-        <div>
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
-            {t('mcp.pageTitle')}
-          </h1>
-          <p className="text-sm text-gray-500 mt-1 hidden sm:block">{t('mcp.subtitle')}</p>
-        </div>
-      )}
-      <Space>
-        <Button icon={<ReloadOutlined />} onClick={() => refetch()}>
-          <span className="hidden sm:inline">{t('common.refresh')}</span>
-        </Button>
-      </Space>
+  const refreshButtons = (
+    <Space className="w-full sm:w-auto justify-end flex-wrap">
+      <Button icon={<ReloadOutlined />} onClick={() => refetch()}>
+        <span className="hidden sm:inline">{t('common.refresh')}</span>
+      </Button>
+    </Space>
+  );
+
+  const showCronHeadingRow = !embedded || standaloneSurface;
+
+  const headerRow = showCronHeadingRow ? (
+    <div className="flex shrink-0 flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="min-w-0">
+        <h1 className={PAGE_PRIMARY_TITLE_CLASS}>{t('mcp.pageTitle')}</h1>
+        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 max-w-xl leading-relaxed">
+          {t('mcp.subtitle')}
+        </p>
+      </div>
+      {refreshButtons}
+    </div>
+  ) : (
+    <div className="flex shrink-0 flex-col gap-4 sm:flex-row sm:items-center sm:justify-end">
+      {refreshButtons}
     </div>
   );
 
   const main = (
-    <>
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-6 overflow-hidden">
       {headerRow}
 
       {mcpServers && mcpServers.length > 0 ? (
-        <div className="flex-1 min-h-0 overflow-y-auto space-y-6 mt-4">
+        <div className="flex-1 min-h-0 overflow-y-auto space-y-6">
           <div className="space-y-3">
             {mcpServers.map((server) => (
               <Card
@@ -415,36 +414,21 @@ export function MCPServersPanel({ embedded = false }: { embedded?: boolean }) {
           )}
         </div>
       ) : (
-        <div className="mt-2 flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-y-auto">
-          <Card
-            className="w-full min-w-0 flex-1 rounded-md border border-gray-200/90 bg-white shadow-sm dark:border-gray-700/80 dark:bg-gray-800/50 dark:shadow-none"
-            styles={{ body: { padding: 0 } }}
-          >
-            <div className="border-b border-gray-100 bg-gray-50/80 px-4 py-3 dark:border-gray-700/60 dark:bg-gray-900/30 sm:px-5">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-                <div className="flex shrink-0 justify-center sm:justify-start">
-                  <div className="flex h-12 w-12 items-center justify-center rounded border border-gray-200 bg-white shadow-sm dark:border-gray-600 dark:bg-gray-800">
-                    <ApiOutlined
-                      className="text-indigo-600 dark:text-indigo-400"
-                      style={{ fontSize: 22 }}
-                    />
-                  </div>
-                </div>
-                <div className="min-w-0 flex-1 text-center sm:text-left">
-                  <h2 className="text-base font-semibold tracking-tight text-gray-900 dark:text-gray-100 sm:text-lg">
-                    {t('mcp.emptyTitle')}
-                  </h2>
-                  <p className="mx-auto mt-1 max-w-3xl text-xs leading-snug text-gray-600 dark:text-gray-400 sm:mx-0 sm:text-[13px]">
-                    {t('mcp.emptyLead', {
-                      mcpServers: t('mcp.emptyMcpKey'),
-                      tools: t('mcp.emptyToolsKey'),
-                    })}
-                  </p>
-                </div>
-              </div>
+        <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-y-auto">
+          <Card className="w-full min-w-0 flex-1 rounded-md border border-gray-200/80 dark:border-gray-700/60 bg-white dark:bg-gray-800/40">
+            <div className="mb-4 min-w-0 space-y-1">
+              <h2 className="m-0 text-lg font-semibold tracking-tight text-gray-900 dark:text-gray-100">
+                {t('mcp.emptyTitle')}
+              </h2>
+              <p className="m-0 max-w-3xl text-sm text-gray-500 dark:text-gray-400">
+                {t('mcp.emptyLead', {
+                  mcpServers: t('mcp.emptyMcpKey'),
+                  tools: t('mcp.emptyToolsKey'),
+                })}
+              </p>
             </div>
 
-            <div className="grid gap-3 p-3 sm:p-4 lg:grid-cols-2 lg:gap-5 lg:items-start">
+            <div className="grid gap-3 lg:grid-cols-2 lg:gap-5 lg:items-start">
               <section className="min-w-0 space-y-1.5">
                 <h3 className="text-xs font-semibold text-gray-900 dark:text-gray-100">
                   {t('mcp.whatIsTitle')}
@@ -479,7 +463,7 @@ export function MCPServersPanel({ embedded = false }: { embedded?: boolean }) {
               </section>
             </div>
 
-            <div className="border-t border-gray-100 px-3 pb-3 pt-1.5 dark:border-gray-700/60 sm:px-4">
+            <div className="mt-4 border-t border-gray-100 pt-4 dark:border-gray-700/60">
               <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-xs font-semibold text-gray-900 dark:text-gray-100">
                   {t('mcp.exampleTitle')}
@@ -513,12 +497,20 @@ export function MCPServersPanel({ embedded = false }: { embedded?: boolean }) {
           </Card>
         </div>
       )}
-    </>
+    </div>
   );
 
-  return embedded ? (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">{main}</div>
-  ) : (
-    <PageLayout variant="bleed">{main}</PageLayout>
+  if (embedded) {
+    return (
+      <PageLayout embedded className="min-h-0 flex-1 overflow-hidden">
+        {main}
+      </PageLayout>
+    );
+  }
+
+  return (
+    <PageLayout variant="bleed" className="gap-6 md:p-8">
+      {main}
+    </PageLayout>
   );
 }

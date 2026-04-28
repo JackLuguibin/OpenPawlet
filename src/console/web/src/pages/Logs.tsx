@@ -14,6 +14,7 @@ import { FileTextOutlined, CodeOutlined } from '@ant-design/icons';
 import { useAppStore } from '../store';
 import * as api from '../api/client';
 import { PageLayout } from '../components/PageLayout';
+import { PAGE_PRIMARY_TITLE_CLASS } from '../utils/pageTitleClasses';
 import { RuntimeLogView } from '../components/RuntimeLogView';
 import { formatQueryError } from '../utils/errors';
 import type { RuntimeLogChunk } from '../api/types';
@@ -329,7 +330,7 @@ export default function Logs({ embedded = false }: { embedded?: boolean } = {}) 
         <div className="flex shrink-0 flex-col gap-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between lg:gap-6">
             <div className="max-w-2xl min-w-0">
-              <h1 className="text-2xl font-semibold tracking-tight text-gray-900 dark:text-white sm:text-3xl">
+              <h1 className={PAGE_PRIMARY_TITLE_CLASS}>
                 {t('logs.title')}
               </h1>
               <p className="mt-1.5 text-sm leading-relaxed text-slate-500 dark:text-slate-400">

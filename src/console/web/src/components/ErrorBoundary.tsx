@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { Button } from 'antd';
 import i18n from '../i18n';
+import { PAGE_PRIMARY_TITLE_CLASS } from '../utils/pageTitleClasses';
 
 type Props = { children: ReactNode };
 
@@ -21,7 +22,7 @@ export class ErrorBoundary extends Component<Props, State> {
     if (this.state.error) {
       return (
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 p-6 text-center">
-          <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+          <h1 className={PAGE_PRIMARY_TITLE_CLASS}>
             {i18n.t('app.crashTitle')}
           </h1>
           <p className="max-w-md text-sm text-gray-600 dark:text-gray-400">

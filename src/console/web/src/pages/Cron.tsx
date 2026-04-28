@@ -22,7 +22,6 @@ import {
   DeleteOutlined,
   EditOutlined,
   HistoryOutlined,
-  ClockCircleOutlined,
   SyncOutlined,
   RobotOutlined,
   ToolOutlined,
@@ -35,6 +34,7 @@ import * as api from '../api/client';
 import { useAppStore } from '../store';
 import { useBots } from '../hooks/useBots';
 import { PageLayout } from '../components/PageLayout';
+import { PAGE_PRIMARY_TITLE_CLASS } from '../utils/pageTitleClasses';
 import type { CronAddRequest, CronJob } from '../api/types';
 import { formatQueryError } from '../utils/errors';
 import { useAgentTimeZone } from '../hooks/useAgentTimeZone';
@@ -302,23 +302,15 @@ export default function Cron({ embedded = false }: { embedded?: boolean } = {}) 
   const enabledCount = jobs.filter((j) => j.enabled).length;
 
   return (
-    <PageLayout embedded={embedded}>
+    <PageLayout embedded={embedded} className={embedded ? 'min-h-0 flex-1 gap-6 overflow-hidden' : ''}>
       <div className="flex shrink-0 flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-start gap-4 min-w-0">
-          <div
-            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-violet-500/15 to-indigo-600/10 ring-1 ring-violet-500/20 dark:from-violet-400/20 dark:to-indigo-500/15 dark:ring-violet-400/25"
-            aria-hidden
-          >
-            <ClockCircleOutlined className="text-xl text-violet-600 dark:text-violet-300" />
-          </div>
-          <div className="min-w-0">
-            <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
-              {t('cron.pageTitle')}
-            </h1>
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 max-w-xl leading-relaxed">
-              {t('cron.pageSubtitle')}
-            </p>
-          </div>
+        <div className="min-w-0">
+          <h1 className={PAGE_PRIMARY_TITLE_CLASS}>
+            {t('cron.pageTitle')}
+          </h1>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 max-w-xl leading-relaxed">
+            {t('cron.pageSubtitle')}
+          </p>
         </div>
         <Space className="w-full sm:w-auto justify-end flex-wrap">
           <Button icon={<ReloadOutlined />} onClick={() => refetch()}>

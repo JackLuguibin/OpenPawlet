@@ -1,8 +1,10 @@
 /**
  * Standalone page wrappers.
  *
- * Each entry below renders one previously-tabbed sub-page as its own URL,
- * with a unified `PageHeader` on top. The underlying page components already
+ * Each entry below renders one previously-tabbed sub-page as its own URL.
+ * Skills/MCP standalone routes use `standaloneSurface` + `showHeader={false}` (Cron-style heading in the panel).
+ * Other hubs use `PageHeader` or hide the header when the inner view already has a full title.
+ * The underlying page components already
  * support an `embedded` prop (originally used to render them inside the old
  * Hub shells); we reuse it here so the inner panel does not double-pad.
  */
@@ -31,22 +33,21 @@ import Observability from './Observability';
 import Channels from './Channels';
 import Cron from './Cron';
 
-/** Shared page chrome: header + a flex column that fills the remaining height. */
-function StandalonePage({
-  title,
-  subtitle,
-  children,
-}: {
-  title: string;
-  subtitle?: string;
-  children: React.ReactNode;
-}) {
+type StandalonePageProps =
+  | { showHeader?: true; title: string; subtitle?: string; children: React.ReactNode }
+  | { showHeader: false; children: React.ReactNode };
+
+/** Shared page chrome: optional header + a flex column that fills the remaining height. */
+function StandalonePage(props: StandalonePageProps) {
+  const showHeader = props.showHeader !== false;
   return (
     <PageLayout className="min-h-0 flex-1 overflow-hidden">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <PageHeader title={title} subtitle={subtitle} />
+        {showHeader && 'title' in props ? (
+          <PageHeader title={props.title} subtitle={props.subtitle} />
+        ) : null}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          {children}
+          {props.children}
         </div>
       </div>
     </PageLayout>
@@ -138,28 +139,26 @@ export function AgentTeamsPage() {
 }
 
 export function RuntimePage() {
-  const { t } = useTranslation();
   return (
-    <StandalonePage title={t('agentsHub.tabRuntime')}>
+    <StandalonePage showHeader={false}>
       <Runtime embedded />
     </StandalonePage>
   );
 }
 
 export function SkillsPage() {
-  const { t } = useTranslation();
   return (
-    <StandalonePage title={t('layout.navSkills')}>
-      <Skills embedded />
+    <StandalonePage showHeader={false}>
+      <Skills embedded standaloneSurface />
     </StandalonePage>
   );
 }
 
 export function McpPage() {
-  const { t } = useTranslation();
   return (
-    <StandalonePage title={t('layout.navMcp')}>
-      <MCPServersPanel embedded />
+    <StandalonePage showHeader={false}>
+      {/* Same heading row pattern as Cron (titles + actions in one strip). */}
+      <MCPServersPanel embedded standaloneSurface />
     </StandalonePage>
   );
 }
@@ -167,36 +166,32 @@ export function McpPage() {
 // ---- Insights group -------------------------------------------------------
 
 export function ActivityPage() {
-  const { t } = useTranslation();
   return (
-    <StandalonePage title={t('layout.navActivity')}>
+    <StandalonePage showHeader={false}>
       <Activity embedded />
     </StandalonePage>
   );
 }
 
 export function LogsPage() {
-  const { t } = useTranslation();
   return (
-    <StandalonePage title={t('layout.navLogs')}>
+    <StandalonePage showHeader={false}>
       <Logs embedded />
     </StandalonePage>
   );
 }
 
 export function QueuesPage() {
-  const { t } = useTranslation();
   return (
-    <StandalonePage title={t('observabilityHub.tabQueues')}>
+    <StandalonePage showHeader={false}>
       <Queues embedded />
     </StandalonePage>
   );
 }
 
 export function TracesPage() {
-  const { t } = useTranslation();
   return (
-    <StandalonePage title={t('observabilityHub.tabTrace')}>
+    <StandalonePage showHeader={false}>
       <Observability embedded />
     </StandalonePage>
   );
@@ -276,18 +271,16 @@ export function MemoryProfilePage() {
 // ---- Control group --------------------------------------------------------
 
 export function ChannelsPage() {
-  const { t } = useTranslation();
   return (
-    <StandalonePage title={t('layout.navChannels')}>
+    <StandalonePage showHeader={false}>
       <Channels embedded />
     </StandalonePage>
   );
 }
 
 export function CronPage() {
-  const { t } = useTranslation();
   return (
-    <StandalonePage title={t('layout.navCron')}>
+    <StandalonePage showHeader={false}>
       <Cron embedded />
     </StandalonePage>
   );

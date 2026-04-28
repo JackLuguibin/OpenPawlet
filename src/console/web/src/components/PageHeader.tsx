@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { PAGE_PRIMARY_TITLE_CLASS } from '../utils/pageTitleClasses';
 
 export interface PageHeaderProps {
   title: ReactNode;
@@ -18,7 +19,7 @@ export function PageHeader({ title, subtitle, actions }: PageHeaderProps) {
   return (
     <header className="shrink-0 pb-2 flex items-start justify-between gap-4">
       <div className="min-w-0">
-        <h1 className="m-0 text-[20px] font-semibold leading-tight tracking-tight text-gray-900 dark:text-white">
+        <h1 className={PAGE_PRIMARY_TITLE_CLASS}>
           {title}
         </h1>
         {subtitle ? (

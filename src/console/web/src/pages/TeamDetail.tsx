@@ -34,6 +34,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store';
 import { PageLayout } from '../components/PageLayout';
+import { PAGE_PRIMARY_TITLE_CLASS } from '../utils/pageTitleClasses';
 import * as api from '../api/client';
 import type { MergedTranscriptEntry, TeamUpdateRequest } from '../api/types_teams';
 
@@ -302,7 +303,7 @@ export default function TeamDetail() {
           {team.name.trim().charAt(0).toUpperCase() || '?'}
         </div>
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-lg font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+          <h1 className={`truncate ${PAGE_PRIMARY_TITLE_CLASS}`}>
             {team.name}
           </h1>
           <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-zinc-500 dark:text-zinc-400">

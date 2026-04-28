@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Tabs } from 'antd';
 import type { TabsProps } from 'antd';
 import { PageLayout } from './PageLayout';
+import { PAGE_PRIMARY_TITLE_CLASS } from '../utils/pageTitleClasses';
 
 export interface HubTabItem<T extends string> {
   key: T;
@@ -59,7 +60,7 @@ export function HubShell<T extends string>({
     <PageLayout className="min-h-0 flex-1 overflow-hidden">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <header className="shrink-0 pb-2">
-          <h1 className="m-0 text-[20px] font-semibold leading-tight tracking-tight text-gray-900 dark:text-white">
+          <h1 className={PAGE_PRIMARY_TITLE_CLASS}>
             {title}
           </h1>
           {subtitle ? (

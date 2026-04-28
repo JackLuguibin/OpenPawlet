@@ -29,6 +29,7 @@ import {
 } from '@ant-design/icons';
 import { RobotOutlined, ApiOutlined } from '@ant-design/icons';
 import { PageLayout } from '../components/PageLayout';
+import { PAGE_PRIMARY_TITLE_CLASS } from '../utils/pageTitleClasses';
 import { useAppStore } from '../store';
 import * as api from '../api/client';
 import type {
@@ -472,41 +473,37 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
 
   return (
     <PageLayout embedded={embedded}>
-      <div className="shrink-0 rounded-xl border border-gray-200/80 bg-white/90 p-4 shadow-sm dark:border-gray-700/70 dark:bg-gray-800/60">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-gray-900 dark:text-gray-100">
-              {t('runtime.title')}
-            </h1>
-            <p className="mt-1.5 text-sm text-gray-500 dark:text-gray-400">
-              {t('runtime.subtitle')}
-            </p>
+      <div className="flex shrink-0 flex-col gap-4 border-b border-slate-200/90 pb-6 dark:border-slate-700/70 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h1 className={PAGE_PRIMARY_TITLE_CLASS}>
+            {t('runtime.title')}
+          </h1>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            {t('runtime.subtitle')}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
+          <div className="inline-flex items-center rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700 dark:border-blue-900/60 dark:bg-blue-900/20 dark:text-blue-300">
+            {t('runtime.summary', {
+              main: mainRow?.running ? t('runtime.running') : t('runtime.stopped'),
+              sub: runningSubCount,
+            })}
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="inline-flex items-center rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700 dark:border-blue-900/60 dark:bg-blue-900/20 dark:text-blue-300">
-              {t('runtime.summary', {
-                main: mainRow?.running
-                  ? t('runtime.running')
-                  : t('runtime.stopped'),
-                sub: runningSubCount,
-              })}
-            </div>
-            <Button
-              icon={<ReloadOutlined />}
-              onClick={() => agentsQuery.refetch()}
-              loading={agentsQuery.isFetching && !agentsQuery.isLoading}
-            >
-              <span className="hidden sm:inline">{t('common.refresh')}</span>
-            </Button>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={openStartModalBlank}
-              disabled={!mainRow}
-            >
-              <span className="hidden sm:inline">{t('runtime.startSub')}</span>
-            </Button>
-          </div>
+          <Button
+            icon={<ReloadOutlined />}
+            onClick={() => agentsQuery.refetch()}
+            loading={agentsQuery.isFetching && !agentsQuery.isLoading}
+          >
+            <span className="hidden sm:inline">{t('common.refresh')}</span>
+          </Button>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={openStartModalBlank}
+            disabled={!mainRow}
+          >
+            <span className="hidden sm:inline">{t('runtime.startSub')}</span>
+          </Button>
         </div>
       </div>
 

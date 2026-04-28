@@ -27,6 +27,7 @@ import {
   RollbackOutlined,
 } from '@ant-design/icons';
 import { PageLayout } from '../components/PageLayout';
+import { PAGE_PRIMARY_TITLE_ANT_TITLE_CLASS } from '../utils/pageTitleClasses';
 import * as api from '../api/client';
 import type {
   QueueConnectionInfo,
@@ -227,7 +228,7 @@ export default function Queues({ embedded = false }: { embedded?: boolean } = {}
             <DeploymentUnitOutlined className="text-sky-600 dark:text-sky-400" style={{ fontSize: 18 }} />
           </div>
           <div className="min-w-0">
-            <Title level={3} className="!mb-1 !text-xl sm:!text-2xl !font-semibold">
+            <Title level={3} className={PAGE_PRIMARY_TITLE_ANT_TITLE_CLASS}>
               {t('queues.title')}
             </Title>
             <Text type="secondary" className="text-sm">

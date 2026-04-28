@@ -9,6 +9,7 @@ import {
   Segmented,
   Empty,
   Modal,
+  Space,
 } from 'antd';
 import {
   ReloadOutlined,
@@ -24,6 +25,7 @@ import * as api from '../api/client';
 import { useAppStore } from '../store';
 import { useBots } from '../hooks/useBots';
 import { PageLayout } from '../components/PageLayout';
+import { PAGE_PRIMARY_TITLE_CLASS } from '../utils/pageTitleClasses';
 import { WorkspaceCodeEditor } from '../components/WorkspaceCodeEditor';
 import { MARKDOWN_PROSE_CLASS } from '../utils/markdownProse';
 import { formatQueryError } from '../utils/errors';
@@ -185,83 +187,73 @@ export default function Workspace() {
   }
 
   return (
-    <PageLayout variant="bleed">
-      <header className="shrink-0 rounded-md border border-gray-200/80 bg-gradient-to-b from-white to-gray-50/95 px-4 py-4 shadow-sm ring-1 ring-black/[0.03] dark:border-gray-700/60 dark:from-gray-800/90 dark:to-gray-900/50 dark:ring-white/[0.06] sm:px-5">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex min-w-0 items-start gap-3 sm:gap-4">
-            <div
-              className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary-500/10 text-primary-600 dark:bg-primary-400/15 dark:text-primary-300"
-              aria-hidden
-            >
-              <FolderOutlined className="text-lg" />
-            </div>
-            <div className="min-w-0">
-              <h1 className="text-xl font-semibold tracking-tight text-gray-900 dark:text-gray-50 sm:text-2xl">
-                {t('workspace.pageTitle')}
-              </h1>
-              <p className="mt-1 max-w-2xl text-sm leading-relaxed text-gray-600 dark:text-gray-400">
-                {t('workspace.pageSubtitle')}
-              </p>
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2 sm:justify-end md:border-l md:border-gray-200/80 md:pl-5 dark:md:border-gray-700/60">
-            <Button
-              type="default"
-              shape="circle"
-              icon={<ReloadOutlined />}
-              title={t('workspace.refreshList')}
-              aria-label={t('workspace.refreshList')}
-              onClick={() => {
-                if (!currentBotId) return;
-                queryClient.invalidateQueries({ queryKey: ['workspace-files', currentBotId] });
-                queryClient.invalidateQueries({ queryKey: ['workspace-file', currentBotId] });
+    <PageLayout variant="bleed" className="gap-6 md:p-8">
+      <div className="flex shrink-0 flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0 space-y-0.5">
+          <h1 className={PAGE_PRIMARY_TITLE_CLASS}>
+            {t('workspace.pageTitle')}
+          </h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            {t('workspace.pageSubtitle')}
+          </p>
+        </div>
+        <Space wrap className="shrink-0">
+          <Button
+            type="default"
+            shape="circle"
+            icon={<ReloadOutlined />}
+            title={t('workspace.refreshList')}
+            aria-label={t('workspace.refreshList')}
+            onClick={() => {
+              if (!currentBotId) return;
+              queryClient.invalidateQueries({ queryKey: ['workspace-files', currentBotId] });
+              queryClient.invalidateQueries({ queryKey: ['workspace-file', currentBotId] });
+            }}
+          />
+          {selectedFile && !editMode && (
+            <Segmented
+              value={viewMode}
+              options={[
+                { label: t('workspace.viewPreview'), value: 'preview' },
+                { label: t('workspace.viewCode'), value: 'code' },
+                { label: t('workspace.viewEdit'), value: 'edit' },
+              ]}
+              onChange={(v) => {
+                const mode = v as 'preview' | 'code' | 'edit';
+                setViewMode(mode);
+                if (mode === 'edit') startEdit();
               }}
             />
-            {selectedFile && !editMode && (
-              <Segmented
-                value={viewMode}
-                options={[
-                  { label: t('workspace.viewPreview'), value: 'preview' },
-                  { label: t('workspace.viewCode'), value: 'code' },
-                  { label: t('workspace.viewEdit'), value: 'edit' },
-                ]}
-                onChange={(v) => {
-                  const mode = v as 'preview' | 'code' | 'edit';
-                  setViewMode(mode);
-                  if (mode === 'edit') startEdit();
-                }}
-              />
-            )}
-            {selectedFile && editMode && (
-              <>
-                <Button
-                  type="primary"
-                  icon={<SaveOutlined />}
-                  onClick={saveEdit}
-                  loading={updateMutation.isPending}
-                >
-                  {t('common.save')}
-                </Button>
-                <Button icon={<CloseOutlined />} onClick={cancelEdit}>
-                  {t('common.cancel')}
-                </Button>
-              </>
-            )}
-            {selectedFile && (
+          )}
+          {selectedFile && editMode && (
+            <>
               <Button
-                danger
-                icon={<DeleteOutlined />}
-                loading={deleteMutation.isPending}
-                onClick={confirmDeleteFile}
-                title={t('workspace.deleteFile')}
-                aria-label={t('workspace.deleteFile')}
-              />
-            )}
-          </div>
-        </div>
-      </header>
+                type="primary"
+                icon={<SaveOutlined />}
+                onClick={saveEdit}
+                loading={updateMutation.isPending}
+              >
+                {t('common.save')}
+              </Button>
+              <Button icon={<CloseOutlined />} onClick={cancelEdit}>
+                {t('common.cancel')}
+              </Button>
+            </>
+          )}
+          {selectedFile && (
+            <Button
+              danger
+              icon={<DeleteOutlined />}
+              loading={deleteMutation.isPending}
+              onClick={confirmDeleteFile}
+              title={t('workspace.deleteFile')}
+              aria-label={t('workspace.deleteFile')}
+            />
+          )}
+        </Space>
+      </div>
 
-      <div className="mt-5 flex min-h-0 min-w-0 flex-1 gap-6">
+      <div className="flex min-h-0 min-w-0 flex-1 gap-6">
         <Card
           title={t('workspace.fileListTitle')}
           size="small"

@@ -31,6 +31,7 @@ import * as api from '../api/client';
 import { useAppStore } from '../store';
 import { getWSRef } from '../hooks/useWebSocket';
 import { PageLayout } from '../components/PageLayout';
+import { PAGE_PRIMARY_TITLE_GRADIENT_CLASS } from '../utils/pageTitleClasses';
 import { formatQueryError } from '../utils/errors';
 import { useAgentTimeZone } from '../hooks/useAgentTimeZone';
 import { formatAgentLocaleDate } from '../utils/agentDatetime';
@@ -250,7 +251,7 @@ export default function Activity({ embedded = false }: { embedded?: boolean } = 
       {/* Header */}
       <div className="flex shrink-0 items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
+          <h1 className={PAGE_PRIMARY_TITLE_GRADIENT_CLASS}>
             {t('activity.title')}
           </h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">

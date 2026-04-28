@@ -34,6 +34,7 @@ import { useTranslation } from 'react-i18next';
 import * as api from '../api/client';
 import { useAppStore } from '../store';
 import { PageLayout } from '../components/PageLayout';
+import { PAGE_PRIMARY_TITLE_CLASS } from '../utils/pageTitleClasses';
 import { formatQueryError } from '../utils/errors';
 
 // Common config fields for token-based channels
@@ -281,7 +282,7 @@ export default function Channels({ embedded = false }: { embedded?: boolean } = 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-6 overflow-hidden">
       <header className="flex shrink-0 flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="space-y-1">
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
+          <h1 className={PAGE_PRIMARY_TITLE_CLASS}>
             {t('channels.pageTitle')}
           </h1>
           <p className="max-w-xl text-base text-slate-600 dark:text-slate-400">
