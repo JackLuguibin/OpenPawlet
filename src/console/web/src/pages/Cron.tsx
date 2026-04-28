@@ -425,7 +425,7 @@ export default function Cron({ embedded = false }: { embedded?: boolean } = {}) 
                 const notYet = isMetadataNotYetActive(meta);
                 return (
                   <List.Item
-                    className={`mb-2 flex flex-col items-stretch gap-2 rounded border border-gray-100 bg-gray-50/80 px-3 py-2 transition-colors last:mb-0 dark:border-gray-800 dark:bg-gray-800/25 ${
+                    className={`mb-2 flex flex-col items-stretch gap-2 rounded border border-gray-100 bg-gray-50/80 px-4 py-2.5 transition-colors last:mb-0 sm:px-5 dark:border-gray-800 dark:bg-gray-800/25 ${
                       !job.enabled
                         ? 'opacity-70'
                         : 'hover:border-gray-200 dark:hover:border-gray-700'
@@ -455,7 +455,7 @@ export default function Cron({ embedded = false }: { embedded?: boolean } = {}) 
                         <MetadataChips meta={meta} agentName={agentName} t={t} />
                         <WindowChips meta={meta} t={t} agentTz={agentTz} locale={locale} />
                         {prompt && (
-                          <div className="mt-1 max-w-2xl break-words text-xs text-gray-500">
+                          <div className="mt-2 max-w-2xl break-words px-3 py-2 text-xs text-gray-500 dark:text-gray-400">
                             <span className="font-medium">{t('cron.detailInstruction')} </span>
                             {prompt.length > 160 ? `${prompt.slice(0, 160)}…` : prompt}
                           </div>
