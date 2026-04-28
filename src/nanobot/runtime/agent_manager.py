@@ -16,7 +16,7 @@ class ManagedAgentStatus:
     """Normalized runtime status payload for API consumption."""
 
     agent_id: str
-    role: str  # main | sub
+    role: str  # main | sub | profile | agent
     running: bool
     phase: str | None = None
     started_at: float | None = None
@@ -152,10 +152,34 @@ class UnifiedAgentManager:
             return await self._embedded.agent.subagents.cancel_task(task_id)
 
     def get_status(self, agent_id: str) -> ManagedAgentStatus | None:
-        """Return status for one runtime agent id."""
+        """Return status for one runtime agent id.
+
+        Supports ``main`` / the gateway agent id, ``sub:<task_id>``,
+        ``agent:<profile_id>`` (standalone enabled persona loop) and
+        ``profile:<profile_id>`` (idle persona surfaced for the runtime UI).
+        """
         normalized = agent_id.strip()
         if normalized in {"main", self.main_agent_id}:
             return self._main_status()
+        if normalized.startswith("agent:"):
+            aid = normalized[len("agent:"):].strip()
+            if not aid:
+                return None
+            for row in self._team_member_agent_rows():
+                if row.profile_id == aid:
+                    return row
+            for row in self._standalone_agent_rows():
+                if row.profile_id == aid:
+                    return row
+            return None
+        if normalized.startswith("profile:"):
+            pid = normalized[len("profile:"):].strip()
+            if not pid:
+                return None
+            for row in self._idle_profile_rows(exclude=set()):
+                if row.profile_id == pid:
+                    return row
+            return None
         task_id = self._normalize_subagent_task_id(normalized)
         if not task_id:
             return None
@@ -165,11 +189,178 @@ class UnifiedAgentManager:
         return self._to_subagent_status(st)
 
     def list_statuses(self) -> list[ManagedAgentStatus]:
-        """List runtime statuses for main + all tracked subagents."""
+        """List runtime statuses for main + tracked subagents + standalone agents.
+
+        - ``role="main"``: the gateway / primary agent.
+        - ``role="sub"``: one-shot tracked sub-agent task (past or live).
+        - ``role="agent"``: an *enabled* persisted profile with its own
+          standalone event loop (the "enable = running" semantics).
+        - ``role="profile"``: a persisted profile that is not currently
+          running (disabled, or no standalone loop spawned yet) — kept so
+          the user can still see and trigger it from the runtime UI.
+        """
         rows = [self._main_status()]
+        # Track profile ids that are already represented by a live
+        # sub-agent task, a team member loop, or a standalone loop so we
+        # don't duplicate the idle row for them.
+        profile_ids_seen: set[str] = set()
         for st in self._embedded.agent.subagents.list_task_statuses(include_finished=True):
-            rows.append(self._to_subagent_status(st))
+            sub_row = self._to_subagent_status(st)
+            rows.append(sub_row)
+            if sub_row.profile_id:
+                profile_ids_seen.add(sub_row.profile_id)
+
+        for team_row in self._team_member_agent_rows():
+            rows.append(team_row)
+            if team_row.profile_id:
+                profile_ids_seen.add(team_row.profile_id)
+
+        for standalone in self._standalone_agent_rows():
+            rows.append(standalone)
+            if standalone.profile_id:
+                profile_ids_seen.add(standalone.profile_id)
+
+        rows.extend(self._idle_profile_rows(exclude=profile_ids_seen))
         rows.sort(key=lambda row: row.started_at or 0.0, reverse=True)
+        return rows
+
+    def _team_member_agent_rows(self) -> list[ManagedAgentStatus]:
+        """Return one ``role="agent"`` row per running team-member loop.
+
+        Mirrors :meth:`_standalone_agent_rows` but reads from
+        ``EmbeddedNanobot._team_loops_by_agent`` /
+        ``_team_tasks_by_agent``. From the user's perspective both are
+        just "the agent is running" — only the session_key differs.
+        """
+        loops: dict[str, Any] = getattr(
+            self._embedded, "_team_loops_by_agent", {}
+        ) or {}
+        tasks: dict[str, Any] = getattr(
+            self._embedded, "_team_tasks_by_agent", {}
+        ) or {}
+        bindings: dict[str, tuple[str, str, str, str]] = getattr(
+            self._embedded, "_team_bindings_by_session", {}
+        ) or {}
+        primary_session_by_agent: dict[str, str] = getattr(
+            self._embedded, "_team_primary_session_by_agent", {}
+        ) or {}
+        if not loops:
+            return []
+
+        store = getattr(self._embedded.agent.subagents, "profile_store", None)
+        profile_by_id: dict[str, Any] = {}
+        if store is not None:
+            try:
+                for profile in store.list_profiles():
+                    profile_by_id[profile.id] = profile
+            except Exception:  # pragma: no cover - defensive
+                profile_by_id = {}
+
+        # Map agent_id -> team_id from the team bindings tuple.
+        team_id_by_agent: dict[str, str] = {}
+        for _sk, binding in bindings.items():
+            tid, _rid, aid, _full = binding
+            team_id_by_agent.setdefault(aid, tid)
+
+        start_perf = getattr(self._embedded, "_start_perf", 0.0) or 0.0
+        now = time.monotonic()
+        rows: list[ManagedAgentStatus] = []
+        for aid in loops.keys():
+            task = tasks.get(aid)
+            running = bool(task is not None and not task.done())
+            profile = profile_by_id.get(aid)
+            sk = primary_session_by_agent.get(aid)
+            uptime = round(now - start_perf, 3) if running and start_perf > 0 else None
+            rows.append(
+                ManagedAgentStatus(
+                    agent_id=f"agent:{aid}",
+                    role="agent",
+                    running=running,
+                    phase="running" if running else "stopped",
+                    started_at=start_perf if running else None,
+                    uptime_seconds=uptime,
+                    team_id=team_id_by_agent.get(aid),
+                    label=(profile.name if profile else aid),
+                    task_description=(profile.description if profile else None),
+                    session_key=sk,
+                    profile_id=aid,
+                )
+            )
+        return rows
+
+    def _standalone_agent_rows(self) -> list[ManagedAgentStatus]:
+        """Return one ``role="agent"`` row per running standalone agent loop."""
+        tasks: dict[str, Any] = getattr(
+            self._embedded, "_standalone_tasks_by_agent", {}
+        ) or {}
+        if not tasks:
+            return []
+        store = getattr(self._embedded.agent.subagents, "profile_store", None)
+        profile_by_id: dict[str, Any] = {}
+        if store is not None:
+            try:
+                for profile in store.list_profiles():
+                    profile_by_id[profile.id] = profile
+            except Exception:  # pragma: no cover - defensive
+                profile_by_id = {}
+
+        start_perf = getattr(self._embedded, "_start_perf", 0.0) or 0.0
+        now = time.monotonic()
+        rows: list[ManagedAgentStatus] = []
+        for aid, task in tasks.items():
+            running = bool(task is not None and not task.done())
+            profile = profile_by_id.get(aid)
+            from nanobot.utils.team_gateway_runtime import standalone_agent_session_key
+
+            sk = standalone_agent_session_key(aid)
+            uptime = round(now - start_perf, 3) if running and start_perf > 0 else None
+            rows.append(
+                ManagedAgentStatus(
+                    agent_id=f"agent:{aid}",
+                    role="agent",
+                    running=running,
+                    phase="running" if running else "stopped",
+                    started_at=start_perf if running else None,
+                    uptime_seconds=uptime,
+                    label=(profile.name if profile else aid),
+                    task_description=(profile.description if profile else None),
+                    session_key=sk,
+                    profile_id=aid,
+                )
+            )
+        return rows
+
+    def _idle_profile_rows(self, *, exclude: set[str]) -> list[ManagedAgentStatus]:
+        """Return one ``role="profile"`` row per persisted profile not in *exclude*.
+
+        Disabled profiles are surfaced too (so users can still see and
+        "start" them from the runtime UI as a one-shot sub-agent), but
+        we tag them ``phase="disabled"`` to make it obvious they are not
+        being kept alive by the runtime reconciler.
+        """
+        store = getattr(self._embedded.agent.subagents, "profile_store", None)
+        if store is None:
+            return []
+        try:
+            profiles = store.list_profiles()
+        except Exception:  # pragma: no cover - defensive: bad fs entries
+            return []
+        rows: list[ManagedAgentStatus] = []
+        for profile in profiles:
+            pid = (profile.id or "").strip()
+            if not pid or pid in exclude:
+                continue
+            rows.append(
+                ManagedAgentStatus(
+                    agent_id=f"profile:{pid}",
+                    role="profile",
+                    running=False,
+                    phase="disabled" if not profile.enabled else "idle",
+                    label=profile.name or pid,
+                    task_description=profile.description,
+                    profile_id=pid,
+                )
+            )
         return rows
 
     def _main_status(self) -> ManagedAgentStatus:

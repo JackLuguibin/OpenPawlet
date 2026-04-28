@@ -84,6 +84,9 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
   const addToast = useAppStore((s) => s.addToast);
   const [startModalOpen, setStartModalOpen] = useState(false);
   const [form] = Form.useForm<RuntimeSubagentStartBody>();
+  // When user clicks "启动" on a profile row, we pre-fill the start
+  // modal with that profile so they only have to supply a task.
+  const [profileSeed, setProfileSeed] = useState<RuntimeAgentStatus | null>(null);
   // Drawer-driven transcript viewer for one runtime row. We hold the entire
   // ``RuntimeAgentStatus`` because the transcript fetch keys off
   // ``session_key`` while the JSON view shows the full status payload.
@@ -141,6 +144,7 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
     onSuccess: (res) => {
       addToast({ type: 'success', message: res.message });
       setStartModalOpen(false);
+      setProfileSeed(null);
       form.resetFields();
       invalidate();
     },
@@ -187,7 +191,31 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
   const rows = agentsQuery.data ?? [];
   const mainRow = useMemo(() => rows.find((r) => r.role === 'main') ?? null, [rows]);
   const subRows = useMemo(() => rows.filter((r) => r.role === 'sub'), [rows]);
-  const runningSubCount = subRows.filter((r) => r.running).length;
+  const agentRows = useMemo(() => rows.filter((r) => r.role === 'agent'), [rows]);
+  // Subagent counter shown in the summary chip blends ad-hoc sub-agent
+  // tasks with the standalone "enabled = running" agent loops so the
+  // chip reflects everything that's actively burning resources.
+  const runningSubCount =
+    subRows.filter((r) => r.running).length +
+    agentRows.filter((r) => r.running).length;
+
+  const openStartModalForProfile = (row: RuntimeAgentStatus) => {
+    setProfileSeed(row);
+    form.setFieldsValue({
+      task: '',
+      label: row.label || row.profile_id || null,
+      parent_agent_id: null,
+      team_id: null,
+      profile_id: row.profile_id || null,
+    } as RuntimeSubagentStartBody);
+    setStartModalOpen(true);
+  };
+
+  const openStartModalBlank = () => {
+    setProfileSeed(null);
+    form.resetFields();
+    setStartModalOpen(true);
+  };
 
   const errorMessage =
     agentsQuery.error instanceof Error ? agentsQuery.error.message : null;
@@ -201,6 +229,7 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
           label: values.label || null,
           parent_agent_id: values.parent_agent_id || null,
           team_id: values.team_id || null,
+          profile_id: values.profile_id || null,
         };
         startSubMutation.mutate(payload);
       })
@@ -212,6 +241,20 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
       return (
         <Tag color="geekblue" icon={<ApiOutlined />}>
           {t('runtime.roleMain')}
+        </Tag>
+      );
+    }
+    if (row.role === 'agent') {
+      return (
+        <Tag color="green" icon={<RobotOutlined />}>
+          {t('runtime.roleAgent')}
+        </Tag>
+      );
+    }
+    if (row.role === 'profile') {
+      return (
+        <Tag color="default" icon={<RobotOutlined />}>
+          {t('runtime.roleProfile')}
         </Tag>
       );
     }
@@ -245,19 +288,27 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
       title: t('runtime.colStatus'),
       dataIndex: 'running',
       key: 'running',
-      render: (_: unknown, row: RuntimeAgentStatus) => (
-        <Space direction="vertical" size={0}>
-          <Tag color={phaseTagColor(row.phase, row.running)}>
-            {row.running ? t('runtime.running') : t('runtime.stopped')}
-            {row.phase ? ` · ${row.phase}` : ''}
-          </Tag>
-          {row.iteration != null && (
-            <Text type="secondary" className="text-xs">
-              {t('runtime.iteration', { n: row.iteration })}
-            </Text>
-          )}
-        </Space>
-      ),
+      render: (_: unknown, row: RuntimeAgentStatus) => {
+        const statusLabel =
+          row.role === 'profile' && !row.running
+            ? t('runtime.idle')
+            : row.running
+              ? t('runtime.running')
+              : t('runtime.stopped');
+        return (
+          <Space direction="vertical" size={0}>
+            <Tag color={phaseTagColor(row.phase, row.running)}>
+              {statusLabel}
+              {row.phase ? ` · ${row.phase}` : ''}
+            </Tag>
+            {row.iteration != null && (
+              <Text type="secondary" className="text-xs">
+                {t('runtime.iteration', { n: row.iteration })}
+              </Text>
+            )}
+          </Space>
+        );
+      },
     },
     {
       title: t('runtime.colUptime'),
@@ -324,6 +375,34 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
             </Button>
           </Tooltip>
         );
+
+        if (row.role === 'profile') {
+          return (
+            <Space size={4} wrap>
+              <Button
+                size="small"
+                type="primary"
+                icon={<PlayCircleOutlined />}
+                onClick={() => openStartModalForProfile(row)}
+                disabled={!mainRow}
+              >
+                {t('runtime.startProfile')}
+              </Button>
+            </Space>
+          );
+        }
+
+        if (row.role === 'agent') {
+          return (
+            <Space size={4} wrap>
+              <Tooltip title={t('runtime.disableHint')}>
+                <Text type="secondary" className="text-xs">
+                  {t('runtime.manageInAgentsPage')}
+                </Text>
+              </Tooltip>
+            </Space>
+          );
+        }
 
         if (row.role === 'main') {
           return (
@@ -422,7 +501,7 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
             <Button
               type="primary"
               icon={<PlusOutlined />}
-              onClick={() => setStartModalOpen(true)}
+              onClick={openStartModalBlank}
               disabled={!mainRow}
             >
               <span className="hidden sm:inline">{t('runtime.startSub')}</span>
@@ -462,10 +541,17 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
       </Card>
 
       <Modal
-        title={t('runtime.startSubTitle')}
+        title={
+          profileSeed
+            ? t('runtime.startProfileTitle', {
+                label: profileSeed.label || profileSeed.profile_id || '',
+              })
+            : t('runtime.startSubTitle')
+        }
         open={startModalOpen}
         onCancel={() => {
           setStartModalOpen(false);
+          setProfileSeed(null);
           form.resetFields();
         }}
         onOk={handleSubmitStartSub}
@@ -482,11 +568,25 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
           >
             <Input.TextArea
               rows={4}
-              placeholder={t('runtime.fieldTaskPlaceholder')}
+              placeholder={
+                profileSeed
+                  ? t('runtime.startProfileTaskPlaceholder')
+                  : t('runtime.fieldTaskPlaceholder')
+              }
             />
           </Form.Item>
           <Form.Item label={t('runtime.fieldLabel')} name="label">
             <Input placeholder={t('runtime.fieldLabelPlaceholder')} />
+          </Form.Item>
+          <Form.Item
+            label={t('runtime.fieldProfile')}
+            name="profile_id"
+            extra={t('runtime.fieldProfileExtra')}
+          >
+            <Input
+              placeholder={profileSeed?.profile_id ?? ''}
+              disabled={!!profileSeed}
+            />
           </Form.Item>
           <Form.Item
             label={t('runtime.fieldParent')}

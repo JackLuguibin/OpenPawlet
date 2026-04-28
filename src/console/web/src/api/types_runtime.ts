@@ -1,7 +1,12 @@
 // Runtime agent management types (matches backend ``console.server.models.agent_runtime``).
 
-/** main = primary agent loop; sub = managed subagent task. */
-export type RuntimeAgentRole = 'main' | 'sub';
+/**
+ * - `main`: primary agent loop
+ * - `sub`: managed subagent task
+ * - `agent`: enabled persisted persona running its own standalone loop
+ * - `profile`: persisted persona profile not currently running (idle row)
+ */
+export type RuntimeAgentRole = 'main' | 'sub' | 'agent' | 'profile';
 
 export interface RuntimeAgentStatus {
   agent_id: string;

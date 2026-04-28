@@ -192,6 +192,17 @@ class EmbeddedNanobot:
         self._team_primary_session_by_agent: dict[str, str] = {}
         self._primary_team_event_task: asyncio.Task[None] | None = None
 
+        # Standalone agent loops: one per enabled persisted AgentProfile that
+        # is *not* already covered by a team binding. Lets the user say
+        # "enabled = running" without forcing every agent into a team.
+        self._standalone_loops_by_agent: dict[str, AgentLoop] = {}
+        self._standalone_tasks_by_agent: dict[str, asyncio.Task[None]] = {}
+        # Cached fingerprint per running standalone agent (model + skills +
+        # system prompt) so the reconciler can rebuild the loop when the
+        # user edits the profile rather than silently keeping the stale
+        # config alive.
+        self._standalone_profile_fp: dict[str, str] = {}
+
         self._sync_bindings_from_workspace()
         for aid, first_sk in self._team_primary_session_by_agent.items():
             binding = self._team_bindings_by_session.get(first_sk)
@@ -307,6 +318,7 @@ class EmbeddedNanobot:
         _register_runtime_manager(self.session_manager)
 
         await self._ensure_team_runtime()
+        await self._ensure_standalone_runtime()
         self._reconciler_task = asyncio.create_task(
             self._team_runtime_reconciler(), name="team-runtime-reconciler"
         )
@@ -336,6 +348,14 @@ class EmbeddedNanobot:
             await asyncio.gather(*self._team_tasks_by_agent.values(), return_exceptions=True)
         self._team_tasks_by_agent.clear()
 
+        for task in list(self._standalone_tasks_by_agent.values()):
+            task.cancel()
+        if self._standalone_tasks_by_agent:
+            await asyncio.gather(
+                *self._standalone_tasks_by_agent.values(), return_exceptions=True
+            )
+        self._standalone_tasks_by_agent.clear()
+
         if self._primary_team_event_task is not None and not self._primary_team_event_task.done():
             self._primary_team_event_task.cancel()
             await asyncio.gather(self._primary_team_event_task, return_exceptions=True)
@@ -347,6 +367,13 @@ class EmbeddedNanobot:
             except Exception:  # pragma: no cover - best effort cleanup
                 logger.exception("Failed to close MCP for member loop")
         self._team_loops_by_agent.clear()
+
+        for sloop in list(self._standalone_loops_by_agent.values()):
+            try:
+                await sloop.close_mcp()
+            except Exception:  # pragma: no cover - best effort cleanup
+                logger.exception("Failed to close MCP for standalone agent loop")
+        self._standalone_loops_by_agent.clear()
 
         try:
             await self.agent.close_mcp()
@@ -553,6 +580,163 @@ class EmbeddedNanobot:
                     logger.exception("primary team direct loop cancel")
             self._primary_team_event_task = None
 
+    def _list_enabled_standalone_agents(self) -> list[str]:
+        """Return enabled persisted agent ids that have no team binding.
+
+        Reads ``<workspace>/agents/*/profile.json`` directly rather than
+        going through :class:`ProfileStore` so we never block the
+        reconciler on console-only fields. ``enabled`` defaults to True
+        (mirrors :class:`AgentProfile`) so legacy profiles are still
+        treated as runnable.
+        """
+        from nanobot.agent.profile_resolver import ProfileStore
+
+        store = ProfileStore(self._config.workspace_path)
+        try:
+            profiles = store.list_profiles()
+        except Exception:  # pragma: no cover - defensive: bad fs entries
+            logger.exception("failed to list agent profiles for standalone runtime")
+            return []
+        # The primary agent id is already covered by ``self.agent`` and
+        # team-bound ids are covered by ``_team_loops_by_agent`` — skip
+        # both so we never spin two loops for the same agent.
+        team_aids = set(self._team_loops_by_agent.keys())
+        if self._primary_aid:
+            team_aids.add(self._primary_aid)
+        out: list[str] = []
+        for profile in profiles:
+            if not profile.enabled:
+                continue
+            aid = (profile.id or "").strip()
+            if not aid or aid in team_aids:
+                continue
+            out.append(aid)
+        return sorted(out)
+
+    def _profile_fingerprint(self, profile: Any) -> str:
+        """Hash the runtime-relevant fields of *profile*.
+
+        When this changes between reconcile passes the standalone loop
+        is rebuilt so model / system_prompt / skills edits take effect
+        without requiring a full console restart.
+        """
+        import hashlib
+        import json
+
+        payload = {
+            "model": getattr(profile, "model", None),
+            "temperature": getattr(profile, "temperature", None),
+            "system_prompt": getattr(profile, "system_prompt", None),
+            "skills": sorted(getattr(profile, "skills", None) or []),
+            "allowed_tools": sorted(getattr(profile, "allowed_tools", None) or [])
+            if getattr(profile, "allowed_tools", None) is not None
+            else None,
+            "skills_denylist": sorted(getattr(profile, "skills_denylist", []) or []),
+        }
+        blob = json.dumps(payload, sort_keys=True, default=str).encode("utf-8")
+        return hashlib.sha256(blob).hexdigest()
+
+    async def _stop_standalone_agent(self, aid: str) -> None:
+        """Cancel the task and close MCP for one standalone agent."""
+        task = self._standalone_tasks_by_agent.pop(aid, None)
+        if task is not None:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+        loop = self._standalone_loops_by_agent.pop(aid, None)
+        if loop is not None:
+            try:
+                await loop.close_mcp()
+            except Exception:  # pragma: no cover - best-effort cleanup
+                logger.exception(
+                    "Failed to close MCP for standalone agent {}", aid
+                )
+        self._standalone_profile_fp.pop(aid, None)
+        logger.info("Standalone agent loop stopped (agent_id={})", aid)
+
+    async def _ensure_standalone_runtime(self) -> None:
+        """Reconcile standalone (non-team) enabled-agent loops.
+
+        Each enabled :class:`AgentProfile` that is *not* a team member
+        gets its own :class:`AgentLoop` plus a
+        :func:`run_team_member_event_loop` consumer keyed off
+        :func:`standalone_agent_session_key`. Disabled / removed agents
+        have their loops cancelled and MCP connections closed; profiles
+        whose runtime-relevant fields changed get the loop rebuilt.
+        """
+        from nanobot.agent.profile_resolver import ProfileStore
+        from nanobot.agent.team_serve import run_team_member_event_loop
+        from nanobot.utils.team_gateway_runtime import standalone_agent_session_key
+
+        sub_api = getattr(self.message_bus, "subscribe_events", None)
+        if not callable(sub_api):
+            # Without an events-capable bus the standalone loop has no
+            # way to receive ``agent.<id>`` direct messages, so silently
+            # skip — the embedded console always uses an in-process bus
+            # that supports this; the early-out is only for tests / odd
+            # bus configurations.
+            return
+
+        desired_ids = self._list_enabled_standalone_agents()
+        desired = set(desired_ids)
+        existing = set(self._standalone_loops_by_agent.keys())
+
+        # Resolve full profile records once so we can both build new
+        # loops and detect config drift on existing ones.
+        store = ProfileStore(self._config.workspace_path)
+        try:
+            profiles = {p.id: p for p in store.list_profiles()}
+        except Exception:  # pragma: no cover - defensive
+            logger.exception("failed to load profiles for standalone reconcile")
+            profiles = {}
+
+        # Tear down loops for agents that became disabled / deleted.
+        for aid in sorted(existing - desired):
+            await self._stop_standalone_agent(aid)
+
+        # Tear down loops whose profile config has drifted; the rebuild
+        # path below will recreate them from the fresh profile.
+        for aid in sorted(desired & existing):
+            profile = profiles.get(aid)
+            if profile is None:
+                continue
+            fp = self._profile_fingerprint(profile)
+            if self._standalone_profile_fp.get(aid) != fp:
+                await self._stop_standalone_agent(aid)
+
+        # Build loops for newly-enabled / rebuilt agents.
+        existing = set(self._standalone_loops_by_agent.keys())
+        for aid in sorted(desired - existing):
+            try:
+                self._standalone_loops_by_agent[aid] = self._build_member_loop(
+                    aid, team_id_hint=None
+                )
+                profile = profiles.get(aid)
+                if profile is not None:
+                    self._standalone_profile_fp[aid] = self._profile_fingerprint(
+                        profile
+                    )
+            except Exception:
+                logger.exception(
+                    "Failed to build standalone loop for agent {}", aid
+                )
+
+        # Spawn the event-bus consumer for any loop without a live task.
+        for aid in sorted(self._standalone_loops_by_agent.keys()):
+            existing_task = self._standalone_tasks_by_agent.get(aid)
+            if existing_task is not None and not existing_task.done():
+                continue
+            loop = self._standalone_loops_by_agent.get(aid)
+            if loop is None:
+                continue
+            sk = standalone_agent_session_key(aid)
+            self._standalone_tasks_by_agent[aid] = asyncio.create_task(
+                run_team_member_event_loop(self.message_bus, loop, session_key=sk),
+                name=f"standalone-agent-{aid}",
+            )
+            logger.info(
+                "Standalone agent loop started (agent_id={} session={})", aid, sk
+            )
+
     def _teams_state_mtime_ns(self) -> int:
         """Return ``teams.json`` mtime in ns (0 when missing).
 
@@ -571,21 +755,65 @@ class EmbeddedNanobot:
         except OSError:
             return -1
 
+    def _agents_dir_signature(self) -> int:
+        """Return a coarse fingerprint of ``<workspace>/agents/`` contents.
+
+        We sum the mtime_ns of the directory itself + every ``profile.json``
+        below it. New/removed/edited profiles all bump the value, which is
+        enough for the reconciler to know it should re-scan. ``0`` is
+        returned when the directory does not exist yet.
+        """
+        agents_root = self._config.workspace_path / "agents"
+        try:
+            stat = agents_root.stat()
+        except FileNotFoundError:
+            return 0
+        except OSError:
+            return -1
+        total = stat.st_mtime_ns
+        try:
+            for entry in agents_root.iterdir():
+                if not entry.is_dir():
+                    continue
+                profile_path = entry / "profile.json"
+                try:
+                    total += profile_path.stat().st_mtime_ns
+                except FileNotFoundError:
+                    continue
+                except OSError:
+                    return -1
+        except OSError:
+            return -1
+        return total
+
     async def _team_runtime_reconciler(self) -> None:
-        last_mtime_ns = -2
+        last_team_mtime_ns = -2
+        last_agents_sig = -2
         while True:
             try:
-                current = self._teams_state_mtime_ns()
-                if current != last_mtime_ns:
+                current_team = self._teams_state_mtime_ns()
+                current_agents = self._agents_dir_signature()
+                team_changed = current_team != last_team_mtime_ns
+                agents_changed = current_agents != last_agents_sig
+                if team_changed:
+                    # Team membership impacts which standalone loops we keep,
+                    # so always re-run the standalone pass after a team
+                    # bindings reshuffle as well.
                     await self._ensure_team_runtime()
-                    last_mtime_ns = current
+                    await self._ensure_standalone_runtime()
+                    last_team_mtime_ns = current_team
+                    last_agents_sig = current_agents
+                elif agents_changed:
+                    await self._ensure_standalone_runtime()
+                    last_agents_sig = current_agents
             except asyncio.CancelledError:
                 raise
             except Exception:  # pragma: no cover - reconciler must keep running
                 logger.exception("team runtime reconcile failed")
                 # Force a recompute on the next iteration so a transient
                 # failure does not freeze us in stale state.
-                last_mtime_ns = -2
+                last_team_mtime_ns = -2
+                last_agents_sig = -2
             await asyncio.sleep(2.0)
 
     # ---- delivery helpers ------------------------------------------------

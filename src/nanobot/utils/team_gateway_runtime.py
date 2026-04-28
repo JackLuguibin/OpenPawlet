@@ -20,6 +20,20 @@ def team_member_session_key(
     return key
 
 
+def standalone_agent_session_key(agent_id: str) -> str:
+    """Build the session key for a standalone (non-team) enabled agent.
+
+    The standalone runtime loop subscribes to ``agent.<id>`` direct
+    messages and broadcast topics under this key. Mirrors the team
+    member key shape so :func:`should_handle_direct_for_session` and
+    transcript writers can treat both the same way.
+    """
+    aid = (agent_id or "").strip()
+    if not aid:
+        raise ValueError("agent_id required for standalone session key")
+    return f"console:agent_{aid}"
+
+
 def load_all_team_member_bindings(workspace: Path) -> list[tuple[str, str, str, str]]:
     """Return all valid team-room-member bindings as tuples.
 

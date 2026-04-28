@@ -157,6 +157,14 @@ class AgentProfile(Base):
     # addition to the profile's own files.
     inherit_main_bootstrap: bool = False
 
+    # ``enabled=True`` means the EmbeddedNanobot reconciler should keep a
+    # standalone event loop running for this agent so it can receive its
+    # ``agent.<id>`` direct messages and broadcast topics without having
+    # to be a team member. Mirrors the Console Agent record's enabled
+    # toggle. Default ``True`` preserves prior behaviour for inline
+    # profiles spawned ad-hoc by SubagentManager.
+    enabled: bool = True
+
 
 # ---------------------------------------------------------------------------
 # Merge helpers
