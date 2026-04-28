@@ -43,12 +43,16 @@ def _legacy_provider_to_instance(
     api_key = (provider_cfg.api_key or "").strip()
     api_base = (provider_cfg.api_base or "").strip()
     extra_headers = dict(provider_cfg.extra_headers or {})
-    is_oauth = bool(spec and spec.is_oauth)
-    is_local = bool(spec and spec.is_local)
-    is_direct = bool(spec and spec.is_direct)
-    # Skip obviously empty single-instance blocks unless this provider
-    # doesn't need an API key (OAuth / Ollama / OVMS).
-    if not api_key and not (is_oauth or is_local or is_direct):
+    # Migration policy: only carry over rows the user actually
+    # configured.  Empty OAuth / local / direct entries used to be
+    # migrated as well, which left the workspace with a pile of
+    # "instances" that the runtime would happily try to dispatch to
+    # — yielding the infamous "Incorrect API key provided: no-key"
+    # error against api.openai.com when the empty ``custom`` row
+    # ended up first in the list.  Skip everything that doesn't
+    # carry at least one of (api_key, api_base) so the resulting
+    # ``llm_providers.json`` only contains rows worth picking.
+    if not api_key and not api_base:
         return None
 
     label = spec.label if spec else name.title()
@@ -66,6 +70,10 @@ def _legacy_provider_to_instance(
         failover_instance_ids=[],
         failover_on=list(DEFAULT_FAILOVER_TRIGGERS),
         enabled=True,
+        # Auto-promote when this is the only viable migration target;
+        # the ``migrate_legacy_providers`` post-processing step takes
+        # care of guaranteeing a single default across the whole batch.
+        is_default=False,
     )
 
 
@@ -97,9 +105,30 @@ def migrate_legacy_providers(workspace: Path, config: Config) -> int:
             migrated.append(inst)
 
     if migrated:
+        # Promote a default so the runtime doesn't have to fall back to
+        # the legacy ``ProvidersConfig`` block on first boot.  Heuristic:
+        # prefer an instance whose ``model`` slot we'd auto-pick anyway
+        # (matches ``agents.defaults.model`` or its provider keyword),
+        # otherwise just take the first migrated row.
+        from nanobot.providers.factory import _infer_provider_from_model  # noqa: PLC0415
+
+        target_model = (config.agents.defaults.model or "").strip().lower()
+        hinted = _infer_provider_from_model(target_model) if target_model else None
+        chosen_idx = 0
+        if hinted is not None:
+            for i, inst in enumerate(migrated):
+                if inst.provider.lower() == hinted:
+                    chosen_idx = i
+                    break
+        migrated[chosen_idx] = migrated[chosen_idx].model_copy(
+            update={"is_default": True}
+        )
         store.replace_all(migrated)
         logger.info(
-            "[migrate] wrote {} LLM provider instances to {}", len(migrated), path
+            "[migrate] wrote {} LLM provider instances to {} (default={})",
+            len(migrated),
+            path,
+            migrated[chosen_idx].id,
         )
     else:
         # Touch an empty file so subsequent calls short-circuit on "no
@@ -110,4 +139,53 @@ def migrate_legacy_providers(workspace: Path, config: Config) -> int:
     return len(migrated)
 
 
-__all__ = ["migrate_legacy_providers"]
+def heal_unusable_legacy_instances(workspace: Path) -> int:
+    """Drop ``legacy-*`` instances that were migrated empty by an older build.
+
+    Earlier versions of :func:`_legacy_provider_to_instance` migrated
+    every provider — even OAuth / local / direct backends with no key
+    and no api_base — which produced unusable rows like ``legacy-custom``
+    that the default-instance picker would happily route traffic to.
+    This one-shot cleanup removes such rows on startup.
+
+    Returns the number of instances removed.
+    """
+    store = LLMProviderStore(workspace)
+    instances = store.list_instances()
+    if not instances:
+        return 0
+
+    def _is_unusable_legacy(inst: LLMProviderInstance) -> bool:
+        if not inst.id.startswith("legacy-"):
+            return False
+        if inst.is_default:
+            # User picked it explicitly — respect that choice.
+            return False
+        # Empty key + empty base on a backend that needs credentials.
+        has_key = bool(inst.first_key())
+        has_base = bool((inst.api_base or "").strip())
+        return not has_key and not has_base
+
+    keep = [inst for inst in instances if not _is_unusable_legacy(inst)]
+    removed = len(instances) - len(keep)
+    if removed == 0:
+        return 0
+
+    # If the cleanup left us without a default but at least one
+    # serviceable instance survived, promote the first one — most
+    # workspaces will have exactly one real key after this trim.
+    if not any(inst.is_default for inst in keep):
+        for i, inst in enumerate(keep):
+            if inst.can_serve():
+                keep[i] = inst.model_copy(update={"is_default": True})
+                break
+
+    store.replace_all(keep)
+    logger.info(
+        "[migrate] heal_unusable_legacy_instances dropped {} empty rows",
+        removed,
+    )
+    return removed
+
+
+__all__ = ["heal_unusable_legacy_instances", "migrate_legacy_providers"]

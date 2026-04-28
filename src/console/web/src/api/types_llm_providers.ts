@@ -53,6 +53,12 @@ export interface LLMProviderInstance {
   failoverInstanceIds: string[];
   failoverOn: LLMFailoverTrigger[];
   enabled: boolean;
+  /**
+   * When true, this instance is the workspace-wide default provider:
+   * the runtime picks it when an Agent has no explicit
+   * `provider_instance_id`. At most one instance is the default.
+   */
+  isDefault: boolean;
 }
 
 /** Body shape used when creating an instance — values are sent in plaintext. */
@@ -74,6 +80,7 @@ export interface LLMProviderInstanceCreate {
   failoverInstanceIds?: string[];
   failoverOn?: LLMFailoverTrigger[];
   enabled?: boolean;
+  isDefault?: boolean;
 }
 
 /**
@@ -91,6 +98,7 @@ export interface LLMProviderInstanceUpdate {
   failoverInstanceIds?: string[];
   failoverOn?: LLMFailoverTrigger[];
   enabled?: boolean;
+  isDefault?: boolean;
 }
 
 export interface ApiKeyAddBody {

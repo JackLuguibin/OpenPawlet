@@ -187,6 +187,11 @@ class LLMProviderInstance(BaseModel):
         default_factory=lambda: list(DEFAULT_FAILOVER_TRIGGERS),
     )
     enabled: bool = True
+    # When True, this instance is preferred by ``build_default_provider``
+    # regardless of model-name / order heuristics.  At most one instance
+    # in a workspace may have ``is_default=True`` — :class:`LLMProviderStore`
+    # demotes any previous default on save.
+    is_default: bool = False
 
     @field_validator("id")
     @classmethod
@@ -271,6 +276,44 @@ class LLMProviderInstance(BaseModel):
             if entry.value:
                 return entry.value
         return None
+
+    def can_serve(self) -> bool:
+        """Return True when this instance has enough config to actually
+        produce an :class:`~nanobot.providers.base.LLMProvider`.
+
+        The factory will refuse to instantiate an instance that is
+        disabled, or whose backend needs an API key without one being
+        present.  Default-instance picking uses this to skip the half-
+        configured rows the legacy migration sometimes leaves behind.
+        """
+        if not self.enabled:
+            return False
+        # Local import to avoid a circular dep at module import time.
+        from nanobot.providers.registry import find_by_name
+
+        spec = find_by_name(self.provider) if self.provider else None
+        is_oauth = bool(spec and spec.is_oauth)
+        is_local = bool(spec and spec.is_local)
+        is_direct = bool(spec and spec.is_direct)
+        backend = spec.backend if spec else "openai_compat"
+
+        has_key = bool(self.first_key())
+        if backend == "azure_openai":
+            return has_key and bool((self.api_base or "").strip())
+        if is_oauth:
+            return True  # OAuth providers manage their own credentials
+        if is_local:
+            # Local backends are useful only when at least one of api_base
+            # / api_keys is set; bare "ollama with no key and no base"
+            # would resolve to localhost which is fine, but the spec's
+            # ``default_api_base`` covers that — so always treat as ready.
+            return True
+        if is_direct:
+            # ``custom`` requires the user to have provided either a key
+            # or an api_base; otherwise the OpenAI SDK will fall back to
+            # ``api.openai.com`` and 401 with the empty key.
+            return has_key or bool((self.api_base or "").strip())
+        return has_key
 
     def to_safe_payload(self) -> dict[str, object]:
         """Public, masked representation for ``GET`` responses.
@@ -384,7 +427,12 @@ class LLMProviderStore:
         return None
 
     def upsert(self, instance: LLMProviderInstance) -> LLMProviderInstance:
-        """Insert or replace by ``id``; returns the persisted instance."""
+        """Insert or replace by ``id``; returns the persisted instance.
+
+        When the upserted instance carries ``is_default=True``, every
+        other persisted row gets that flag cleared so the workspace
+        always has at most one default.
+        """
         with _FILE_LOCK:
             file = self._read()
             updated = False
@@ -395,8 +443,37 @@ class LLMProviderStore:
                     break
             if not updated:
                 file.instances.append(instance)
+            if instance.is_default:
+                for i, existing in enumerate(file.instances):
+                    if existing.id != instance.id and existing.is_default:
+                        file.instances[i] = existing.model_copy(
+                            update={"is_default": False}
+                        )
             self._write(file)
             return instance
+
+    def set_default(self, instance_id: str) -> LLMProviderInstance | None:
+        """Mark *instance_id* as the workspace default; clear every other.
+
+        Returns the freshly-persisted default instance, or ``None`` when
+        the id does not exist.
+        """
+        iid = (instance_id or "").strip()
+        if not iid:
+            return None
+        with _FILE_LOCK:
+            file = self._read()
+            target_idx: int | None = None
+            for i, existing in enumerate(file.instances):
+                file.instances[i] = existing.model_copy(
+                    update={"is_default": existing.id == iid}
+                )
+                if existing.id == iid:
+                    target_idx = i
+            if target_idx is None:
+                return None
+            self._write(file)
+            return file.instances[target_idx]
 
     def delete(self, instance_id: str) -> bool:
         iid = (instance_id or "").strip()
@@ -405,8 +482,11 @@ class LLMProviderStore:
         with _FILE_LOCK:
             file = self._read()
             before = len(file.instances)
+            removed_was_default = any(
+                inst.id == iid and inst.is_default for inst in file.instances
+            )
             file.instances = [inst for inst in file.instances if inst.id != iid]
-            # Also strip dangling failover references so the chain stays valid.
+            # Strip dangling failover references so the chain stays valid.
             for inst in file.instances:
                 if iid in inst.failover_instance_ids:
                     inst.failover_instance_ids = [
@@ -414,6 +494,19 @@ class LLMProviderStore:
                     ]
             if len(file.instances) == before:
                 return False
+            # If the removed entry was the workspace default, promote
+            # the first remaining serviceable instance so the runtime
+            # doesn't silently fall back to legacy ProvidersConfig
+            # routing on the next chat call.
+            if removed_was_default and not any(
+                inst.is_default for inst in file.instances
+            ):
+                for i, inst in enumerate(file.instances):
+                    if inst.can_serve():
+                        file.instances[i] = inst.model_copy(
+                            update={"is_default": True}
+                        )
+                        break
             self._write(file)
             return True
 

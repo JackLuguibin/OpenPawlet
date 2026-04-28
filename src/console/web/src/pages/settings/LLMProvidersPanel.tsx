@@ -24,6 +24,8 @@ import {
   ExperimentOutlined,
   PlusOutlined,
   ReloadOutlined,
+  StarFilled,
+  StarOutlined,
 } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -59,6 +61,7 @@ interface LLMProviderFormState {
   failoverInstanceIds: string[];
   failoverOn: LLMFailoverTrigger[];
   enabled: boolean;
+  isDefault: boolean;
 }
 
 const EMPTY_FORM: LLMProviderFormState = {
@@ -73,6 +76,7 @@ const EMPTY_FORM: LLMProviderFormState = {
   failoverInstanceIds: [],
   failoverOn: ['timeout', 'connection'],
   enabled: true,
+  isDefault: false,
 };
 
 function instanceToForm(inst: LLMProviderInstance): LLMProviderFormState {
@@ -91,6 +95,7 @@ function instanceToForm(inst: LLMProviderInstance): LLMProviderFormState {
     failoverInstanceIds: inst.failoverInstanceIds ?? [],
     failoverOn: inst.failoverOn ?? ['timeout', 'connection'],
     enabled: inst.enabled,
+    isDefault: inst.isDefault,
   };
 }
 
@@ -111,6 +116,7 @@ function formToCreatePayload(
     failoverInstanceIds: form.failoverInstanceIds,
     failoverOn: form.failoverOn,
     enabled: form.enabled,
+    isDefault: form.isDefault,
   };
 }
 
@@ -126,6 +132,7 @@ function formToUpdatePayload(form: LLMProviderFormState): LLMProviderInstanceUpd
     failoverInstanceIds: form.failoverInstanceIds,
     failoverOn: form.failoverOn,
     enabled: form.enabled,
+    isDefault: form.isDefault,
   };
 }
 
@@ -215,6 +222,18 @@ export default function LLMProvidersPanel({ embedded = false }: { embedded?: boo
     mutationFn: (id: string) => api.deleteLLMProvider(botId, id),
     onSuccess: () => {
       addToast({ type: 'success', message: t('llmProviders.deleted') });
+      queryClient.invalidateQueries({ queryKey: ['llm-providers', botId] });
+    },
+    onError: (err) => addToast({ type: 'error', message: formatQueryError(err) }),
+  });
+
+  const setDefaultMutation = useMutation({
+    mutationFn: (id: string) => api.setDefaultLLMProvider(botId, id),
+    onSuccess: (inst) => {
+      addToast({
+        type: 'success',
+        message: t('llmProviders.defaultSet', { name: inst.name }),
+      });
       queryClient.invalidateQueries({ queryKey: ['llm-providers', botId] });
     },
     onError: (err) => addToast({ type: 'error', message: formatQueryError(err) }),
@@ -342,7 +361,11 @@ export default function LLMProvidersPanel({ embedded = false }: { embedded?: boo
             <Card
               key={inst.id}
               size="small"
-              className="rounded border border-gray-200 dark:border-gray-800 transition-colors hover:border-gray-300 dark:hover:border-gray-700"
+              className={
+                inst.isDefault
+                  ? 'rounded border-2 border-amber-300 bg-amber-50/30 transition-colors dark:border-amber-700 dark:bg-amber-900/10'
+                  : 'rounded border border-gray-200 transition-colors hover:border-gray-300 dark:border-gray-800 dark:hover:border-gray-700'
+              }
               styles={{ body: { padding: 12 } }}
             >
               <div className="flex items-start justify-between gap-2">
@@ -351,6 +374,17 @@ export default function LLMProvidersPanel({ embedded = false }: { embedded?: boo
                     <Text strong className="text-base">
                       {inst.name}
                     </Text>
+                    {inst.isDefault && (
+                      <Tooltip title={t('llmProviders.defaultBadgeHint')}>
+                        <Tag
+                          color="gold"
+                          icon={<StarFilled />}
+                          className="m-0 shrink-0"
+                        >
+                          {t('llmProviders.defaultBadge')}
+                        </Tag>
+                      </Tooltip>
+                    )}
                     {inst.enabled ? (
                       <Tag color="success">{t('common.enabled')}</Tag>
                     ) : (
@@ -387,6 +421,29 @@ export default function LLMProvidersPanel({ embedded = false }: { embedded?: boo
                 </div>
               </div>
               <div className="mt-2 flex flex-wrap items-center justify-end gap-1">
+                <Tooltip
+                  title={
+                    inst.isDefault
+                      ? t('llmProviders.alreadyDefault')
+                      : t('llmProviders.setDefault')
+                  }
+                >
+                  <Button
+                    size="small"
+                    icon={inst.isDefault ? <StarFilled /> : <StarOutlined />}
+                    onClick={() => setDefaultMutation.mutate(inst.id)}
+                    disabled={inst.isDefault || setDefaultMutation.isPending}
+                    className={
+                      inst.isDefault
+                        ? '!text-amber-500 !border-amber-300 dark:!border-amber-700'
+                        : ''
+                    }
+                  >
+                    {inst.isDefault
+                      ? t('llmProviders.defaultBadge')
+                      : t('llmProviders.setDefault')}
+                  </Button>
+                </Tooltip>
                 <Tooltip title={t('llmProviders.testTip')}>
                   <Button
                     size="small"
@@ -589,12 +646,29 @@ export default function LLMProvidersPanel({ embedded = false }: { embedded?: boo
             />
           </Form.Item>
 
-          <Form.Item label={t('common.enabled')}>
-            <Switch
-              checked={form.enabled}
-              onChange={(checked) => setForm({ ...form, enabled: checked })}
-            />
-          </Form.Item>
+          <div className="grid grid-cols-2 gap-4">
+            <Form.Item label={t('common.enabled')} extra={t('llmProviders.enabledExtra')}>
+              <Switch
+                checked={form.enabled}
+                onChange={(checked) => setForm({ ...form, enabled: checked })}
+              />
+            </Form.Item>
+
+            <Form.Item
+              label={
+                <span>
+                  <StarFilled className="mr-1 text-amber-500" />
+                  {t('llmProviders.defaultBadge')}
+                </span>
+              }
+              extra={t('llmProviders.isDefaultExtra')}
+            >
+              <Switch
+                checked={form.isDefault}
+                onChange={(checked) => setForm({ ...form, isDefault: checked })}
+              />
+            </Form.Item>
+          </div>
         </Form>
       </Drawer>
     </div>

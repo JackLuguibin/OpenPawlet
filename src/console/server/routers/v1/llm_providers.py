@@ -100,6 +100,7 @@ class LLMProviderInstanceCreate(_CamelModel):
     failover_instance_ids: list[str] = Field(default_factory=list)
     failover_on: list[str] = Field(default_factory=lambda: list(DEFAULT_FAILOVER_TRIGGERS))
     enabled: bool = True
+    is_default: bool = False
 
 
 class LLMProviderInstanceUpdate(_CamelModel):
@@ -121,6 +122,7 @@ class LLMProviderInstanceUpdate(_CamelModel):
     failover_instance_ids: list[str] | None = None
     failover_on: list[str] | None = None
     enabled: bool | None = None
+    is_default: bool | None = None
 
 
 class ApiKeyAddBody(_CamelModel):
@@ -281,9 +283,19 @@ async def create_instance(
             failover_instance_ids=list(body.failover_instance_ids),
             failover_on=triggers,
             enabled=bool(body.enabled),
+            is_default=bool(body.is_default),
         )
     except Exception as exc:  # pragma: no cover - validation error
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # If this is the very first instance and the user didn't ask for it
+    # to be default, promote it anyway — otherwise the runtime would
+    # have to fall back to the legacy ProvidersConfig path even when
+    # the user just configured a perfectly good LLM source.
+    if not instance.is_default:
+        existing_defaults = [i for i in store.list_instances() if i.is_default]
+        if not existing_defaults and instance.can_serve():
+            instance = instance.model_copy(update={"is_default": True})
 
     store.upsert(instance)
     push_after_config_change(bot_id)
@@ -328,6 +340,8 @@ async def update_instance(
         data["failover_on"] = _validate_triggers(body.failover_on)
     if body.enabled is not None:
         data["enabled"] = bool(body.enabled)
+    if body.is_default is not None:
+        data["is_default"] = bool(body.is_default)
 
     try:
         updated = LLMProviderInstance.model_validate(data)
@@ -337,6 +351,25 @@ async def update_instance(
     store.upsert(updated)
     push_after_config_change(bot_id)
     return DataResponse(data=_safe_payload(updated))
+
+
+@router.post(
+    "/{instance_id}/set-default",
+    response_model=DataResponse[dict[str, Any]],
+)
+async def set_default_instance(
+    bot_id: str, instance_id: str
+) -> DataResponse[dict[str, Any]]:
+    """Mark *instance_id* as the workspace default; demote every other.
+
+    Lighter-weight than PUT for the common "click ⭐ on a card" flow.
+    """
+    store = _store(bot_id)
+    inst = store.set_default(instance_id)
+    if inst is None:
+        raise HTTPException(status_code=404, detail="Instance not found")
+    push_after_config_change(bot_id)
+    return DataResponse(data=_safe_payload(inst))
 
 
 @router.delete("/{instance_id}", response_model=DataResponse[OkBody])

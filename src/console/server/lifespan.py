@@ -156,10 +156,18 @@ async def _build_embedded_runtime(app: FastAPI) -> Any | None:
         # Idempotent (skips workspaces that already have instances).
         try:
             from nanobot.config.loader import load_config
-            from nanobot.providers.migrate import migrate_legacy_providers
+            from nanobot.providers.migrate import (
+                heal_unusable_legacy_instances,
+                migrate_legacy_providers,
+            )
 
             cfg = load_config()
             migrate_legacy_providers(cfg.workspace_path, cfg)
+            # Workspaces that ran an earlier build of the migrator may
+            # still hold empty ``legacy-custom`` / ``legacy-azure`` rows
+            # that the default-instance picker can route real traffic
+            # to; trim them on every boot so the bug never re-surfaces.
+            heal_unusable_legacy_instances(cfg.workspace_path)
         except Exception:  # noqa: BLE001 - migration must never block startup
             logger.exception("[migrate] legacy provider migration failed; continuing")
 

@@ -1535,6 +1535,16 @@ export async function testLLMProvider(
   );
 }
 
+export async function setDefaultLLMProvider(
+  botId: string,
+  instanceId: string,
+): Promise<import('./types_llm_providers').LLMProviderInstance> {
+  return fetchJson<import('./types_llm_providers').LLMProviderInstance>(
+    `${API_BASE}/bots/${encodeURIComponent(botId)}/llm-providers/${encodeURIComponent(instanceId)}/set-default`,
+    { method: 'POST' },
+  );
+}
+
 export async function listLLMProviderRegistry(
   botId: string,
 ): Promise<import('./types_llm_providers').LLMProviderRegistryEntry[]> {

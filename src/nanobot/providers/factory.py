@@ -315,23 +315,91 @@ def build_provider_for_instance(
 def find_default_instance_id(config: Config, store: LLMProviderStore | None = None) -> str | None:
     """Pick the *default* instance id for ``config``.
 
-    Strategy:
+    Selection order — first match wins:
 
-    1. If any enabled instance's ``model`` matches ``agents.defaults.model``
-       exactly, return its id.
-    2. Otherwise, return the first enabled instance, if any.
-    3. Otherwise return ``None`` so callers fall back to the legacy
-       :func:`build_provider` path.
+    1. The instance the user explicitly flagged ``is_default=True``
+       (provided it can actually serve traffic).
+    2. An instance whose ``model`` exactly matches
+       ``agents.defaults.model`` *and* is serviceable.
+    3. An instance whose ``provider`` registry name matches the
+       provider hint inferred from the model string (e.g. model
+       ``deepseek-v3.2`` → provider ``deepseek``) *and* is serviceable.
+    4. The first serviceable instance in declaration order.
+    5. ``None`` (callers fall back to the legacy :func:`build_provider`
+       path so users without any working LLM-instance setup still get a
+       useful error from the credential validator).
+
+    Disabled instances and instances missing required credentials are
+    never picked — that's the bug fix that prevents the ``no-key``
+    OpenAI fallback when migration leaves empty ``legacy-custom`` rows
+    around.
     """
     store = store or LLMProviderStore(config.workspace_path)
-    target_model = (config.agents.defaults.model or "").strip()
-    instances = [inst for inst in store.list_instances() if inst.enabled]
+    instances = list(store.list_instances())
     if not instances:
         return None
-    for inst in instances:
-        if (inst.model or "").strip() == target_model and target_model:
+
+    serviceable = [inst for inst in instances if inst.can_serve()]
+    if not serviceable:
+        # The user has instances configured but none of them work; fall
+        # back to legacy ProvidersConfig so the existing error messages
+        # still surface a meaningful "API key missing" diagnostic.
+        return None
+
+    # 1. Explicit user pick.
+    for inst in serviceable:
+        if inst.is_default:
             return inst.id
-    return instances[0].id
+
+    target_model = (config.agents.defaults.model or "").strip()
+
+    # 2. Exact model match.
+    if target_model:
+        for inst in serviceable:
+            if (inst.model or "").strip() == target_model:
+                return inst.id
+
+    # 3. Provider-name heuristic on the model string.
+    if target_model:
+        hinted = _infer_provider_from_model(target_model)
+        if hinted is not None:
+            for inst in serviceable:
+                if (inst.provider or "").strip().lower() == hinted:
+                    return inst.id
+
+    # 4. Anything that works.
+    return serviceable[0].id
+
+
+def _infer_provider_from_model(model: str) -> str | None:
+    """Map a model string like ``deepseek-v3.2`` to a registry name.
+
+    Mirrors the keyword + prefix matching used by
+    :meth:`Config._match_provider` so instance picking lines up with the
+    legacy provider routing logic.  Returns ``None`` when no provider
+    keyword/prefix matches.
+    """
+    s = (model or "").strip().lower()
+    if not s:
+        return None
+    prefix = s.split("/", 1)[0] if "/" in s else ""
+    normalized_prefix = prefix.replace("-", "_")
+    normalized_full = s.replace("-", "_")
+    # Provider name as an explicit prefix wins, e.g. ``anthropic/claude-...``.
+    from nanobot.providers.registry import PROVIDERS
+
+    for spec in PROVIDERS:
+        if normalized_prefix and normalized_prefix == spec.name:
+            return spec.name
+    # Otherwise, fall back to keyword matching (skip generic prefixes
+    # like "openai" so we don't accidentally route "gpt-4o" to a custom
+    # OAuth-only entry).
+    for spec in PROVIDERS:
+        for kw in spec.keywords:
+            kwl = kw.lower()
+            if kwl in s or kwl.replace("-", "_") in normalized_full:
+                return spec.name
+    return None
 
 
 def build_default_provider(
