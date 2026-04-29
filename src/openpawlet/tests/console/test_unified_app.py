@@ -370,6 +370,60 @@ def test_npm_executable_prefers_cmd_on_windows(
     assert seen[0] == "npm.cmd"  # cmd attempted first
 
 
+def test_web_node_modules_ready_requires_dot_bin(tmp_path) -> None:
+    import console.cli as cli_mod
+
+    web = tmp_path / "web"
+    assert not cli_mod._web_node_modules_ready(web)
+    (web / "node_modules").mkdir(parents=True)
+    assert not cli_mod._web_node_modules_ready(web)
+    (web / "node_modules" / ".bin").mkdir(parents=True)
+    assert cli_mod._web_node_modules_ready(web)
+
+
+def test_ensure_web_dependencies_runs_install_when_missing(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import console.cli as cli_mod
+
+    web = tmp_path / "console-web"
+    (web / "package.json").write_text("{}")
+    calls: list[list[str]] = []
+
+    def _fake_run(cmd, cwd=None, **_kwargs):
+        calls.append(cmd)
+        class Done:
+            returncode = 0
+
+        return Done()
+
+    monkeypatch.setattr(cli_mod.subprocess, "run", _fake_run)
+    cli_mod._ensure_web_dependencies(web, "/fake/npm")
+    assert len(calls) == 1
+    assert calls[0] == ["/fake/npm", "install"]
+
+
+def test_ensure_web_dependencies_skips_when_node_modules_ready(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import console.cli as cli_mod
+
+    web = tmp_path / "cw"
+    (web / "node_modules" / ".bin").mkdir(parents=True)
+
+    called: list[object] = []
+
+    def _fail_install(*args, **_kwargs):
+        called.append(True)
+        raise AssertionError("_ensure_web_dependencies must not npm install")
+
+    monkeypatch.setattr(cli_mod.subprocess, "run", _fail_install)
+    cli_mod._ensure_web_dependencies(web, "/fake/npm")
+    assert not called
+
+
 def test_in_process_message_bus_has_no_zmq_dependency() -> None:
     """``build_message_bus`` always returns the in-process MessageBus."""
     from openpawlet.bus.factory import build_message_bus

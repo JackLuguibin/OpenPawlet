@@ -27,6 +27,7 @@ import os
 import time
 from collections import defaultdict
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from loguru import logger
@@ -74,8 +75,8 @@ class EmbeddedOpenPawlet:
         )
 
         if provider_factory is None:
-            from openpawlet.cli.commands import (
-                _make_provider as provider_factory,  # type: ignore[no-redef]
+            from openpawlet.providers.factory import (
+                build_default_provider as provider_factory,  # type: ignore[no-redef]
             )
 
         if verbose:
@@ -272,6 +273,21 @@ class EmbeddedOpenPawlet:
         self._start_perf = 0.0
 
     # ---- public lifecycle ------------------------------------------------
+    @staticmethod
+    def _load_runtime_config(config_path: str | None = None, workspace: str | None = None) -> Config:
+        """Load and env-resolve runtime config without depending on CLI modules."""
+        from openpawlet.config.loader import load_config, resolve_config_env_vars
+
+        resolved: Path | None = None
+        if config_path:
+            resolved = Path(config_path).expanduser().resolve()
+            if not resolved.exists():
+                raise FileNotFoundError(f"Config file not found: {resolved}")
+        cfg = resolve_config_env_vars(load_config(resolved))
+        if workspace:
+            cfg.agents.defaults.workspace = workspace
+        return cfg
+
     @classmethod
     def from_environment(
         cls,
@@ -285,9 +301,7 @@ class EmbeddedOpenPawlet:
         websocket_requires_token: bool = False,
     ) -> EmbeddedOpenPawlet:
         """Build an instance from on-disk config (matches legacy embedded gateway startup)."""
-        from openpawlet.cli.commands import _load_runtime_config
-
-        cfg = _load_runtime_config(config_path, workspace)
+        cfg = cls._load_runtime_config(config_path, workspace)
         # Unified console mode always relies on the in-process websocket channel.
         # Ensure it is enabled and aligned with the reverse-proxy target.
         ws_cfg_raw = getattr(cfg.channels, "websocket", None)

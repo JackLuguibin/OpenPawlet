@@ -26,7 +26,11 @@ def test_from_environment_forces_websocket_channel_for_unified_console(
         captured["config"] = config
         captured["verbose"] = verbose
 
-    monkeypatch.setattr("openpawlet.cli.commands._load_runtime_config", _fake_load_runtime_config)
+    monkeypatch.setattr(
+        EmbeddedOpenPawlet,
+        "_load_runtime_config",
+        staticmethod(_fake_load_runtime_config),
+    )
     monkeypatch.setattr(EmbeddedOpenPawlet, "__init__", _fake_init)
 
     EmbeddedOpenPawlet.from_environment(

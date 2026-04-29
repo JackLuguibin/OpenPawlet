@@ -102,18 +102,54 @@ def _npm_executable() -> str:
     )
 
 
-def _run_npm_web(npm_script: str) -> None:
-    """Run ``npm run <script>`` in the bundled ``web`` directory."""
-    web_dir = _web_dir_or_exit()
-    npm_bin = _npm_executable()
-    cmd = [npm_bin, "run", npm_script]
+def _npm_invoke_cmd(npm_bin: str, *npm_args: str) -> list[str]:
+    """Build argv for npm (or node + npm-cli.js on Windows to avoid batch quirks)."""
+    cmd: list[str] = [npm_bin, *npm_args]
     if os.name == "nt" and npm_bin.lower().endswith(".cmd"):
         # Bypass npm.cmd batch wrapper to avoid "Terminate batch job (Y/N)?"
         # and let Ctrl+C interrupt the Node process directly.
         npm_cli = Path(npm_bin).parent / "node_modules" / "npm" / "bin" / "npm-cli.js"
         node_bin = shutil.which("node.exe") or shutil.which("node")
         if npm_cli.is_file() and node_bin:
-            cmd = [node_bin, str(npm_cli), "run", npm_script]
+            cmd = [node_bin, str(npm_cli), *npm_args]
+    return cmd
+
+
+def _web_node_modules_ready(web_dir: Path) -> bool:
+    """True when frontend dependencies appear installed (node_modules with .bin)."""
+    return (web_dir / "node_modules" / ".bin").is_dir()
+
+
+def _ensure_web_dependencies(web_dir: Path, npm_bin: str) -> None:
+    """Run ``npm install`` in ``web_dir`` when node_modules is missing or incomplete."""
+    if _web_node_modules_ready(web_dir):
+        return
+    logger.info(
+        "[web] node_modules not found or incomplete; running npm install in {} ...",
+        web_dir,
+    )
+    install_cmd = _npm_invoke_cmd(npm_bin, "install")
+    try:
+        completed = subprocess.run(
+            install_cmd,
+            cwd=str(web_dir),
+            check=False,
+        )
+    except OSError as exc:  # pragma: no cover - exec failure
+        raise SystemExit(f"[web] npm install failed to start: {exc}") from exc
+    if completed.returncode != 0:
+        raise SystemExit(
+            f"[web] npm install exited with {completed.returncode}; "
+            f"fix the error above or run manually: npm install (cwd {web_dir})"
+        )
+
+
+def _run_npm_web(npm_script: str) -> None:
+    """Run ``npm run <script>`` in the bundled ``web`` directory."""
+    web_dir = _web_dir_or_exit()
+    npm_bin = _npm_executable()
+    _ensure_web_dependencies(web_dir, npm_bin)
+    cmd = _npm_invoke_cmd(npm_bin, "run", npm_script)
 
     process = subprocess.Popen(
         cmd,
