@@ -9,10 +9,10 @@
  * Hub shells); we reuse it here so the inner panel does not double-pad.
  */
 import { useCallback, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { RobotOutlined, TeamOutlined, BulbOutlined, UserOutlined } from '@ant-design/icons';
-import { Empty, Spin } from 'antd';
+import { ArrowLeftOutlined, RobotOutlined, TeamOutlined, BulbOutlined, UserOutlined } from '@ant-design/icons';
+import { Button, Empty, Spin } from 'antd';
 import { useAppStore } from '../store';
 import { useBots } from '../hooks/useBots';
 import { PageLayout } from '../components/PageLayout';
@@ -189,10 +189,31 @@ export function QueuesPage() {
   );
 }
 
+type TracesLocationState = { tracesReturnTo?: string };
+
 export function TracesPage() {
+  const { t } = useTranslation();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const returnTo = (location.state as TracesLocationState | null)?.tracesReturnTo;
+
   return (
     <StandalonePage showHeader={false}>
-      <Observability embedded />
+      <>
+        {returnTo ? (
+          <div className="shrink-0 border-b border-gray-200/80 px-1 pb-2 dark:border-gray-700/60">
+            <Button
+              type="link"
+              className="!h-auto !px-0 !py-0 text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
+              icon={<ArrowLeftOutlined />}
+              onClick={() => navigate(returnTo)}
+            >
+              {t('activity.returnToActivity')}
+            </Button>
+          </div>
+        ) : null}
+        <Observability embedded />
+      </>
     </StandalonePage>
   );
 }

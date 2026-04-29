@@ -389,7 +389,11 @@ export default function Activity({ embedded = false }: { embedded?: boolean } = 
                               type="link"
                               size="small"
                               className="px-0 h-auto"
-                              onClick={() => navigate(`/observability?trace_id=${encodeURIComponent(traceForObs)}`)}
+                              onClick={() =>
+                                navigate(`/traces?trace_id=${encodeURIComponent(traceForObs)}`, {
+                                  state: { tracesReturnTo: '/activity' },
+                                })
+                              }
                             >
                               {t('activity.openInObservability')}
                             </Button>
@@ -472,7 +476,9 @@ export default function Activity({ embedded = false }: { embedded?: boolean } = 
               <Button
                 type="primary"
                 onClick={() => {
-                  navigate(`/observability?trace_id=${encodeURIComponent(activityDetailTraceId)}`);
+                  navigate(`/traces?trace_id=${encodeURIComponent(activityDetailTraceId)}`, {
+                    state: { tracesReturnTo: '/activity' },
+                  });
                   setDetailItem(null);
                 }}
               >

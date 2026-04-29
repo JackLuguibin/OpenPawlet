@@ -81,15 +81,28 @@ const LEGACY_REDIRECTS: Record<string, Record<string, string>> = {
     memory: '/memory',
     profile: '/memory?section=profile',
   },
-  '/observability': {
-    health: '/dashboard',
-    trace: '/traces',
-    activity: '/activity',
-    logs: '/logs',
-    queues: '/queues',
-  },
   '/settings': { channels: '/channels', cron: '/cron' },
 };
+
+/** Former ObservabilityHub `?section=` tabs; handled only on `/observability` (not via LegacyDeepLinkRedirect). */
+const OBSERVABILITY_HUB_LEGACY_SECTIONS: Record<string, string> = {
+  health: '/dashboard',
+  trace: '/traces',
+  activity: '/activity',
+  logs: '/logs',
+  queues: '/queues',
+};
+
+function ObservabilityLegacyRoute() {
+  const location = useLocation();
+  const params = new URLSearchParams(location.search);
+  const section = params.get('section');
+  const target = section ? OBSERVABILITY_HUB_LEGACY_SECTIONS[section] : undefined;
+  if (target) {
+    return <Navigate to={target} replace />;
+  }
+  return <Navigate to={{ pathname: '/traces', search: location.search }} replace />;
+}
 
 function LegacyDeepLinkRedirect() {
   const location = useLocation();
@@ -143,7 +156,7 @@ function AppRoutes() {
                 new dedicated routes so old bookmarks keep working. */}
             <Route path="/sessions" element={<Navigate to="/chat" replace />} />
             <Route path="/knowledge" element={<Navigate to="/skills" replace />} />
-            <Route path="/observability" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/observability" element={<ObservabilityLegacyRoute />} />
           </Routes>
         </Suspense>
       </Layout>
