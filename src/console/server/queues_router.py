@@ -20,23 +20,14 @@ from fastapi import APIRouter, FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, Response
 from loguru import logger
 
+from console.server.app_state import app_uptime_seconds, get_message_bus, request_uptime_seconds
+
 if TYPE_CHECKING:
     from openpawlet.bus.queue import MessageBus
 
 
 _MODE_TAG = "in_process"
 _VERSION_TAG = "in-process"
-
-
-def _bus_from_request(request: Request) -> MessageBus | None:
-    bus = getattr(request.app.state, "message_bus", None)
-    return bus  # type: ignore[return-value]
-
-
-def _uptime_seconds(state: Any) -> float:
-    """Compute current uptime from ``app.state.started_at_perf``."""
-    started_at = float(getattr(state, "started_at_perf", time.perf_counter()))
-    return time.perf_counter() - started_at
 
 
 def _bus_stats(bus: MessageBus | None) -> dict[str, Any]:
@@ -125,12 +116,12 @@ _disabled = _gone
 
 
 async def _snapshot_route(request: Request) -> Response:
-    snap = _snapshot(_bus_from_request(request), _uptime_seconds(request.app.state))
+    snap = _snapshot(get_message_bus(request), request_uptime_seconds(request))
     return JSONResponse(snap)
 
 
 async def _health_route(request: Request) -> Response:
-    snap = _snapshot(_bus_from_request(request), _uptime_seconds(request.app.state))
+    snap = _snapshot(get_message_bus(request), request_uptime_seconds(request))
     return JSONResponse(
         {
             "status": snap["status"],
@@ -189,13 +180,13 @@ def _apply_subscription_op(active_topics: set[str], raw: str) -> None:
 async def _stream_route(websocket: WebSocket) -> None:
     """Push periodic snapshots over WebSocket; matches the legacy stream API."""
     await websocket.accept()
-    bus = getattr(websocket.app.state, "message_bus", None)
+    bus = get_message_bus(websocket)
     state = websocket.app.state
     active_topics: set[str] = set()
     try:
         while True:
             include_samples = "samples" in active_topics
-            snap = _snapshot(bus, _uptime_seconds(state), include_samples=include_samples)
+            snap = _snapshot(bus, app_uptime_seconds(state), include_samples=include_samples)
             payload: dict[str, Any] = {"type": "tick", "at": time.time()}
             payload.update({k: v for k, v in snap.items() if k in _STREAM_TICK_FIELDS})
             if include_samples:

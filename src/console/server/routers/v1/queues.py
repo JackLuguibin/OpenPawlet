@@ -9,25 +9,16 @@ and these routes now report the local queue state directly via
 
 from __future__ import annotations
 
-import time
 from typing import Any
 
 from fastapi import APIRouter, Request
 from loguru import logger
 from pydantic import BaseModel, Field
 
+from console.server.app_state import get_message_bus, request_uptime_seconds
 from console.server.queues_router import _disabled, _snapshot
 
 router = APIRouter(tags=["Queues"])
-
-
-def _bus(request: Request):
-    return getattr(request.app.state, "message_bus", None)
-
-
-def _uptime(request: Request) -> float:
-    started = float(getattr(request.app.state, "started_at_perf", time.perf_counter()))
-    return time.perf_counter() - started
 
 
 class PauseBody(BaseModel):
@@ -49,7 +40,7 @@ class ClearDedupeBody(BaseModel):
 @router.get("/queues/snapshot", summary="Queue snapshot (in-process bus)")
 async def queues_snapshot(request: Request) -> dict[str, Any]:
     """Return a unified snapshot of the in-process MessageBus."""
-    return _snapshot(_bus(request), _uptime(request))
+    return _snapshot(get_message_bus(request), request_uptime_seconds(request))
 
 
 @router.post("/queues/pause", summary="Pause/resume (no-op for in-process bus)")

@@ -16,6 +16,7 @@ __all__ = [
     "bad_request",
     "conflict",
     "forbidden",
+    "gone",
     "internal_error",
     "not_found",
     "not_found_detail",
@@ -24,16 +25,25 @@ __all__ = [
 ]
 
 
+def _raise(
+    status_code: int,
+    detail: Any,
+    *,
+    cause: BaseException | None = None,
+) -> NoReturn:
+    exc = HTTPException(status_code=status_code, detail=detail)
+    if cause is not None:
+        raise exc from cause
+    raise exc
+
+
 def bad_request(
     detail: Any = "Bad request",
     *,
     cause: BaseException | None = None,
 ) -> NoReturn:
     """Raise ``HTTPException(400)`` with *detail*."""
-    exc = HTTPException(status_code=400, detail=detail)
-    if cause is not None:
-        raise exc from cause
-    raise exc
+    _raise(400, detail, cause=cause)
 
 
 def forbidden(
@@ -42,15 +52,12 @@ def forbidden(
     cause: BaseException | None = None,
 ) -> NoReturn:
     """Raise ``HTTPException(403)`` with *detail*."""
-    exc = HTTPException(status_code=403, detail=detail)
-    if cause is not None:
-        raise exc from cause
-    raise exc
+    _raise(403, detail, cause=cause)
 
 
 def not_found(what: str = "Resource") -> NoReturn:
     """Raise ``HTTPException(404)`` for the named resource."""
-    raise HTTPException(status_code=404, detail=f"{what} not found")
+    _raise(404, f"{what} not found")
 
 
 def not_found_detail(
@@ -59,20 +66,24 @@ def not_found_detail(
     cause: BaseException | None = None,
 ) -> NoReturn:
     """Raise ``HTTPException(404)`` with an explicit *detail* message."""
-    exc = HTTPException(status_code=404, detail=detail)
-    if cause is not None:
-        raise exc from cause
-    raise exc
+    _raise(404, detail, cause=cause)
+
+
+def gone(
+    detail: Any = "Resource is no longer available",
+) -> NoReturn:
+    """Raise ``HTTPException(410)`` — resource removed, use alternate API."""
+    _raise(410, detail)
 
 
 def conflict(detail: Any = "Conflict") -> NoReturn:
     """Raise ``HTTPException(409)`` with *detail*."""
-    raise HTTPException(status_code=409, detail=detail)
+    _raise(409, detail)
 
 
 def unprocessable(detail: Any = "Unprocessable entity") -> NoReturn:
     """Raise ``HTTPException(422)`` with *detail*."""
-    raise HTTPException(status_code=422, detail=detail)
+    _raise(422, detail)
 
 
 def internal_error(
@@ -84,10 +95,7 @@ def internal_error(
 
     Pass *cause* to preserve exception chaining (equivalent to ``raise ... from cause``).
     """
-    exc = HTTPException(status_code=500, detail=detail)
-    if cause is not None:
-        raise exc from cause
-    raise exc
+    _raise(500, detail, cause=cause)
 
 
 def service_unavailable(
@@ -96,7 +104,4 @@ def service_unavailable(
     cause: BaseException | None = None,
 ) -> NoReturn:
     """Raise ``HTTPException(503)`` with *detail*."""
-    exc = HTTPException(status_code=503, detail=detail)
-    if cause is not None:
-        raise exc from cause
-    raise exc
+    _raise(503, detail, cause=cause)

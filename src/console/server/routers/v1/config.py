@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Query, Request
 from pydantic import ValidationError
 
 from console.server.config_apply import apply_config_change
+from console.server.http_errors import bad_request, gone, internal_error
 from console.server.models import (
     ConfigPutBody,
     ConfigSection,
@@ -37,10 +38,10 @@ async def get_config(
     try:
         data = build_config_response(path)
     except ValidationError as exc:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid config file {path}: {exc}",
-        ) from exc
+        bad_request(
+            f"Invalid config file {path}: {exc}",
+            cause=exc,
+        )
     return DataResponse(data=ConfigSection.model_validate(data))
 
 
@@ -61,30 +62,24 @@ async def put_config(
     longer need to restart the server for most edits to take effect.
     """
     if body.section == "providers":
-        raise HTTPException(
-            status_code=410,
-            detail=(
-                "Editing providers via /config is no longer supported. "
-                "Use /api/v1/bots/{bot_id}/llm-providers instead."
-            ),
+        gone(
+            "Editing providers via /config is no longer supported. "
+            "Use /api/v1/bots/{bot_id}/llm-providers instead."
         )
     path = resolve_config_path(bot_id)
     old_raw = load_raw_config(path)
     merged = merge_config_section(path, body.section, body.data)
     ok, errors = validate_core_config(merged)
     if not ok:
-        raise HTTPException(
-            status_code=400,
-            detail="; ".join(errors) if errors else "Invalid configuration",
-        )
+        bad_request("; ".join(errors) if errors else "Invalid configuration")
     try:
         save_full_config(path, merged)
     except ValidationError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        bad_request(str(exc), cause=exc)
     try:
         data = build_config_response(path)
     except ValidationError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        internal_error(str(exc), cause=exc)
     await apply_config_change(request.app, bot_id, old_raw, merged)
     push_after_config_change(bot_id)
     return DataResponse(data=ConfigSection.model_validate(data))

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Query, Request
 
+from console.server.app_state import get_agent_manager
 from console.server.bot_workspace import read_bot_runtime
 from console.server.bots_registry import get_registry
 from console.server.channels_service import list_channel_statuses
@@ -26,7 +27,7 @@ def _runtime_status_for_bot(request: Request, bot_id: str | None) -> tuple[bool,
     ``agent_manager`` for the currently active bot; otherwise fall back to
     per-bot persisted state.
     """
-    manager = getattr(request.app.state, "agent_manager", None)
+    manager = get_agent_manager(request)
     if manager is None:
         return None
     active_bot_id = str(getattr(request.app.state, "active_bot_id", "") or "").strip()

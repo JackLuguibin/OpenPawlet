@@ -12,6 +12,7 @@ from typing import Any
 
 from fastapi import APIRouter, Query, Request
 
+from console.server.app_state import require_agent_manager
 from console.server.http_errors import internal_error, not_found, service_unavailable
 from console.server.models import (
     DataResponse,
@@ -23,17 +24,6 @@ from console.server.models import (
 from console.server.openpawlet_user_config import BOT_ID_DESCRIPTION
 
 router = APIRouter(tags=["Control"])
-
-
-def _runtime_manager_or_503(request: Request) -> Any:
-    """Return runtime manager from app state or raise 503 in degraded mode."""
-    manager = getattr(request.app.state, "agent_manager", None)
-    if manager is None:
-        service_unavailable(
-            "Embedded runtime manager unavailable (degraded mode or disabled runtime).",
-        )
-    return manager
-
 
 def _runtime_status_model(row: Any) -> RuntimeAgentStatus:
     """Convert runtime status dataclass/object to API model."""
@@ -79,7 +69,7 @@ async def restart_bot(
 )
 async def list_runtime_agents(request: Request) -> DataResponse[list[RuntimeAgentStatus]]:
     """Return runtime statuses for the unified manager."""
-    manager = _runtime_manager_or_503(request)
+    manager = require_agent_manager(request)
     rows = [_runtime_status_model(row) for row in manager.list_statuses()]
     return DataResponse(data=rows)
 
@@ -94,7 +84,7 @@ async def get_runtime_agent_status(
     agent_id: str,
 ) -> DataResponse[RuntimeAgentStatus]:
     """Return runtime status by `main`/main id or `sub:<task_id>`."""
-    manager = _runtime_manager_or_503(request)
+    manager = require_agent_manager(request)
     row = manager.get_status(agent_id)
     if row is None:
         not_found("Runtime agent")
@@ -108,7 +98,7 @@ async def get_runtime_agent_status(
 )
 async def start_main_agent(request: Request) -> DataResponse[RuntimeControlResult]:
     """Start the primary agent loop when it is not running."""
-    manager = _runtime_manager_or_503(request)
+    manager = require_agent_manager(request)
     try:
         changed = await manager.start_main()
     except RuntimeError as exc:
@@ -135,7 +125,7 @@ async def start_main_agent(request: Request) -> DataResponse[RuntimeControlResul
 )
 async def stop_main_agent(request: Request) -> DataResponse[RuntimeControlResult]:
     """Stop the primary agent loop when it is running."""
-    manager = _runtime_manager_or_503(request)
+    manager = require_agent_manager(request)
     changed = await manager.stop_main()
     row = manager.get_status("main")
     if row is None:
@@ -160,7 +150,7 @@ async def start_subagent(
     body: RuntimeSubagentStartBody,
 ) -> DataResponse[RuntimeControlResult]:
     """Create a managed subagent task (team_id is plain metadata)."""
-    manager = _runtime_manager_or_503(request)
+    manager = require_agent_manager(request)
     try:
         sub_id = await manager.start_subagent(
             task=body.task,
@@ -197,7 +187,7 @@ async def stop_subagent(
     agent_id: str,
 ) -> DataResponse[RuntimeControlResult]:
     """Stop one managed subagent by runtime id."""
-    manager = _runtime_manager_or_503(request)
+    manager = require_agent_manager(request)
     changed = await manager.stop_subagent(agent_id)
     row = manager.get_status(agent_id)
     if row is None:
