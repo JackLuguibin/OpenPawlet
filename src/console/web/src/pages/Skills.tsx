@@ -1380,7 +1380,7 @@ export default function Skills({
           {mainColumn}
         </PageLayout>
       ) : (
-        <PageLayout variant="bleed" className="gap-6 md:p-8">
+        <PageLayout className="min-h-0 flex-1 overflow-hidden">
           {mainColumn}
         </PageLayout>
       )}

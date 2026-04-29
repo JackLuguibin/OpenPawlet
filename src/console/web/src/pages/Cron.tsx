@@ -301,16 +301,16 @@ export default function Cron({ embedded = false }: { embedded?: boolean } = {}) 
   const enabledCount = jobs.filter((j) => j.enabled).length;
 
   return (
-    <PageLayout embedded={embedded} className={embedded ? 'min-h-0 flex-1 gap-6 overflow-hidden' : ''}>
-      <div className="flex shrink-0 flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
+    <PageLayout embedded={embedded} className="min-h-0 flex-1 gap-6 overflow-hidden">
+      <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between pb-2">
+        <header className="min-w-0">
           <h1 className={PAGE_PRIMARY_TITLE_CLASS}>
             {t('cron.pageTitle')}
           </h1>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 max-w-xl leading-relaxed">
+          <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-gray-500 dark:text-gray-400">
             {t('cron.pageSubtitle')}
           </p>
-        </div>
+        </header>
         <Space className="w-full sm:w-auto justify-end flex-wrap">
           <Button icon={<ReloadOutlined />} onClick={() => refetch()}>
             <span className="hidden sm:inline">{t('common.refresh')}</span>

@@ -441,7 +441,11 @@ export function MCPServersPanel({
 
   if (error) {
     return (
-      <PageLayout variant="bleed" embedded={embedded} className={embedded ? '' : 'gap-6 md:p-8'}>
+      <PageLayout
+        variant="bleed"
+        embedded={embedded}
+        className={embedded ? '' : 'min-h-0 flex-1 overflow-hidden'}
+      >
         <Alert
           type="error"
           title={t('mcp.loadFailed')}
@@ -463,26 +467,27 @@ export function MCPServersPanel({
   const showCronHeadingRow = !embedded || standaloneSurface;
 
   const headerRow = showCronHeadingRow ? (
-    <div className="flex shrink-0 flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-      <div className="min-w-0">
+    <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between pb-2">
+      <header className="min-w-0">
         <h1 className={PAGE_PRIMARY_TITLE_CLASS}>{t('mcp.pageTitle')}</h1>
-        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 max-w-xl leading-relaxed">
+        <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-gray-500 dark:text-gray-400">
           {t('mcp.subtitle')}
         </p>
-      </div>
+      </header>
       {refreshButtons}
     </div>
   ) : (
-    <div className="flex shrink-0 flex-col gap-4 sm:flex-row sm:items-center sm:justify-end">
+    <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-end pb-2">
       {refreshButtons}
     </div>
   );
 
   const main = (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-6 overflow-hidden">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       {headerRow}
 
       {mcpServers && mcpServers.length > 0 ? (
+        <div className="mt-4 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <div className="flex-1 min-h-0 overflow-y-auto space-y-6">
           <div className="space-y-3">
             {mcpServers.map((server) => (
@@ -722,8 +727,9 @@ export function MCPServersPanel({
             </Card>
           )}
         </div>
+        </div>
       ) : (
-        <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden">
+        <div className="mt-4 flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden">
           <Card
             className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col rounded-md border border-gray-200/80 dark:border-gray-700/60 bg-white dark:bg-gray-800/40"
             classNames={{ body: 'flex min-h-0 flex-1 flex-col overflow-y-auto' }}
@@ -821,7 +827,7 @@ export function MCPServersPanel({
   }
 
   return (
-    <PageLayout variant="bleed" className="gap-6 md:p-8">
+    <PageLayout className="min-h-0 flex-1 overflow-hidden">
       {main}
     </PageLayout>
   );

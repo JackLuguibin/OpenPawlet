@@ -57,9 +57,12 @@ import type {
 
 const { Text } = Typography;
 
-/** Shared card chrome (border, radius). Flat, line-only surface. */
+/**
+ * Match Agents/Teams outer Card: rounded-md, /90 borders, light shadow.
+ * `settings-surface-card` in index.css re-applies radius + shadow (global ant Card strips shadow).
+ */
 const SETTINGS_CARD_SURFACE =
-  'w-full rounded border border-gray-200 dark:border-gray-800 shadow-none';
+  'settings-surface-card w-full overflow-hidden rounded-md border border-gray-200/90 shadow-sm dark:border-gray-700/80 dark:bg-gray-800/35';
 
 /** Card grows to fill tab pane; header stays visible, body scrolls. */
 const SETTINGS_SCROLL_CARD_CLASS = `${SETTINGS_CARD_SURFACE} min-h-0 flex flex-1 flex-col`;
@@ -1659,40 +1662,38 @@ export default function Settings() {
   ];
 
   return (
-    <PageLayout variant="bleed" className="gap-6 md:p-8">
-      {/* Header */}
-      <div className="flex shrink-0 flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0 space-y-0.5">
-          <h1 className={PAGE_PRIMARY_TITLE_CLASS}>
-            {t('settings.title')}
-          </h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            {t('settings.subtitle')}
-          </p>
+    <PageLayout className="min-h-0 flex-1 overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between pb-2">
+          <header className="min-w-0">
+            <h1 className={PAGE_PRIMARY_TITLE_CLASS}>{t('settings.title')}</h1>
+            <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-gray-500 dark:text-gray-400">
+              {t('settings.subtitle')}
+            </p>
+          </header>
+          <Space wrap className="shrink-0">
+            <Button icon={<DownloadOutlined />} onClick={handleExportConfig}>
+              {t('settings.export')}
+            </Button>
+            <Button
+              type="primary"
+              icon={<SaveOutlined />}
+              loading={saveSettingsMutation.isPending}
+              onClick={handleSave}
+            >
+              {t('settings.saveChanges')}
+            </Button>
+          </Space>
         </div>
-        <Space wrap className="shrink-0">
-          <Button icon={<DownloadOutlined />} onClick={handleExportConfig}>
-            {t('settings.export')}
-          </Button>
-          <Button
-            type="primary"
-            icon={<SaveOutlined />}
-            loading={saveSettingsMutation.isPending}
-            onClick={handleSave}
-          >
-            {t('settings.saveChanges')}
-          </Button>
-        </Space>
+        <Tabs
+          activeKey={activeTab}
+          onChange={(key) => setActiveTab(key as SettingsTab)}
+          items={tabItems}
+          className="hub-shell-tabs flex min-h-0 min-w-0 flex-1 flex-col"
+          size="large"
+          tabBarGutter={token.marginXL}
+        />
       </div>
-
-      <Tabs
-        activeKey={activeTab}
-        onChange={(key) => setActiveTab(key as SettingsTab)}
-        items={tabItems}
-        className="hub-shell-tabs"
-        size="large"
-        tabBarGutter={token.marginXL}
-      />
     </PageLayout>
   );
 }

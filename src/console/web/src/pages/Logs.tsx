@@ -324,7 +324,7 @@ export default function Logs({ embedded = false }: { embedded?: boolean } = {}) 
   };
 
   return (
-    <PageLayout embedded={embedded}>
+    <PageLayout embedded={embedded} className="min-h-0 flex-1 overflow-hidden">
       <div className="flex min-h-0 flex-1 flex-col gap-5 [&_.ant-input-affix-wrapper]:!rounded-md [&_.ant-btn]:!rounded-md [&_.ant-alert]:!rounded-md">
         <div className="flex shrink-0 flex-col gap-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between lg:gap-6">
@@ -332,7 +332,7 @@ export default function Logs({ embedded = false }: { embedded?: boolean } = {}) 
               <h1 className={PAGE_PRIMARY_TITLE_CLASS}>
                 {t('logs.title')}
               </h1>
-              <p className="mt-1.5 text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+              <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-gray-500 dark:text-gray-400">
                 {t('logs.subtitle')}
               </p>
             </div>

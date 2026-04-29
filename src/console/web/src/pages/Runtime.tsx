@@ -475,70 +475,80 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
   ];
 
   return (
-    <PageLayout embedded={embedded}>
-      <div className="flex shrink-0 flex-col gap-4 border-b border-slate-200/90 pb-6 dark:border-slate-700/70 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <h1 className={PAGE_PRIMARY_TITLE_CLASS}>
-            {t('runtime.title')}
-          </h1>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            {t('runtime.subtitle')}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
-          <div className="inline-flex items-center rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700 dark:border-blue-900/60 dark:bg-blue-900/20 dark:text-blue-300">
-            {t('runtime.summary', {
-              main: mainRow?.running ? t('runtime.running') : t('runtime.stopped'),
-              sub: runningSubCount,
-            })}
+    <PageLayout embedded={embedded} className="min-h-0 flex-1 overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between pb-2">
+          <header className="min-w-0">
+            <h1 className={PAGE_PRIMARY_TITLE_CLASS}>{t('runtime.title')}</h1>
+            <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-gray-500 dark:text-gray-400">
+              {t('runtime.subtitle')}
+            </p>
+          </header>
+          <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
+            <div className="inline-flex items-center rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700 dark:border-blue-900/60 dark:bg-blue-900/20 dark:text-blue-300">
+              {t('runtime.summary', {
+                main: mainRow?.running ? t('runtime.running') : t('runtime.stopped'),
+                sub: runningSubCount,
+              })}
+            </div>
+            <Button
+              icon={<ReloadOutlined />}
+              onClick={() => agentsQuery.refetch()}
+              loading={agentsQuery.isFetching && !agentsQuery.isLoading}
+            >
+              <span className="hidden sm:inline">{t('common.refresh')}</span>
+            </Button>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={openStartModalBlank}
+              disabled={!mainRow}
+            >
+              <span className="hidden sm:inline">{t('runtime.startSub')}</span>
+            </Button>
           </div>
-          <Button
-            icon={<ReloadOutlined />}
-            onClick={() => agentsQuery.refetch()}
-            loading={agentsQuery.isFetching && !agentsQuery.isLoading}
+        </div>
+
+        <div className="mt-4 flex min-h-0 min-w-0 flex-1 flex-col gap-4">
+          {errorMessage && (
+            <Alert
+              type="error"
+              showIcon
+              message={t('runtime.unavailable')}
+              description={errorMessage}
+            />
+          )}
+
+          <Card
+            className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-md border border-gray-200/90 shadow-sm dark:border-gray-700/80 dark:bg-gray-800/35"
+            styles={{
+              body: {
+                padding: 0,
+                flex: 1,
+                minHeight: 0,
+                display: 'flex',
+                flexDirection: 'column',
+              },
+            }}
           >
-            <span className="hidden sm:inline">{t('common.refresh')}</span>
-          </Button>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={openStartModalBlank}
-            disabled={!mainRow}
-          >
-            <span className="hidden sm:inline">{t('runtime.startSub')}</span>
-          </Button>
+            {agentsQuery.isLoading ? (
+              <div className="flex justify-center py-12">
+                <Spin size="large" />
+              </div>
+            ) : rows.length === 0 ? (
+              <Empty description={t('runtime.empty')} className="py-12" />
+            ) : (
+              <Table<RuntimeAgentStatus>
+                rowKey="agent_id"
+                dataSource={rows}
+                columns={columns}
+                pagination={false}
+                size="middle"
+              />
+            )}
+          </Card>
         </div>
       </div>
-
-      {errorMessage && (
-        <Alert
-          type="error"
-          showIcon
-          message={t('runtime.unavailable')}
-          description={errorMessage}
-        />
-      )}
-
-      <Card
-        className="rounded-xl border border-gray-200/80 bg-white shadow-sm dark:border-gray-700/60 dark:bg-gray-800/60"
-        styles={{ body: { padding: 0 } }}
-      >
-        {agentsQuery.isLoading ? (
-          <div className="flex justify-center py-12">
-            <Spin size="large" />
-          </div>
-        ) : rows.length === 0 ? (
-          <Empty description={t('runtime.empty')} className="py-12" />
-        ) : (
-          <Table<RuntimeAgentStatus>
-            rowKey="agent_id"
-            dataSource={rows}
-            columns={columns}
-            pagination={false}
-            size="middle"
-          />
-        )}
-      </Card>
 
       <Modal
         title={

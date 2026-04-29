@@ -40,7 +40,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store';
 import { PageLayout } from '../components/PageLayout';
-import { PAGE_PRIMARY_TITLE_CLASS } from '../utils/pageTitleClasses';
+import { PAGE_PRIMARY_TITLE_GRADIENT_CLASS } from '../utils/pageTitleClasses';
 import * as api from '../api/client';
 import { useAgentTimeZone } from '../hooks/useAgentTimeZone';
 import { formatAgentDateISO } from '../utils/agentDatetime';
@@ -521,19 +521,16 @@ export default function Agents({ embedded = false }: { embedded?: boolean } = {}
   }
 
   return (
-    <PageLayout embedded={embedded}>
-      {/* Header + toolbar */}
-      <div className="shrink-0 rounded-xl border border-gray-200/80 bg-white/90 p-4 shadow-sm dark:border-gray-700/70 dark:bg-gray-800/60">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className={PAGE_PRIMARY_TITLE_CLASS}>
-              {t('agents.title')}
-            </h1>
-            <p className="mt-1.5 text-sm text-gray-500 dark:text-gray-400 hidden sm:block">
+    <PageLayout variant="bleed" embedded={embedded} className="min-h-0 flex-1 overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <h1 className={PAGE_PRIMARY_TITLE_GRADIENT_CLASS}>{t('agents.title')}</h1>
+            <p className="mt-1 hidden text-sm text-gray-500 sm:block dark:text-gray-400">
               {t('agents.subtitle')}
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
             <div className="inline-flex items-center rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700 dark:border-blue-900/60 dark:bg-blue-900/20 dark:text-blue-300">
               {filteredAgents.length} / {agents.length}
             </div>
@@ -544,13 +541,25 @@ export default function Agents({ embedded = false }: { embedded?: boolean } = {}
             )}
           </div>
         </div>
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2.5">
-          <div className="flex flex-wrap items-center gap-2">
-            {allCategoryTabs.map((cat) => (
-              <button
-                key={cat.key}
-                onClick={() => setSelectedCategory(cat.key)}
-                className={`
+
+        <Card
+          className="mt-4 flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-gray-200/90 shadow-sm dark:border-gray-700/80 dark:bg-gray-800/35"
+          styles={{
+            body: { padding: 0, display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 },
+          }}
+        >
+          <div
+            className="shrink-0 border-b border-gray-100 bg-gray-50/40 px-4 py-3 dark:border-gray-700 dark:bg-gray-800/20"
+            role="search"
+            aria-label={t('agents.subtitle')}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2.5">
+              <div className="flex flex-wrap items-center gap-2">
+                {allCategoryTabs.map((cat) => (
+                  <button
+                    key={cat.key}
+                    onClick={() => setSelectedCategory(cat.key)}
+                    className={`
                   rounded-full border px-4 py-1.5 text-sm font-medium transition-all duration-200
                   ${
                     selectedCategory === cat.key
@@ -558,53 +567,52 @@ export default function Agents({ embedded = false }: { embedded?: boolean } = {}
                       : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-gray-600'
                   }
                 `}
-              >
-                {cat.label}
-              </button>
-            ))}
-            <button
-              type="button"
-              onClick={() => {
-                setNewCategoryName('');
-                setAddCategoryModalOpen(true);
-              }}
-              className="rounded-full border border-dashed border-gray-300 px-4 py-1.5 text-sm font-medium text-gray-500 transition-all hover:border-gray-400 hover:bg-gray-50 hover:text-gray-700 dark:border-gray-600 dark:text-gray-400 dark:hover:border-gray-500 dark:hover:bg-gray-800/60 dark:hover:text-gray-300"
-            >
-              {t('agents.addCategory')}
-            </button>
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNewCategoryName('');
+                    setAddCategoryModalOpen(true);
+                  }}
+                  className="rounded-full border border-dashed border-gray-300 px-4 py-1.5 text-sm font-medium text-gray-500 transition-all hover:border-gray-400 hover:bg-gray-50 hover:text-gray-700 dark:border-gray-600 dark:text-gray-400 dark:hover:border-gray-500 dark:hover:bg-gray-800/60 dark:hover:text-gray-300"
+                >
+                  {t('agents.addCategory')}
+                </button>
+              </div>
+              <Space align="center" size="small">
+                <Button
+                  icon={<ReloadOutlined />}
+                  onClick={() => refetch()}
+                  className="border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500"
+                >
+                  <span className="hidden sm:inline">{t('common.refresh')}</span>
+                </Button>
+                <Button
+                  icon={<UploadOutlined />}
+                  onClick={() => setImportModalOpen(true)}
+                  className="border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500"
+                >
+                  <span className="hidden sm:inline">{t('agents.import')}</span>
+                </Button>
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  onClick={() => {
+                    resetForm();
+                    setCreateModalOpen(true);
+                  }}
+                  className="shadow-md shadow-blue-500/25"
+                >
+                  <span className="hidden sm:inline">{t('agents.newAgent')}</span>
+                </Button>
+              </Space>
+            </div>
           </div>
-          <Space align="center" size="small">
-            <Button
-              icon={<ReloadOutlined />}
-              onClick={() => refetch()}
-              className="border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500"
-            >
-              <span className="hidden sm:inline">{t('common.refresh')}</span>
-            </Button>
-            <Button
-              icon={<UploadOutlined />}
-              onClick={() => setImportModalOpen(true)}
-              className="border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500"
-            >
-              <span className="hidden sm:inline">{t('agents.import')}</span>
-            </Button>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => {
-                resetForm();
-                setCreateModalOpen(true);
-              }}
-              className="shadow-md shadow-blue-500/25"
-            >
-              <span className="hidden sm:inline">{t('agents.newAgent')}</span>
-            </Button>
-          </Space>
-        </div>
-      </div>
 
-      {/* Content */}
-      <div className="mt-4 flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
       {isLoading ? (
         <div className="flex justify-center py-12">
           <Spin size="large" />
@@ -722,6 +730,8 @@ export default function Agents({ embedded = false }: { embedded?: boolean } = {}
           })}
         </div>
       )}
+          </div>
+        </Card>
       </div>
 
       {/* Batch Actions */}

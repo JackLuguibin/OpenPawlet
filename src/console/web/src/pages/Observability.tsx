@@ -412,9 +412,9 @@ export default function Observability({ embedded = false }: { embedded?: boolean
   );
 
   return (
-    <PageLayout variant="bleed" embedded={embedded} className="min-h-0">
+    <PageLayout variant="bleed" embedded={embedded} className="min-h-0 flex-1 overflow-hidden">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex shrink-0 flex-col gap-3 pb-2 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <h1 className={PAGE_PRIMARY_TITLE_GRADIENT_CLASS}>
               {t('observability.title')}
