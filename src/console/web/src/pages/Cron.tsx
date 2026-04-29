@@ -311,18 +311,19 @@ export default function Cron({ embedded = false }: { embedded?: boolean } = {}) 
           </p>
         </header>
         <Space className="w-full sm:w-auto justify-end flex-wrap">
-          <Button icon={<ReloadOutlined />} onClick={() => refetch()}>
+          <Button icon={<ReloadOutlined />} onClick={() => refetch()} aria-label={t('common.refresh')}>
             <span className="hidden sm:inline">{t('common.refresh')}</span>
           </Button>
           <Button
             type="primary"
             icon={<PlusOutlined />}
+            aria-label={t('cron.addTask')}
             onClick={() => {
               setEditingJob(null);
               setFormOpen(true);
             }}
           >
-            {t('cron.addTask')}
+            <span className="hidden sm:inline">{t('cron.addTask')}</span>
           </Button>
         </Space>
       </div>
@@ -404,13 +405,14 @@ export default function Cron({ embedded = false }: { embedded?: boolean } = {}) 
             <Button
               type="primary"
               icon={<PlusOutlined />}
+              aria-label={t('cron.addTask')}
               onClick={() => {
                 setEditingJob(null);
                 setFormOpen(true);
               }}
               className="mt-4"
             >
-              {t('cron.addTask')}
+              <span className="hidden sm:inline">{t('cron.addTask')}</span>
             </Button>
           </div>
         ) : (

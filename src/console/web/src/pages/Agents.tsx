@@ -586,6 +586,7 @@ export default function Agents({ embedded = false }: { embedded?: boolean } = {}
                 <Button
                   icon={<ReloadOutlined />}
                   onClick={() => refetch()}
+                  aria-label={t('common.refresh')}
                   className="border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500"
                 >
                   <span className="hidden sm:inline">{t('common.refresh')}</span>
@@ -593,6 +594,7 @@ export default function Agents({ embedded = false }: { embedded?: boolean } = {}
                 <Button
                   icon={<UploadOutlined />}
                   onClick={() => setImportModalOpen(true)}
+                  aria-label={t('agents.import')}
                   className="border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500"
                 >
                   <span className="hidden sm:inline">{t('agents.import')}</span>
@@ -600,6 +602,7 @@ export default function Agents({ embedded = false }: { embedded?: boolean } = {}
                 <Button
                   type="primary"
                   icon={<PlusOutlined />}
+                  aria-label={t('agents.newAgent')}
                   onClick={() => {
                     resetForm();
                     setCreateModalOpen(true);

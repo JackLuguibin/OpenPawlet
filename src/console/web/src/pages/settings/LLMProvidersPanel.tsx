@@ -338,12 +338,18 @@ export default function LLMProvidersPanel({ embedded = false }: { embedded?: boo
         <Space>
           <Button
             icon={<ReloadOutlined />}
+            aria-label={t('common.refresh')}
             onClick={() => instancesQuery.refetch()}
           >
-            {t('common.refresh')}
+            <span className="hidden sm:inline">{t('common.refresh')}</span>
           </Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={openCreateDrawer}>
-            {t('llmProviders.add')}
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            aria-label={t('llmProviders.add')}
+            onClick={openCreateDrawer}
+          >
+            <span className="hidden sm:inline">{t('llmProviders.add')}</span>
           </Button>
         </Space>
       </div>

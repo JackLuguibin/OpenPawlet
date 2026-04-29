@@ -1199,10 +1199,11 @@ export default function Skills({
       <Button
         type="primary"
         icon={<PlusOutlined />}
+        aria-label={t('skills.addSkill')}
         onClick={() => setSkillCreateModal(true)}
         className="shadow-md shadow-primary-500/25 shrink-0"
       >
-        {t('skills.addSkill')}
+        <span className="hidden sm:inline">{t('skills.addSkill')}</span>
       </Button>
     </Space>
   );

@@ -324,9 +324,9 @@ export default function TeamDetail() {
             size="large"
             shape="round"
             onClick={() => setInfoDrawerOpen(true)}
-            className="h-10 rounded-full border-zinc-200 bg-white px-4 text-zinc-700 hover:!border-violet-300 hover:!text-violet-700 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:!border-violet-700 dark:hover:!text-violet-300"
+            className="h-10 max-w-[calc(100vw-8rem)] rounded-full border-zinc-200 bg-white px-4 text-zinc-700 hover:!border-violet-300 hover:!text-violet-700 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:!border-violet-700 dark:hover:!text-violet-300 sm:max-w-none"
           >
-            {t('teams.teamProfile')}
+            <span className="block max-w-[9rem] truncate sm:max-w-none">{t('teams.teamProfile')}</span>
           </Button>
           <Tooltip title={t('teams.addMember')}>
             <Button
@@ -334,6 +334,7 @@ export default function TeamDetail() {
               shape="round"
               size="large"
               icon={<UserAddOutlined />}
+              aria-label={t('teams.addMember')}
               onClick={() => setAddMemberOpen(true)}
               disabled={availableToAdd.length === 0}
               className="h-10 border-0 bg-violet-600 px-4 shadow-sm shadow-violet-500/20 hover:!bg-violet-500 dark:bg-violet-600"
@@ -435,12 +436,13 @@ export default function TeamDetail() {
                 <Button
                   icon={<ReloadOutlined />}
                   size="middle"
+                  aria-label={t('teams.refreshTranscript')}
                   onClick={() => refetchTr()}
                   loading={trLoading}
                   disabled={!roomId}
                   className="!h-8 shrink-0 rounded-md border-zinc-200 px-2.5 text-xs text-zinc-700 hover:!border-violet-300 hover:!text-violet-600 dark:border-zinc-600 dark:text-zinc-200 dark:hover:!border-violet-600 dark:hover:!text-violet-300"
                 >
-                  {t('teams.refreshTranscript')}
+                  <span className="hidden sm:inline">{t('teams.refreshTranscript')}</span>
                 </Button>
               </div>
             </div>

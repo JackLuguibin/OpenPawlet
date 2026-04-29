@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import {
@@ -8,6 +8,7 @@ import {
   Drawer,
   Empty,
   Form,
+  Grid,
   Input,
   Modal,
   Popconfirm,
@@ -19,6 +20,7 @@ import {
   Tooltip,
   Typography,
 } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
 import {
   EyeOutlined,
   PlayCircleOutlined,
@@ -84,6 +86,9 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
   const queryClient = useQueryClient();
   const addToast = useAppStore((s) => s.addToast);
   const wsConnected = useAppStore((s) => s.wsConnected);
+  const screens = Grid.useBreakpoint();
+  const showUptimeCol = Boolean(screens.md);
+  const showMetaCol = Boolean(screens.lg);
   const [startModalOpen, setStartModalOpen] = useState(false);
   const [form] = Form.useForm<RuntimeSubagentStartBody>();
   // When user clicks "启动" on a profile row, we pre-fill the start
@@ -240,45 +245,65 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
       .catch(() => undefined);
   };
 
-  const renderRoleTag = (row: RuntimeAgentStatus) => {
-    if (row.role === 'main') {
+  const renderRoleTag = useCallback(
+    (row: RuntimeAgentStatus) => {
+      if (row.role === 'main') {
+        return (
+          <Tag color="geekblue" icon={<ApiOutlined />}>
+            {t('runtime.roleMain')}
+          </Tag>
+        );
+      }
+      if (row.role === 'agent') {
+        return (
+          <Tag color="green" icon={<RobotOutlined />}>
+            {t('runtime.roleAgent')}
+          </Tag>
+        );
+      }
+      if (row.role === 'profile') {
+        return (
+          <Tag color="default" icon={<RobotOutlined />}>
+            {t('runtime.roleProfile')}
+          </Tag>
+        );
+      }
       return (
-        <Tag color="geekblue" icon={<ApiOutlined />}>
-          {t('runtime.roleMain')}
+        <Tag color="purple" icon={<RobotOutlined />}>
+          {t('runtime.roleSub')}
         </Tag>
       );
-    }
-    if (row.role === 'agent') {
-      return (
-        <Tag color="green" icon={<RobotOutlined />}>
-          {t('runtime.roleAgent')}
-        </Tag>
-      );
-    }
-    if (row.role === 'profile') {
-      return (
-        <Tag color="default" icon={<RobotOutlined />}>
-          {t('runtime.roleProfile')}
-        </Tag>
-      );
-    }
-    return (
-      <Tag color="purple" icon={<RobotOutlined />}>
-        {t('runtime.roleSub')}
-      </Tag>
-    );
-  };
+    },
+    [t],
+  );
 
-  const columns = [
-    {
+  const columns: ColumnsType<RuntimeAgentStatus> = useMemo(() => {
+    const agentCol: ColumnsType<RuntimeAgentStatus>[number] = {
       title: t('runtime.colAgentId'),
       dataIndex: 'agent_id',
       key: 'agent_id',
       render: (_: unknown, row: RuntimeAgentStatus) => (
-        <Space orientation="vertical" size={0} className="min-w-[160px]">
-          <Space size={6} align="center">
-            {renderRoleTag(row)}
-            <Text className="font-mono text-[12px]">{row.agent_id}</Text>
+        <Space
+          orientation="vertical"
+          size={0}
+          className={showUptimeCol ? 'min-w-[200px]' : 'min-w-0'}
+        >
+          <Space size={6} align="center" wrap={false} className="min-w-0">
+            <span className="shrink-0">{renderRoleTag(row)}</span>
+            {showUptimeCol ? (
+              <Tooltip title={row.agent_id}>
+                <Text className="font-mono text-[12px] whitespace-nowrap">
+                  {row.agent_id}
+                </Text>
+              </Tooltip>
+            ) : (
+              <Text
+                ellipsis={{ tooltip: row.agent_id }}
+                className="min-w-0 max-w-[100%] font-mono text-[12px]"
+              >
+                {row.agent_id}
+              </Text>
+            )}
           </Space>
           {row.label && (
             <Text type="secondary" className="text-xs">
@@ -287,8 +312,8 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
           )}
         </Space>
       ),
-    },
-    {
+    };
+    const statusCol: ColumnsType<RuntimeAgentStatus>[number] = {
       title: t('runtime.colStatus'),
       dataIndex: 'running',
       key: 'running',
@@ -300,8 +325,11 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
               ? t('runtime.running')
               : t('runtime.stopped');
         return (
-          <Space orientation="vertical" size={0}>
-            <Tag color={phaseTagColor(row.phase, row.running)}>
+          <Space orientation="vertical" size={0} className={showUptimeCol ? 'min-w-[140px]' : 'min-w-0'}>
+            <Tag
+              color={phaseTagColor(row.phase, row.running)}
+              className={`m-0 ${showUptimeCol ? 'whitespace-nowrap' : ''}`}
+            >
               {statusLabel}
               {row.phase ? ` · ${row.phase}` : ''}
             </Tag>
@@ -313,19 +341,22 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
           </Space>
         );
       },
-    },
-    {
+    };
+    const uptimeCol: ColumnsType<RuntimeAgentStatus>[number] = {
       title: t('runtime.colUptime'),
       key: 'uptime',
+      width: 112,
       render: (_: unknown, row: RuntimeAgentStatus) => (
-        <Text className="text-xs">{formatUptime(row.uptime_seconds)}</Text>
+        <Text className="block text-xs whitespace-nowrap tabular-nums">
+          {formatUptime(row.uptime_seconds)}
+        </Text>
       ),
-    },
-    {
+    };
+    const metaCol: ColumnsType<RuntimeAgentStatus>[number] = {
       title: t('runtime.colMeta'),
       key: 'meta',
       render: (_: unknown, row: RuntimeAgentStatus) => (
-        <Space orientation="vertical" size={2} className="min-w-[160px]">
+        <Space orientation="vertical" size={2} className="min-w-[180px]">
           {row.team_id && (
             <Tag color="purple" className="!m-0">
               team:{row.team_id}
@@ -355,11 +386,11 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
           )}
         </Space>
       ),
-    },
-    {
+    };
+    const actionsCol: ColumnsType<RuntimeAgentStatus>[number] = {
       title: t('runtime.colActions'),
       key: 'actions',
-      width: 220,
+      width: showUptimeCol ? 220 : undefined,
       render: (_: unknown, row: RuntimeAgentStatus) => {
         const detailButton = (
           <Tooltip
@@ -372,10 +403,11 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
             <Button
               size="small"
               icon={<EyeOutlined />}
+              aria-label={t('runtime.detail')}
               onClick={() => setDetailRow(row)}
               disabled={row.role !== 'sub'}
             >
-              {t('runtime.detail')}
+              <span className="hidden sm:inline">{t('runtime.detail')}</span>
             </Button>
           </Tooltip>
         );
@@ -387,10 +419,11 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
                 size="small"
                 type="primary"
                 icon={<PlayCircleOutlined />}
+                aria-label={t('runtime.startProfile')}
                 onClick={() => openStartModalForProfile(row)}
                 disabled={!mainRow}
               >
-                {t('runtime.startProfile')}
+                <span className="hidden sm:inline">{t('runtime.startProfile')}</span>
               </Button>
             </Space>
           );
@@ -424,9 +457,10 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
                     size="small"
                     danger
                     icon={<PauseCircleOutlined />}
+                    aria-label={t('runtime.stop')}
                     loading={stopMainMutation.isPending}
                   >
-                    {t('runtime.stop')}
+                    <span className="hidden sm:inline">{t('runtime.stop')}</span>
                   </Button>
                 </Popconfirm>
               ) : (
@@ -434,10 +468,11 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
                   size="small"
                   type="primary"
                   icon={<PlayCircleOutlined />}
+                  aria-label={t('runtime.start')}
                   loading={startMainMutation.isPending}
                   onClick={() => startMainMutation.mutate()}
                 >
-                  {t('runtime.start')}
+                  <span className="hidden sm:inline">{t('runtime.start')}</span>
                 </Button>
               )}
             </Space>
@@ -458,11 +493,12 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
                   size="small"
                   danger
                   icon={<StopOutlined />}
+                  aria-label={t('runtime.stop')}
                   loading={
                     stopSubMutation.isPending && stopSubMutation.variables === row.agent_id
                   }
                 >
-                  {t('runtime.stop')}
+                  <span className="hidden sm:inline">{t('runtime.stop')}</span>
                 </Button>
               </Popconfirm>
             ) : (
@@ -471,8 +507,27 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
           </Space>
         );
       },
-    },
-  ];
+    };
+
+    return [
+      agentCol,
+      statusCol,
+      ...(showUptimeCol ? [uptimeCol] : []),
+      ...(showMetaCol ? [metaCol] : []),
+      actionsCol,
+    ];
+  }, [
+    t,
+    renderRoleTag,
+    showUptimeCol,
+    showMetaCol,
+    mainRow,
+    startMainMutation.isPending,
+    stopMainMutation.isPending,
+    stopMainMutation.variables,
+    stopSubMutation.isPending,
+    stopSubMutation.variables,
+  ]);
 
   return (
     <PageLayout embedded={embedded} className="min-h-0 flex-1 overflow-hidden">
@@ -493,6 +548,7 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
             </div>
             <Button
               icon={<ReloadOutlined />}
+              aria-label={t('common.refresh')}
               onClick={() => agentsQuery.refetch()}
               loading={agentsQuery.isFetching && !agentsQuery.isLoading}
             >
@@ -501,6 +557,7 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
             <Button
               type="primary"
               icon={<PlusOutlined />}
+              aria-label={t('runtime.startSub')}
               onClick={openStartModalBlank}
               disabled={!mainRow}
             >
@@ -544,6 +601,8 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
                 columns={columns}
                 pagination={false}
                 size="middle"
+                scroll={showMetaCol ? { x: 'max-content' } : undefined}
+                className="[&_.ant-table-cell]:align-top [&_th]:whitespace-nowrap"
               />
             )}
           </Card>

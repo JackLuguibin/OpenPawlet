@@ -346,15 +346,17 @@ export default function Logs({ embedded = false }: { embedded?: boolean } = {}) 
                   danger
                   icon={<DeleteOutlined />}
                   loading={isClearing}
+                  aria-label={t('logs.clear')}
                   onClick={clearLogs}
                   disabled={isLoading}
                 >
-                  {t('logs.clear')}
+                  <span className="hidden sm:inline">{t('logs.clear')}</span>
                 </Button>
                 <Button
                   type="primary"
                   icon={<ReloadOutlined />}
                   loading={isFetching}
+                  aria-label={t('common.refresh')}
                   onClick={() => {
                     setMergedChunk(null);
                     setNextCursor(null);
@@ -363,7 +365,7 @@ export default function Logs({ embedded = false }: { embedded?: boolean } = {}) 
                   disabled={isLoading}
                   className="shadow-sm"
                 >
-                  {t('common.refresh')}
+                  <span className="hidden sm:inline">{t('common.refresh')}</span>
                 </Button>
               </div>
             </div>

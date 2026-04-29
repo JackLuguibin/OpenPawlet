@@ -75,6 +75,7 @@ export default function Teams({ embedded = false }: { embedded?: boolean } = {})
             <Button
               icon={<ReloadOutlined />}
               onClick={() => refetch()}
+              aria-label={t('common.refresh')}
               className="border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500"
             >
               <span className="hidden sm:inline">{t('common.refresh')}</span>
@@ -83,6 +84,7 @@ export default function Teams({ embedded = false }: { embedded?: boolean } = {})
               type="primary"
               icon={<PlusOutlined />}
               onClick={() => setCreateOpen(true)}
+              aria-label={t('teams.newTeam')}
               className="shadow-md shadow-blue-500/25"
             >
               <span className="hidden sm:inline">{t('teams.newTeam')}</span>
@@ -112,10 +114,11 @@ export default function Teams({ embedded = false }: { embedded?: boolean } = {})
             <Button
               type="primary"
               icon={<PlusOutlined />}
+              aria-label={t('teams.newTeam')}
               className="mt-4 shadow-md shadow-blue-500/25"
               onClick={() => setCreateOpen(true)}
             >
-              {t('teams.newTeam')}
+              <span className="hidden sm:inline">{t('teams.newTeam')}</span>
             </Button>
           </div>
         ) : (

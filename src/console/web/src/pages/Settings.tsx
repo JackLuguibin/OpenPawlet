@@ -971,19 +971,21 @@ export default function Settings() {
               <Button
                 type="dashed"
                 icon={<PlusOutlined />}
+                aria-label={t('settings.envAdd')}
                 onClick={() =>
                   setEnvEntries((prev) => [...prev, { key: '', value: '', execVisible: false }])
                 }
               >
-                {t('settings.envAdd')}
+                <span className="hidden sm:inline">{t('settings.envAdd')}</span>
               </Button>
               <Button
                 type="primary"
                 icon={<SaveOutlined />}
                 loading={updateEnvMutation.isPending}
+                aria-label={t('settings.envSave')}
                 onClick={handleSaveEnv}
               >
-                {t('settings.envSave')}
+                <span className="hidden sm:inline">{t('settings.envSave')}</span>
               </Button>
             </div>
           </>
@@ -1672,16 +1674,21 @@ export default function Settings() {
             </p>
           </header>
           <Space wrap className="shrink-0">
-            <Button icon={<DownloadOutlined />} onClick={handleExportConfig}>
-              {t('settings.export')}
+            <Button
+              icon={<DownloadOutlined />}
+              aria-label={t('settings.export')}
+              onClick={handleExportConfig}
+            >
+              <span className="hidden sm:inline">{t('settings.export')}</span>
             </Button>
             <Button
               type="primary"
               icon={<SaveOutlined />}
               loading={saveSettingsMutation.isPending}
+              aria-label={t('settings.saveChanges')}
               onClick={handleSave}
             >
-              {t('settings.saveChanges')}
+              <span className="hidden sm:inline">{t('settings.saveChanges')}</span>
             </Button>
           </Space>
         </div>

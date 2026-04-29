@@ -259,8 +259,12 @@ export default function Activity({ embedded = false }: { embedded?: boolean } = 
               status="processing"
               text={<span className="text-xs text-gray-400">{t('common.live')}</span>}
             />
-            <Button icon={<SyncOutlined />} onClick={() => refetch()}>
-              {t('common.refresh')}
+            <Button
+              icon={<SyncOutlined />}
+              aria-label={t('common.refresh')}
+              onClick={() => refetch()}
+            >
+              <span className="hidden sm:inline">{t('common.refresh')}</span>
             </Button>
           </div>
         </div>

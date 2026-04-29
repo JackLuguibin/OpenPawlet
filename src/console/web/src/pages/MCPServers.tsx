@@ -458,7 +458,11 @@ export function MCPServersPanel({
 
   const refreshButtons = (
     <Space className="w-full sm:w-auto justify-end flex-wrap">
-      <Button icon={<ReloadOutlined />} onClick={() => refetch()}>
+      <Button
+        icon={<ReloadOutlined />}
+        aria-label={t('common.refresh')}
+        onClick={() => refetch()}
+      >
         <span className="hidden sm:inline">{t('common.refresh')}</span>
       </Button>
     </Space>
@@ -803,12 +807,17 @@ export function MCPServersPanel({
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
                 <Link to="/settings?tab=tools">
-                  <Button size="small" icon={<SettingOutlined />}>
-                    {t('mcp.goSettings')}
+                  <Button size="small" icon={<SettingOutlined />} aria-label={t('mcp.goSettings')}>
+                    <span className="hidden sm:inline">{t('mcp.goSettings')}</span>
                   </Button>
                 </Link>
-                <Button size="small" icon={<ReloadOutlined />} onClick={() => refetch()}>
-                  {t('mcp.refreshStatus')}
+                <Button
+                  size="small"
+                  icon={<ReloadOutlined />}
+                  aria-label={t('mcp.refreshStatus')}
+                  onClick={() => refetch()}
+                >
+                  <span className="hidden sm:inline">{t('mcp.refreshStatus')}</span>
                 </Button>
               </div>
             </div>

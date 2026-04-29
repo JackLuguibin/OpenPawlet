@@ -201,8 +201,12 @@ export default function Queues({ embedded = false }: { embedded?: boolean } = {}
           description={(error as Error)?.message}
           showIcon
           action={
-            <Button onClick={() => refetch()} icon={<ReloadOutlined />}>
-              {t('queues.retry')}
+            <Button
+              onClick={() => refetch()}
+              icon={<ReloadOutlined />}
+              aria-label={t('queues.retry')}
+            >
+              <span className="hidden sm:inline">{t('queues.retry')}</span>
             </Button>
           }
         />
@@ -248,12 +252,13 @@ export default function Queues({ embedded = false }: { embedded?: boolean } = {}
           />
           <Button
             icon={<ReloadOutlined />}
+            aria-label={t('queues.refresh')}
             onClick={() => {
               refetch();
               reconnect();
             }}
           >
-            {t('queues.refresh')}
+            <span className="hidden sm:inline">{t('queues.refresh')}</span>
           </Button>
         </Space>
       </div>

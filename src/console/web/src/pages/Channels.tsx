@@ -298,10 +298,11 @@ export default function Channels({ embedded = false }: { embedded?: boolean } = 
           <Button
             type="primary"
             icon={<ReloadOutlined />}
+            aria-label={t('common.refresh')}
             onClick={() => refetch()}
             className="shadow-md shadow-primary-500/15"
           >
-            {t('common.refresh')}
+            <span className="hidden sm:inline">{t('common.refresh')}</span>
           </Button>
         </div>
       </header>
@@ -384,10 +385,11 @@ export default function Channels({ embedded = false }: { embedded?: boolean } = 
                       type="default"
                       size="small"
                       icon={<EditOutlined />}
+                      aria-label={t('channels.edit')}
                       onClick={() => openEditModal(channel.name)}
                       className="flex-1 font-medium"
                     >
-                      {t('channels.edit')}
+                      <span className="hidden sm:inline">{t('channels.edit')}</span>
                     </Button>
                     {channel.enabled && (
                       <Popconfirm
@@ -400,8 +402,15 @@ export default function Channels({ embedded = false }: { embedded?: boolean } = 
                         okText={t('channels.disable')}
                         cancelText={t('common.cancel')}
                       >
-                        <Button type="default" size="small" danger icon={<DeleteOutlined />} className="flex-1 font-medium">
-                          {t('channels.disable')}
+                        <Button
+                          type="default"
+                          size="small"
+                          danger
+                          icon={<DeleteOutlined />}
+                          aria-label={t('channels.disable')}
+                          className="flex-1 font-medium"
+                        >
+                          <span className="hidden sm:inline">{t('channels.disable')}</span>
                         </Button>
                       </Popconfirm>
                     )}

@@ -293,6 +293,7 @@ export function SkillsGitSourcesCard({
         <Button
           size="middle"
           icon={<ReloadOutlined />}
+          aria-label={t('skillsGit.syncAll')}
           onClick={() => syncAllMutation.mutate()}
           loading={syncAllMutation.isPending}
           disabled={repoList.length === 0}
@@ -304,6 +305,7 @@ export function SkillsGitSourcesCard({
         type="primary"
         size="middle"
         icon={<PlusOutlined />}
+        aria-label={t('skillsGit.addRepo')}
         onClick={openCreate}
         className="shadow-md shadow-primary-500/25"
       >

@@ -230,12 +230,17 @@ export default function Workspace() {
                   type="primary"
                   icon={<SaveOutlined />}
                   onClick={saveEdit}
+                  aria-label={t('common.save')}
                   loading={updateMutation.isPending}
                 >
-                  {t('common.save')}
+                  <span className="hidden sm:inline">{t('common.save')}</span>
                 </Button>
-                <Button icon={<CloseOutlined />} onClick={cancelEdit}>
-                  {t('common.cancel')}
+                <Button
+                  icon={<CloseOutlined />}
+                  onClick={cancelEdit}
+                  aria-label={t('common.cancel')}
+                >
+                  <span className="hidden sm:inline">{t('common.cancel')}</span>
                 </Button>
               </>
             )}

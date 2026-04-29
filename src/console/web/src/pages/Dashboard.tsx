@@ -549,6 +549,7 @@ export default function Dashboard() {
               danger
               icon={<PoweroffOutlined />}
               loading={stopMutation.isPending}
+              aria-label={t('dashboard.stop')}
               onClick={() => stopMutation.mutate()}
             >
               <span className="hidden sm:inline">{t('dashboard.stop')}</span>
@@ -557,12 +558,14 @@ export default function Dashboard() {
           <Button
             icon={<SyncOutlined />}
             loading={restartMutation.isPending}
+            aria-label={t('dashboard.restart')}
             onClick={handleRestart}
           >
             <span className="hidden sm:inline">{t('dashboard.restart')}</span>
           </Button>
           <Button
             icon={<ReloadOutlined />}
+            aria-label={t('common.refresh')}
             onClick={() => {
               refetch();
               queryClient.invalidateQueries({ queryKey: ['usage-history', currentBotId] });
