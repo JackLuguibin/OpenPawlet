@@ -17,39 +17,17 @@ const TeamDetail = lazy(() => import('./pages/TeamDetail'));
 
 // Standalone pages — each former Hub tab now lives at its own URL so that
 // the new sidebar can deep-link directly into the panel users want.
-const AgentTeamsPage = lazy(() =>
-  import('./pages/standalone').then((m) => ({ default: m.AgentTeamsPage })),
-);
-const RuntimePage = lazy(() =>
-  import('./pages/standalone').then((m) => ({ default: m.RuntimePage })),
-);
-const SkillsPage = lazy(() =>
-  import('./pages/standalone').then((m) => ({ default: m.SkillsPage })),
-);
-const McpPage = lazy(() =>
-  import('./pages/standalone').then((m) => ({ default: m.McpPage })),
-);
-const MemoryProfilePage = lazy(() =>
-  import('./pages/standalone').then((m) => ({ default: m.MemoryProfilePage })),
-);
-const ActivityPage = lazy(() =>
-  import('./pages/standalone').then((m) => ({ default: m.ActivityPage })),
-);
-const LogsPage = lazy(() =>
-  import('./pages/standalone').then((m) => ({ default: m.LogsPage })),
-);
-const QueuesPage = lazy(() =>
-  import('./pages/standalone').then((m) => ({ default: m.QueuesPage })),
-);
-const TracesPage = lazy(() =>
-  import('./pages/standalone').then((m) => ({ default: m.TracesPage })),
-);
-const ChannelsPage = lazy(() =>
-  import('./pages/standalone').then((m) => ({ default: m.ChannelsPage })),
-);
-const CronPage = lazy(() =>
-  import('./pages/standalone').then((m) => ({ default: m.CronPage })),
-);
+const AgentTeamsPage = lazy(() => import('./pages/standalone/agentTeams'));
+const RuntimePage = lazy(() => import('./pages/standalone/runtime'));
+const SkillsPage = lazy(() => import('./pages/standalone/skills'));
+const McpPage = lazy(() => import('./pages/standalone/mcp'));
+const MemoryProfilePage = lazy(() => import('./pages/standalone/memoryProfile'));
+const ActivityPage = lazy(() => import('./pages/standalone/activity'));
+const LogsPage = lazy(() => import('./pages/standalone/logs'));
+const QueuesPage = lazy(() => import('./pages/standalone/queues'));
+const TracesPage = lazy(() => import('./pages/standalone/traces'));
+const ChannelsPage = lazy(() => import('./pages/standalone/channels'));
+const CronPage = lazy(() => import('./pages/standalone/cron'));
 
 function resolveIsDark(theme: 'light' | 'dark' | 'system'): boolean {
   if (theme === 'dark') return true;
