@@ -540,7 +540,7 @@ export default function TeamDetail() {
       <Drawer
         title={t('teams.teamProfile')}
         placement="right"
-        width={360}
+        size={360}
         open={infoDrawerOpen}
         onClose={() => setInfoDrawerOpen(false)}
         extra={
@@ -747,7 +747,7 @@ export default function TeamDetail() {
         title={t('teams.editContext')}
         open={contextEditOpen}
         onCancel={() => setContextEditOpen(false)}
-        destroyOnClose
+        destroyOnHidden
         width={560}
         okText={t('common.save')}
         okButtonProps={{
@@ -791,7 +791,7 @@ export default function TeamDetail() {
       <Modal
         title={t('teams.addMember')}
         open={addMemberOpen}
-        destroyOnClose
+        destroyOnHidden
         onCancel={() => {
           setAddMemberOpen(false);
           setPickAgent(undefined);

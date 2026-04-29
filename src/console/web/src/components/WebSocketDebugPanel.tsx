@@ -42,7 +42,7 @@ export default function WebSocketDebugPanel() {
         size={480}
         open={open}
         onClose={() => setOpen(false)}
-        destroyOnClose={false}
+        destroyOnHidden={false}
       >
         <div className="flex flex-col gap-3">
           <Text type="secondary" className="text-xs">

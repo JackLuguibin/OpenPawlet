@@ -771,7 +771,7 @@ export default function Observability({ embedded = false }: { embedded?: boolean
 
       <Drawer
         title={t('observability.detailDrawerTitle')}
-        width={Math.min(560, typeof window !== 'undefined' ? window.innerWidth - 24 : 560)}
+        size={Math.min(560, typeof window !== 'undefined' ? window.innerWidth - 24 : 560)}
         open={Boolean(detailEvent)}
         onClose={() => setDetailEvent(null)}
         classNames={{ body: '!p-0' }}

@@ -2895,7 +2895,7 @@ export default function Chat() {
         title={t("chat.viewContextJsonl")}
         footer={null}
         width="min(100vw - 2rem, 48rem)"
-        destroyOnClose
+        destroyOnHidden
         styles={{
           root: { maxHeight: "min(92vh, 44rem)" },
           body: {
@@ -2914,7 +2914,7 @@ export default function Chat() {
             setSessionContextTab(k === "raw" ? "raw" : "assembled")
           }
           className="h-[min(70vh,32rem)] min-h-[14rem] flex flex-col [&>.ant-tabs-content-holder]:flex-1 [&>.ant-tabs-content-holder]:min-h-0 [&_.ant-tabs-content]:h-full [&_.ant-tabs-tabpane]:h-full"
-          destroyInactiveTabPane
+          destroyOnHidden
           items={[
             {
               key: "assembled",
@@ -3089,7 +3089,7 @@ export default function Chat() {
           loading: renameSessionMutation.isPending,
           disabled: !renameSessionKey,
         }}
-        destroyOnClose
+        destroyOnHidden
       >
         <div className="space-y-2">
           <p className="m-0 text-xs text-gray-500 dark:text-gray-400">

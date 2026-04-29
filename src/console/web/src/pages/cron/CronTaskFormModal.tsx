@@ -379,7 +379,7 @@ export function CronTaskFormModal(props: CronTaskFormModalProps) {
                                     type="info"
                                     showIcon
                                     className="mb-3"
-                                    message={summary}
+                                    title={summary}
                                   />
                                 ) : null;
                               }}
@@ -472,7 +472,7 @@ export function CronTaskFormModal(props: CronTaskFormModalProps) {
                     type="warning"
                     showIcon
                     className="mt-2"
-                    message={t('cron.windowNote')}
+                    title={t('cron.windowNote')}
                   />
                 </>
               ),

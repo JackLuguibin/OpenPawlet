@@ -526,7 +526,7 @@ export default function Layout({ children }: LayoutProps) {
         open={mobileMenuOpen}
         onClose={() => setMobileMenuOpen(false)}
         placement="left"
-        width={248}
+        size={248}
         className="lg:!hidden"
         styles={{ body: { padding: 0 } }}
         title={null}

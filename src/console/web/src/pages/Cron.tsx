@@ -4,7 +4,6 @@ import {
   Badge,
   Button,
   Card,
-  List,
   Popconfirm,
   Spin,
   Alert,
@@ -290,7 +289,7 @@ export default function Cron({ embedded = false }: { embedded?: boolean } = {}) 
       <PageLayout variant="bleed" embedded={embedded}>
         <Alert
           type="error"
-          message={t('cron.loadFailed')}
+          title={t('cron.loadFailed')}
           description={formatQueryError(error)}
           showIcon
         />
@@ -416,15 +415,13 @@ export default function Cron({ embedded = false }: { embedded?: boolean } = {}) 
           </div>
         ) : (
           <div className="min-h-0 flex-1 overflow-y-auto pr-0.5">
-            <List
-              split={false}
-              dataSource={decodedJobs}
-              renderItem={({ job, meta, prompt }) => {
+            {decodedJobs.map(({ job, meta, prompt }) => {
                 const agentName = meta.agentId ? agentNameById.get(meta.agentId) : undefined;
                 const expired = isMetadataExpired(meta);
                 const notYet = isMetadataNotYetActive(meta);
                 return (
-                  <List.Item
+                  <div
+                    key={job.id}
                     className={`mb-2 flex flex-col items-stretch gap-2 rounded border border-gray-100 bg-gray-50/80 px-4 py-2.5 transition-colors last:mb-0 sm:px-5 dark:border-gray-800 dark:bg-gray-800/25 ${
                       !job.enabled
                         ? 'opacity-70'
@@ -506,10 +503,9 @@ export default function Cron({ embedded = false }: { embedded?: boolean } = {}) 
                         </Popconfirm>
                       </Space>
                     </div>
-                  </List.Item>
+                  </div>
                 );
-              }}
-            />
+              })}
           </div>
         )}
       </Card>

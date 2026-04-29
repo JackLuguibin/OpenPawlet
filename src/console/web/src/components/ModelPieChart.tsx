@@ -33,6 +33,7 @@ import type {
   TitleComponentOption,
   TooltipComponentOption,
 } from 'echarts/components';
+import { LegacyGridContainLabel } from 'echarts/features';
 
 // Register only the chart types and components we actually use across the
 // app (Dashboard pie/bar/line, TraceGanttChart custom). Pulling the full
@@ -52,6 +53,7 @@ function ensureEchartsRegistered() {
     LegendComponent,
     GridComponent,
     DataZoomComponent,
+    LegacyGridContainLabel,
   ]);
 }
 

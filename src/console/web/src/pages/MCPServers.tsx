@@ -201,7 +201,7 @@ function McpEmptyConfigDialog({ botId }: { botId: string | null }) {
         centered
         onCancel={() => !saveMutation.isPending && setOpen(false)}
         width={720}
-        maskClosable={!saveMutation.isPending}
+        mask={{ closable: !saveMutation.isPending }}
         closable={!saveMutation.isPending}
         destroyOnHidden
         styles={{

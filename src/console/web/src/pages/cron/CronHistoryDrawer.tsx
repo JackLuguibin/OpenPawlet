@@ -74,7 +74,7 @@ export function CronHistoryDrawer(props: CronHistoryDrawerProps) {
     <Drawer
       open={open}
       onClose={onClose}
-      width={640}
+      size={640}
       title={
         <Space>
           <span>{t('cron.historyDrawerTitle')}</span>
@@ -88,7 +88,7 @@ export function CronHistoryDrawer(props: CronHistoryDrawerProps) {
           <Spin />
         </div>
       ) : isError ? (
-        <Alert type="error" showIcon message={formatQueryError(error)} />
+        <Alert type="error" showIcon title={formatQueryError(error)} />
       ) : history.length === 0 ? (
         <Empty description={t('cron.historyEmpty')} />
       ) : (

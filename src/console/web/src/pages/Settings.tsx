@@ -938,7 +938,7 @@ export default function Settings() {
     >
       <div className="flex min-h-0 flex-1 flex-col gap-6">
         <Alert
-          message={t('settings.envAlertDesc')}
+          title={t('settings.envAlertDesc')}
           description={t('settings.envAlertDetail')}
           type="info"
           showIcon
@@ -1217,7 +1217,7 @@ export default function Settings() {
             <Collapse
               ghost
               bordered={false}
-              expandIconPosition="end"
+              expandIconPlacement="end"
               className="[&_.ant-collapse-header]:!px-0 [&_.ant-collapse-header]:!py-3 [&_.ant-collapse-content-box]:!px-0 [&_.ant-collapse-content-box]:!pt-0"
               items={[
                 {
@@ -1443,7 +1443,7 @@ export default function Settings() {
 
               <Collapse
                 defaultActiveKey={[]}
-                expandIconPosition="end"
+                expandIconPlacement="end"
                 className="tools-settings-collapse bg-transparent [&_.ant-collapse-item]:border-gray-200 dark:[&_.ant-collapse-item]:border-gray-700"
                 items={[
                   {
@@ -1635,7 +1635,7 @@ export default function Settings() {
                           type="info"
                           showIcon
                           className="mb-3"
-                          message={t('settings.toolsSsrfHint')}
+                          title={t('settings.toolsSsrfHint')}
                         />
                         <Form.Item name="toolSsrfWhitelist" label={t('settings.toolsSsrfWhitelistLabel')}>
                           <Select mode="tags" className="w-full" placeholder={t('settings.toolsSsrfWhitelistPh')} tokenSeparators={[',']} />

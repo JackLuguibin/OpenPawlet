@@ -161,7 +161,7 @@ export default function Teams({ embedded = false }: { embedded?: boolean } = {})
         title={t('teams.createTitle')}
         open={createOpen}
         onCancel={() => setCreateOpen(false)}
-        destroyOnClose
+        destroyOnHidden
         width={560}
         okButtonProps={{
           className: 'rounded-lg shadow-md shadow-blue-500/25',

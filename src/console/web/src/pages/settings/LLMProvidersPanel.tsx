@@ -321,7 +321,7 @@ export default function LLMProvidersPanel({ embedded = false }: { embedded?: boo
       <Alert
         type="info"
         showIcon
-        message={t('llmProviders.intro')}
+        title={t('llmProviders.intro')}
         description={t('llmProviders.introDesc')}
         className="!border-blue-200/70 dark:!border-blue-900/40"
       />
@@ -486,8 +486,8 @@ export default function LLMProvidersPanel({ embedded = false }: { embedded?: boo
         }
         open={drawerOpen}
         onClose={closeDrawer}
-        width={Math.min(720, typeof window !== 'undefined' ? window.innerWidth - 24 : 720)}
-        destroyOnClose
+        size={Math.min(720, typeof window !== 'undefined' ? window.innerWidth - 24 : 720)}
+        destroyOnHidden
         extra={
           <Space>
             <Button onClick={closeDrawer}>{t('common.cancel')}</Button>

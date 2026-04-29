@@ -1234,7 +1234,7 @@ export default function Skills({
           setSourcesActiveKeys(Array.isArray(keys) ? keys : [keys].filter(Boolean) as string[])
         }
         bordered
-        expandIconPosition="end"
+        expandIconPlacement="end"
         className="shrink-0 [&_.ant-collapse-header]:!items-center [&_.ant-collapse-content-box]:!pt-3"
       />
 

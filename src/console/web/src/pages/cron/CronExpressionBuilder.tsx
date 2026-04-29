@@ -186,7 +186,7 @@ export function CronExpressionBuilder(props: CronExpressionBuilderProps) {
       )}
 
       {mode === 'weekly' && (
-        <Space direction="vertical" className="w-full">
+        <Space orientation="vertical" className="w-full">
           <Checkbox.Group
             options={weekdayOptions}
             value={weekdays}
@@ -228,7 +228,7 @@ export function CronExpressionBuilder(props: CronExpressionBuilderProps) {
       )}
 
       {mode === 'custom' && (
-        <Space direction="vertical" className="w-full">
+        <Space orientation="vertical" className="w-full">
           <span className="text-xs text-gray-500">{t('cron.builderPresets')}</span>
           <Select
             placeholder={t('cron.builderPresetsPh')}

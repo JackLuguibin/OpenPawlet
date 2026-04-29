@@ -375,7 +375,7 @@ export default function Logs({ embedded = false }: { embedded?: boolean } = {}) 
             type="error"
             showIcon
             className="shrink-0"
-            message={t('logs.loadError', { error: formatQueryError(error) })}
+            title={t('logs.loadError', { error: formatQueryError(error) })}
           />
         )}
 

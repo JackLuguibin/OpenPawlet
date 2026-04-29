@@ -275,7 +275,7 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
       dataIndex: 'agent_id',
       key: 'agent_id',
       render: (_: unknown, row: RuntimeAgentStatus) => (
-        <Space direction="vertical" size={0} className="min-w-[160px]">
+        <Space orientation="vertical" size={0} className="min-w-[160px]">
           <Space size={6} align="center">
             {renderRoleTag(row)}
             <Text className="font-mono text-[12px]">{row.agent_id}</Text>
@@ -300,7 +300,7 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
               ? t('runtime.running')
               : t('runtime.stopped');
         return (
-          <Space direction="vertical" size={0}>
+          <Space orientation="vertical" size={0}>
             <Tag color={phaseTagColor(row.phase, row.running)}>
               {statusLabel}
               {row.phase ? ` · ${row.phase}` : ''}
@@ -325,7 +325,7 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
       title: t('runtime.colMeta'),
       key: 'meta',
       render: (_: unknown, row: RuntimeAgentStatus) => (
-        <Space direction="vertical" size={2} className="min-w-[160px]">
+        <Space orientation="vertical" size={2} className="min-w-[160px]">
           {row.team_id && (
             <Tag color="purple" className="!m-0">
               team:{row.team_id}
@@ -514,7 +514,7 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
             <Alert
               type="error"
               showIcon
-              message={t('runtime.unavailable')}
+              title={t('runtime.unavailable')}
               description={errorMessage}
             />
           )}
@@ -618,7 +618,7 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
       <Drawer
         open={detailRow !== null}
         onClose={() => setDetailRow(null)}
-        width={Math.min(720, typeof window !== 'undefined' ? window.innerWidth - 80 : 720)}
+        size={Math.min(720, typeof window !== 'undefined' ? window.innerWidth - 80 : 720)}
         title={
           detailRow ? (
             <Space size={8} className="flex-wrap">
@@ -636,7 +636,7 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
             t('runtime.detailTitle')
           )
         }
-        destroyOnClose
+        destroyOnHidden
       >
         {detailRow ? (
           <Tabs
@@ -655,7 +655,7 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
                     {!detailSessionKey ? (
                       <Alert
                         type="info"
-                        message={t('runtime.transcriptUnavailable')}
+                        title={t('runtime.transcriptUnavailable')}
                         showIcon
                       />
                     ) : transcriptQuery.isLoading ? (
@@ -666,7 +666,7 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
                       <Alert
                         type="warning"
                         showIcon
-                        message={t('runtime.transcriptLoadFailed')}
+                        title={t('runtime.transcriptLoadFailed')}
                         description={
                           transcriptQuery.error instanceof Error
                             ? transcriptQuery.error.message

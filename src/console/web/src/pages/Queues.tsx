@@ -357,7 +357,7 @@ export default function Queues({ embedded = false }: { embedded?: boolean } = {}
               type="info"
               showIcon
               className="mb-3"
-              message="In-process bus: pause / replay / dedupe controls are read-only in this layout (server returns 410 Gone)."
+              title="In-process bus: pause / replay / dedupe controls are read-only in this layout (server returns 410 Gone)."
             />
             <Descriptions
               size="small"

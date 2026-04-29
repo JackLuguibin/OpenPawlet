@@ -457,10 +457,10 @@ export default function Activity({ embedded = false }: { embedded?: boolean } = 
       <Drawer
         title={t('activity.detailTitle')}
         placement="right"
-        width={560}
+        size={560}
         open={detailItem != null}
         onClose={() => setDetailItem(null)}
-        destroyOnClose
+        destroyOnHidden
       >
         {detailItem ? (
           <div className="flex flex-col gap-3">

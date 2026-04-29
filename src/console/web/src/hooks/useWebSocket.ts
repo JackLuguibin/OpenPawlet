@@ -101,6 +101,23 @@ const _MAX_BACKOFF_MS = 15_000;
 // is comfortably above the steady-state ceiling.
 const _IDLE_TIMEOUT_MS = 60_000;
 
+/** Avoid closing while CONNECTING (React Strict Mode / fast remount triggers a loud browser warning). */
+function closeConsoleWebSocket(ws: WebSocket) {
+  const finish = () => {
+    try {
+      ws.close();
+    } catch {
+      /* ignore */
+    }
+  };
+  if (ws.readyState === WebSocket.CONNECTING) {
+    ws.addEventListener('open', finish, { once: true });
+    ws.addEventListener('error', finish, { once: true });
+  } else {
+    finish();
+  }
+}
+
 export function useWebSocket() {
   const queryClient = useQueryClient();
   const wsRef = useRef<WebSocket | null>(null);
@@ -401,12 +418,9 @@ export function useWebSocket() {
         window.clearTimeout(idleWatchdogRef.current);
       }
       if (wsRef.current) {
-        try {
-          wsRef.current.close();
-        } catch {
-          /* ignore */
-        }
+        const sock = wsRef.current;
         wsRef.current = null;
+        closeConsoleWebSocket(sock);
       }
     };
   }, [connect]);
