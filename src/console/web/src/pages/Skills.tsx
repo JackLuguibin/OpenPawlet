@@ -465,7 +465,6 @@ export default function Skills({
   const editSkillDraftName = Form.useWatch('name', skillEditForm) as string | undefined;
   const [registryUrl, setRegistryUrl] = useState('');
   const [registrySearch, setRegistrySearch] = useState('');
-  const [gitRepoCount, setGitRepoCount] = useState(0);
   const [sourcesActiveKeys, setSourcesActiveKeys] = useState<string[]>([]);
   const [createBundleFiles, setCreateBundleFiles] = useState<BundleEntryRow[]>([]);
   const [createActiveFile, setCreateActiveFile] = useState<
@@ -539,6 +538,13 @@ export default function Skills({
     queryKey: ['skills', currentBotId],
     queryFn: () => api.listSkills(currentBotId),
   });
+
+  /** Same query key as ``SkillsGitSourcesCard`` so collapse header count is correct when panel is collapsed. */
+  const { data: gitRepos = [] } = useQuery({
+    queryKey: ['skills-git', currentBotId],
+    queryFn: () => api.listSkillsGitRepos(currentBotId),
+  });
+  const gitRepoCount = gitRepos.length;
 
   /** Skills live under workspace ``.cursor/skills``; keep file tree in sync. */
   const invalidateSkillsAndWorkspaceFiles = () => {
@@ -1065,7 +1071,6 @@ export default function Skills({
             bare
             currentBotId={currentBotId}
             onSkillsChanged={invalidateSkillsAndWorkspaceFiles}
-            onRepoCountChange={setGitRepoCount}
           />
         ),
       },

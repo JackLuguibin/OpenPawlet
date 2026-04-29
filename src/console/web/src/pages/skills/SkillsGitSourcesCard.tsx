@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Button,
@@ -52,8 +52,6 @@ interface Props {
    * buttons are kept inline above the list.
    */
   bare?: boolean;
-  /** Notify the parent how many repositories are configured (for headers). */
-  onRepoCountChange?: (count: number) => void;
 }
 
 interface RepoFormValues {
@@ -164,7 +162,6 @@ export function SkillsGitSourcesCard({
   currentBotId,
   onSkillsChanged,
   bare = false,
-  onRepoCountChange,
 }: Props) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -289,10 +286,6 @@ export function SkillsGitSourcesCard({
       [...repos].sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)),
     [repos],
   );
-
-  useEffect(() => {
-    onRepoCountChange?.(repoList.length);
-  }, [repoList.length, onRepoCountChange]);
 
   const toolbar = (
     <div className="flex items-center gap-2 shrink-0">
