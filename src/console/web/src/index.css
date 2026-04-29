@@ -72,6 +72,47 @@ body {
   background: rgba(148, 163, 184, 0.32);
 }
 
+/*
+ * Scroll regions that should read clearly (modals, nested panels).
+ * Firefox: thin + scrollbar-color; WebKit: padded pill thumb so the track stays calm.
+ */
+.op-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 116, 139, 0.45) transparent;
+}
+
+.dark .op-scrollbar {
+  scrollbar-color: rgba(148, 163, 184, 0.28) transparent;
+}
+
+.op-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.op-scrollbar::-webkit-scrollbar-track {
+  margin: 4px 0;
+  background: transparent;
+}
+
+.op-scrollbar::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  background-color: rgba(100, 116, 139, 0.38);
+}
+
+.op-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(71, 85, 105, 0.52);
+}
+
+.dark .op-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgba(148, 163, 184, 0.22);
+}
+
+.dark .op-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(148, 163, 184, 0.38);
+}
+
 /* Subdued focus ring; keeps accessibility but removes visual weight. */
 *:focus-visible {
   outline: 1.5px solid rgba(37, 99, 235, 0.55);

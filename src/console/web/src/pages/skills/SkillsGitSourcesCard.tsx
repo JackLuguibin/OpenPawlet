@@ -475,18 +475,38 @@ export function SkillsGitSourcesCard({
           setEditingRepo(null);
           form.resetFields();
         }}
-        footer={null}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button
+              onClick={() => {
+                setModalOpen(false);
+                setEditingRepo(null);
+                form.resetFields();
+              }}
+            >
+              {t('common.cancel')}
+            </Button>
+            <Button
+              type="primary"
+              loading={submitting}
+              onClick={() => form.submit()}
+            >
+              {t('common.save')}
+            </Button>
+          </div>
+        }
         destroyOnHidden
         width={680}
-        styles={{ body: { maxHeight: '70vh', overflowY: 'auto', paddingTop: 8 } }}
+        styles={{ body: { paddingTop: 8, paddingBottom: 4 } }}
       >
-        <Form
-          form={form}
-          layout="vertical"
-          initialValues={DEFAULT_FORM}
-          onFinish={submitForm}
-          requiredMark="optional"
-        >
+        <div className="max-h-[70vh] overflow-y-auto overscroll-contain op-scrollbar pr-1 -mr-0.5">
+          <Form
+            form={form}
+            layout="vertical"
+            initialValues={DEFAULT_FORM}
+            onFinish={submitForm}
+            requiredMark="optional"
+          >
           {/* === 基本信息 === */}
           <Typography.Text
             type="secondary"
@@ -743,24 +763,8 @@ export function SkillsGitSourcesCard({
               </>
             )}
           </div>
-
-          <Form.Item className="!mb-0">
-            <div className="flex justify-end gap-2">
-              <Button
-                onClick={() => {
-                  setModalOpen(false);
-                  setEditingRepo(null);
-                  form.resetFields();
-                }}
-              >
-                {t('common.cancel')}
-              </Button>
-              <Button type="primary" htmlType="submit" loading={submitting}>
-                {t('common.save')}
-              </Button>
-            </div>
-          </Form.Item>
-        </Form>
+          </Form>
+        </div>
       </Modal>
     </div>
   );
