@@ -76,8 +76,8 @@ const DASHBOARD_STAT_CARD_CLASS =
   'h-full min-w-0 [&_.ant-card-body]:flex [&_.ant-card-body]:flex-col [&_.ant-card-body]:h-full ' +
   '[&_.ant-card-body]:min-w-0 [&_.ant-card-body]:py-2';
 
-/** Pie legend layout: when the charts area (not window) is this narrow, use horizontal legend. */
-const CHARTS_AREA_NARROW_PX = 520;
+/** Pie / bar chart layout: when the charts area (not window) is this narrow, use compact + scrollable charts. */
+const CHARTS_AREA_NARROW_PX = 640;
 
 function formatUptime(seconds: number): string {
   const hours = Math.floor(seconds / 3600);
@@ -163,16 +163,20 @@ export default function Dashboard() {
           text: t('dashboard.modelShareTitle'),
           subtext: t('dashboard.noUsageData'),
           left: 'center',
-          textStyle: { color: titleTextColor, fontSize: 16, fontWeight: 600 },
-          subtextStyle: { color: subtextColor },
+          textStyle: {
+            color: titleTextColor,
+            fontSize: chartLayoutNarrow ? 14 : 16,
+            fontWeight: 600,
+          },
+          subtextStyle: { color: subtextColor, fontSize: chartLayoutNarrow ? 11 : 12 },
         },
         tooltip: { show: false },
         legend: { show: false },
         series: [
           {
             type: 'pie',
-            radius: '50%',
-            center: ['50%', '55%'],
+            radius: chartLayoutNarrow ? ['36%', '58%'] : '50%',
+            center: chartLayoutNarrow ? ['50%', '46%'] : ['50%', '55%'],
             silent: true,
             animation: false,
             label: { show: false },
@@ -195,8 +199,12 @@ export default function Dashboard() {
         text: t('dashboard.modelShareTitle'),
         subtext: formatTokenCount(modelPieTotal),
         left: 'center',
-        textStyle: { color: titleTextColor, fontSize: 16, fontWeight: 600 },
-        subtextStyle: { color: subtextColor },
+        textStyle: {
+          color: titleTextColor,
+          fontSize: chartLayoutNarrow ? 14 : 16,
+          fontWeight: 600,
+        },
+        subtextStyle: { color: subtextColor, fontSize: chartLayoutNarrow ? 11 : 12 },
       },
       tooltip: {
         trigger: 'item',
@@ -212,10 +220,14 @@ export default function Dashboard() {
       legend: chartLayoutNarrow
         ? {
             orient: 'horizontal',
-            bottom: 0,
+            bottom: 2,
             left: 'center',
-            textStyle: { color: legendTextColor },
+            itemWidth: 10,
+            itemHeight: 10,
+            itemGap: 8,
+            textStyle: { color: legendTextColor, fontSize: 11 },
             type: 'scroll',
+            pageIconSize: 10,
           }
         : {
             orient: 'vertical',
@@ -228,8 +240,8 @@ export default function Dashboard() {
         {
           name: t('dashboard.modelUsageAllTime'),
           type: 'pie',
-          radius: chartLayoutNarrow ? '48%' : '50%',
-          center: chartLayoutNarrow ? ['50%', '44%'] : ['50%', '55%'],
+          radius: chartLayoutNarrow ? ['36%', '58%'] : '50%',
+          center: chartLayoutNarrow ? ['50%', '46%'] : ['50%', '55%'],
           data: modelPieRows.map((r) => ({ name: r.type, value: r.value })),
           emphasis: {
             itemStyle: {
@@ -296,15 +308,46 @@ export default function Dashboard() {
         },
       },
       legend: {
-        bottom: 0,
+        bottom: chartLayoutNarrow ? undefined : 0,
+        top: chartLayoutNarrow ? 0 : undefined,
         left: 'center',
-        textStyle: { color: legendTextColor },
+        textStyle: {
+          color: legendTextColor,
+          fontSize: chartLayoutNarrow ? 11 : 12,
+        },
+        itemGap: chartLayoutNarrow ? 10 : 14,
       },
+      ...(chartLayoutNarrow
+        ? {
+            dataZoom: [
+              {
+                type: 'inside',
+                xAxisIndex: 0,
+                start: 52,
+                end: 100,
+                zoomOnMouseWheel: true,
+                moveOnMouseMove: true,
+              },
+              {
+                type: 'slider',
+                xAxisIndex: 0,
+                start: 52,
+                end: 100,
+                height: 26,
+                bottom: 4,
+                borderColor: isDarkUi ? '#4b5563' : '#d1d5db',
+                fillerColor: isDarkUi ? 'rgba(107, 114, 128, 0.35)' : 'rgba(148, 163, 184, 0.45)',
+                handleStyle: { color: isDarkUi ? '#9ca3af' : '#64748b' },
+                textStyle: { color: axisLabelColor, fontSize: 10 },
+              },
+            ],
+          }
+        : {}),
       grid: {
-        left: 8,
-        right: 8,
-        top: 8,
-        bottom: chartLayoutNarrow ? 52 : 40,
+        left: chartLayoutNarrow ? 10 : 12,
+        right: chartLayoutNarrow ? 10 : 12,
+        top: chartLayoutNarrow ? 40 : 12,
+        bottom: chartLayoutNarrow ? 88 : 42,
         containLabel: true,
       },
       xAxis: {
@@ -312,9 +355,10 @@ export default function Dashboard() {
         data: xCategories,
         axisLabel: {
           color: axisLabelColor,
-          rotate: 40,
-          interval: 0,
-          margin: 12,
+          rotate: chartLayoutNarrow ? 0 : 38,
+          fontSize: chartLayoutNarrow ? 10 : 12,
+          margin: chartLayoutNarrow ? 8 : 12,
+          hideOverlap: true,
         },
         axisTick: { alignWithLabel: true },
       },
@@ -331,7 +375,7 @@ export default function Dashboard() {
           name: promptLabel,
           type: 'bar',
           stack: 'total',
-          barMaxWidth: 44,
+          barMaxWidth: chartLayoutNarrow ? 22 : 44,
           barCategoryGap: '12%',
           itemStyle: { color: '#3b82f6' },
           emphasis: { focus: 'series' },
@@ -342,16 +386,16 @@ export default function Dashboard() {
           name: completionLabel,
           type: 'bar',
           stack: 'total',
-          barMaxWidth: 44,
+          barMaxWidth: chartLayoutNarrow ? 22 : 44,
           barCategoryGap: '12%',
           itemStyle: { color: '#22c55e' },
           emphasis: { focus: 'series' },
           label: {
             show: true,
             position: 'top',
-            distance: 6,
+            distance: chartLayoutNarrow ? 2 : 6,
             color: totalLabelColor,
-            fontSize: 11,
+            fontSize: chartLayoutNarrow ? 9 : 11,
             fontWeight: 600,
             formatter: (p: unknown) => {
               const idx =
@@ -532,8 +576,7 @@ export default function Dashboard() {
   return (
     <PageLayout className="min-h-0 flex-1 overflow-hidden">
       <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-hidden">
-      <div className="flex min-h-0 shrink flex-col gap-6 overflow-y-auto">
-      {/* Header */}
+      {/* Header: pinned above scroll; body scrolls independently */}
       <div className="flex shrink-0 items-center justify-between">
         <div>
           <h1 className={PAGE_PRIMARY_TITLE_CLASS}>
@@ -574,6 +617,7 @@ export default function Dashboard() {
         </Space>
       </div>
 
+      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-x-hidden overflow-y-auto overscroll-y-contain pb-safe">
       <div className={DASHBOARD_STAT_GRID_CLASS}>
         <Card size="small" className={DASHBOARD_STAT_CARD_CLASS}>
           <Statistic
@@ -704,14 +748,10 @@ export default function Dashboard() {
           </div>
         </Card>
       )}
-      </div>
 
-      {/* 每日 Token + 模型占比：在锁定主滚动后由 flex-1 占满视口；区域过高时在内部滚动，避免饼图行被父级 overflow 裁切 */}
-      <div
-        ref={chartsAreaRef}
-        className="min-h-0 w-full min-w-0 flex-1 overflow-y-auto overflow-x-hidden"
-      >
-      <div className="grid min-h-0 w-full min-w-0 grid-cols-1 gap-4 auto-rows-[minmax(280px,auto)] lg:min-h-full lg:grid-cols-2 lg:grid-rows-1 lg:auto-rows-[minmax(280px,1fr)]">
+      {/* 每日 Token + 模型占比（宽度用于饼图图例自适应；纵向滚动由外层统一容器承担） */}
+      <div ref={chartsAreaRef} className="min-h-0 w-full min-w-0">
+      <div className="grid min-h-0 w-full min-w-0 grid-cols-1 gap-4 auto-rows-[minmax(300px,auto)] lg:min-h-full lg:grid-cols-2 lg:grid-rows-1 lg:auto-rows-[minmax(280px,1fr)]">
         <Card
           title={
             <span className="flex items-center gap-2">
@@ -730,9 +770,9 @@ export default function Dashboard() {
               <Text type="secondary" className="text-xs shrink-0 mb-1">
                 {t('dashboard.usageDailyByCalendar', { tz: agentTz })}
               </Text>
-              <div className="min-h-[260px] w-full min-w-0 flex-1 overflow-visible pb-1 lg:min-h-[280px]">
+              <div className="min-h-[240px] w-full min-w-0 flex-1 overflow-visible pb-1 sm:min-h-[260px] lg:min-h-[280px]">
                 <EChartsWithResize
-                  style={{ width: '100%', height: '100%', minHeight: 260 }}
+                  style={{ width: '100%', height: '100%', minHeight: 236 }}
                   option={dailyTokenStackBarOption}
                 />
               </div>
@@ -757,6 +797,7 @@ export default function Dashboard() {
             />
           </div>
         </Card>
+      </div>
       </div>
       </div>
       </div>
