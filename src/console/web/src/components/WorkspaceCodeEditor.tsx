@@ -12,6 +12,7 @@ import { sql } from '@codemirror/lang-sql';
 import { xml } from '@codemirror/lang-xml';
 import { yaml } from '@codemirror/lang-yaml';
 import type { Extension } from '@codemirror/state';
+import { clsx } from 'clsx';
 import { useAppStore } from '../store';
 
 function resolveIsDark(theme: 'light' | 'dark' | 'system'): boolean {
@@ -71,6 +72,8 @@ export interface WorkspaceCodeEditorProps {
   onChange: (value: string) => void;
   filePath: string | null;
   placeholder?: string;
+  /** Merged onto the outer wrapper (layout / flex). */
+  className?: string;
 }
 
 export function WorkspaceCodeEditor({
@@ -78,6 +81,7 @@ export function WorkspaceCodeEditor({
   onChange,
   filePath,
   placeholder,
+  className: rootClassName,
 }: WorkspaceCodeEditorProps) {
   const themePref = useAppStore((s) => s.theme);
   const [isDark, setIsDark] = useState(() => resolveIsDark(themePref));
@@ -94,7 +98,12 @@ export function WorkspaceCodeEditor({
   const extensions = useMemo(() => languageExtensionsForPath(filePath), [filePath]);
 
   return (
-    <div className="min-h-0 h-full min-w-0 overflow-hidden rounded-md border border-gray-200/90 bg-white dark:border-gray-600/80 dark:bg-[#1e1e1e]">
+    <div
+      className={clsx(
+        'min-h-0 h-full min-w-0 overflow-hidden rounded-md border border-gray-200/90 bg-white dark:border-gray-600/80 dark:bg-[#1e1e1e]',
+        rootClassName,
+      )}
+    >
       <CodeMirror
         value={value}
         height="100%"
@@ -107,4 +116,16 @@ export function WorkspaceCodeEditor({
       />
     </div>
   );
+}
+
+/** Direct child of `Form.Item`: Ant Design injects `value` / `onChange` at runtime. */
+export type WorkspaceCodeEditorFormItemProps = Omit<WorkspaceCodeEditorProps, 'value' | 'onChange'> &
+  Partial<Pick<WorkspaceCodeEditorProps, 'value' | 'onChange'>>;
+
+export function WorkspaceCodeEditorForFormItem({
+  value = '',
+  onChange = () => {},
+  ...rest
+}: WorkspaceCodeEditorFormItemProps) {
+  return <WorkspaceCodeEditor value={value} onChange={onChange} {...rest} />;
 }

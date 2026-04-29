@@ -54,6 +54,7 @@ import {
   workspaceSkillTreeToBundleRows,
 } from './skills/skillsBundleUtils';
 import { SkillsGitSourcesCard } from './skills/SkillsGitSourcesCard';
+import { WorkspaceCodeEditor, WorkspaceCodeEditorForFormItem } from '../components/WorkspaceCodeEditor';
 
 const { Text } = Typography;
 
@@ -99,12 +100,18 @@ function BundleEditorSection({
   visibleBundleTreeEntries,
 }: BundleEditorSectionProps) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden lg:flex-row">
+    <div
+      className="
+          grid min-h-0 w-full flex-1 gap-4 overflow-hidden
+          grid-cols-1 [grid-template-rows:auto_minmax(0,1fr)]
+          lg:grid-cols-[minmax(18rem,20rem)_minmax(0,1fr)] lg:grid-rows-1 lg:[grid-template-rows:minmax(0,1fr)]
+        "
+    >
       <div
         className="
-                flex max-h-72 w-full shrink-0 flex-col overflow-hidden rounded-md border
+                flex max-h-72 w-full min-h-0 flex-col overflow-hidden rounded-md border
                 border-gray-200 bg-gray-50/90 dark:border-gray-700 dark:bg-gray-900/50
-                lg:max-h-none lg:min-h-0 lg:w-72 xl:w-80
+                lg:max-h-none lg:h-full lg:min-h-0
               "
       >
         <div className="text-xs font-medium px-3 py-2 border-b border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400">
@@ -363,7 +370,7 @@ function BundleEditorSection({
         </div>
       </div>
 
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
+      <div className="flex h-full min-h-0 min-w-0 flex-col gap-2">
         {activeFile === 'bundle-root' ? (
           <div
             className="
@@ -377,11 +384,13 @@ function BundleEditorSection({
           <Form.Item
             name="content"
             preserve
+            getValueFromEvent={(v) => v}
             label={t('skills.fieldContentBody')}
-            className="mb-0 flex min-h-0 flex-1 flex-col [&_.ant-form-item-control]:min-h-0 [&_.ant-form-item-control]:w-full [&_.ant-form-item-control]:flex-1 [&_.ant-form-item-control-input]:flex [&_.ant-form-item-control-input]:min-h-0 [&_.ant-form-item-control-input]:w-full [&_.ant-form-item-control-input]:flex-1 [&_.ant-form-item-control-input]:flex-col [&_.ant-form-item-control-input-content]:flex [&_.ant-form-item-control-input-content]:min-h-0 [&_.ant-form-item-control-input-content]:w-full [&_.ant-form-item-control-input-content]:flex-1 [&_.ant-form-item-control-input-content]:flex-col [&_.ant-form-item-row]:min-h-0 [&_.ant-form-item-row]:w-full [&_.ant-form-item-row]:flex-1 [&_.ant-form-item-row]:flex-col [&_textarea]:min-h-[14rem] [&_textarea]:w-full [&_textarea]:min-w-0 [&_textarea]:flex-1 [&_textarea]:resize-y"
+            className="mb-0 flex min-h-0 flex-1 flex-col [&_.ant-form-item-control]:flex [&_.ant-form-item-control]:min-h-0 [&_.ant-form-item-control]:w-full [&_.ant-form-item-control]:flex-1 [&_.ant-form-item-control]:flex-col [&_.ant-form-item-control-input]:flex [&_.ant-form-item-control-input]:min-h-0 [&_.ant-form-item-control-input]:w-full [&_.ant-form-item-control-input]:flex-1 [&_.ant-form-item-control-input]:flex-col [&_.ant-form-item-control-input-content]:flex [&_.ant-form-item-control-input-content]:min-h-0 [&_.ant-form-item-control-input-content]:w-full [&_.ant-form-item-control-input-content]:flex-1 [&_.ant-form-item-control-input-content]:flex-col [&_.ant-form-item-row]:min-h-0 [&_.ant-form-item-row]:w-full [&_.ant-form-item-row]:flex-1 [&_.ant-form-item-row]:flex-col"
           >
-            <Input.TextArea
-              className="font-mono text-sm min-h-[14rem] w-full min-w-0 flex-1 resize-y"
+            <WorkspaceCodeEditorForFormItem
+              className="min-h-0 flex-1"
+              filePath="SKILL.md"
               placeholder={t('skills.contentPlaceholder')}
             />
           </Form.Item>
@@ -412,8 +421,8 @@ function BundleEditorSection({
               );
             }
             return (
-              <>
-                <div>
+              <div className="flex min-h-0 flex-1 flex-col gap-2">
+                <div className="shrink-0">
                   <div className="text-sm font-medium text-gray-800 dark:text-gray-200 mb-1">
                     {t('skills.bundleRelativePath')}
                   </div>
@@ -426,15 +435,14 @@ function BundleEditorSection({
                     }
                   />
                 </div>
-                <Input.TextArea
-                  className="font-mono text-sm !min-h-[14rem]"
+                <WorkspaceCodeEditor
+                  className="min-h-0 flex-1"
+                  filePath={row.path.trim() || null}
                   placeholder={t('skills.contentPlaceholder')}
                   value={row.content}
-                  onChange={(event) =>
-                    updateBundleEntry(row.id, { content: event.target.value })
-                  }
+                  onChange={(next) => updateBundleEntry(row.id, { content: next })}
                 />
-              </>
+              </div>
             );
           })()
         )}
@@ -1580,6 +1588,7 @@ export default function Skills({
         styles={{
           body: {
             paddingTop: 12,
+            minHeight: 'min(620px, calc(100vh - 140px))',
             maxHeight: 'calc(100vh - 140px)',
             display: 'flex',
             flexDirection: 'column',

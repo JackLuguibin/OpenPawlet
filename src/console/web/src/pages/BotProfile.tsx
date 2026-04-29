@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Spin, Empty, Card, Button, Input, Segmented } from 'antd';
+import { Spin, Empty, Card, Button, Segmented } from 'antd';
 import { EditOutlined, SaveOutlined, CloseOutlined, ReloadOutlined } from '@ant-design/icons';
 import { Markdown } from '../components/Markdown';
+import { WorkspaceCodeEditor } from '../components/WorkspaceCodeEditor';
 import * as api from '../api/client';
 import { useAppStore } from '../store';
 import type { BotFilesResponse } from '../api/types';
@@ -148,12 +149,11 @@ export function BotProfilePanel({ currentBotId }: { currentBotId: string | null 
           styles={{ body: { flex: 1, minHeight: 0, overflowY: 'auto' } }}
         >
           {editMode ? (
-            <div className="flex flex-col gap-4">
-              <Input.TextArea
+            <div className="grid min-h-0 min-w-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)]">
+              <WorkspaceCodeEditor
                 value={editContent}
-                onChange={(e) => setEditContent(e.target.value)}
-                rows={24}
-                className="font-mono text-sm"
+                onChange={setEditContent}
+                filePath={`${activeTab}.md`}
                 placeholder={t('botProfile.placeholderEdit', { file: activeFileLabel })}
               />
             </div>
