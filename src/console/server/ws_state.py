@@ -247,4 +247,4 @@ async def _safe_send_json(websocket: WebSocket, frame: dict[str, Any]) -> None:
     try:
         await websocket.send_text(json.dumps(frame, ensure_ascii=False))
     except Exception:  # noqa: BLE001 - best-effort
-        pass
+        logger.opt(exception=True).debug("ws state: dropped outbound frame (client gone)")

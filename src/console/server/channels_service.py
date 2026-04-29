@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
+from loguru import logger
 from pydantic import ValidationError
 
 from console.server.bot_workspace import read_bot_runtime
@@ -86,12 +87,12 @@ def _discover_available_channel_names() -> list[str]:
     names: set[str] = set()
     try:
         names.update(discover_channel_names())
-    except Exception:  # noqa: BLE001
-        pass
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("discover_channel_names failed: {}", exc)
     try:
         names.update(discover_plugins().keys())
-    except Exception:  # noqa: BLE001
-        pass
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("discover_plugins failed: {}", exc)
     return sorted(names)
 
 

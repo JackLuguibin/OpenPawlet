@@ -115,7 +115,9 @@ def set_bot_running(bot_id: str | None, running: bool) -> None:
         push_status_snapshot(bot_id)
         push_channels_snapshot(bot_id)
     except Exception:  # noqa: BLE001 - never break the mutation
-        pass
+        logger.opt(exception=True).debug(
+            "push snapshot after runtime state update failed (UI may lag until next poll)"
+        )
 
 
 def is_bot_running(bot_id: str | None) -> bool:

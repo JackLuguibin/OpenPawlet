@@ -18,6 +18,7 @@ pointing at a local bare repo.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 import shutil
@@ -274,11 +275,9 @@ def _write_temp_askpass(secret: str) -> Path:
 
 
 def _safe_unlink(path: Path) -> None:
-    try:
+    with contextlib.suppress(OSError):
         if path.exists():
             path.unlink()
-    except OSError:
-        pass
 
 
 # ---------------------------------------------------------------------------
@@ -497,8 +496,11 @@ def _resolve_hard_reset_reference(cache: Path, env: dict[str, str], branch: str 
         sym = _git(["symbolic-ref", "-q", "refs/remotes/origin/HEAD"], cwd=cache, env=env).strip()
         if _remote_tracking_ref_exists(cache, env, sym):
             return sym
-    except GitSyncError:
-        pass
+    except GitSyncError as exc:
+        logger.debug(
+            "symbolic-ref for refs/remotes/origin/HEAD failed; trying fallbacks: {}",
+            exc,
+        )
 
     fallback = _pick_fallback_remote_branch(cache, env)
     if fallback and _remote_tracking_ref_exists(cache, env, fallback):

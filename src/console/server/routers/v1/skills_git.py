@@ -240,10 +240,7 @@ async def sync_git_repo(
     _ = workspace_root(bot_id)
     result = await _run_sync(repo, bot_id)
     _persist_sync_result(bot_id, repo_id, result)
-    if result.status == "error":
-        # Return 200 with the error in the body so the UI can show it inline,
-        # matching how /skills handles per-row failures.
-        pass
+    # Always 200: errors are carried in result.status for inline UI (same as /skills).
     return DataResponse(data=result)
 
 

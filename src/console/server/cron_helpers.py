@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import Request
+from loguru import logger
 
 from console.server.http_errors import service_unavailable
 from openpawlet.cron.service import CronService
@@ -132,7 +133,9 @@ def _resolve_store_path(bot_id: str | None) -> Path | None:
                 cfg = _loader.load_config()
                 return cfg.workspace_path.resolve() / "cron" / "jobs.json"
         except Exception:
-            pass
+            logger.opt(exception=True).debug(
+                "cron store path: global config override unavailable; using workspace_root"
+            )
     try:
         from console.server.bot_workspace import workspace_root
 

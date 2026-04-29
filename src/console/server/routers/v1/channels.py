@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, NoReturn
 
 from fastapi import APIRouter, Query, Request
+from loguru import logger
 
 from console.server.channels_service import (
     ChannelNotFoundError,
@@ -48,7 +49,9 @@ async def _hot_reload_runtime_for_bot(request: Request, bot_id: str | None) -> N
     try:
         await swap_runtime(request.app, target_bot)
     except Exception:  # noqa: BLE001 - never break the save path
-        pass
+        logger.opt(exception=True).debug(
+            "swap_runtime after channel mutation failed (restart may be needed for wiring)"
+        )
 
 
 @router.get("/channels", response_model=DataResponse[list[ChannelStatus]])

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import re
 from typing import Any
 
@@ -26,6 +27,7 @@ from console.server.bot_workspace import (
     workspace_agents_dir,
     write_text,
 )
+from console.server.http_errors import bad_request, internal_error, not_found
 from console.server.models import (
     AddCategoryBody,
     Agent,
@@ -46,7 +48,6 @@ from console.server.models import (
     OkWithTopic,
 )
 from console.server.parsing import parse_model_list
-from console.server.http_errors import bad_request, internal_error, not_found
 from console.server.state_hub import publish_agents_update
 
 router = APIRouter(prefix="/bots/{bot_id}/agents", tags=["Agents"])
@@ -220,15 +221,11 @@ def _prune_orphan_agent_entries(bot_id: str, keep_ids: set[str]) -> None:
     for entry in base.iterdir():
         if entry.is_file() and entry.suffix == ".json":
             if entry.stem not in keep_ids:
-                try:
+                with contextlib.suppress(OSError):
                     entry.unlink()
-                except OSError:
-                    pass
         elif entry.is_dir() and entry.name not in keep_ids:
-            try:
+            with contextlib.suppress(OSError):
                 shutil.rmtree(entry)
-            except OSError:
-                pass
 
 
 def _save_full_state(
@@ -255,10 +252,8 @@ def _save_full_state(
         # Drop the legacy single-file copy if it still exists.
         legacy = agent_workspace_json_path(bot_id, a.id)
         if legacy.is_file():
-            try:
+            with contextlib.suppress(OSError):
                 legacy.unlink()
-            except OSError:
-                pass
     _prune_orphan_agent_entries(bot_id, keep_ids)
     path = agents_state_path(bot_id)
     payload = {

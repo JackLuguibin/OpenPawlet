@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import json
 import mimetypes
 import re
@@ -366,10 +367,8 @@ async def handle_chat_completions(request: Request) -> Response:
                     yield _sse_chunk(token, model_name, chunk_id)
             finally:
                 task.cancel()
-                try:
+                with contextlib.suppress(asyncio.CancelledError, Exception):
                     await task
-                except (asyncio.CancelledError, Exception):
-                    pass
             if not stream_failed:
                 yield _sse_chunk("", model_name, chunk_id, finish_reason="stop")
                 yield _SSE_DONE

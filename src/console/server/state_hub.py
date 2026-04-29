@@ -201,11 +201,9 @@ class StateHub:
         payload = dict(frame)
         payload.setdefault("server_ts", time.time())
         target = bot_id or _WILDCARD
-        try:
+        with contextlib.suppress(RuntimeError):
+            # Loop is shutting down — drop frame; same fallback as when hub is unbound.
             loop.call_soon_threadsafe(self._dispatch_now, payload, target)
-        except RuntimeError:
-            # Loop is shutting down; same fallback as above.
-            pass
 
     def _dispatch_now(
         self,

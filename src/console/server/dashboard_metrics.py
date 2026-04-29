@@ -28,7 +28,8 @@ def _today_in_config_tz(iana: str | None) -> date:
 
             return datetime.now(ZoneInfo(iana)).date()
         except Exception:
-            pass
+            # Invalid or unknown zone id — same as unset config.
+            return datetime.now().astimezone().date()
     return datetime.now().astimezone().date()
 
 

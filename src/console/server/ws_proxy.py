@@ -11,6 +11,7 @@ wiring.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import time
 
 import websockets
@@ -69,10 +70,8 @@ def _filter_query_string(raw: bytes | str) -> str:
 
 async def _safe_ws_close(websocket: WebSocket, code: int = 1000) -> None:
     """Close *websocket* swallowing any error (best-effort cleanup)."""
-    try:
+    with contextlib.suppress(Exception):  # pragma: no cover - best-effort cleanup
         await websocket.close(code=code)
-    except Exception:  # pragma: no cover - best-effort cleanup
-        pass
 
 
 class _RateLimiter:
@@ -139,7 +138,7 @@ async def _pump_client_to_remote(
                     break
                 await remote_ws.send(data)
     except websockets.exceptions.ConnectionClosed:
-        pass
+        logger.debug("[openpawlet-ws-proxy] client->gateway: peer closed")
     except Exception as exc:  # noqa: BLE001 - close both sides
         logger.warning("[openpawlet-ws-proxy] client->gateway error: {}", exc)
     finally:
@@ -158,7 +157,7 @@ async def _pump_remote_to_client(
             else:
                 await websocket.send_bytes(message)
     except websockets.exceptions.ConnectionClosed:
-        pass
+        logger.debug("[openpawlet-ws-proxy] gateway->client: peer closed")
     except Exception as exc:  # noqa: BLE001
         logger.warning("[openpawlet-ws-proxy] gateway->client error: {}", exc)
     finally:
@@ -209,12 +208,8 @@ async def proxy_websocket(
             _, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
             for task in pending:
                 task.cancel()
-                try:
+                with contextlib.suppress(asyncio.CancelledError, Exception):  # pragma: no cover
                     await task
-                except asyncio.CancelledError:
-                    pass
-                except Exception:  # pragma: no cover
-                    pass
 
     except OSError as exc:
         logger.warning(

@@ -12,6 +12,7 @@ behaviour explicit to existing UIs that still call them).
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import time
 from typing import TYPE_CHECKING
@@ -25,11 +26,11 @@ from openpawlet.bus.stats_models import (
     BusDedupeStats,
     BusPausedFlags,
     MessageBusStatsSnapshot,
+    QueueModeBlock,
     QueuesGoneBody,
     QueuesHealthResponse,
     QueuesHttpSnapshot,
     QueuesStreamTick,
-    QueueModeBlock,
 )
 
 if TYPE_CHECKING:
@@ -223,10 +224,8 @@ async def _stream_route(websocket: WebSocket) -> None:
                 break
             _apply_subscription_op(active_topics, raw)
     finally:
-        try:
+        with contextlib.suppress(Exception):  # pragma: no cover
             await websocket.close()
-        except Exception:  # pragma: no cover
-            pass
 
 
 def install_queues_routes(app: FastAPI) -> APIRouter:
