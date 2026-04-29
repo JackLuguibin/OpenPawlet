@@ -14,13 +14,23 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, Response
 from loguru import logger
 
 from console.server.app_state import app_uptime_seconds, get_message_bus, request_uptime_seconds
+from openpawlet.bus.stats_models import (
+    BusDedupeStats,
+    BusPausedFlags,
+    MessageBusStatsSnapshot,
+    QueuesGoneBody,
+    QueuesHealthResponse,
+    QueuesHttpSnapshot,
+    QueuesStreamTick,
+    QueueModeBlock,
+)
 
 if TYPE_CHECKING:
     from openpawlet.bus.queue import MessageBus
@@ -30,22 +40,16 @@ _MODE_TAG = "in_process"
 _VERSION_TAG = "in-process"
 
 
-def _bus_stats(bus: MessageBus | None) -> dict[str, Any]:
+def _bus_stats(bus: MessageBus | None) -> MessageBusStatsSnapshot:
     """Return the live stats block from *bus* (empty when bus missing)."""
     if bus is None:
-        return {
-            "metrics": {"inbound_pending": 0, "outbound_pending": 0},
-            "rates": {},
-            "paused": {"inbound": False, "outbound": False, "events": False},
-            "dedupe": {
-                "enabled": False,
-                "hits": 0,
-                "misses": 0,
-                "size": 0,
-                "persist_size": 0,
-            },
-            "samples": [],
-        }
+        return MessageBusStatsSnapshot(
+            metrics={"inbound_pending": 0, "outbound_pending": 0},
+            rates={},
+            paused=BusPausedFlags(),
+            dedupe=BusDedupeStats(),
+            samples=[],
+        )
     snapshot_fn = getattr(bus, "stats_snapshot", None)
     if callable(snapshot_fn):
         try:
@@ -57,19 +61,26 @@ def _bus_stats(bus: MessageBus | None) -> dict[str, Any]:
         stats = {}
     inbound = int(getattr(bus, "inbound_size", 0))
     outbound = int(getattr(bus, "outbound_size", 0))
-    metrics = dict(stats.get("metrics") or {})
-    metrics.setdefault("inbound_pending", inbound)
-    metrics.setdefault("outbound_pending", outbound)
-    return {
-        "metrics": metrics,
-        "rates": dict(stats.get("rates") or {}),
-        "paused": dict(stats.get("paused") or {"inbound": False, "outbound": False, "events": False}),
-        "dedupe": dict(
-            stats.get("dedupe")
-            or {"enabled": False, "hits": 0, "misses": 0, "size": 0, "persist_size": 0}
-        ),
-        "samples": list(stats.get("samples") or []),
-    }
+    metrics_raw = dict(stats.get("metrics") or {})
+    metrics_raw.setdefault("inbound_pending", inbound)
+    metrics_raw.setdefault("outbound_pending", outbound)
+    metrics = {str(k): int(v) for k, v in metrics_raw.items()}
+    rates_raw = dict(stats.get("rates") or {})
+    rates = {str(k): float(v) for k, v in rates_raw.items()}
+    paused_raw = dict(
+        stats.get("paused") or {"inbound": False, "outbound": False, "events": False}
+    )
+    dedupe_raw = dict(
+        stats.get("dedupe")
+        or {"enabled": False, "hits": 0, "misses": 0, "size": 0, "persist_size": 0}
+    )
+    return MessageBusStatsSnapshot(
+        metrics=metrics,
+        rates=rates,
+        paused=BusPausedFlags.model_validate(paused_raw),
+        dedupe=BusDedupeStats.model_validate(dedupe_raw),
+        samples=list(stats.get("samples") or []),
+    )
 
 
 def _snapshot(
@@ -77,23 +88,24 @@ def _snapshot(
     uptime_s: float,
     *,
     include_samples: bool = True,
-) -> dict[str, Any]:
+) -> QueuesHttpSnapshot:
     """Return a unified snapshot describing the in-process queue state."""
     stats = _bus_stats(bus)
-    samples = stats["samples"] if include_samples else []
-    return {
-        "status": "ok",
-        "version": _VERSION_TAG,
-        "uptime_s": round(uptime_s, 3),
-        "settings": {"mode": _MODE_TAG},
-        "topology": {"mode": _MODE_TAG},
-        "metrics": stats["metrics"],
-        "rates": stats["rates"],
-        "paused": stats["paused"],
-        "dedupe": stats["dedupe"],
-        "connections": [],
-        "samples": samples,
-    }
+    samples = stats.samples if include_samples else []
+    mode_block = QueueModeBlock(mode=_MODE_TAG)
+    return QueuesHttpSnapshot(
+        status="ok",
+        version=_VERSION_TAG,
+        uptime_s=round(uptime_s, 3),
+        settings=mode_block,
+        topology=mode_block,
+        metrics=stats.metrics,
+        rates=stats.rates,
+        paused=stats.paused,
+        dedupe=stats.dedupe,
+        connections=[],
+        samples=samples,
+    )
 
 
 def _gone(message: str) -> JSONResponse:
@@ -105,7 +117,7 @@ def _gone(message: str) -> JSONResponse:
     in this layout" - and lets the SPA gate the affected buttons.
     """
     return JSONResponse(
-        {"error": message, "mode": _MODE_TAG},
+        QueuesGoneBody(error=message, mode=_MODE_TAG).model_dump(mode="json"),
         status_code=410,
     )
 
@@ -117,19 +129,18 @@ _disabled = _gone
 
 async def _snapshot_route(request: Request) -> Response:
     snap = _snapshot(get_message_bus(request), request_uptime_seconds(request))
-    return JSONResponse(snap)
+    return JSONResponse(snap.model_dump(mode="json"))
 
 
 async def _health_route(request: Request) -> Response:
     snap = _snapshot(get_message_bus(request), request_uptime_seconds(request))
-    return JSONResponse(
-        {
-            "status": snap["status"],
-            "version": snap["version"],
-            "uptime_s": snap["uptime_s"],
-            "metrics": snap["metrics"],
-        }
+    health = QueuesHealthResponse(
+        status=snap.status,
+        version=snap.version,
+        uptime_s=snap.uptime_s,
+        metrics=snap.metrics,
     )
+    return JSONResponse(health.model_dump(mode="json"))
 
 
 async def _pause_route(_request: Request) -> Response:
@@ -153,7 +164,6 @@ async def _clear_dedupe_route(_request: Request) -> Response:
     )
 
 
-_STREAM_TICK_FIELDS = frozenset({"metrics", "rates", "paused", "connections", "dedupe"})
 _STREAM_INTERVAL_S = 1.0
 _STREAM_OPTIONAL_TOPICS = frozenset({"samples"})
 
@@ -187,12 +197,18 @@ async def _stream_route(websocket: WebSocket) -> None:
         while True:
             include_samples = "samples" in active_topics
             snap = _snapshot(bus, app_uptime_seconds(state), include_samples=include_samples)
-            payload: dict[str, Any] = {"type": "tick", "at": time.time()}
-            payload.update({k: v for k, v in snap.items() if k in _STREAM_TICK_FIELDS})
-            if include_samples:
-                payload["samples"] = snap["samples"]
+            tick = QueuesStreamTick(
+                type="tick",
+                at=time.time(),
+                metrics=snap.metrics,
+                rates=snap.rates,
+                paused=snap.paused,
+                dedupe=snap.dedupe,
+                connections=snap.connections,
+                samples=snap.samples if include_samples else None,
+            )
             try:
-                await websocket.send_json(payload)
+                await websocket.send_json(tick.model_dump(mode="json", exclude_none=True))
             except Exception:
                 break
             try:

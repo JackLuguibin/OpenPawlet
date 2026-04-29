@@ -459,7 +459,10 @@ class MessageBus(RequestReplyMixin):
         return rates
 
     def stats_snapshot(self) -> dict[str, Any]:
-        """Return a structured snapshot consumed by ``queues_router``."""
+        """Return a structured snapshot consumed by ``queues_router``.
+
+        The payload matches :class:`openpawlet.bus.stats_models.MessageBusStatsSnapshot`.
+        """
         metrics: dict[str, int] = {
             "inbound_pending": self.inbound_size,
             "outbound_pending": self.outbound_size,

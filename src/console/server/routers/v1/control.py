@@ -7,9 +7,6 @@ endpoints under ``/control/agents/*`` (main + sub agents).
 
 from __future__ import annotations
 
-import dataclasses
-from typing import Any
-
 from fastapi import APIRouter, Query, Request
 
 from console.server.app_state import require_agent_manager
@@ -22,16 +19,14 @@ from console.server.models import (
     RuntimeSubagentStartBody,
 )
 from console.server.openpawlet_user_config import BOT_ID_DESCRIPTION
+from openpawlet.runtime.agent_manager import ManagedAgentStatus
 
 router = APIRouter(tags=["Control"])
 
-def _runtime_status_model(row: Any) -> RuntimeAgentStatus:
-    """Convert runtime status dataclass/object to API model."""
-    if dataclasses.is_dataclass(row):
-        payload = dataclasses.asdict(row)
-    else:
-        payload = dict(getattr(row, "__dict__", {}))
-    return RuntimeAgentStatus.model_validate(payload)
+
+def _runtime_status_model(row: ManagedAgentStatus) -> RuntimeAgentStatus:
+    """Map :class:`~openpawlet.runtime.agent_manager.ManagedAgentStatus` to the HTTP model."""
+    return RuntimeAgentStatus.model_validate(row)
 
 
 @router.post(

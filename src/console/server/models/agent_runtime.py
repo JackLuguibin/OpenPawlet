@@ -1,4 +1,8 @@
-"""Runtime agent lifecycle models for unified manager APIs."""
+"""Runtime agent lifecycle models for unified manager APIs.
+
+Field layout matches :class:`openpawlet.runtime.agent_manager.ManagedAgentStatus`
+so :meth:`~RuntimeAgentStatus.model_validate` can consume runtime rows directly.
+"""
 
 from __future__ import annotations
 
@@ -6,7 +10,7 @@ from pydantic import BaseModel, ConfigDict
 
 
 class RuntimeAgentStatus(BaseModel):
-    """Unified runtime status for main or subagent."""
+    """Unified runtime status for main or subagent (HTTP projection)."""
 
     model_config = ConfigDict(extra="forbid")
 

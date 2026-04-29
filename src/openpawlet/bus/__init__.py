@@ -13,9 +13,27 @@ from openpawlet.bus.queue import (
     MessageBusProtocol,
     RequestReplyMixin,
 )
+from openpawlet.bus.stats_models import (
+    BusDedupeStats,
+    BusPausedFlags,
+    MessageBusStatsSnapshot,
+    QueueModeBlock,
+    QueuesGoneBody,
+    QueuesHealthResponse,
+    QueuesHttpSnapshot,
+    QueuesStreamTick,
+)
 
 __all__ = [
     "AgentEvent",
+    "BusDedupeStats",
+    "BusPausedFlags",
+    "MessageBusStatsSnapshot",
+    "QueueModeBlock",
+    "QueuesGoneBody",
+    "QueuesHealthResponse",
+    "QueuesHttpSnapshot",
+    "QueuesStreamTick",
     "EventSubscription",
     "InboundMessage",
     "MessageBus",
