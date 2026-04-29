@@ -163,6 +163,8 @@
     "batchDelete": "Batch delete",
     "collapseSidebar": "Collapse session list",
     "expandSidebar": "Expand sessions",
+    "openSessions": "Open sessions",
+    "closeSessions": "Close sessions",
     "title": "Chat",
     "subtitle": "Work with OpenPawlet",
     "newChat": "New chat",

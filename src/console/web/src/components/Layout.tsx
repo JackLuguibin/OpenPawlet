@@ -553,11 +553,12 @@ export default function Layout({ children }: LayoutProps) {
             <button
               type="button"
               title={wsUi.title}
+              aria-label={wsUi.label}
               onClick={() => window.location.reload()}
-              className="inline-flex h-7 items-center gap-1.5 rounded px-1.5 text-[12px] leading-none text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+              className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded px-1.5 text-[12px] leading-none text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
             >
               <Badge status={wsUi.badge} />
-              <span className="text-[12px]">{wsUi.label}</span>
+              <span className="hidden whitespace-nowrap text-[12px] lg:inline">{wsUi.label}</span>
             </button>
             {bots.length > 0 && (
               <>

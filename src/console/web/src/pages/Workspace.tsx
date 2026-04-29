@@ -252,11 +252,11 @@ export default function Workspace() {
           </Space>
         </div>
 
-        <div className="mt-4 flex min-h-0 min-w-0 flex-1 gap-6">
+        <div className="mt-4 flex min-h-0 min-w-0 flex-1 flex-col gap-4 lg:flex-row lg:gap-6">
           <Card
             title={t('workspace.fileListTitle')}
             size="small"
-            className="w-72 shrink-0 flex flex-col rounded-md border border-gray-200/80 dark:border-gray-700/60 bg-white dark:bg-gray-800/40 shadow-sm hover:shadow-md transition-shadow overflow-hidden"
+            className="flex h-auto max-h-[min(45vh,22rem)] w-full shrink-0 flex-col overflow-hidden rounded-md border border-gray-200/80 bg-white shadow-sm transition-shadow hover:shadow-md dark:border-gray-700/60 dark:bg-gray-800/40 lg:h-auto lg:max-h-none lg:w-72"
             styles={{ body: { flex: 1, minHeight: 0, overflowY: 'auto', padding: '1rem' } }}
           >
             {treeData.length > 0 ? (
@@ -275,10 +275,10 @@ export default function Workspace() {
           </Card>
 
           <Card
-            className="flex-1 min-h-0 overflow-hidden flex flex-col rounded-md border border-gray-200/80 dark:border-gray-700/60 bg-white dark:bg-gray-800/40 shadow-sm hover:shadow-md transition-shadow"
+            className="flex min-h-[12rem] min-w-0 flex-1 flex-col overflow-hidden rounded-md border border-gray-200/80 bg-white shadow-sm transition-shadow hover:shadow-md dark:border-gray-700/60 dark:bg-gray-800/40 lg:min-h-0"
             styles={{
               body: {
-                padding: '2rem 2.5rem',
+                padding: 0,
                 flex: 1,
                 minHeight: 0,
                 overflowY: 'auto',
@@ -287,38 +287,43 @@ export default function Workspace() {
               },
             }}
           >
-            {!selectedFile ? (
-              <div className="flex min-h-0 min-w-0 flex-1 flex-col items-center justify-center">
-                <Empty description={t('workspace.selectFileHint')} className="text-gray-500" />
-              </div>
-            ) : fileLoading ? (
-              <div className="flex justify-center py-12">
-                <Spin />
-              </div>
-            ) : editMode ? (
-              <div className="grid min-h-0 min-w-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)]">
-                <WorkspaceCodeEditor
-                  value={editContent}
-                  onChange={setEditContent}
-                  filePath={selectedFile}
-                  placeholder={t('workspace.editPlaceholder')}
-                />
-              </div>
-            ) : viewMode === 'preview' && isMarkdown ? (
-              <div className="w-full">
-                <div className={MARKDOWN_PROSE_CLASS}>
-                  <Markdown>{fileData?.content ?? ''}</Markdown>
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col px-4 py-4 sm:p-6 lg:px-10 lg:py-8">
+              {!selectedFile ? (
+                <div className="flex min-h-[10rem] w-full min-w-0 flex-1 flex-col items-center justify-center px-2 py-6 text-center sm:min-h-0">
+                  <Empty
+                    description={t('workspace.selectFileHint')}
+                    className="max-w-full text-gray-500 [&_.ant-empty-description]:mx-auto [&_.ant-empty-description]:max-w-[min(100%,18rem)] [&_.ant-empty-description]:whitespace-normal [&_.ant-empty-description]:break-words [&_.ant-empty-description]:leading-relaxed [&_.ant-empty-image]:mx-auto"
+                  />
                 </div>
-              </div>
-            ) : viewMode === 'preview' && !isMarkdown ? (
-              <pre className="text-sm overflow-auto max-h-full p-4 bg-gray-50 dark:bg-gray-800 rounded-md">
-                {fileData?.content ?? ''}
-              </pre>
-            ) : (
-              <pre className="text-sm overflow-auto max-h-full p-4 bg-gray-50 dark:bg-gray-800 rounded-md whitespace-pre-wrap">
-                {fileData?.content ?? ''}
-              </pre>
-            )}
+              ) : fileLoading ? (
+                <div className="flex justify-center py-12">
+                  <Spin />
+                </div>
+              ) : editMode ? (
+                <div className="grid min-h-0 min-w-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)]">
+                  <WorkspaceCodeEditor
+                    value={editContent}
+                    onChange={setEditContent}
+                    filePath={selectedFile}
+                    placeholder={t('workspace.editPlaceholder')}
+                  />
+                </div>
+              ) : viewMode === 'preview' && isMarkdown ? (
+                <div className="w-full">
+                  <div className={MARKDOWN_PROSE_CLASS}>
+                    <Markdown>{fileData?.content ?? ''}</Markdown>
+                  </div>
+                </div>
+              ) : viewMode === 'preview' && !isMarkdown ? (
+                <pre className="text-sm overflow-auto max-h-full p-4 bg-gray-50 dark:bg-gray-800 rounded-md">
+                  {fileData?.content ?? ''}
+                </pre>
+              ) : (
+                <pre className="text-sm overflow-auto max-h-full p-4 bg-gray-50 dark:bg-gray-800 rounded-md whitespace-pre-wrap">
+                  {fileData?.content ?? ''}
+                </pre>
+              )}
+            </div>
           </Card>
         </div>
       </div>

@@ -2294,18 +2294,6 @@ export default function Chat() {
 
   return (
     <div className="flex flex-1 min-h-0 overflow-hidden overflow-x-hidden bg-white dark:bg-gray-950 relative">
-      {/* Mobile Sessions Toggle Button */}
-      <button
-        onClick={() => setSessionsSidebarOpen(!sessionsSidebarOpen)}
-        className="md:hidden fixed bottom-20 right-4 z-30 p-3 bg-blue-500 hover:bg-blue-600 text-white rounded-full shadow-md transition-colors"
-      >
-        {sessionsSidebarOpen ? (
-          <CloseOutlined style={{ fontSize: 18 }} />
-        ) : (
-          <MessageOutlined style={{ fontSize: 18 }} />
-        )}
-      </button>
-
       {/* Sessions Sidebar */}
       <div
         className={`
@@ -2855,7 +2843,29 @@ export default function Chat() {
           )}
 
           {/* Input */}
-          <div className="bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 pb-safe">
+          <div className="relative bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 pb-safe">
+            {/* Mobile: anchor above composer so height tracks textarea; left side avoids jump-to-bottom (right). */}
+            <button
+              type="button"
+              onClick={() => setSessionsSidebarOpen(!sessionsSidebarOpen)}
+              className="md:hidden absolute bottom-[calc(100%+0.5rem)] left-4 z-30 flex h-11 w-11 items-center justify-center rounded-full bg-blue-500 text-white shadow-md transition-colors hover:bg-blue-600"
+              title={
+                sessionsSidebarOpen
+                  ? t("chat.closeSessions")
+                  : t("chat.openSessions")
+              }
+              aria-label={
+                sessionsSidebarOpen
+                  ? t("chat.closeSessions")
+                  : t("chat.openSessions")
+              }
+            >
+              {sessionsSidebarOpen ? (
+                <CloseOutlined style={{ fontSize: 18 }} />
+              ) : (
+                <MessageOutlined style={{ fontSize: 18 }} />
+              )}
+            </button>
             <div className="w-full min-w-0 max-w-3xl mx-auto px-4 md:px-6 py-4">
               <ChatInput
                 inputRef={inputRef}

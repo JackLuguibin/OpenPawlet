@@ -163,6 +163,8 @@
     "batchDelete": "批量删除",
     "collapseSidebar": "收起会话列表",
     "expandSidebar": "展开会话",
+    "openSessions": "打开会话列表",
+    "closeSessions": "关闭会话列表",
     "title": "对话",
     "subtitle": "与 OpenPawlet 协作",
     "newChat": "新对话",
