@@ -803,7 +803,7 @@ export default function Settings() {
                     min={1}
                     max={200000}
                     size="middle"
-                    className="!w-full max-w-[220px]"
+                    className="w-full"
                   />
                 </Form.Item>
               </Col>
@@ -823,55 +823,59 @@ export default function Settings() {
                     min={1}
                     max={1000000}
                     size="middle"
-                    className="!w-full max-w-[220px]"
+                    className="w-full"
                   />
                 </Form.Item>
               </Col>
             </Row>
 
-            <Form.Item
-              label={
-                <span>
-                  {t('settings.maxIterations')}{' '}
-                  <Text type="secondary" className="text-xs font-normal">
-                    {t('settings.maxIterationsRange')}
-                  </Text>
-                </span>
-              }
-              name="max_iterations"
-            >
-              <div className="max-w-xl pt-1">
-                <Slider
-                  min={1}
-                  max={100}
-                  marks={{ 1: '1', 50: '50', 100: '100' }}
-                  tooltip={{ formatter: (v) => (v !== undefined ? String(v) : '') }}
-                />
-              </div>
-            </Form.Item>
+            <Row gutter={[token.marginLG, token.marginSM]}>
+              <Col xs={24}>
+                <Form.Item
+                  label={
+                    <span>
+                      {t('settings.maxIterations')}{' '}
+                      <Text type="secondary" className="text-xs font-normal">
+                        {t('settings.maxIterationsRange')}
+                      </Text>
+                    </span>
+                  }
+                  name="max_iterations"
+                >
+                  <div className="w-full pt-1">
+                    <Slider
+                      min={1}
+                      max={100}
+                      marks={{ 1: '1', 50: '50', 100: '100' }}
+                      tooltip={{ formatter: (v) => (v !== undefined ? String(v) : '') }}
+                    />
+                  </div>
+                </Form.Item>
 
-            <Form.Item
-              label={
-                <span>
-                  {t('settings.temperature')}{' '}
-                  <Text type="secondary" className="text-xs font-normal">
-                    {t('settings.temperatureRange')}
-                  </Text>
-                </span>
-              }
-              name="temperature"
-              className="!mb-0"
-            >
-              <div className="max-w-xl pt-1">
-                <Slider
-                  min={0}
-                  max={2}
-                  step={0.1}
-                  marks={{ 0: '0.0', 1: '1.0', 2: '2.0' }}
-                  tooltip={{ formatter: (v) => (v !== undefined ? v.toFixed(1) : '') }}
-                />
-              </div>
-            </Form.Item>
+                <Form.Item
+                  label={
+                    <span>
+                      {t('settings.temperature')}{' '}
+                      <Text type="secondary" className="text-xs font-normal">
+                        {t('settings.temperatureRange')}
+                      </Text>
+                    </span>
+                  }
+                  name="temperature"
+                  className="!mb-0"
+                >
+                  <div className="w-full pt-1">
+                    <Slider
+                      min={0}
+                      max={2}
+                      step={0.1}
+                      marks={{ 0: '0.0', 1: '1.0', 2: '2.0' }}
+                      tooltip={{ formatter: (v) => (v !== undefined ? v.toFixed(1) : '') }}
+                    />
+                  </div>
+                </Form.Item>
+              </Col>
+            </Row>
           </Form>
         </Card>
       ),
