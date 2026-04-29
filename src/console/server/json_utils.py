@@ -13,8 +13,9 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
-from fastapi import HTTPException
 from loguru import logger
+
+from console.server.http_errors import internal_error
 
 
 def read_utf8_file(path: Path) -> str | None:
@@ -53,7 +54,7 @@ def save_json_file(path: Path, data: Any, *, indent: int = 2) -> None:
     to the caller.
 
     Raises:
-        HTTPException: ``500`` when the file cannot be written or replaced.
+        ``HTTPException`` with status 500 when the file cannot be written or replaced.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
@@ -62,7 +63,7 @@ def save_json_file(path: Path, data: Any, *, indent: int = 2) -> None:
             json.dump(data, f, indent=indent, ensure_ascii=False)
     except OSError as exc:
         logger.warning("[json_utils] write failed {}: {}", path, exc)
-        raise HTTPException(status_code=500, detail="Failed to save state") from exc
+        raise internal_error("Failed to save state") from exc
 
     last_exc: OSError | None = None
     for attempt in range(3):
@@ -74,10 +75,10 @@ def save_json_file(path: Path, data: Any, *, indent: int = 2) -> None:
             time.sleep(0.05 * (2**attempt))
         except OSError as exc:
             logger.warning("[json_utils] replace failed {}: {}", path, exc)
-            raise HTTPException(status_code=500, detail="Failed to save state") from exc
+            raise internal_error("Failed to save state") from exc
 
     logger.warning("[json_utils] replace exhausted retries {}: {}", path, last_exc)
-    raise HTTPException(status_code=500, detail="Failed to save state") from last_exc
+    raise internal_error("Failed to save state") from last_exc
 
 
 def iter_jsonl_dicts(

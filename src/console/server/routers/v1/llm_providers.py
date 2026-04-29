@@ -35,11 +35,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
 from console.server.bot_workspace import workspace_root
+from console.server.http_errors import bad_request, not_found, not_found_detail
 from console.server.config_apply import apply_providers_change
 from console.server.models import DataResponse, OkBody
 from console.server.state_hub_helpers import push_after_config_change
@@ -224,7 +225,7 @@ def _require_instance(bot_id: str, instance_id: str) -> tuple[LLMProviderStore, 
     store = _store(bot_id)
     inst = store.get(instance_id)
     if inst is None:
-        raise HTTPException(status_code=404, detail="Instance not found")
+        not_found("Instance")
     return store, inst
 
 
@@ -234,7 +235,7 @@ def _find_key_index(inst: LLMProviderInstance, key_id: str) -> int:
     for i, entry in enumerate(inst.api_keys):
         if entry.id == target:
             return i
-    raise HTTPException(status_code=404, detail="Key not found on instance")
+    not_found_detail("Key not found on instance")
 
 
 # ---------------------------------------------------------------------------
@@ -278,7 +279,7 @@ async def create_instance(
     store = _store(bot_id)
     iid = (body.id or "").strip() or generate_instance_id(name=body.name)
     if store.get(iid) is not None:
-        raise HTTPException(status_code=400, detail=f"Instance id {iid!r} already exists")
+        bad_request(f"Instance id {iid!r} already exists")
 
     triggers = _validate_triggers(body.failover_on)
 
@@ -299,7 +300,7 @@ async def create_instance(
             is_default=bool(body.is_default),
         )
     except Exception as exc:  # pragma: no cover - validation error
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        bad_request(str(exc), cause=exc)
 
     # If this is the very first instance and the user didn't ask for it
     # to be default, promote it anyway — otherwise the runtime would
@@ -359,7 +360,7 @@ async def update_instance(
     try:
         updated = LLMProviderInstance.model_validate(data)
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        bad_request(str(exc), cause=exc)
 
     store.upsert(updated)
     _after_provider_change(request, bot_id)
@@ -380,7 +381,7 @@ async def set_default_instance(
     store = _store(bot_id)
     inst = store.set_default(instance_id)
     if inst is None:
-        raise HTTPException(status_code=404, detail="Instance not found")
+        not_found("Instance")
     _after_provider_change(request, bot_id)
     return DataResponse(data=_safe_payload(inst))
 
@@ -391,7 +392,7 @@ async def delete_instance(
 ) -> DataResponse[OkBody]:
     """Delete an instance and clean up references on others."""
     if not _store(bot_id).delete(instance_id):
-        raise HTTPException(status_code=404, detail="Instance not found")
+        not_found("Instance")
     _after_provider_change(request, bot_id)
     return DataResponse(data=OkBody())
 
@@ -475,7 +476,7 @@ async def add_key(
     store, inst = _require_instance(bot_id, instance_id)
     value = (body.value or "").strip()
     if not value:
-        raise HTTPException(status_code=400, detail="value is required")
+        bad_request("value is required")
     new_id = generate_api_key_id()
     existing_ids = {entry.id for entry in inst.api_keys}
     while new_id in existing_ids:

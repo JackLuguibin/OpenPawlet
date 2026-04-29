@@ -15,6 +15,7 @@ next render even if a publish silently drops.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from loguru import logger
@@ -27,6 +28,14 @@ from console.server.state_hub import (
 )
 
 
+def _run_publish(name: str, fn: Callable[[], None]) -> None:
+    """Run *fn*, logging any exception without propagating it."""
+    try:
+        fn()
+    except Exception:  # noqa: BLE001 - never let a publish failure escape
+        logger.exception("[state-hub] {} failed", name)
+
+
 def push_status_snapshot(bot_id: str | None) -> None:
     """Recompute ``GET /status`` and broadcast the result.
 
@@ -35,7 +44,8 @@ def push_status_snapshot(bot_id: str | None) -> None:
     persisted session count).  Heavy lifting is shared with the HTTP
     handler so the two paths cannot diverge.
     """
-    try:
+
+    def _impl() -> None:
         # Imported lazily so this module can be imported during early
         # bootstrap without dragging the full router dep tree.
         from console.server.bot_workspace import read_bot_runtime
@@ -69,8 +79,8 @@ def push_status_snapshot(bot_id: str | None) -> None:
             }
         )
         publish_status_update(bot_id, snapshot.model_dump(mode="json"))
-    except Exception:  # noqa: BLE001 - never let a publish failure escape
-        logger.exception("[state-hub] push_status_snapshot failed")
+
+    _run_publish("push_status_snapshot", _impl)
 
 
 def push_sessions_snapshot(bot_id: str | None) -> None:
@@ -79,7 +89,8 @@ def push_sessions_snapshot(bot_id: str | None) -> None:
     Mirrors ``GET /sessions`` exactly so the SPA's ``setQueryData`` path
     sees the same shape it would on a manual refetch.
     """
-    try:
+
+    def _impl() -> None:
         from console.server.services.session_view import row_to_session_info
         from console.server.session_store import list_session_rows
 
@@ -88,28 +99,28 @@ def push_sessions_snapshot(bot_id: str | None) -> None:
             row_to_session_info(r).model_dump(mode="json") for r in rows
         ]
         publish_sessions_update(bot_id, sessions)
-    except Exception:  # noqa: BLE001
-        logger.exception("[state-hub] push_sessions_snapshot failed")
+
+    _run_publish("push_sessions_snapshot", _impl)
 
 
 def push_channels_snapshot(bot_id: str | None) -> None:
-    try:
+    def _impl() -> None:
         from console.server.channels_service import list_channel_statuses
 
         channels = [c.model_dump(mode="json") for c in list_channel_statuses(bot_id)]
         publish_channels_update(bot_id, channels)
-    except Exception:  # noqa: BLE001
-        logger.exception("[state-hub] push_channels_snapshot failed")
+
+    _run_publish("push_channels_snapshot", _impl)
 
 
 def push_mcp_snapshot(bot_id: str | None) -> None:
-    try:
+    def _impl() -> None:
         from console.server.mcp_config import mcp_statuses_for_bot
 
         rows = [m.model_dump(mode="json") for m in mcp_statuses_for_bot(bot_id)]
         publish_mcp_update(bot_id, rows)
-    except Exception:  # noqa: BLE001
-        logger.exception("[state-hub] push_mcp_snapshot failed")
+
+    _run_publish("push_mcp_snapshot", _impl)
 
 
 def push_after_config_change(bot_id: str | None) -> None:

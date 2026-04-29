@@ -16,13 +16,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Query, Request
 
 from console.server.cron_helpers import (
     cron_history_for_job,
     cron_job_to_dict,
     get_cron_service,
+    require_cron_service,
 )
+from console.server.http_errors import bad_request, forbidden, not_found
 from console.server.models import (
     CronAddRequest,
     CronJob,
@@ -68,9 +70,7 @@ async def add_cron_job(
     bot_id: str | None = Query(default=None, alias="bot_id"),
 ) -> DataResponse[CronJob]:
     """Create a cron job and persist it through the live scheduler."""
-    svc = get_cron_service(request, bot_id)
-    if svc is None:
-        raise HTTPException(status_code=503, detail="Cron service unavailable")
+    svc = require_cron_service(request, bot_id)
     try:
         job = svc.add_job(
             name=body.name,
@@ -84,7 +84,7 @@ async def add_cron_job(
             else False,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        bad_request(str(exc))
     return DataResponse(data=CronJob.model_validate(cron_job_to_dict(job)))
 
 
@@ -96,9 +96,7 @@ async def update_cron_job(
     bot_id: str | None = Query(default=None, alias="bot_id"),
 ) -> DataResponse[CronJob]:
     """Update mutable fields on an existing job."""
-    svc = get_cron_service(request, bot_id)
-    if svc is None:
-        raise HTTPException(status_code=503, detail="Cron service unavailable")
+    svc = require_cron_service(request, bot_id)
     sentinel = object()
     kwargs: dict[str, Any] = {}
     if body.name is not None:
@@ -124,11 +122,11 @@ async def update_cron_job(
     try:
         result = svc.update_job(job_id, **kwargs)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        bad_request(str(exc))
     if result == "not_found":
-        raise HTTPException(status_code=404, detail="Cron job not found")
+        not_found("Cron job")
     if result == "protected":
-        raise HTTPException(status_code=403, detail="Cron job is protected")
+        forbidden("Cron job is protected")
     return DataResponse(data=CronJob.model_validate(cron_job_to_dict(result)))
 
 
@@ -139,14 +137,12 @@ async def remove_cron_job(
     bot_id: str | None = Query(default=None, alias="bot_id"),
 ) -> DataResponse[OkWithJobId]:
     """Remove a cron job."""
-    svc = get_cron_service(request, bot_id)
-    if svc is None:
-        raise HTTPException(status_code=503, detail="Cron service unavailable")
+    svc = require_cron_service(request, bot_id)
     result = svc.remove_job(job_id)
     if result == "not_found":
-        raise HTTPException(status_code=404, detail="Cron job not found")
+        not_found("Cron job")
     if result == "protected":
-        raise HTTPException(status_code=403, detail="Cron job is protected")
+        forbidden("Cron job is protected")
     return DataResponse(data=OkWithJobId(job_id=job_id))
 
 
@@ -158,12 +154,10 @@ async def enable_cron_job(
     bot_id: str | None = Query(default=None, alias="bot_id"),
 ) -> DataResponse[CronJob]:
     """Enable or disable a job."""
-    svc = get_cron_service(request, bot_id)
-    if svc is None:
-        raise HTTPException(status_code=503, detail="Cron service unavailable")
+    svc = require_cron_service(request, bot_id)
     job = svc.enable_job(job_id, enabled=enabled)
     if job is None:
-        raise HTTPException(status_code=404, detail="Cron job not found")
+        not_found("Cron job")
     return DataResponse(data=CronJob.model_validate(cron_job_to_dict(job)))
 
 
@@ -175,17 +169,12 @@ async def run_cron_job(
     bot_id: str | None = Query(default=None, alias="bot_id"),
 ) -> DataResponse[OkWithJobId]:
     """Trigger a job immediately."""
-    svc = get_cron_service(request, bot_id)
-    if svc is None:
-        raise HTTPException(status_code=503, detail="Cron service unavailable")
+    svc = require_cron_service(request, bot_id)
     if svc.get_job(job_id) is None:
-        raise HTTPException(status_code=404, detail="Cron job not found")
+        not_found("Cron job")
     ran = await svc.run_job(job_id, force=force)
     if not ran:
-        raise HTTPException(
-            status_code=400,
-            detail="Cron job not run (disabled and force=false)",
-        )
+        bad_request("Cron job not run (disabled and force=false)")
     return DataResponse(data=OkWithJobId(job_id=job_id))
 
 
@@ -231,7 +220,7 @@ async def cron_history(
     if job_id:
         job = svc.get_job(job_id)
         if job is None:
-            raise HTTPException(status_code=404, detail="Cron job not found")
+            not_found("Cron job")
         out[job.id] = [
             CronHistoryRun.model_validate(row) for row in cron_history_for_job(job)
         ]

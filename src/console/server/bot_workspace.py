@@ -8,9 +8,9 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
-from fastapi import HTTPException
 from loguru import logger
 
+from console.server.http_errors import bad_request, internal_error, not_found
 from console.server.json_utils import load_json_file, save_json_file
 from console.server.openpawlet_user_config import resolve_config_path
 from openpawlet.config.loader import load_config
@@ -138,7 +138,7 @@ def _normalize_rel_path(raw: str | None) -> str:
         if segment in ("", "."):
             continue
         if segment == "..":
-            raise HTTPException(status_code=400, detail="Invalid path")
+            bad_request("Invalid path")
         parts.append(segment)
     return "/".join(parts)
 
@@ -180,7 +180,7 @@ def safe_join(base: Path, rel: str | None, *, must_exist: bool) -> Path:
     try:
         base_real = base.resolve(strict=True)
     except FileNotFoundError as exc:
-        raise HTTPException(status_code=500, detail="Base directory missing") from exc
+        internal_error("Base directory missing", cause=exc)
     normalized = _normalize_rel_path(rel)
     if not normalized:
         target = base_real
@@ -189,11 +189,11 @@ def safe_join(base: Path, rel: str | None, *, must_exist: bool) -> Path:
     try:
         target.relative_to(base_real)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail="Path escapes base directory") from exc
+        bad_request("Path escapes base directory", cause=exc)
     if _has_symlink_in_chain(base_real, target):
-        raise HTTPException(status_code=400, detail="Symlinked path is not allowed")
+        bad_request("Symlinked path is not allowed")
     if must_exist and not target.exists():
-        raise HTTPException(status_code=404, detail="Path not found")
+        not_found("Path")
     return target
 
 
@@ -213,7 +213,7 @@ def read_text(path: Path) -> str:
         return path.read_text(encoding="utf-8")
     except OSError as exc:
         logger.warning("[workspace] read failed {}: {}", path, exc)
-        raise HTTPException(status_code=500, detail="Failed to read file") from exc
+        internal_error("Failed to read file", cause=exc)
 
 
 def write_text(path: Path, content: str) -> None:
@@ -223,13 +223,13 @@ def write_text(path: Path, content: str) -> None:
         path.write_text(content, encoding="utf-8")
     except OSError as exc:
         logger.warning("[workspace] write failed {}: {}", path, exc)
-        raise HTTPException(status_code=500, detail="Failed to write file") from exc
+        internal_error("Failed to write file", cause=exc)
 
 
 def profile_file_path(bot_id: str | None, key: str) -> Path:
     """Absolute path to a bootstrap markdown file in the workspace root."""
     if key not in _PROFILE_FILES:
-        raise HTTPException(status_code=400, detail="Unknown profile key")
+        bad_request("Unknown profile key")
     root = workspace_root(bot_id)
     return root / _PROFILE_FILES[key]
 
@@ -241,7 +241,7 @@ def read_memory_text(bot_id: str | None, kind: str) -> str:
     ``history.md``.
     """
     if kind not in _MEMORY_FILES:
-        raise HTTPException(status_code=400, detail="Unknown memory kind")
+        bad_request("Unknown memory kind")
     base = workspace_root(bot_id) / _MEMORY_DIR
     primary = base / _MEMORY_FILES[kind]
     if primary.is_file():
@@ -271,7 +271,7 @@ def assert_safe_agent_id(agent_id: str) -> str:
     """Reject path traversal; ``agent_id`` must be a single path segment."""
     s = (agent_id or "").strip()
     if not s or s != Path(s).name or ".." in s:
-        raise HTTPException(status_code=400, detail="Invalid agent id")
+        bad_request("Invalid agent id")
     return s
 
 
@@ -308,7 +308,7 @@ def agent_bootstrap_keys() -> tuple[str, ...]:
 def agent_bootstrap_path(bot_id: str | None, agent_id: str, key: str) -> Path:
     """``<workspace>/agents/<agent_id>/<NAME>.md`` for a given bootstrap key."""
     if key not in _AGENT_BOOTSTRAP_FILES:
-        raise HTTPException(status_code=400, detail="Unknown profile key")
+        bad_request("Unknown profile key")
     return agent_profile_dir(bot_id, agent_id) / _AGENT_BOOTSTRAP_FILES[key]
 
 
@@ -395,7 +395,7 @@ def validate_skill_name(name: str) -> str:
     """Return ``name`` if safe for a filesystem skill folder."""
     n = name.strip()
     if not _SKILL_NAME_RE.fullmatch(n):
-        raise HTTPException(status_code=400, detail="Invalid skill name")
+        bad_request("Invalid skill name")
     return n
 
 
@@ -414,13 +414,10 @@ def validate_skill_bundle_rel_path(raw: str) -> str:
     """Normalize a path under a skill folder; forbid ``SKILL.md`` and traversal."""
     normalized = _normalize_rel_path(raw)
     if not normalized:
-        raise HTTPException(status_code=400, detail="Invalid file path")
+        bad_request("Invalid file path")
     last = Path(normalized).parts[-1]
     if last.upper() == "SKILL.MD":
-        raise HTTPException(
-            status_code=400,
-            detail="SKILL.md must be set via the main content field",
-        )
+        bad_request("SKILL.md must be set via the main content field")
     return normalized
 
 
@@ -428,10 +425,10 @@ def validate_skill_bundle_dir_rel_path(raw: str) -> str:
     """Normalize a directory path under a skill bundle (no ``SKILL.md`` segment)."""
     normalized = _normalize_rel_path(raw)
     if not normalized:
-        raise HTTPException(status_code=400, detail="Invalid directory path")
+        bad_request("Invalid directory path")
     last = Path(normalized).parts[-1]
     if last.upper() == "SKILL.MD":
-        raise HTTPException(status_code=400, detail="Invalid directory name")
+        bad_request("Invalid directory name")
     return normalized
 
 

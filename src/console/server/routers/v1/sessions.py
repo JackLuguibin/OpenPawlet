@@ -6,8 +6,9 @@ from collections.abc import Callable
 from typing import Literal
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
 
+from console.server.http_errors import not_found, not_found_detail
 from console.server.bot_workspace import (
     iso_now,
     load_json_file,
@@ -262,7 +263,7 @@ async def get_session_transcript(
     if tmsgs is None:
         session = load_session(bot_id, session_key)
         if session is None:
-            raise HTTPException(status_code=404, detail="Session not found")
+            not_found("Session")
         tmsgs = session.messages
 
     window, offset, total, has_more = _paginate_transcript_window(
@@ -304,7 +305,7 @@ async def get_session_context(
     """
     record = read_last_context_entry(bot_id, session_key)
     if record is None:
-        raise HTTPException(status_code=404, detail="Session context not found")
+        not_found("Session context")
 
     latest: SessionContextEntry | None = None
     if record:
@@ -341,7 +342,7 @@ async def get_session_jsonl_raw(
             "session": "Session JSONL not found",
             "transcript": "Transcript JSONL not found",
         }[source]
-        raise HTTPException(status_code=404, detail=_detail)
+        not_found_detail(_detail)
     return DataResponse(
         data=SessionJsonlRawPayload(
             key=session_key,
@@ -422,7 +423,7 @@ async def get_session(
     """Load session messages from JSONL."""
     session = load_session(bot_id, session_key)
     if session is None:
-        raise HTTPException(status_code=404, detail="Session not found")
+        not_found("Session")
     messages = session.messages
     title, last_message = load_session_preview(bot_id, session_key)
     if detail:
@@ -462,7 +463,7 @@ async def update_session(
     """Update session display metadata (currently supports custom title)."""
     session = load_session(bot_id, session_key)
     if session is None:
-        raise HTTPException(status_code=404, detail="Session not found")
+        not_found("Session")
     normalized_title = (body.title or "").strip() or None
     set_session_custom_title(bot_id, session_key, normalized_title)
     push_sessions_snapshot(bot_id)
@@ -499,10 +500,10 @@ async def delete_session(
 ) -> DataResponse[OkBody]:
     """Delete a session JSONL file."""
     if load_session(bot_id, session_key) is None:
-        raise HTTPException(status_code=404, detail="Session not found")
+        not_found("Session")
     _rotate_team_room_for_deleted_team_session(bot_id, session_key)
     if not delete_session_files(bot_id, session_key):
-        raise HTTPException(status_code=404, detail="Session not found")
+        not_found("Session")
     publish_session_deleted(bot_id, session_key)
     push_sessions_snapshot(bot_id)
     push_status_snapshot(bot_id)

@@ -24,6 +24,7 @@ from typing import Any
 
 from fastapi import Request
 
+from console.server.http_errors import service_unavailable
 from openpawlet.cron.service import CronService
 
 _META_RE = re.compile(r"^<!--cron-meta:(\{.*?\})-->\r?\n?", re.DOTALL)
@@ -101,6 +102,14 @@ def get_cron_service(request: Request, bot_id: str | None) -> CronService | None
     if store_path is None:
         return None
     return CronService(store_path)
+
+
+def require_cron_service(request: Request, bot_id: str | None) -> CronService:
+    """Return the cron service or raise HTTP 503 when no backend is available."""
+    svc = get_cron_service(request, bot_id)
+    if svc is None:
+        service_unavailable("Cron service unavailable")
+    return svc
 
 
 def _resolve_store_path(bot_id: str | None) -> Path | None:

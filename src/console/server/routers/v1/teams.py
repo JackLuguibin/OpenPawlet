@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, status
 
+from console.server.http_errors import bad_request, not_found
 from console.server.bot_workspace import (
     clear_active_team_gateway_for_team,
     iso_now,
@@ -76,7 +77,7 @@ def _get_team(teams: list[Team], team_id: str) -> Team:
     for t in teams:
         if t.id == team_id:
             return t
-    raise HTTPException(status_code=404, detail="Team not found")
+    not_found("Team")
 
 
 def _normalize_member_ephemeral(
@@ -128,12 +129,12 @@ async def create_team(bot_id: str, body: TeamCreateRequest) -> DataResponse[Team
     rooms = _parse_rooms(raw["rooms"])
     tid = (body.id or "").strip() or new_id("tm-")
     if any(t.id == tid for t in teams):
-        raise HTTPException(status_code=400, detail="Team id already exists")
+        bad_request("Team id already exists")
     members = list(body.member_agent_ids or [])
     valid = _agent_id_set(bot_id)
     for aid in members:
         if aid not in valid:
-            raise HTTPException(status_code=400, detail=f"Unknown agent_id: {aid}")
+            bad_request(f"Unknown agent_id: {aid}")
     team = Team(
         id=tid,
         name=body.name.strip(),
@@ -194,7 +195,7 @@ async def delete_team(bot_id: str, team_id: str) -> DataResponse[OkBody]:
     teams = [t for t in _parse_teams(raw["teams"]) if t.id != team_id]
     rooms = [r for r in _parse_rooms(raw["rooms"]) if r.team_id != team_id]
     if len(teams) == len(_parse_teams(raw["teams"])):
-        raise HTTPException(status_code=404, detail="Team not found")
+        not_found("Team")
     clear_active_team_gateway_for_team(bot_id, team_id)
     _save_teams_state(bot_id, teams=teams, rooms=rooms)
     return DataResponse(data=OkBody())
@@ -208,13 +209,13 @@ async def add_team_member(
 ) -> DataResponse[Team]:
     valid = _agent_id_set(bot_id)
     if body.agent_id not in valid:
-        raise HTTPException(status_code=400, detail="Unknown agent_id")
+        bad_request("Unknown agent_id")
     raw = _load_teams_state(bot_id)
     teams = _parse_teams(raw["teams"])
     rooms = _parse_rooms(raw["rooms"])
     t = _get_team(teams, team_id)
     if body.agent_id in t.member_agent_ids:
-        raise HTTPException(status_code=400, detail="Agent already in team")
+        bad_request("Agent already in team")
     new_ids = list(t.member_agent_ids) + [body.agent_id]
     updated = Team(
         id=t.id,
@@ -250,7 +251,7 @@ async def remove_team_member(
     rooms = _parse_rooms(raw["rooms"])
     t = _get_team(teams, team_id)
     if agent_id not in t.member_agent_ids:
-        raise HTTPException(status_code=400, detail="Agent not in team")
+        bad_request("Agent not in team")
     new_ids = [x for x in t.member_agent_ids if x != agent_id]
     updated = Team(
         id=t.id,
@@ -283,7 +284,7 @@ async def update_team_member(
     rooms = _parse_rooms(raw["rooms"])
     t = _get_team(teams, team_id)
     if agent_id not in t.member_agent_ids:
-        raise HTTPException(status_code=400, detail="Agent not in team")
+        bad_request("Agent not in team")
     member_ephemeral = dict(t.member_ephemeral)
     if body.ephemeral_session is not None:
         if body.ephemeral_session:
@@ -317,7 +318,7 @@ async def create_team_room(bot_id: str, team_id: str) -> DataResponse[TeamRoomCr
     rooms = _parse_rooms(raw["rooms"])
     t = _get_team(teams, team_id)
     if not t.member_agent_ids:
-        raise HTTPException(status_code=400, detail="Team has no members")
+        bad_request("Team has no members")
     room_id = new_id("room-")
     tr = TeamRoom(id=room_id, team_id=team_id, created_at=iso_now())
     rooms.append(tr)
@@ -354,7 +355,7 @@ async def delete_team_room(
     rooms = _parse_rooms(raw["rooms"])
     target = next((r for r in rooms if r.team_id == team_id and r.id == room_id), None)
     if target is None:
-        raise HTTPException(status_code=404, detail="Room not found")
+        not_found("Room")
     kept_rooms = [r for r in rooms if not (r.team_id == team_id and r.id == room_id)]
     _save_teams_state(bot_id, teams=teams, rooms=kept_rooms)
     clear_active_team_gateway_for_team(bot_id, team_id)
@@ -378,7 +379,7 @@ async def get_team_room_transcript(
     t = _get_team(_parse_teams(raw["teams"]), team_id)
     rlist = _parse_rooms(raw["rooms"])
     if not any(r.id == room_id and r.team_id == team_id for r in rlist):
-        raise HTTPException(status_code=404, detail="Room not found")
+        not_found("Room")
     agents = list_agents(bot_id)
     id_to_name = {a.id: a.name for a in agents}
     keys, rows = merge_team_transcript(

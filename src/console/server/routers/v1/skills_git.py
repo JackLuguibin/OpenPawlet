@@ -12,10 +12,11 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Query
 from pydantic import ValidationError
 
 from console.server.bot_workspace import workspace_root
+from console.server.http_errors import bad_request, not_found
 from console.server.models import (
     DataResponse,
     OkWithName,
@@ -80,7 +81,7 @@ def _find_repo(repos: list[SkillsGitRepo], repo_id: str) -> SkillsGitRepo:
     for r in repos:
         if r.id == repo_id:
             return r
-    raise HTTPException(status_code=404, detail="Skills git repo not found")
+    not_found("Skills git repo")
 
 
 def _now_iso() -> str:
@@ -91,15 +92,14 @@ def _validate_url(url: str) -> str:
     """Lightweight URL validation; the engine itself rejects unsupported schemes."""
     candidate = url.strip()
     if not candidate:
-        raise HTTPException(status_code=400, detail="Repository URL is required")
+        bad_request("Repository URL is required")
     cand_lower = candidate.lower()
     if not (
         cand_lower.startswith(("https://", "http://", "ssh://"))
         or candidate.startswith("git@")
     ):
-        raise HTTPException(
-            status_code=400,
-            detail="URL must start with https://, http://, ssh:// or git@host:path/repo",
+        bad_request(
+            "URL must start with https://, http://, ssh:// or git@host:path/repo",
         )
     return candidate
 

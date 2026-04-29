@@ -5,7 +5,7 @@ from __future__ import annotations
 import shutil
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
 
 from console.server.bot_workspace import (
     iter_workspace_skill_dirs,
@@ -32,12 +32,17 @@ from console.server.models.skills import (
     RegistrySearchItem,
     SkillContentBody,
 )
+from console.server.http_errors import bad_request, internal_error, not_found
 from console.server.openpawlet_user_config import (
     load_raw_config,
     resolve_config_path,
 )
 
 router = APIRouter(tags=["Skills"])
+
+_DUP_FILE_PATH = "Duplicate file path"
+_DUP_DIR_PATH = "Duplicate directory path"
+_PATH_FILE_AND_DIR = "Path is both file and directory"
 
 
 def _skill_cfg_map(bot_id: str | None) -> dict[str, Any]:
@@ -128,7 +133,7 @@ async def get_skill_content(
     cfg = _skill_cfg_map(bot_id)
     if name in cfg:
         return DataResponse(data=SkillContentResponse(name=name, content=""))
-    raise HTTPException(status_code=404, detail="Skill not found")
+    not_found("Skill")
 
 
 @router.post(
@@ -143,10 +148,10 @@ async def copy_skill_to_workspace(
     validate_skill_name(name)
     wpath = workspace_skill_md_path(bot_id, name)
     if wpath.is_file():
-        raise HTTPException(status_code=400, detail="Skill already exists in workspace")
+        bad_request("Skill already exists in workspace")
     cfg = _skill_cfg_map(bot_id)
     if name not in cfg:
-        raise HTTPException(status_code=404, detail="Unknown built-in skill")
+        not_found("Built-in skill")
     body = (
         f"# {name}\n\n"
         "Copied from configuration. Edit this file and adjust "
@@ -166,7 +171,7 @@ async def update_skill_content(
     validate_skill_name(name)
     wpath = workspace_skill_md_path(bot_id, name)
     if not wpath.is_file():
-        raise HTTPException(status_code=404, detail="Workspace skill not found")
+        not_found("Workspace skill")
     write_text(wpath, body.content)
     return DataResponse(data=OkWithName(name=name))
 
@@ -181,7 +186,7 @@ async def update_skill_bundle(
     skill_name = validate_skill_name(name)
     wpath = workspace_skill_md_path(bot_id, skill_name)
     if not wpath.is_file():
-        raise HTTPException(status_code=404, detail="Workspace skill not found")
+        not_found("Workspace skill")
     skill_root = wpath.parent.resolve()
 
     if body.delete_rels:
@@ -208,7 +213,7 @@ async def update_skill_bundle(
         for raw_key, file_content in body.files.items():
             rel = validate_skill_bundle_rel_path(raw_key)
             if rel in seen_files:
-                raise HTTPException(status_code=400, detail="Duplicate file path")
+                bad_request(_DUP_FILE_PATH)
             seen_files.add(rel)
             file_map[rel] = file_content
 
@@ -217,11 +222,11 @@ async def update_skill_bundle(
         for raw in body.directories:
             d = validate_skill_bundle_dir_rel_path(raw)
             if d in dir_set:
-                raise HTTPException(status_code=400, detail="Duplicate directory path")
+                bad_request(_DUP_DIR_PATH)
             dir_set.add(d)
 
     if set(file_map) & dir_set:
-        raise HTTPException(status_code=400, detail="Path is both file and directory")
+        bad_request(_PATH_FILE_AND_DIR)
 
     for d in sorted(dir_set, key=len):
         target = safe_join(skill_root, d, must_exist=False)
@@ -244,7 +249,7 @@ async def create_skill(
     name = validate_skill_name(body.name)
     wpath = workspace_skill_md_path(bot_id, name)
     if wpath.is_file():
-        raise HTTPException(status_code=400, detail="Skill already exists")
+        bad_request("Skill already exists")
     content = body.content or f"# {name}\n\n{body.description}\n"
     write_text(wpath, content)
     skill_root = wpath.parent.resolve()
@@ -255,7 +260,7 @@ async def create_skill(
         for raw_key, file_content in body.files.items():
             rel = validate_skill_bundle_rel_path(raw_key)
             if rel in seen_files:
-                raise HTTPException(status_code=400, detail="Duplicate file path")
+                bad_request(_DUP_FILE_PATH)
             seen_files.add(rel)
             file_map[rel] = file_content
 
@@ -264,11 +269,11 @@ async def create_skill(
         for raw in body.directories:
             d = validate_skill_bundle_dir_rel_path(raw)
             if d in dir_set:
-                raise HTTPException(status_code=400, detail="Duplicate directory path")
+                bad_request(_DUP_DIR_PATH)
             dir_set.add(d)
 
     if set(file_map) & dir_set:
-        raise HTTPException(status_code=400, detail="Path is both file and directory")
+        bad_request(_PATH_FILE_AND_DIR)
 
     for d in sorted(dir_set, key=len):
         target = safe_join(skill_root, d, must_exist=False)
@@ -289,12 +294,12 @@ async def delete_skill(
     validate_skill_name(name)
     wpath = workspace_skill_md_path(bot_id, name)
     if not wpath.is_file():
-        raise HTTPException(status_code=404, detail="Workspace skill not found")
+        not_found("Workspace skill")
     skill_dir = workspace_skill_dir(bot_id, name)
     try:
         shutil.rmtree(skill_dir)
     except OSError as exc:
-        raise HTTPException(status_code=500, detail="Failed to delete skill") from exc
+        internal_error("Failed to delete skill", cause=exc)
     return DataResponse(data=OkWithName(name=name))
 
 
@@ -310,7 +315,7 @@ async def install_skill_from_registry(
     name = validate_skill_name(body.name)
     wpath = workspace_skill_md_path(bot_id, name)
     if wpath.is_file():
-        raise HTTPException(status_code=400, detail="Skill already exists")
+        bad_request("Skill already exists")
     lines = [f"# {name}", "", "Installed from registry (stub placeholder)."]
     if body.registry_url:
         lines.append(f"Registry: {body.registry_url}")

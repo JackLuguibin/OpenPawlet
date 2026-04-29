@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, Request, status
 
 from console.server.bot_workspace import (
     is_bot_running,
@@ -13,6 +13,7 @@ from console.server.bot_workspace import (
     workspace_root,
 )
 from console.server.bots_registry import DEFAULT_BOT_ID, get_registry
+from console.server.http_errors import bad_request, not_found, service_unavailable
 from console.server.models import (
     CreateBotRequest,
     DataResponse,
@@ -25,6 +26,11 @@ from console.server.state_hub import publish_bots_update
 from openpawlet.utils.helpers import local_now
 
 router = APIRouter(tags=["Bots"])
+
+
+def _require_registered_bot(bot_id: str) -> None:
+    if get_registry().get(bot_id) is None:
+        not_found("Bot")
 
 
 def _iso_mtime(path: Path, iana_tz: str | None) -> str:
@@ -87,11 +93,11 @@ async def create_bot(body: CreateBotRequest) -> DataResponse[BotInfo]:
     """Create a new bot instance with its own config + workspace."""
     name = (getattr(body, "name", None) or "").strip()
     if not name:
-        raise HTTPException(status_code=400, detail="name is required")
+        bad_request("name is required")
     try:
         row = get_registry().add(name=name)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        bad_request(str(exc))
     publish_bots_update()
     return DataResponse(data=_bot_info(row["id"]))
 
@@ -99,8 +105,7 @@ async def create_bot(body: CreateBotRequest) -> DataResponse[BotInfo]:
 @router.get("/bots/{bot_id}", response_model=DataResponse[BotInfo])
 async def get_bot(bot_id: str) -> DataResponse[BotInfo]:
     """Return one bot by id."""
-    if get_registry().get(bot_id) is None:
-        raise HTTPException(status_code=404, detail="Bot not found")
+    _require_registered_bot(bot_id)
     return DataResponse(data=_bot_info(bot_id))
 
 
@@ -110,9 +115,9 @@ async def delete_bot(bot_id: str) -> DataResponse[OkBody]:
     try:
         removed = get_registry().remove(bot_id)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        bad_request(str(exc))
     if not removed:
-        raise HTTPException(status_code=404, detail="Bot not found")
+        not_found("Bot")
     publish_bots_update()
     return DataResponse(data=OkBody())
 
@@ -122,9 +127,9 @@ async def set_default_bot(body: SetDefaultBotBody) -> DataResponse[OkBody]:
     """Switch which bot is treated as default for ``bot_id`` omission."""
     target = (getattr(body, "bot_id", None) or "").strip()
     if not target:
-        raise HTTPException(status_code=400, detail="bot_id is required")
+        bad_request("bot_id is required")
     if not get_registry().set_default(target):
-        raise HTTPException(status_code=404, detail="Bot not found")
+        not_found("Bot")
     publish_bots_update()
     return DataResponse(data=OkBody())
 
@@ -132,8 +137,7 @@ async def set_default_bot(body: SetDefaultBotBody) -> DataResponse[OkBody]:
 @router.post("/bots/{bot_id}/start", response_model=DataResponse[BotInfo])
 async def start_bot(bot_id: str) -> DataResponse[BotInfo]:
     """Mark bot as running in API only (no process supervisor in P3a)."""
-    if get_registry().get(bot_id) is None:
-        raise HTTPException(status_code=404, detail="Bot not found")
+    _require_registered_bot(bot_id)
     set_bot_running(bot_id if bot_id != DEFAULT_BOT_ID else None, True)
     info = _bot_info(bot_id)
     return DataResponse(data=info.model_copy(update={"running": True}))
@@ -142,8 +146,7 @@ async def start_bot(bot_id: str) -> DataResponse[BotInfo]:
 @router.post("/bots/{bot_id}/stop", response_model=DataResponse[BotInfo])
 async def stop_bot(bot_id: str) -> DataResponse[BotInfo]:
     """Mark bot as stopped in API only (no process supervisor in P3a)."""
-    if get_registry().get(bot_id) is None:
-        raise HTTPException(status_code=404, detail="Bot not found")
+    _require_registered_bot(bot_id)
     set_bot_running(bot_id if bot_id != DEFAULT_BOT_ID else None, False)
     info = _bot_info(bot_id)
     return DataResponse(data=info.model_copy(update={"running": False}))
@@ -160,12 +163,8 @@ async def activate_bot(bot_id: str, request: Request) -> DataResponse[BotInfo]:
     """
     from console.server.app import swap_runtime
 
-    if get_registry().get(bot_id) is None:
-        raise HTTPException(status_code=404, detail="Bot not found")
+    _require_registered_bot(bot_id)
     ok = await swap_runtime(request.app, bot_id)
     if not ok:
-        raise HTTPException(
-            status_code=503,
-            detail="Runtime swap failed; console is in degraded mode",
-        )
+        service_unavailable("Runtime swap failed; console is in degraded mode")
     return DataResponse(data=_bot_info(bot_id))

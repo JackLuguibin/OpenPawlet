@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
 
 from console.server.bot_workspace import (
     normalize_workspace_rel_path,
@@ -15,6 +15,7 @@ from console.server.bot_workspace import (
 )
 from console.server.models import DataResponse
 from console.server.models.base import OkWithPath
+from console.server.http_errors import bad_request, forbidden, internal_error
 from console.server.models.workspace import (
     WorkspaceFilePutBody,
     WorkspaceFileResponse,
@@ -40,7 +41,7 @@ def _scan_dir(
             key=lambda p: (not p.is_dir(), p.name.lower()),
         )
     except PermissionError as exc:
-        raise HTTPException(status_code=403, detail="Permission denied") from exc
+        forbidden("Permission denied", cause=exc)
     for entry in entries:
         if entry.name in _SKIP_NAMES:
             continue
@@ -74,7 +75,7 @@ async def list_workspace_files(
     else:
         target = resolve_workspace_path(bot_id, path, must_exist=True)
     if not target.is_dir():
-        raise HTTPException(status_code=400, detail="Path is not a directory")
+        bad_request("Path is not a directory")
     max_depth = 0 if depth is None else depth
     items = _scan_dir(target, rel_out, max_depth)
     return DataResponse(data=WorkspaceListResponse(path=rel_out, items=items))
@@ -88,7 +89,7 @@ async def get_workspace_file(
     """Read a text file relative to the workspace root."""
     target = resolve_workspace_path(bot_id, path, must_exist=True)
     if target.is_dir():
-        raise HTTPException(status_code=400, detail="Path is a directory")
+        bad_request("Path is a directory")
     rel = path.replace("\\", "/").lstrip("/")
     content = read_text(target)
     return DataResponse(data=WorkspaceFileResponse(path=rel, content=content))
@@ -103,7 +104,7 @@ async def update_workspace_file(
     normalized = body.path.replace("\\", "/").lstrip("/")
     target = resolve_workspace_path(bot_id, normalized, must_exist=False)
     if target.is_dir():
-        raise HTTPException(status_code=400, detail="Path is a directory")
+        bad_request("Path is a directory")
     write_text(target, body.content)
     return DataResponse(data=OkWithPath(path=normalized))
 
@@ -117,9 +118,9 @@ async def delete_workspace_file(
     normalized = path.replace("\\", "/").lstrip("/")
     target = resolve_workspace_path(bot_id, normalized, must_exist=True)
     if target.is_dir():
-        raise HTTPException(status_code=400, detail="Path is a directory")
+        bad_request("Path is a directory")
     try:
         target.unlink()
     except OSError as exc:
-        raise HTTPException(status_code=500, detail="Failed to delete file") from exc
+        internal_error("Failed to delete file", cause=exc)
     return DataResponse(data=OkWithPath(path=normalized))

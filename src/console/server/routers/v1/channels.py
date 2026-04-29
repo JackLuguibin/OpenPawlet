@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, NoReturn
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Query, Request
 
 from console.server.channels_service import (
     ChannelNotFoundError,
@@ -15,6 +15,7 @@ from console.server.channels_service import (
     plugin_channel_names,
     refresh_channel_results,
 )
+from console.server.http_errors import bad_request, not_found_detail
 from console.server.models import DataResponse, OkBody
 from console.server.models.channels import (
     ChannelRefreshResult,
@@ -27,6 +28,10 @@ from console.server.state_hub_helpers import (
 )
 
 router = APIRouter(tags=["Channels"])
+
+
+def _unknown_channel(name: str) -> NoReturn:
+    not_found_detail(f"Unknown channel: {name}")
 
 
 async def _hot_reload_runtime_for_bot(request: Request, bot_id: str | None) -> None:
@@ -70,7 +75,7 @@ async def update_channel(
     try:
         saved = merge_channel_patch(bot_id, name, body.data)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        bad_request(str(exc), cause=exc)
     await _hot_reload_runtime_for_bot(request, bot_id)
     push_channels_snapshot(bot_id)
     push_status_snapshot(bot_id)
@@ -87,9 +92,9 @@ async def delete_channel(
     try:
         disable_channel(bot_id, name)
     except ChannelNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        not_found_detail(str(exc), cause=exc)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        bad_request(str(exc), cause=exc)
     await _hot_reload_runtime_for_bot(request, bot_id)
     push_channels_snapshot(bot_id)
     push_status_snapshot(bot_id)
@@ -118,8 +123,8 @@ async def refresh_channel(
 ) -> DataResponse[ChannelRefreshResult]:
     """Refresh one channel entry."""
     if not channel_plugin_exists(bot_id, name):
-        raise HTTPException(status_code=404, detail=f"Unknown channel: {name}")
+        _unknown_channel(name)
     results = refresh_channel_results(bot_id, [name])
     if not results:
-        raise HTTPException(status_code=404, detail=f"Unknown channel: {name}")
+        _unknown_channel(name)
     return DataResponse(data=results[0])

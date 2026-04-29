@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
 
+from console.server.http_errors import bad_request, internal_error
 from console.server.models import DataResponse, OkWithPath, RuntimeLogChunk, RuntimeLogsData
 from console.server.runtime_log_read import default_runtime_log_path, read_log_page
 
@@ -64,7 +65,7 @@ async def runtime_logs(
         try:
             page = read_log_page(path, limit=page_limit, cursor_token=cursor)
         except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+            bad_request(str(exc), cause=exc)
         chunks.append(
             RuntimeLogChunk(
                 source=key,
@@ -92,5 +93,5 @@ async def clear_runtime_logs() -> DataResponse[OkWithPath]:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("", encoding="utf-8")
     except OSError as exc:
-        raise HTTPException(status_code=500, detail="Failed to clear runtime log file") from exc
+        internal_error("Failed to clear runtime log file", cause=exc)
     return DataResponse(data=OkWithPath(path=str(path.resolve())))

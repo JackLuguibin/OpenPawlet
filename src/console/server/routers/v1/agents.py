@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, status
 from pydantic import ValidationError
 
 from console.server.bot_workspace import (
@@ -46,6 +46,7 @@ from console.server.models import (
     OkWithTopic,
 )
 from console.server.parsing import parse_model_list
+from console.server.http_errors import bad_request, internal_error, not_found
 from console.server.state_hub import publish_agents_update
 
 router = APIRouter(prefix="/bots/{bot_id}/agents", tags=["Agents"])
@@ -314,13 +315,13 @@ async def set_category_override(
     categories = _parse_categories(raw["categories"])
     overrides: dict[str, str] = dict(raw["category_overrides"])
     if not any(a.id == body.agent_id for a in agents):
-        raise HTTPException(status_code=404, detail="Agent not found")
+        not_found("Agent")
     if body.category_key is None:
         overrides.pop(body.agent_id, None)
     else:
         valid_keys = _BUILTIN_DISPLAY_CATEGORY_KEYS | {c.key for c in categories}
         if body.category_key not in valid_keys:
-            raise HTTPException(status_code=400, detail="Unknown category")
+            bad_request("Unknown category")
         overrides[body.agent_id] = body.category_key
     _save_full_state(
         bot_id,
@@ -431,7 +432,7 @@ async def create_agent(bot_id: str, body: AgentCreateRequest) -> DataResponse[Ag
     overrides: dict[str, str] = dict(raw["category_overrides"])
     aid = body.id or new_id("agent-")
     if any(a.id == aid for a in agents):
-        raise HTTPException(status_code=400, detail="Agent id already exists")
+        bad_request("Agent id already exists")
     agent_data: dict[str, Any] = {
         "id": aid,
         "name": body.name,
@@ -470,7 +471,7 @@ async def get_agent(bot_id: str, agent_id: str) -> DataResponse[Agent]:
         if agent.id == agent_id:
             team_ids = _load_team_memberships(bot_id).get(agent.id, [])
             return DataResponse(data=agent.model_copy(update={"team_ids": team_ids}))
-    raise HTTPException(status_code=404, detail="Agent not found")
+    not_found("Agent")
 
 
 @router.put("/{agent_id}", response_model=DataResponse[Agent])
@@ -513,7 +514,7 @@ async def update_agent(
         updated = Agent.model_validate(data)
         new_list.append(updated)
     if updated is None:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        not_found("Agent")
     _save_full_state(
         bot_id,
         agents=new_list,
@@ -531,7 +532,7 @@ async def delete_agent(bot_id: str, agent_id: str) -> DataResponse[OkBody]:
     raw = _load_raw_state(bot_id)
     agents = [a for a in _parse_agents(raw["agents"]) if a.id != agent_id]
     if len(agents) == len(_parse_agents(raw["agents"])):
-        raise HTTPException(status_code=404, detail="Agent not found")
+        not_found("Agent")
     categories = _parse_categories(raw["categories"])
     overrides = {aid: ck for aid, ck in raw["category_overrides"].items() if aid != agent_id}
     _save_full_state(
@@ -573,7 +574,7 @@ async def get_agent_status(bot_id: str, agent_id: str) -> DataResponse[AgentStat
     enabled_ct = sum(1 for a in agents if a.enabled)
     target = next((a for a in agents if a.id == agent_id), None)
     if target is None:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        not_found("Agent")
     return DataResponse(
         data=AgentStatus(
             agent_id=target.id,
@@ -626,7 +627,7 @@ def _ensure_agent_exists(bot_id: str, agent_id: str) -> None:
         isinstance(row, dict) and str(row.get("id", "")).strip() == agent_id
         for row in raw["agents"]
     ):
-        raise HTTPException(status_code=404, detail="Agent not found")
+        not_found("Agent")
 
 
 @router.get(
@@ -658,7 +659,7 @@ async def update_agent_bootstrap(
     """Write one bootstrap file under ``<workspace>/agents/<id>/``."""
     _ensure_agent_exists(bot_id, agent_id)
     if key not in agent_bootstrap_keys():
-        raise HTTPException(status_code=400, detail="Unknown profile key")
+        bad_request("Unknown profile key")
     # Ensure the per-agent directory exists (the agent record may have
     # come from the legacy single-file layout).
     agent_profile_dir(bot_id, agent_id).mkdir(parents=True, exist_ok=True)
@@ -679,11 +680,11 @@ async def delete_agent_bootstrap(
     """Remove one bootstrap file (so the agent inherits from main)."""
     _ensure_agent_exists(bot_id, agent_id)
     if key not in agent_bootstrap_keys():
-        raise HTTPException(status_code=400, detail="Unknown profile key")
+        bad_request("Unknown profile key")
     path = agent_bootstrap_path(bot_id, agent_id, key)
     if path.is_file():
         try:
             path.unlink()
         except OSError as exc:
-            raise HTTPException(status_code=500, detail="Failed to delete file") from exc
+            internal_error("Failed to delete file", cause=exc)
     return DataResponse(data=OkWithKey(key=key))

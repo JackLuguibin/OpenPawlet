@@ -10,8 +10,9 @@ from __future__ import annotations
 import dataclasses
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Query, Request
 
+from console.server.http_errors import internal_error, not_found, service_unavailable
 from console.server.models import (
     DataResponse,
     OkBody,
@@ -28,9 +29,8 @@ def _runtime_manager_or_503(request: Request) -> Any:
     """Return runtime manager from app state or raise 503 in degraded mode."""
     manager = getattr(request.app.state, "agent_manager", None)
     if manager is None:
-        raise HTTPException(
-            status_code=503,
-            detail="Embedded runtime manager unavailable (degraded mode or disabled runtime).",
+        service_unavailable(
+            "Embedded runtime manager unavailable (degraded mode or disabled runtime).",
         )
     return manager
 
@@ -97,7 +97,7 @@ async def get_runtime_agent_status(
     manager = _runtime_manager_or_503(request)
     row = manager.get_status(agent_id)
     if row is None:
-        raise HTTPException(status_code=404, detail="Runtime agent not found")
+        not_found("Runtime agent")
     return DataResponse(data=_runtime_status_model(row))
 
 
@@ -114,10 +114,10 @@ async def start_main_agent(request: Request) -> DataResponse[RuntimeControlResul
     except RuntimeError as exc:
         # Raised when the embedded runtime is mid-shutdown; surface as 503
         # so the SPA can retry once the next runtime comes up.
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        service_unavailable(str(exc), cause=exc)
     row = manager.get_status("main")
     if row is None:
-        raise HTTPException(status_code=500, detail="Main agent status unavailable after start")
+        internal_error("Main agent status unavailable after start")
     return DataResponse(
         data=RuntimeControlResult(
             agent_id=row.agent_id,
@@ -139,7 +139,7 @@ async def stop_main_agent(request: Request) -> DataResponse[RuntimeControlResult
     changed = await manager.stop_main()
     row = manager.get_status("main")
     if row is None:
-        raise HTTPException(status_code=500, detail="Main agent status unavailable after stop")
+        internal_error("Main agent status unavailable after stop")
     return DataResponse(
         data=RuntimeControlResult(
             agent_id=row.agent_id,
@@ -173,10 +173,10 @@ async def start_subagent(
             profile_id=body.profile_id,
         )
     except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        service_unavailable(str(exc), cause=exc)
     row = manager.get_status(sub_id)
     if row is None:
-        raise HTTPException(status_code=500, detail="Subagent status unavailable after start")
+        internal_error("Subagent status unavailable after start")
     return DataResponse(
         data=RuntimeControlResult(
             agent_id=row.agent_id,

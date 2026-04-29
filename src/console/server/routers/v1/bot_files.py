@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
 
 from console.server.bot_workspace import (
     profile_file_path,
     read_text,
     write_text,
 )
+from console.server.http_errors import bad_request
 from console.server.models import (
     BotFilesResponse,
     BotFileUpdateBody,
@@ -40,7 +41,7 @@ async def update_bot_file(
 ) -> DataResponse[OkWithKey]:
     """Write one bootstrap file under the workspace root."""
     if key not in ("soul", "user", "heartbeat", "tools", "agents"):
-        raise HTTPException(status_code=400, detail="Unknown profile key")
+        bad_request("Unknown profile key")
     path = profile_file_path(bot_id, key)
     write_text(path, body.content)
     return DataResponse(data=OkWithKey(key=key))
