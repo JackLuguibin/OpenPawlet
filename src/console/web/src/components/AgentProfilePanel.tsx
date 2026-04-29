@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Form, Input, Select, Switch, InputNumber, Tabs, Empty, Spin, Tag, Space, Button } from 'antd';
+import { Form, Input, Select, Switch, InputNumber, Tabs, Empty, Spin, Tag, Space, Button, Segmented } from 'antd';
 import { useAppStore } from '../store';
 import * as api from '../api/client';
 import type { Agent, AgentBootstrapKey, AgentUpdateRequest } from '../api/types_agents';
@@ -179,12 +179,16 @@ function BootstrapEditor({
     );
   }
 
-  const subTabs = BOOTSTRAP_KEYS.map((key) => ({
-    key,
+  const bootstrapFileOptions = BOOTSTRAP_KEYS.map((key) => ({
+    value: key,
     label: (
-      <span>
-        {key.toUpperCase()}.md
-        {drafts[key]?.trim() ? <Tag color="green" className="ml-2">on</Tag> : null}
+      <span className="inline-flex items-center gap-1.5">
+        <span>{key.toUpperCase()}.md</span>
+        {drafts[key]?.trim() ? (
+          <Tag color="green" className="!m-0">
+            on
+          </Tag>
+        ) : null}
       </span>
     ),
   }));
@@ -217,12 +221,14 @@ function BootstrapEditor({
         </div>
       </div>
 
-      <Tabs
-        activeKey={active}
-        onChange={(k) => setActive(k as AgentBootstrapKey)}
-        items={subTabs}
-        type="card"
-        size="small"
+      {/* Ant Design 6 Tabs items require ``children`` per pane; we only need a file switcher + one editor, so use Segmented. */}
+      <Segmented
+        block
+        size="middle"
+        value={active}
+        onChange={(v) => setActive(v as AgentBootstrapKey)}
+        options={bootstrapFileOptions}
+        className="[&_.ant-segmented-item-label]:flex [&_.ant-segmented-item-label]:min-w-0 [&_.ant-segmented-item-label]:items-center [&_.ant-segmented-item-label]:justify-center"
       />
 
       <TextArea

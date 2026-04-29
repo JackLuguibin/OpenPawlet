@@ -86,6 +86,16 @@ const VALID_SETTINGS_TABS: ReadonlyArray<SettingsTab> = [
   'environment',
 ];
 
+/** Known ``tools.web.search.provider`` values; arbitrary strings are still allowed via Select. */
+const WEB_SEARCH_PROVIDER_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
+  { value: 'duckduckgo', label: 'DuckDuckGo' },
+  { value: 'brave', label: 'Brave' },
+  { value: 'tavily', label: 'Tavily' },
+  { value: 'searxng', label: 'SearXNG' },
+  { value: 'jina', label: 'Jina' },
+  { value: 'kagi', label: 'Kagi' },
+];
+
 function readSettingsTab(searchParams: URLSearchParams): SettingsTab {
   const raw = searchParams.get('tab') as SettingsTab | null;
   return raw && VALID_SETTINGS_TABS.includes(raw) ? raw : 'general';
@@ -236,6 +246,78 @@ function readDreamNested(
   };
 }
 
+function readToolWebNested(
+  tools: ToolsConfig | undefined,
+): NonNullable<SettingsGeneralToolsFormValues['toolWeb']> {
+  const w = (tools?.web ?? {}) as Record<string, unknown>;
+  const s = (w.search ?? {}) as Record<string, unknown>;
+  const pick = (camel: string, snake: string, fallback: unknown) =>
+    s[camel] !== undefined ? s[camel] : s[snake] !== undefined ? s[snake] : fallback;
+  const proxy = w.proxy;
+  return {
+    enable: w.enable !== false,
+    proxy: proxy === null || proxy === undefined ? '' : String(proxy),
+    search: {
+      provider: String(pick('provider', 'provider', 'duckduckgo') || 'duckduckgo'),
+      apiKey: String(pick('apiKey', 'api_key', '') ?? ''),
+      baseUrl: String(pick('baseUrl', 'base_url', '') ?? ''),
+      maxResults: (() => {
+        const v = pick('maxResults', 'max_results', 5);
+        const n = typeof v === 'number' ? v : Number(v);
+        return Number.isFinite(n) ? n : 5;
+      })(),
+      timeout: (() => {
+        const v = pick('timeout', 'timeout', 30);
+        const n = typeof v === 'number' ? v : Number(v);
+        return Number.isFinite(n) ? n : 30;
+      })(),
+    },
+  };
+}
+
+function readToolExecNested(
+  tools: ToolsConfig | undefined,
+): NonNullable<SettingsGeneralToolsFormValues['toolExec']> {
+  const e = (tools?.exec ?? {}) as Record<string, unknown>;
+  const pick = (camel: string, snake: string, fallback: unknown) =>
+    e[camel] !== undefined ? e[camel] : e[snake] !== undefined ? e[snake] : fallback;
+  const rawKeys = pick('allowedEnvKeys', 'allowed_env_keys', []);
+  const allowedEnvKeys = Array.isArray(rawKeys)
+    ? rawKeys.filter((x): x is string => typeof x === 'string' && x.trim().length > 0).map((x) => x.trim())
+    : [];
+  return {
+    enable: pick('enable', 'enable', true) !== false,
+    timeout: (() => {
+      const v = pick('timeout', 'timeout', 60);
+      const n = typeof v === 'number' ? v : Number(v);
+      return Number.isFinite(n) ? n : 60;
+    })(),
+    pathAppend: String(pick('pathAppend', 'path_append', '') ?? ''),
+    sandbox: String(pick('sandbox', 'sandbox', '') ?? ''),
+    allowedEnvKeys,
+  };
+}
+
+function readToolMyNested(
+  tools: ToolsConfig | undefined,
+): NonNullable<SettingsGeneralToolsFormValues['toolMy']> {
+  const m = (tools?.my ?? {}) as Record<string, unknown>;
+  const allowSet = m.allowSet !== undefined ? m.allowSet : m.allow_set;
+  return {
+    enable: m.enable !== false,
+    allowSet: Boolean(allowSet),
+  };
+}
+
+function readToolSsrfWhitelist(tools: ToolsConfig | undefined): string[] {
+  const t = (tools ?? {}) as Record<string, unknown>;
+  const raw = t.ssrfWhitelist ?? t.ssrf_whitelist;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+    .map((s) => s.trim());
+}
+
 /**
  * Ant Design AutoComplete filters options against the current input text. When the field still
  * holds a full known value (e.g. default ``auto``), substring matching would hide every other
@@ -255,6 +337,30 @@ function autoCompleteFilterOption(
     return true;
   }
   return hay.includes(q);
+}
+
+/** Tool sub-panels: title + right-aligned status (watches form via parent re-renders). */
+function SettingsToolsCollapsePanelLabel({
+  title,
+  status,
+  highlight,
+}: {
+  title: string;
+  status: string;
+  highlight: boolean;
+}) {
+  return (
+    <div className="flex w-full min-w-0 items-center gap-3 pr-1">
+      <span className="min-w-0 flex-1 truncate text-left font-medium">{title}</span>
+      <span
+        className={`shrink-0 text-xs font-semibold tabular-nums ${
+          highlight ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400 dark:text-gray-500'
+        }`}
+      >
+        {status}
+      </span>
+    </div>
+  );
 }
 
 export default function Settings() {
@@ -283,6 +389,11 @@ export default function Settings() {
   const watchedModelRaw = Form.useWatch('model', form);
   const watchedProviderRaw = Form.useWatch('provider', form);
   const watchedDisabledSkills = Form.useWatch('disabledSkills', form);
+  const watchedToolWebEnable = Form.useWatch(['toolWeb', 'enable'], form);
+  const watchedToolExecEnable = Form.useWatch(['toolExec', 'enable'], form);
+  const watchedToolMyEnable = Form.useWatch(['toolMy', 'enable'], form);
+  const watchedToolMyAllowSet = Form.useWatch(['toolMy', 'allowSet'], form);
+  const watchedToolSsrfWhitelist = Form.useWatch('toolSsrfWhitelist', form);
 
   const modelScopeTrimmed = useMemo(() => {
     const m = typeof watchedModelRaw === 'string' ? watchedModelRaw.trim() : '';
@@ -570,6 +681,10 @@ export default function Settings() {
         ),
         disabledSkills: readDisabledSkillsList(defaults),
         dream: readDreamNested(defaults),
+        toolWeb: readToolWebNested(tools),
+        toolExec: readToolExecNested(tools),
+        toolMy: readToolMyNested(tools),
+        toolSsrfWhitelist: readToolSsrfWhitelist(tools),
       });
     }
   }, [config, form]);
@@ -577,7 +692,14 @@ export default function Settings() {
   const saveSettingsMutation = useMutation({
     mutationFn: async () => {
       const values = await form.validateFields();
-      const { restrictToWorkspace, ...rest } = values;
+      const {
+        restrictToWorkspace,
+        toolWeb,
+        toolExec,
+        toolMy,
+        toolSsrfWhitelist,
+        ...rest
+      } = values;
 
       const disabledSkills = (rest.disabledSkills ?? [])
         .map((s) => String(s).trim())
@@ -620,7 +742,34 @@ export default function Settings() {
       );
       await api.updateConfig(
         'tools',
-        { restrictToWorkspace },
+        {
+          restrictToWorkspace,
+          web: {
+            enable: toolWeb.enable,
+            proxy: toolWeb.proxy?.trim() ? toolWeb.proxy.trim() : null,
+            search: {
+              provider: (toolWeb.search.provider ?? '').trim() || 'duckduckgo',
+              apiKey: (toolWeb.search.apiKey ?? '').trim(),
+              baseUrl: (toolWeb.search.baseUrl ?? '').trim(),
+              maxResults: toolWeb.search.maxResults,
+              timeout: toolWeb.search.timeout,
+            },
+          },
+          exec: {
+            enable: toolExec.enable,
+            timeout: toolExec.timeout,
+            pathAppend: (toolExec.pathAppend ?? '').trim(),
+            sandbox: (toolExec.sandbox ?? '').trim(),
+            allowedEnvKeys: (toolExec.allowedEnvKeys ?? [])
+              .map((s) => String(s).trim())
+              .filter(Boolean),
+          },
+          my: {
+            enable: toolMy.enable,
+            allowSet: toolMy.allowSet,
+          },
+          ssrfWhitelist: (toolSsrfWhitelist ?? []).map((s) => String(s).trim()).filter(Boolean),
+        },
         currentBotId
       );
     },
@@ -770,8 +919,6 @@ export default function Settings() {
     [t],
   );
 
-  const mcpServers = config?.tools?.mcpServers as Record<string, unknown> | undefined;
-
   if (isLoading) {
     return (
       <PageLayout variant="center">
@@ -841,6 +988,14 @@ export default function Settings() {
       </div>
     </Card>
   );
+
+  const toolsWebOn = watchedToolWebEnable !== false;
+  const toolsExecOn = watchedToolExecEnable !== false;
+  const toolsMyOn = watchedToolMyEnable !== false;
+  const toolsMyWritable = Boolean(watchedToolMyAllowSet);
+  const toolsSsrfCount = Array.isArray(watchedToolSsrfWhitelist)
+    ? watchedToolSsrfWhitelist.reduce((n, x) => n + (String(x).trim() ? 1 : 0), 0)
+    : 0;
 
   const tabItems = [
     {
@@ -1252,14 +1407,21 @@ export default function Settings() {
         </span>
       ),
       children: (
-        <div className="flex min-h-0 min-w-0 w-full flex-1 flex-col gap-6">
+        <div className="flex min-h-0 min-w-0 w-full flex-1 flex-col gap-6 overflow-hidden">
           <Card
             title={t('settings.toolsCardTitle')}
             size="small"
-            className={`${SETTINGS_CARD_SURFACE} shrink-0`}
-            styles={{ body: { paddingTop: 10, paddingBottom: 10 } }}
+            className={SETTINGS_SCROLL_CARD_CLASS}
+            styles={{
+              ...SETTINGS_SCROLL_CARD_STYLES,
+              body: {
+                ...SETTINGS_SCROLL_CARD_STYLES.body,
+                paddingTop: 10,
+                paddingBottom: 10,
+              },
+            }}
           >
-            <Form form={form} layout="vertical" className="[&_.ant-form-item]:mb-0">
+            <Form form={form} layout="vertical" className="space-y-4 [&_.ant-form-item]:mb-3">
               <div className="rounded-md border border-gray-100 bg-gray-50 px-3 py-2.5 dark:border-gray-700/50 dark:bg-gray-800/50">
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0 flex-1">
@@ -1275,56 +1437,212 @@ export default function Settings() {
                   </Form.Item>
                 </div>
               </div>
-            </Form>
-          </Card>
 
-          <Card
-            title={t('settings.mcpConfiguredTitle')}
-            size="small"
-            className={SETTINGS_SCROLL_CARD_CLASS}
-            styles={SETTINGS_SCROLL_CARD_STYLES}
-          >
-          <div className="pt-1">
-            {mcpServers && Object.keys(mcpServers).length > 0 ? (
-              <div className="space-y-2">
-                {Object.entries(mcpServers).map(([name, serverConfig]) => {
-                  const sc = serverConfig as Record<string, unknown>;
-                  return (
-                    <Card key={name} size="small" className="min-w-0 w-full">
-                      <div className="flex min-w-0 items-center gap-3">
-                        <CodeOutlined className="shrink-0 text-gray-500" />
-                        <div className="min-w-0">
-                          <p className="font-medium">{name}</p>
-                          <Text
-                            type="secondary"
-                            className="break-words font-mono text-xs [overflow-wrap:anywhere]"
-                          >
-                            {sc.command
-                              ? `${sc.command} ${Array.isArray(sc.args) ? (sc.args as string[]).join(' ') : ''}`
-                              : String(sc.url || '')}
-                          </Text>
+              <Collapse
+                defaultActiveKey={[]}
+                expandIconPosition="end"
+                className="tools-settings-collapse bg-transparent [&_.ant-collapse-item]:border-gray-200 dark:[&_.ant-collapse-item]:border-gray-700"
+                items={[
+                  {
+                    key: 'web',
+                    label: (
+                      <SettingsToolsCollapsePanelLabel
+                        title={t('settings.toolsWebSection')}
+                        status={
+                          toolsWebOn
+                            ? t('settings.toolsCollapseStatusOn')
+                            : t('settings.toolsCollapseStatusOff')
+                        }
+                        highlight={toolsWebOn}
+                      />
+                    ),
+                    children: (
+                      <div className="space-y-3 pt-1">
+                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-gray-100 bg-gray-50/80 px-3 py-2 dark:border-gray-700/50 dark:bg-gray-800/40">
+                          <Text className="text-sm">{t('settings.toolsWebEnable')}</Text>
+                          <Form.Item name={['toolWeb', 'enable']} valuePropName="checked" className="!mb-0">
+                            <Switch />
+                          </Form.Item>
+                        </div>
+                        <Form.Item name={['toolWeb', 'proxy']} label={t('settings.toolsWebProxy')}>
+                          <Input
+                            className="font-mono text-sm"
+                            placeholder={t('settings.toolsWebProxyPh')}
+                            allowClear
+                          />
+                        </Form.Item>
+                        <Divider plain className="!my-2">
+                          {t('settings.toolsSearchSection')}
+                        </Divider>
+                        <Row gutter={[token.marginLG, token.marginSM]}>
+                          <Col xs={24} md={12}>
+                            <Form.Item name={['toolWeb', 'search', 'provider']} label={t('settings.toolsSearchProvider')}>
+                              <AutoComplete
+                                className="w-full"
+                                options={[...WEB_SEARCH_PROVIDER_OPTIONS]}
+                                filterOption={(input, option) =>
+                                  autoCompleteFilterOption(
+                                    input,
+                                    option,
+                                    WEB_SEARCH_PROVIDER_OPTIONS,
+                                  )
+                                }
+                                allowClear
+                              >
+                                <Input className="font-mono text-sm" placeholder={t('settings.toolsSearchProviderPh')} />
+                              </AutoComplete>
+                            </Form.Item>
+                          </Col>
+                          <Col xs={24} md={12}>
+                            <Form.Item name={['toolWeb', 'search', 'apiKey']} label={t('settings.toolsSearchApiKey')}>
+                              <Input.Password className="font-mono text-sm" placeholder={t('settings.toolsSearchApiKeyPh')} />
+                            </Form.Item>
+                          </Col>
+                          <Col xs={24}>
+                            <Form.Item name={['toolWeb', 'search', 'baseUrl']} label={t('settings.toolsSearchBaseUrl')}>
+                              <Input className="font-mono text-sm" placeholder={t('settings.toolsSearchBaseUrlPh')} allowClear />
+                            </Form.Item>
+                          </Col>
+                          <Col xs={24} sm={12}>
+                            <Form.Item name={['toolWeb', 'search', 'maxResults']} label={t('settings.toolsSearchMaxResults')}>
+                              <InputNumber min={1} max={50} className="w-full" />
+                            </Form.Item>
+                          </Col>
+                          <Col xs={24} sm={12}>
+                            <Form.Item name={['toolWeb', 'search', 'timeout']} label={t('settings.toolsSearchTimeout')}>
+                              <InputNumber min={5} max={300} className="w-full" />
+                            </Form.Item>
+                          </Col>
+                        </Row>
+                      </div>
+                    ),
+                  },
+                  {
+                    key: 'exec',
+                    label: (
+                      <SettingsToolsCollapsePanelLabel
+                        title={t('settings.toolsExecSection')}
+                        status={
+                          toolsExecOn
+                            ? t('settings.toolsCollapseStatusOn')
+                            : t('settings.toolsCollapseStatusOff')
+                        }
+                        highlight={toolsExecOn}
+                      />
+                    ),
+                    children: (
+                      <div className="space-y-3 pt-1">
+                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-gray-100 bg-gray-50/80 px-3 py-2 dark:border-gray-700/50 dark:bg-gray-800/40">
+                          <Text className="text-sm">{t('settings.toolsExecEnable')}</Text>
+                          <Form.Item name={['toolExec', 'enable']} valuePropName="checked" className="!mb-0">
+                            <Switch />
+                          </Form.Item>
+                        </div>
+                        <Row gutter={[token.marginLG, token.marginSM]}>
+                          <Col xs={24} sm={12}>
+                            <Form.Item name={['toolExec', 'timeout']} label={t('settings.toolsExecTimeout')}>
+                              <InputNumber min={1} max={3600} className="w-full" />
+                            </Form.Item>
+                          </Col>
+                          <Col xs={24} sm={12}>
+                            <Form.Item name={['toolExec', 'sandbox']} label={t('settings.toolsExecSandbox')}>
+                              <Input className="font-mono text-sm" placeholder={t('settings.toolsExecSandboxPh')} allowClear />
+                            </Form.Item>
+                          </Col>
+                          <Col xs={24}>
+                            <Form.Item name={['toolExec', 'pathAppend']} label={t('settings.toolsExecPathAppend')}>
+                              <Input className="font-mono text-sm" placeholder={t('settings.toolsExecPathAppendPh')} allowClear />
+                            </Form.Item>
+                          </Col>
+                          <Col xs={24}>
+                            <Form.Item
+                              name={['toolExec', 'allowedEnvKeys']}
+                              label={t('settings.toolsExecAllowedEnvKeys')}
+                              extra={t('settings.toolsExecAllowedEnvKeysExtra')}
+                            >
+                              <Select mode="tags" className="w-full" placeholder={t('settings.toolsExecAllowedEnvKeysPh')} tokenSeparators={[',']} />
+                            </Form.Item>
+                          </Col>
+                        </Row>
+                      </div>
+                    ),
+                  },
+                  {
+                    key: 'my',
+                    label: (
+                      <SettingsToolsCollapsePanelLabel
+                        title={t('settings.toolsMySection')}
+                        status={
+                          !toolsMyOn
+                            ? t('settings.toolsCollapseStatusOff')
+                            : toolsMyWritable
+                              ? t('settings.toolsMyCollapseStatusWritable')
+                              : t('settings.toolsMyCollapseStatusReadOnly')
+                        }
+                        highlight={toolsMyOn}
+                      />
+                    ),
+                    children: (
+                      <div className="space-y-3 pt-1">
+                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-gray-100 bg-gray-50/80 px-3 py-2 dark:border-gray-700/50 dark:bg-gray-800/40">
+                          <div className="min-w-0">
+                            <Text className="text-sm">{t('settings.toolsMyEnable')}</Text>
+                            <div>
+                              <Text type="secondary" className="text-xs">
+                                {t('settings.toolsMyEnableExtra')}
+                              </Text>
+                            </div>
+                          </div>
+                          <Form.Item name={['toolMy', 'enable']} valuePropName="checked" className="!mb-0">
+                            <Switch />
+                          </Form.Item>
+                        </div>
+                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-gray-100 bg-gray-50/80 px-3 py-2 dark:border-gray-700/50 dark:bg-gray-800/40">
+                          <div className="min-w-0">
+                            <Text className="text-sm">{t('settings.toolsMyAllowSet')}</Text>
+                            <div>
+                              <Text type="secondary" className="text-xs">
+                                {t('settings.toolsMyAllowSetExtra')}
+                              </Text>
+                            </div>
+                          </div>
+                          <Form.Item name={['toolMy', 'allowSet']} valuePropName="checked" className="!mb-0">
+                            <Switch />
+                          </Form.Item>
                         </div>
                       </div>
-                    </Card>
-                  );
-                })}
-              </div>
-            ) : (
-              <Alert
-                title={t('settings.mcpNoneTitle')}
-                description={
-                  <span>
-                    {t('settings.mcpNoneDesc')}{' '}
-                    <code className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs font-mono">
-                      tools.mcpServers
-                    </code>
-                  </span>
-                }
-                type="info"
-                showIcon
+                    ),
+                  },
+                  {
+                    key: 'ssrf',
+                    label: (
+                      <SettingsToolsCollapsePanelLabel
+                        title={t('settings.toolsSsrfSection')}
+                        status={
+                          toolsSsrfCount > 0
+                            ? t('settings.toolsSsrfCollapseCount', { count: toolsSsrfCount })
+                            : t('settings.toolsSsrfCollapseEmpty')
+                        }
+                        highlight={toolsSsrfCount > 0}
+                      />
+                    ),
+                    children: (
+                      <div className="pt-1">
+                        <Alert
+                          type="info"
+                          showIcon
+                          className="mb-3"
+                          message={t('settings.toolsSsrfHint')}
+                        />
+                        <Form.Item name="toolSsrfWhitelist" label={t('settings.toolsSsrfWhitelistLabel')}>
+                          <Select mode="tags" className="w-full" placeholder={t('settings.toolsSsrfWhitelistPh')} tokenSeparators={[',']} />
+                        </Form.Item>
+                      </div>
+                    ),
+                  },
+                ]}
               />
-            )}
-          </div>
+            </Form>
           </Card>
         </div>
       ),

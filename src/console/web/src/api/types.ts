@@ -272,6 +272,33 @@ export interface SettingsGeneralToolsFormValues {
     annotateLineAges: boolean;
     modelOverride: string;
   };
+  /** Mirrors ``config.tools.web`` for Settings → Tools tab. */
+  toolWeb: {
+    enable: boolean;
+    proxy: string;
+    search: {
+      provider: string;
+      apiKey: string;
+      baseUrl: string;
+      maxResults: number;
+      timeout: number;
+    };
+  };
+  /** Mirrors ``config.tools.exec``. */
+  toolExec: {
+    enable: boolean;
+    timeout: number;
+    pathAppend: string;
+    sandbox: string;
+    allowedEnvKeys: string[];
+  };
+  /** Mirrors ``config.tools.my``. */
+  toolMy: {
+    enable: boolean;
+    allowSet: boolean;
+  };
+  /** Mirrors ``config.tools.ssrfWhitelist``. */
+  toolSsrfWhitelist: string[];
 }
 
 /**
@@ -360,6 +387,8 @@ export interface ToolsConfig {
   /** @deprecated Hand-edited JSON; canonical key is ``restrictToWorkspace``. */
   restrict_to_workspace?: boolean;
   mcpServers?: Record<string, MCPServerConfig>;
+  /** Legacy snake_case in hand-edited ``config.json``; prefer ``mcpServers``. */
+  mcp_servers?: Record<string, MCPServerConfig>;
   ssrfWhitelist?: string[];
 }
 
