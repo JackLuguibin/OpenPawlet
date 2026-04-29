@@ -741,7 +741,7 @@ export function MCPServersPanel({
               <McpEmptyConfigDialog botId={currentBotId} />
             </div>
 
-            <div className="mt-2 grid shrink-0 gap-4 border-t border-gray-100 pt-5 dark:border-gray-700/50 lg:grid-cols-2 lg:gap-5 lg:items-start">
+            <div className="mt-2 flex shrink-0 flex-col gap-4 border-t border-gray-100 pt-5 dark:border-gray-700/50">
               <section className="flex min-w-0 flex-col gap-1.5">
                 <h3 className="text-xs font-semibold text-gray-900 dark:text-gray-100">
                   {t('mcp.whatIsTitle')}
