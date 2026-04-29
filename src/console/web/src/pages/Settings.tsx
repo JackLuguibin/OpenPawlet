@@ -1673,7 +1673,7 @@ export default function Settings() {
               {t('settings.subtitle')}
             </p>
           </header>
-          <Space wrap className="shrink-0">
+          <Space wrap className="w-full shrink-0 justify-end sm:w-auto">
             <Button
               icon={<DownloadOutlined />}
               aria-label={t('settings.export')}

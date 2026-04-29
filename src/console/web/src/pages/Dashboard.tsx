@@ -577,7 +577,7 @@ export default function Dashboard() {
     <PageLayout className="min-h-0 flex-1 overflow-hidden">
       <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-hidden">
       {/* Header: pinned above scroll; body scrolls independently */}
-      <div className="flex shrink-0 items-center justify-between">
+      <div className="flex shrink-0 flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className={PAGE_PRIMARY_TITLE_CLASS}>
             {t('dashboard.title')}
@@ -586,7 +586,7 @@ export default function Dashboard() {
             {t('dashboard.subtitle')}
           </p>
         </div>
-        <Space>
+        <Space className="w-full sm:w-auto justify-end flex-wrap">
           {displayStatus?.running && (
             <Button
               danger

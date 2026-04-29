@@ -71,7 +71,7 @@ export default function Teams({ embedded = false }: { embedded?: boolean } = {})
               {t('teams.subtitle')}
             </p>
           </div>
-          <Space align="center" size="small" className="shrink-0">
+          <Space align="center" size="small" className="w-full shrink-0 justify-end sm:w-auto">
             <Button
               icon={<ReloadOutlined />}
               onClick={() => refetch()}

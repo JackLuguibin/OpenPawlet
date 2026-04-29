@@ -530,7 +530,7 @@ export default function Agents({ embedded = false }: { embedded?: boolean } = {}
               {t('agents.subtitle')}
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
+          <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto sm:shrink-0 sm:justify-start">
             <div className="inline-flex items-center rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700 dark:border-blue-900/60 dark:bg-blue-900/20 dark:text-blue-300">
               {filteredAgents.length} / {agents.length}
             </div>

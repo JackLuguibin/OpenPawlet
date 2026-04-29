@@ -337,7 +337,7 @@ export default function Logs({ embedded = false }: { embedded?: boolean } = {}) 
               </p>
             </div>
             <div className="flex w-full min-w-0 flex-col gap-2.5 sm:flex-row sm:items-center sm:gap-3 lg:max-w-[min(100%,32rem)] lg:shrink-0 xl:max-w-[36rem]">
-              <div className="flex shrink-0 items-center justify-start gap-3 sm:ms-auto sm:justify-end">
+              <div className="flex shrink-0 items-center justify-end gap-3 sm:ms-auto">
                 <label className="mb-0 flex cursor-pointer items-center gap-2 text-sm leading-none text-slate-600 dark:text-slate-300">
                   <Switch checked={autoRefresh} onChange={setAutoRefresh} size="small" />
                   <span className="whitespace-nowrap">{t('logs.autoRefresh')}</span>

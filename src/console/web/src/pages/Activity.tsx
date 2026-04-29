@@ -254,7 +254,7 @@ export default function Activity({ embedded = false }: { embedded?: boolean } = 
             <h1 className={PAGE_PRIMARY_TITLE_GRADIENT_CLASS}>{t('activity.title')}</h1>
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{t('activity.subtitle')}</p>
           </div>
-          <div className="flex min-w-0 shrink-0 flex-wrap items-center justify-end gap-2 sm:justify-end">
+          <div className="flex min-w-0 w-full shrink-0 flex-wrap items-center justify-end gap-2 sm:w-auto sm:justify-end">
             <Badge
               status="processing"
               text={<span className="text-xs text-gray-400">{t('common.live')}</span>}

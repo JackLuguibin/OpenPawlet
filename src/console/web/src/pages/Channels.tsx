@@ -289,7 +289,7 @@ export default function Channels({ embedded = false }: { embedded?: boolean } = 
             {t('channels.pageSubtitle')}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex w-full flex-wrap items-center justify-end gap-3 sm:w-auto sm:justify-start">
           {totalChannels > 0 && (
             <div className="rounded-full border border-slate-200/90 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm dark:border-slate-600 dark:bg-slate-800/80 dark:text-slate-200">
               {t('channels.summary', { enabled: enabledTotal, total: totalChannels })}

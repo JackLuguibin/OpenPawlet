@@ -420,7 +420,7 @@ export default function Observability({ embedded = false }: { embedded?: boolean
               {t('observability.title')}
             </h1>
           </div>
-          <div className="flex min-w-0 shrink-0 flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-0">
+          <div className="flex min-w-0 w-full shrink-0 flex-col items-end gap-2 sm:w-auto sm:flex-row sm:items-center sm:justify-end sm:gap-0">
             <div className="flex min-w-0 flex-wrap items-center justify-end gap-x-2 gap-y-1.5 sm:mr-1">
               <Tooltip
                 title={

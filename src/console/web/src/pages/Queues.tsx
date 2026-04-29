@@ -240,7 +240,7 @@ export default function Queues({ embedded = false }: { embedded?: boolean } = {}
             </Text>
           </div>
         </div>
-        <Space wrap size="small" className="shrink-0 sm:pt-0.5">
+        <Space wrap size="small" className="w-full shrink-0 justify-end sm:w-auto sm:pt-0.5">
           <Tag color={connected ? 'success' : 'default'}>
             {connected ? t('queues.wsOn') : t('queues.wsOff')}
           </Tag>
