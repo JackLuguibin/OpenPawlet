@@ -126,6 +126,50 @@ export default function Settings() {
     queryFn: () => api.getStatus(currentBotId),
   });
 
+  const { data: llmProviderInstances = [] } = useQuery({
+    queryKey: ['llm-providers', currentBotId],
+    queryFn: () => api.listLLMProviders(currentBotId!),
+    enabled: !!currentBotId,
+  });
+
+  const configuredDefaultModel = useMemo(() => {
+    const agents = (config as Record<string, unknown> | undefined)?.agents as
+      | Record<string, unknown>
+      | undefined;
+    const defaults = agents?.defaults as Record<string, unknown> | undefined;
+    const m = defaults?.model;
+    return typeof m === 'string' ? m.trim() : '';
+  }, [config]);
+
+  /** Suggestions derived from workspace LLM provider instances (Settings → Providers). */
+  const modelAutocompleteOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const opts: Array<{ value: string; label?: string }> = [];
+
+    for (const inst of llmProviderInstances) {
+      if (!inst.enabled) continue;
+      const model = typeof inst.model === 'string' ? inst.model.trim() : '';
+      if (!model || seen.has(model)) continue;
+      seen.add(model);
+      opts.push({
+        value: model,
+        label: `${inst.name} (${inst.provider}${model ? ` · ${model}` : ''})`,
+      });
+    }
+
+    const pushBare = (raw: unknown) => {
+      const v = typeof raw === 'string' ? raw.trim() : '';
+      if (!v || seen.has(v)) return;
+      seen.add(v);
+      opts.push({ value: v });
+    };
+
+    pushBare(configuredDefaultModel);
+    pushBare(status?.model);
+
+    return opts;
+  }, [configuredDefaultModel, llmProviderInstances, status?.model]);
+
   const { data: envData, isLoading: envLoading } = useQuery({
     queryKey: ['env', currentBotId],
     queryFn: () => api.getEnv(currentBotId),
@@ -484,17 +528,13 @@ export default function Settings() {
                     className="w-full max-w-full"
                     size="middle"
                     placeholder={t('settings.modelPh')}
-                    options={[
-                      ...(status?.model ? [{ value: status.model }] : []),
-                      { value: 'anthropic/claude-opus-4-5' },
-                      { value: 'openai/gpt-4o' },
-                      { value: 'deepseek-v3.2' },
-                      { value: 'deepseek/deepseek-chat' },
-                      { value: 'openrouter/openai/gpt-4o' },
-                    ].filter((o, i, arr) => arr.findIndex((x) => x.value === o.value) === i)}
-                    filterOption={(input, option) =>
-                      (option?.value ?? '').toLowerCase().includes((input || '').toLowerCase())
-                    }
+                    options={modelAutocompleteOptions}
+                    filterOption={(input, option) => {
+                      const q = (input || '').toLowerCase();
+                      const ov = option as { value?: string; label?: string };
+                      const hay = `${ov?.value ?? ''} ${ov?.label ?? ''}`.toLowerCase();
+                      return hay.includes(q);
+                    }}
                   />
                 </Form.Item>
               </Col>
