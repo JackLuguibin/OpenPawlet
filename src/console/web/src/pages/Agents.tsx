@@ -22,12 +22,12 @@ import {
   Row,
   Col,
 } from 'antd';
+import { AgentProfilePanel } from '../components/AgentProfilePanel';
 import {
-  AgentProfilePanel,
   applyExtrasToUpdate,
   extractExtrasFromAgent,
   type AgentProfileExtras,
-} from '../components/AgentProfilePanel';
+} from '../components/agentProfileExtras';
 import {
   PlusOutlined,
   DeleteOutlined,

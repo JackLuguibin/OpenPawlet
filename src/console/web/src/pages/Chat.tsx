@@ -696,7 +696,7 @@ export default function Chat() {
     }
     return ordered;
   }, [
-    groupedSessions.subAgentRows,
+    groupedSessions,
     runtimeAgents,
     consoleAgents,
     subagentTasks,

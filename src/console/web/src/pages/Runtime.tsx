@@ -192,7 +192,7 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
     retry: false,
   });
 
-  const rows = agentsQuery.data ?? [];
+  const rows = useMemo(() => agentsQuery.data ?? [], [agentsQuery.data]);
   const mainRow = useMemo(() => rows.find((r) => r.role === 'main') ?? null, [rows]);
   const subRows = useMemo(() => rows.filter((r) => r.role === 'sub'), [rows]);
   const agentRows = useMemo(() => rows.filter((r) => r.role === 'agent'), [rows]);

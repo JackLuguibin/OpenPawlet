@@ -11,7 +11,8 @@ import {
 import i18n from "../../i18n";
 import type { ToolCall } from "../../api/types";
 import { normalizeToolCallsArray } from "../../utils/toolCalls";
-import { AskUserPrompt, isAskUserToolCall } from "./AskUserPrompt";
+import { AskUserPrompt } from "./AskUserPrompt";
+import { isAskUserToolCall } from "./askUserToolCall";
 
 /**
  * Safe display for tool arguments. `JSON.stringify(undefined)` is `undefined`

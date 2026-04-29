@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Form,
@@ -555,11 +555,11 @@ export default function Skills({
   const gitRepoCount = gitRepos.length;
 
   /** Skills live under workspace ``.cursor/skills``; keep file tree in sync. */
-  const invalidateSkillsAndWorkspaceFiles = () => {
+  const invalidateSkillsAndWorkspaceFiles = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['skills'] });
     queryClient.invalidateQueries({ queryKey: ['workspace-files'] });
     queryClient.invalidateQueries({ queryKey: ['workspace-file'] });
-  };
+  }, [queryClient]);
 
   const { data: registrySkills = [], isLoading: registryLoading } = useQuery({
     queryKey: ['skills-registry', registryUrl, registrySearch, currentBotId],
