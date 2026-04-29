@@ -11,6 +11,7 @@ import {
   Spin,
   Tooltip,
   Collapse,
+  Alert,
 } from 'antd';
 import {
   RobotOutlined,
@@ -24,6 +25,7 @@ import { useTranslation } from 'react-i18next';
 import * as api from '../../api/client';
 import type { CronHistoryRun, CronJob } from '../../api/types';
 import { formatAgentLocaleString } from '../../utils/agentDatetime';
+import { formatQueryError } from '../../utils/errors';
 
 interface CronHistoryDrawerProps {
   open: boolean;
@@ -41,7 +43,9 @@ export function CronHistoryDrawer(props: CronHistoryDrawerProps) {
   const { open, job, botId, agentTz, locale, agentNameById, onClose } = props;
   const { t } = useTranslation();
 
-  const { data: historyMap, isLoading } = useQuery<Record<string, CronHistoryRun[]>>({
+  const { data: historyMap, isLoading, isError, error } = useQuery<
+    Record<string, CronHistoryRun[]>
+  >({
     queryKey: ['cron-history', botId, job?.id],
     queryFn: () =>
       job
@@ -83,6 +87,8 @@ export function CronHistoryDrawer(props: CronHistoryDrawerProps) {
         <div className="flex items-center justify-center py-12">
           <Spin />
         </div>
+      ) : isError ? (
+        <Alert type="error" showIcon message={formatQueryError(error)} />
       ) : history.length === 0 ? (
         <Empty description={t('cron.historyEmpty')} />
       ) : (
@@ -142,9 +148,9 @@ export function CronHistoryDrawer(props: CronHistoryDrawerProps) {
                       </Tooltip>
                     </Space>
                     <Text type="secondary" className="text-xs whitespace-nowrap">
-                      {h.duration_ms < 1000
-                        ? `${Math.round(h.duration_ms)}ms`
-                        : `${(h.duration_ms / 1000).toFixed(2)}s`}
+                      {(h.duration_ms ?? 0) < 1000
+                        ? `${Math.round(h.duration_ms ?? 0)}ms`
+                        : `${((h.duration_ms ?? 0) / 1000).toFixed(2)}s`}
                     </Text>
                   </div>
                 ),
@@ -156,21 +162,21 @@ export function CronHistoryDrawer(props: CronHistoryDrawerProps) {
                         <span className="break-all">{h.error}</span>
                       </div>
                     )}
-                    {(h.skills.length > 0 ||
-                      h.tools.length > 0 ||
-                      h.mcp_servers.length > 0) && (
+                    {((h.skills?.length ?? 0) > 0 ||
+                      (h.tools?.length ?? 0) > 0 ||
+                      (h.mcp_servers?.length ?? 0) > 0) && (
                       <Space size={[4, 4]} wrap>
-                        {h.skills.map((s) => (
+                        {(h.skills ?? []).map((s) => (
                           <Tag key={`s-${s}`} icon={<ThunderboltOutlined />} color="purple">
                             {s}
                           </Tag>
                         ))}
-                        {h.tools.map((s) => (
+                        {(h.tools ?? []).map((s) => (
                           <Tag key={`t-${s}`} icon={<ToolOutlined />} color="cyan">
                             {s}
                           </Tag>
                         ))}
-                        {h.mcp_servers.map((s) => (
+                        {(h.mcp_servers ?? []).map((s) => (
                           <Tag key={`m-${s}`} icon={<ApiOutlined />} color="gold">
                             {s}
                           </Tag>

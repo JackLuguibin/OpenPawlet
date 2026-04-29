@@ -206,6 +206,37 @@ def test_remove_job_refuses_system_jobs(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_register_system_job_preserves_run_history(tmp_path) -> None:
+    import asyncio
+
+    store_path = tmp_path / "cron" / "jobs.json"
+    service = CronService(store_path, on_job=lambda _: asyncio.sleep(0))
+    service.register_system_job(
+        CronJob(
+            id="dream",
+            name="dream",
+            schedule=CronSchedule(kind="every", every_ms=60_000),
+            payload=CronPayload(kind="system_event"),
+        )
+    )
+    await service.run_job("dream", force=True)
+    assert len(service.get_job("dream").state.run_history) == 1
+
+    service.register_system_job(
+        CronJob(
+            id="dream",
+            name="dream",
+            schedule=CronSchedule(kind="every", every_ms=120_000),
+            payload=CronPayload(kind="system_event"),
+        )
+    )
+    reloaded = service.get_job("dream")
+    assert len(reloaded.state.run_history) == 1
+    assert reloaded.schedule.every_ms == 120_000
+    assert reloaded.state.last_status == "ok"
+
+
+@pytest.mark.asyncio
 async def test_start_server_not_jobs(tmp_path):
     store_path = tmp_path / "cron" / "jobs.json"
     called = []

@@ -433,8 +433,21 @@ class CronService:
         """Register an internal system job (idempotent on restart)."""
         store = self._load_store()
         now = _now_ms()
-        job.state = CronJobState(next_run_at_ms=_compute_next_run(job.schedule, now))
-        job.created_at_ms = now
+        existing = next((j for j in store.jobs if j.id == job.id), None)
+        if existing is not None:
+            # Re-registration (e.g. embedded restart) must not wipe execution audit
+            # or last-run summary; only re-apply schedule-driven next wake time.
+            job.state = CronJobState(
+                next_run_at_ms=_compute_next_run(job.schedule, now),
+                last_run_at_ms=existing.state.last_run_at_ms,
+                last_status=existing.state.last_status,
+                last_error=existing.state.last_error,
+                run_history=list(existing.state.run_history),
+            )
+            job.created_at_ms = existing.created_at_ms
+        else:
+            job.state = CronJobState(next_run_at_ms=_compute_next_run(job.schedule, now))
+            job.created_at_ms = now
         job.updated_at_ms = now
         store.jobs = [j for j in store.jobs if j.id != job.id]
         store.jobs.append(job)
