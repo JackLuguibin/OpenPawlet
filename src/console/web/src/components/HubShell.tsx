@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Tabs } from 'antd';
+import { Tabs, theme } from 'antd';
 import type { TabsProps } from 'antd';
 import { PageLayout } from './PageLayout';
 import { PAGE_PRIMARY_TITLE_CLASS } from '../utils/pageTitleClasses';
@@ -39,6 +39,7 @@ export function HubShell<T extends string>({
   tabBarExtra,
   tabsType = 'line',
 }: HubShellProps<T>) {
+  const { token } = theme.useToken();
   const items: TabsProps['items'] = tabs.map((tab) => ({
     key: tab.key,
     label: tab.icon ? (
@@ -76,6 +77,7 @@ export function HubShell<T extends string>({
           items={items}
           type={tabsType}
           tabBarExtraContent={tabBarExtra}
+          tabBarGutter={token.marginXL}
           size="small"
           destroyOnHidden
         />

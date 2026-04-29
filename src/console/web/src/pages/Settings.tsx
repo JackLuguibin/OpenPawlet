@@ -1691,7 +1691,7 @@ export default function Settings() {
         items={tabItems}
         className="hub-shell-tabs"
         size="large"
-        tabBarGutter={token.margin}
+        tabBarGutter={token.marginXL}
       />
     </PageLayout>
   );
