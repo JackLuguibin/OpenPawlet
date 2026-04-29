@@ -83,6 +83,7 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const addToast = useAppStore((s) => s.addToast);
+  const wsConnected = useAppStore((s) => s.wsConnected);
   const [startModalOpen, setStartModalOpen] = useState(false);
   const [form] = Form.useForm<RuntimeSubagentStartBody>();
   // When user clicks "启动" on a profile row, we pre-fill the start
@@ -96,9 +97,11 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
   const agentsQuery = useQuery({
     queryKey: ['runtime-agents'],
     queryFn: api.listRuntimeAgents,
-    // Live updates come from `/ws/state` (`runtime_agents_update`); the
-    // long fallback only covers the case where the socket is blocked.
-    refetchInterval: RUNTIME_FALLBACK_INTERVAL_MS,
+    // Live updates via `/ws/state` (`runtime_agents_update`). HTTP fallback
+    // only while the push channel is down.
+    staleTime: wsConnected ? Number.POSITIVE_INFINITY : 0,
+    refetchInterval: wsConnected ? false : RUNTIME_FALLBACK_INTERVAL_MS,
+    refetchOnWindowFocus: !wsConnected,
     retry: false,
   });
 

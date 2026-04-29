@@ -97,6 +97,7 @@ export default function Chat() {
   const { currentSessionKey, setCurrentSessionKey, currentBotId, addToast } =
     useAppStore();
   const openpawletClientId = useAppStore((s) => s.openpawletClientId);
+  const wsConnected = useAppStore((s) => s.wsConnected);
   const agentTz = useAgentTimeZone();
 
   const [input, setInput] = useState("");
@@ -317,16 +318,14 @@ export default function Chat() {
     enabled: !!currentBotId,
   });
 
-  // Live runtime agents (main + subagent tasks). The state-push channel
-  // (`/ws/state` -> `runtime_agents_update`) keeps this cache fresh in
-  // real time, so we no longer poll. A longer-interval fallback covers
-  // the (unlikely) case the socket is down and the SPA cannot
-  // reconnect (e.g. corporate proxy stripping WS upgrades).
+  // Live runtime agents (main + subagent tasks): `/ws/state` ->
+  // `runtime_agents_update` updates the cache; HTTP fallback only offline.
   const { data: runtimeAgents } = useQuery({
     queryKey: ["runtime-agents", currentBotId],
     queryFn: () => api.listRuntimeAgents(),
-    refetchInterval: 30_000,
-    refetchOnWindowFocus: true,
+    staleTime: wsConnected ? Number.POSITIVE_INFINITY : 0,
+    refetchInterval: wsConnected ? false : 30_000,
+    refetchOnWindowFocus: !wsConnected,
   });
 
   useEffect(() => {

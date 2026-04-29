@@ -123,27 +123,54 @@ def _heal_team_rooms_for_active_bot(active_bot_id: str | None) -> None:
 class ProviderNotConfiguredError(RuntimeError):
     """Raised when no usable LLM provider credentials are configured.
 
-    The console catches this distinctly from generic construction failures
-    so it can enter degraded mode with a friendly log message instead of
-    a giant traceback, allowing the user to finish provider setup via the
-    UI and then trigger a runtime swap.
+    Kept around for backwards compatibility with callers that catch it
+    explicitly; the embedded runtime no longer raises this — see
+    :func:`_console_provider_factory` which substitutes a
+    :class:`NullProvider` instead so the agent can still boot.
     """
 
 
 def _console_provider_factory(config: Any) -> Any:
     """Build the LLM provider for the embedded runtime in console mode.
 
-    Unlike the CLI factory (which prints a rich error and calls
-    ``typer.Exit``), this raises :class:`ProviderNotConfiguredError` so
-    the FastAPI lifespan can degrade gracefully and keep the SPA usable
-    for completing provider configuration.
+    The console always boots its embedded runtime, even when the user has
+    not yet entered any LLM credential. To make that possible we install
+    a :class:`NullProvider` placeholder whenever the real factory cannot
+    pick a usable provider — every chat call against it returns a
+    friendly "configure a provider" error, while AgentLoop / channels /
+    cron / heartbeat all start normally. As soon as the user adds a
+    provider via Settings → Providers, ``apply_providers_change`` swaps
+    the placeholder out via :meth:`AgentLoop.replace_provider`.
     """
     from openpawlet.providers.factory import build_default_provider
+    from openpawlet.providers.null_provider import NullProvider
 
-    def _raise(message: str) -> Any:
-        raise ProviderNotConfiguredError(message)
+    captured: dict[str, str] = {}
 
-    return build_default_provider(config, error_handler=_raise)
+    def _capture(message: str) -> Any:
+        # Stash the diagnostic so we can include it once in the boot log
+        # below without bubbling it as an exception.
+        captured["message"] = message
+        raise _ProviderUnavailable(message)
+
+    try:
+        return build_default_provider(config, error_handler=_capture)
+    except _ProviderUnavailable:
+        logger.warning(
+            "No usable LLM provider configured ({}); embedded runtime will "
+            "boot with a placeholder provider. Configure a provider in "
+            "Settings → Providers to start serving real turns.",
+            captured.get("message", "missing credentials"),
+        )
+        return NullProvider()
+
+
+class _ProviderUnavailable(Exception):
+    """Internal sentinel used to short-circuit the provider factory.
+
+    Kept private so callers do not start catching it; they should rely on
+    the placeholder substitution behavior of ``_console_provider_factory``.
+    """
 
 
 async def _build_embedded_runtime(app: FastAPI) -> Any | None:
@@ -227,15 +254,6 @@ async def _build_embedded_runtime(app: FastAPI) -> Any | None:
             verbose=False,
             provider_factory=_console_provider_factory,
         )
-    except ProviderNotConfiguredError as exc:
-        logger.warning(
-            "Embedded OpenPawlet runtime not started: {}. "
-            "Console will run in degraded mode; configure an LLM provider "
-            "in the UI (Settings → Providers) and the runtime will start "
-            "on the next bot switch or server restart.",
-            exc,
-        )
-        return None
     except Exception:  # noqa: BLE001 - degraded mode keeps the UI usable
         logger.exception(
             "Failed to construct embedded OpenPawlet runtime; console will start in degraded mode"

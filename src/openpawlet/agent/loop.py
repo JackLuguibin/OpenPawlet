@@ -652,13 +652,23 @@ class AgentLoop:
 
         return changed
 
-    def replace_provider(self, new_provider: LLMProvider) -> None:
+    def replace_provider(
+        self, new_provider: LLMProvider, *, new_model: str | None = None
+    ) -> None:
         """Swap the LLM provider used by every downstream component.
 
         Used when ``llm_providers.json`` changes the active default
         instance or rotates an API key. In-flight LLM calls keep their
         bound provider; only new calls go through the replacement.
+
+        ``new_model`` is honored when the previously bound provider was
+        the placeholder :class:`NullProvider` (or any provider whose
+        default model the loop captured at construction time but no
+        longer matches the configured one): without re-syncing
+        ``self.model`` the agent would keep sending requests against the
+        placeholder name even after a real provider became available.
         """
+        previous_model = self.model
         self.provider = new_provider
         self.runner.provider = new_provider
         self.consolidator.provider = new_provider
@@ -667,6 +677,26 @@ class AgentLoop:
             self.subagents.provider = new_provider
         except AttributeError:
             pass
+
+        if new_model:
+            target_model = new_model
+        else:
+            try:
+                target_model = new_provider.get_default_model()
+            except Exception:  # pragma: no cover - provider must always supply one
+                target_model = previous_model
+
+        if target_model and target_model != previous_model:
+            self.model = target_model
+            # Dream is the only sub-component that captures its own
+            # model field at construction time (see EmbeddedOpenPawlet).
+            # Only realign it when it was tracking the loop's previous
+            # model — never overwrite an explicit ``dream.model_override``.
+            try:
+                if getattr(self.dream, "model", None) in (None, previous_model):
+                    self.dream.model = target_model
+            except AttributeError:
+                pass
 
     def _snapshot_turn_context(
         self,

@@ -275,12 +275,43 @@ def apply_providers_change(app: FastAPI) -> bool:
     instance / API keys / failover settings take effect on the next LLM
     call without a restart.
 
+    Two recovery paths beyond plain hot-swap:
+
+    * When the embedded runtime is missing entirely (e.g. it failed to
+      construct on boot for a non-provider reason), we fall back to a
+      full ``swap_runtime`` so the user can still recover by adding a
+      provider in the UI without a manual restart.
+    * When the live provider is the placeholder :class:`NullProvider`
+      (the default at boot when no credentials were configured), the
+      hot-swap path also re-syncs ``agent.model`` to the freshly built
+      provider's default so the very first turn after configuration
+      uses the real model name instead of the placeholder.
+
     Returns ``True`` when a new provider was installed, ``False`` when
-    the runtime is missing (degraded mode) or rebuild failed.
+    the rebuild failed.
     """
+    from openpawlet.providers.null_provider import is_null_provider
+
     embedded = getattr(app.state, "embedded", None)
     if embedded is None:
+        # Runtime never came up — try a full rebuild now that the user
+        # has likely fixed whatever blocked it (typically: provider
+        # credentials).  Done in a fire-and-forget task so the HTTP
+        # caller is not blocked on the start-up sequence; ``swap_runtime``
+        # holds the runtime lock so concurrent saves are serialised.
+        import asyncio
+
+        from console.server.lifespan import swap_runtime
+
+        active_bot = getattr(app.state, "active_bot_id", None) or "default"
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = None
+        if loop is not None and loop.is_running():
+            loop.create_task(swap_runtime(app, active_bot))
         return False
+
     agent = getattr(embedded, "agent", None)
     if agent is None or not hasattr(agent, "replace_provider"):
         return False
@@ -295,11 +326,28 @@ def apply_providers_change(app: FastAPI) -> bool:
         logger.exception("[config-apply] failed to rebuild LLM provider")
         return False
 
+    was_null = is_null_provider(getattr(agent, "provider", None))
+    new_model = cfg.agents.defaults.model if was_null else None
     try:
-        agent.replace_provider(new_provider)
+        agent.replace_provider(new_provider, new_model=new_model)
+    except TypeError:
+        # Backwards-compat for AgentLoop forks that have not picked up
+        # the ``new_model`` keyword yet.
+        try:
+            agent.replace_provider(new_provider)
+        except Exception:  # noqa: BLE001
+            logger.exception("[config-apply] replace_provider failed")
+            return False
     except Exception:  # noqa: BLE001
         logger.exception("[config-apply] replace_provider failed")
         return False
+
+    if was_null:
+        logger.info(
+            "[config-apply] swapped placeholder NullProvider for real provider; "
+            "agent is now serving real turns (model={})",
+            getattr(agent, "model", "?"),
+        )
     return True
 
 
