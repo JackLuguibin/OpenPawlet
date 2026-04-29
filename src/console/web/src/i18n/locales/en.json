@@ -1001,7 +1001,7 @@
     "nameRequired": "Name is required",
     "fieldUrl": "Repository URL",
     "urlRequired": "URL is required",
-    "urlExtra": "Supports https:// and git@host:org/repo.git",
+    "urlExtra": "Supports https://, ssh://, and git@host:path/repo.git",
     "fieldBranch": "Branch / Ref",
     "branchPlaceholder": "Leave empty for default branch",
     "fieldKind": "Repo Layout",

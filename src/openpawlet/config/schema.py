@@ -1,7 +1,7 @@
 """Configuration schema using Pydantic."""
 
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
@@ -293,6 +293,13 @@ class Config(BaseSettings):
     api: ApiConfig = Field(default_factory=ApiConfig)
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
+    #: Opaque block written by the console ``/api/v1/skills/git`` surface; must
+    #: round-trip in ``config.json`` without being dropped by :class:`Config`.
+    skills_git: dict[str, Any] = Field(
+        default_factory=dict,
+        validation_alias=AliasChoices("skillsGit", "skills_git"),
+        serialization_alias="skillsGit",
+    )
 
     @property
     def workspace_path(self) -> Path:

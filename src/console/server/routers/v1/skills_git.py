@@ -92,15 +92,14 @@ def _validate_url(url: str) -> str:
     candidate = url.strip()
     if not candidate:
         raise HTTPException(status_code=400, detail="Repository URL is required")
+    cand_lower = candidate.lower()
     if not (
-        candidate.startswith("https://")
-        or candidate.startswith("http://")
-        or candidate.startswith("ssh://")
+        cand_lower.startswith(("https://", "http://", "ssh://"))
         or candidate.startswith("git@")
     ):
         raise HTTPException(
             status_code=400,
-            detail="URL must start with https://, http://, ssh:// or git@host:org/repo",
+            detail="URL must start with https://, http://, ssh:// or git@host:path/repo",
         )
     return candidate
 

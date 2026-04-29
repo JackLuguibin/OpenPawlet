@@ -215,6 +215,31 @@ def test_new_my_tool_keys_take_precedence_over_legacy(tmp_path) -> None:
     assert config.tools.my.allow_set is True
 
 
+def test_load_config_accepts_skills_git_block(tmp_path) -> None:
+    """Console writes ``skillsGit`` at the top of ``config.json`` — root Config must accept it."""
+    config_path = tmp_path / "config.json"
+    skills_block = {
+        "repos": [
+            {
+                "id": "deadbeef",
+                "name": "skills",
+                "url": "ssh://git@example.com/group/my-skill.git",
+                "kind": "single",
+                "auth": {"kind": "none"},
+            }
+        ]
+    }
+    config_path.write_text(
+        json.dumps({"skillsGit": skills_block}),
+        encoding="utf-8",
+    )
+    config = load_config(config_path)
+    assert config.skills_git == skills_block
+    save_config(config, config_path)
+    again = load_config(config_path)
+    assert again.skills_git["repos"][0]["url"] == "ssh://git@example.com/group/my-skill.git"
+
+
 def test_load_config_resets_ssrf_whitelist_when_next_config_is_empty(tmp_path) -> None:
     whitelisted = tmp_path / "whitelisted.json"
     whitelisted.write_text(

@@ -78,6 +78,47 @@ def test_redact_secrets_strips_creds() -> None:
     assert "***" in _redact_secrets(msg)
 
 
+def test_repo_stem_from_git_url_variants() -> None:
+    from console.server.skills_git_sync import _repo_stem_from_git_url
+
+    assert (
+        _repo_stem_from_git_url("ssh://git@scm.example.net:4444/org/repo.git")
+        == "repo"
+    )
+    assert _repo_stem_from_git_url("https://github.com/acme/widget.git") == "widget"
+    assert _repo_stem_from_git_url("git@github.com:acme/widget.git") == "widget"
+    assert _repo_stem_from_git_url("ssh://ssh.github.com/repo-name.git") == "repo-name"
+
+
+def test_parse_default_branch_from_ls_remote_symref() -> None:
+    from console.server.skills_git_sync import _parse_default_branch_from_ls_remote
+
+    out = "ref: refs/heads/main\tHEAD\n"
+    assert _parse_default_branch_from_ls_remote(out) == "main"
+
+
+def test_parse_default_branch_from_ls_remote_peeled() -> None:
+    from console.server.skills_git_sync import _parse_default_branch_from_ls_remote
+
+    out = (
+        "abc\tHEAD\n"
+        "abc\trefs/heads/main\n"
+    )
+    assert _parse_default_branch_from_ls_remote(out) == "main"
+
+
+def test_parse_default_branch_from_ls_remote_prefers_main_over_master_when_both() -> None:
+    from console.server.skills_git_sync import _parse_default_branch_from_ls_remote
+
+    # Same SHA for HEAD, master, and main — parser should prefer main.
+    out = (
+        "deadbeef\tHEAD\n"
+        "deadbeef\trefs/heads/master\n"
+        "deadbeef\trefs/heads/main\n"
+    )
+    assert _parse_default_branch_from_ls_remote(out) == "main"
+
+
 def test_validate_subpath_rejects_traversal() -> None:
     from console.server.skills_git_sync import GitSyncError, _validate_subpath
 

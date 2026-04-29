@@ -300,9 +300,10 @@ def _ensure_repo_cache(ctx: _SyncContext) -> Path:
         # Move existing remote URL in case auth/token changed across runs;
         # ``set-url`` is a no-op when the URL hasn't changed.
         _git(["remote", "set-url", "origin", auth_url], cwd=cache, env=ctx.env)
-        ref = ctx.repo.branch or ""
+        ref_arg = (ctx.repo.branch or "").strip()
+        fetch_extra = ["+" + ref_arg] if ref_arg else []
         _git(
-            ["fetch", "--prune", "--depth", "1", "origin", *(["+" + ref] if ref else [])],
+            ["fetch", "--prune", "--depth", "1", "origin", *fetch_extra],
             cwd=cache,
             env=ctx.env,
         )
@@ -321,14 +322,197 @@ def _ensure_repo_cache(ctx: _SyncContext) -> Path:
     return cache
 
 
+def _remote_tracking_ref_exists(cache: Path, env: dict[str, str], qual: str) -> bool:
+    """Return True if ``qual`` is a valid ref (e.g. ``refs/remotes/origin/main``)."""
+    try:
+        _git(["show-ref", "-q", "--verify", qual], cwd=cache, env=env)
+        return True
+    except GitSyncError:
+        return False
+
+
+def _parse_default_branch_from_ls_remote(out: str) -> str | None:
+    """Extract the short branch name (e.g. ``main``) from ``git ls-remote`` output.
+
+    Handles ``--symref`` lines (``ref: refs/heads/main HEAD``) and the fallback
+    pattern where ``HEAD`` and ``refs/heads/foo`` share the same object id.
+    """
+    head_sha: str | None = None
+    by_sha: dict[str, list[str]] = {}
+    for raw in out.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if line.startswith("ref:"):
+            parts = line.split()
+            if len(parts) >= 3 and parts[-1] == "HEAD":
+                target = parts[1]
+                if target.startswith("refs/heads/"):
+                    return target.split("refs/heads/", 1)[-1]
+            continue
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+        sha, ref = parts[0], parts[1]
+        if ref == "HEAD":
+            head_sha = sha
+        elif ref.startswith("refs/heads/"):
+            by_sha.setdefault(sha, []).append(ref.split("refs/heads/", 1)[-1])
+    if head_sha and head_sha in by_sha:
+        names = by_sha[head_sha]
+        for prefer in ("main", "master"):
+            if prefer in names:
+                return prefer
+        return sorted(names)[0]
+    return None
+
+
+def _ls_remote_origin_default_branch(cache: Path, env: dict[str, str]) -> str | None:
+    """Ask the server which branch ``HEAD`` points to (works with Gerrit / shallow caches)."""
+    chunks: list[str] = []
+    try:
+        chunks.append(
+            _git(["ls-remote", "--symref", "origin", "HEAD"], cwd=cache, env=env)
+        )
+    except GitSyncError as exc:
+        logger.debug("[skills-git] ls-remote --symref origin HEAD failed: {}", exc)
+    try:
+        chunks.append(_git(["ls-remote", "origin", "HEAD"], cwd=cache, env=env))
+    except GitSyncError as exc:
+        logger.debug("[skills-git] ls-remote origin HEAD failed: {}", exc)
+    combined = "\n".join(c for c in chunks if c)
+    return _parse_default_branch_from_ls_remote(combined) if combined else None
+
+
+def _fetch_remote_head_branch(cache: Path, env: dict[str, str], branch_tail: str) -> None:
+    """Materialise ``refs/remotes/origin/<branch_tail>`` via an explicit refspec.
+
+    Shallow ``git fetch origin`` without refspec may not create the ref that
+    ``remote set-head`` expects (seen on Gerrit + ``--depth 1``).
+    """
+    if not branch_tail.strip():
+        raise GitSyncError("empty branch name from ls-remote")
+    src = f"refs/heads/{branch_tail}"
+    dst = f"refs/remotes/origin/{branch_tail}"
+    _git(
+        ["fetch", "--prune", "--depth", "1", "origin", f"+{src}:{dst}"],
+        cwd=cache,
+        env=env,
+    )
+
+
+def _try_resolve_via_ls_remote_fetch(cache: Path, env: dict[str, str]) -> str | None:
+    """Resolve default branch using ls-remote + explicit fetch; returns full ref or None."""
+    tip = _ls_remote_origin_default_branch(cache, env)
+    if not tip:
+        return None
+    try:
+        _fetch_remote_head_branch(cache, env, tip)
+    except GitSyncError as exc:
+        logger.warning(
+            "[skills-git] could not fetch refs/heads/{!r} from origin: {}",
+            tip,
+            exc,
+        )
+        return None
+    fq = f"refs/remotes/origin/{tip}"
+    if _remote_tracking_ref_exists(cache, env, fq):
+        logger.info("[skills-git] synced remote HEAD branch {!r} at {}", tip, fq)
+        return fq
+    return None
+
+
+def _best_effort_sync_origin_head(cache: Path, env: dict[str, str]) -> None:
+    """Point ``refs/remotes/origin/HEAD`` at the remote's default branch (requires network)."""
+    try:
+        _git(["remote", "set-head", "origin", "-a"], cwd=cache, env=env)
+    except GitSyncError:
+        logger.debug("[skills-git] remote set-head -a failed; continuing with local refs only")
+
+
+def _pick_fallback_remote_branch(cache: Path, env: dict[str, str]) -> str | None:
+    """Choose a single ``refs/remotes/origin/...`` ref when HEAD cannot be resolved."""
+    lines = [ln.strip() for ln in _git(["branch", "-r"], cwd=cache, env=env).splitlines() if ln.strip()]
+    names: list[str] = []
+    for ln in lines:
+        if "->" in ln:
+            continue
+        parts = ln.split()
+        if not parts:
+            continue
+        name = parts[0]
+        if name.startswith("origin/") and name != "origin/HEAD":
+            names.append(name)
+    if not names:
+        return None
+    for preferred in ("origin/main", "origin/master"):
+        if preferred in names:
+            return f"refs/remotes/{preferred}"
+    return f"refs/remotes/{sorted(names)[0]}"
+
+
+def _resolve_hard_reset_reference(cache: Path, env: dict[str, str], branch: str | None) -> str:
+    """Return a fully qualified ref for ``git reset --hard`` (avoids ambiguous ``origin/x``)."""
+    if branch and branch.strip():
+        tail = branch.strip()
+        fq = f"refs/remotes/origin/{tail}"
+        if _remote_tracking_ref_exists(cache, env, fq):
+            return fq
+        logger.warning(
+            "[skills-git] remote branch {!r} not found at {} after fetch; widening fetch and retrying.",
+            tail,
+            fq,
+        )
+        try:
+            _git(["fetch", "--prune", "--depth", "1", "origin"], cwd=cache, env=env)
+        except GitSyncError:
+            logger.debug("[skills-git] widening fetch failed; attempting default-branch resolution.")
+        if _remote_tracking_ref_exists(cache, env, fq):
+            return fq
+        try:
+            _fetch_remote_head_branch(cache, env, tail)
+        except GitSyncError as exc:
+            logger.debug("[skills-git] explicit fetch for configured branch failed: {}", exc)
+        if _remote_tracking_ref_exists(cache, env, fq):
+            return fq
+        logger.warning(
+            "[skills-git] still missing {}; using remote default branch instead of configured branch {!r}.",
+            fq,
+            tail,
+        )
+
+    # Prefer ls-remote + explicit refspec — fixes Gerrit shallow caches where
+    # ``remote set-head -a`` points at a ref that was never fetched locally.
+    ls_ref = _try_resolve_via_ls_remote_fetch(cache, env)
+    if ls_ref:
+        return ls_ref
+
+    _best_effort_sync_origin_head(cache, env)
+
+    for candidate in ("refs/remotes/origin/HEAD",):
+        if _remote_tracking_ref_exists(cache, env, candidate):
+            return candidate
+
+    try:
+        sym = _git(["symbolic-ref", "-q", "refs/remotes/origin/HEAD"], cwd=cache, env=env).strip()
+        if _remote_tracking_ref_exists(cache, env, sym):
+            return sym
+    except GitSyncError:
+        pass
+
+    fallback = _pick_fallback_remote_branch(cache, env)
+    if fallback and _remote_tracking_ref_exists(cache, env, fallback):
+        return fallback
+
+    raise GitSyncError(
+        "Could not resolve a remote branch to sync; check the branch name or run "
+        "'git ls-remote' against this URL."
+    )
+
+
 def _hard_reset_to_remote(cache: Path, env: dict[str, str], branch: str | None) -> None:
-    """Force the local working tree to match ``origin/<branch>``."""
-    if branch:
-        ref = f"origin/{branch}"
-    else:
-        # Discover origin's HEAD ref so we don't assume ``main``.
-        out = _git(["symbolic-ref", "refs/remotes/origin/HEAD"], cwd=cache, env=env).strip()
-        ref = out.split("refs/remotes/", 1)[-1] if out else "origin/HEAD"
+    """Force the local working tree to match the chosen remote-tracking ref."""
+    ref = _resolve_hard_reset_reference(cache, env, branch)
     _git(["reset", "--hard", ref], cwd=cache, env=env)
     _git(["clean", "-fdx"], cwd=cache, env=env)
 
@@ -389,16 +573,38 @@ def _install_multi(ctx: _SyncContext, cache: Path, target_root: Path) -> list[st
     return installed
 
 
+def _repo_stem_from_git_url(url: str) -> str:
+    """Return the repository directory name from a remote URL (``.git`` stripped).
+
+    Supports ``https://``, ``http://``, ``ssh://``, and SCP-style ``git@host:path``.
+    """
+    raw = url.strip()
+    if not raw:
+        return ""
+    lower = raw.lower()
+    if lower.startswith(("https://", "http://", "ssh://")):
+        parsed = urlparse(raw)
+        path = (parsed.path or "").rstrip("/")
+        if not path:
+            return ""
+        stem = path.rsplit("/", 1)[-1]
+    elif raw.startswith("git@") and ":" in raw and "://" not in raw:
+        # SCP form: git@host:org/repo.git (no ssh://)
+        path_part = raw.split(":", 1)[-1]
+        stem = path_part.rsplit("/", 1)[-1]
+    else:
+        stem = raw.rstrip("/").rsplit("/", 1)[-1]
+    if stem.endswith(".git"):
+        stem = stem[:-4]
+    return stem
+
+
 def _resolve_single_target_name(ctx: _SyncContext) -> str:
     """Pick the destination folder name for a single-bundle repo."""
     if ctx.repo.target:
         name = ctx.repo.target.strip().strip("/").strip("\\")
     else:
-        # Derive from the URL (strip trailing ``.git``).
-        tail = ctx.repo.url.rstrip("/").rsplit("/", 1)[-1]
-        if tail.endswith(".git"):
-            tail = tail[:-4]
-        name = tail or ctx.repo.name
+        name = _repo_stem_from_git_url(ctx.repo.url) or ctx.repo.name
     if not _SKILL_NAME_RE.fullmatch(name):
         raise GitSyncError(
             f"Resolved skill folder name '{name}' is not a valid identifier; "

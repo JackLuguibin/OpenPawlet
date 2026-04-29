@@ -1001,7 +1001,7 @@
     "nameRequired": "请填写名称",
     "fieldUrl": "仓库地址",
     "urlRequired": "请填写仓库地址",
-    "urlExtra": "支持 https:// 与 git@host:org/repo.git 两种形式",
+    "urlExtra": "支持 https://、ssh:// 与 git@host:path/repo.git",
     "fieldBranch": "分支 / 引用",
     "branchPlaceholder": "留空使用默认分支",
     "fieldKind": "仓库类型",
