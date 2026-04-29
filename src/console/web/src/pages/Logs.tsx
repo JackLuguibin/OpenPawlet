@@ -173,20 +173,19 @@ function LogPanel({
 
       <div
         className={[
-          'min-h-0 flex-1 bg-[#0b0f19] p-0 dark:bg-[#070a12]',
+          'flex min-h-0 flex-1 flex-col bg-[#0b0f19] p-0 dark:bg-[#070a12]',
           variant === 'tab' && 'min-h-0',
         ]
           .filter(Boolean)
           .join(' ')}
       >
         {showMissing && (
-          <p className="px-3 py-2 text-sm text-amber-600/95 dark:text-amber-400/95">{t('logs.emptyFile')}</p>
+          <p className="shrink-0 px-3 py-2 text-sm text-amber-600/95 dark:text-amber-400/95">{t('logs.emptyFile')}</p>
         )}
         <div
           className={[
-            'h-full min-h-0 overflow-auto px-3 py-3 sm:px-4',
-            variant === 'stacked' && 'max-h-[min(58vh,560px)] min-h-[220px]',
-            variant === 'tab' && 'min-h-0',
+            'min-h-0 flex-1 overflow-auto px-3 py-3 sm:px-4',
+            variant === 'stacked' && 'min-h-[220px]',
           ]
             .filter(Boolean)
             .join(' ')}
