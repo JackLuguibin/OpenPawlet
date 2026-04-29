@@ -213,8 +213,8 @@ export default function Channels({ embedded = false }: { embedded?: boolean } = 
 
   useEffect(() => {
     if (!editModalOpen || !editingChannel || !config) return;
-    const ch = (config.channels as Record<string, Record<string, unknown>>)?.[editingChannel];
-    const raw = (ch || {}) as Record<string, unknown>;
+    const ch = editingChannel ? config.channels?.[editingChannel] : undefined;
+    const raw = (typeof ch === 'object' && ch !== null ? ch : {}) as Record<string, unknown>;
     // Support both snake_case and camelCase from config
     const get = (k: string) => raw[k] ?? raw[k.replace(/_([a-z])/g, (_, c) => c.toUpperCase())];
     const fields = CHANNEL_TOKEN_FIELDS[editingChannel] || ['token', 'allow_from'];

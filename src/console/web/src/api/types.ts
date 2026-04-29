@@ -203,14 +203,201 @@ export interface StatusResponse {
   mcp_servers: MCPStatus[];
 }
 
-export interface ConfigSection {
-  general?: GeneralConfig;
-  providers?: Record<string, ProviderConfig>;
-  tools?: ToolsConfig;
-  channels?: Record<string, ChannelConfig>;
-  skills?: Record<string, SkillConfig>;
+/**
+ * `agents.defaults` as returned by GET `/config` (`Config.model_dump(mode="json", by_alias=True)`).
+ * Mirrors `openpawlet.config.schema.AgentDefaults` JSON keys (camelCase aliases).
+ */
+export interface AgentDefaultsJson {
+  workspace?: string;
+  model?: string;
+  provider?: string;
+  maxTokens?: number;
+  contextWindowTokens?: number;
+  contextBlockLimit?: number | null;
+  temperature?: number;
+  maxToolIterations?: number;
+  maxToolResultChars?: number;
+  providerRetryMode?: string;
+  reasoningEffort?: string | null;
+  timezone?: string;
+  unifiedSession?: boolean;
+  disabledSkills?: string[];
+  idleCompactAfterMinutes?: number;
+  consolidationRatio?: number;
+  persistSessionTranscript?: boolean;
+  transcriptIncludeFullToolResults?: boolean;
+  dream?: DreamConfigJson;
+  /** Hand-edited ``config.json`` may use snake_case keys (pydantic ``populate_by_name``). */
+  [key: string]: unknown;
 }
 
+/** Nested ``agents.defaults.dream`` — mirrors ``openpawlet.config.schema.DreamConfig`` JSON. */
+export interface DreamConfigJson {
+  intervalH?: number;
+  modelOverride?: string | null;
+  maxBatchSize?: number;
+  maxIterations?: number;
+  annotateLineAges?: boolean;
+}
+
+export interface AgentsConfigJson {
+  defaults?: AgentDefaultsJson;
+}
+
+/** Settings General tab + Tools restrict row — camelCase keys aligned with ``AgentDefaultsJson``. */
+export interface SettingsGeneralToolsFormValues {
+  workspace: string;
+  model: string;
+  provider: string;
+  timezone: string;
+  maxTokens: number;
+  contextWindowTokens: number;
+  maxToolIterations: number;
+  temperature: number;
+  reasoningEffort: string;
+  restrictToWorkspace: boolean;
+  providerRetryMode: 'standard' | 'persistent';
+  maxToolResultChars: number;
+  contextBlockLimit: number | null;
+  unifiedSession: boolean;
+  idleCompactAfterMinutes: number;
+  consolidationRatio: number;
+  persistSessionTranscript: boolean;
+  transcriptIncludeFullToolResults: boolean;
+  disabledSkills: string[];
+  dream: {
+    intervalH: number;
+    maxBatchSize: number;
+    maxIterations: number;
+    annotateLineAges: boolean;
+    modelOverride: string;
+  };
+}
+
+/**
+ * ``channels`` root section — mirrors ``openpawlet.config.schema.ChannelsConfig`` (``extra="allow"``
+ * adds built-in/plugin channel blocks as extra keys).
+ */
+export interface ChannelsConfigJson {
+  sendProgress?: boolean;
+  sendToolHints?: boolean;
+  sendToolEvents?: boolean;
+  sendReasoningContent?: boolean;
+  sendMaxRetries?: number;
+  transcriptionProvider?: string;
+  transcriptionLanguage?: string | null;
+  sessionTurnLifecycleChannels?: string[];
+  [key: string]: unknown;
+}
+
+/** Single LLM provider block under ``providers.<name>``. */
+export interface ProviderConfigJson {
+  apiKey?: string | null;
+  apiBase?: string | null;
+  extraHeaders?: Record<string, string> | null;
+}
+
+export type ProvidersConfigJson = Record<string, ProviderConfigJson>;
+
+/** ``api`` root section — ``openpawlet.config.schema.ApiConfig``. */
+export interface ApiConfigJson {
+  host?: string;
+  port?: number;
+  timeout?: number;
+}
+
+/** ``gateway.heartbeat`` — ``openpawlet.config.schema.HeartbeatConfig``. */
+export interface HeartbeatConfigJson {
+  enabled?: boolean;
+  intervalS?: number;
+  keepRecentMessages?: number;
+}
+
+/** ``gateway`` root section — ``openpawlet.config.schema.GatewayConfig``. */
+export interface GatewayConfigJson {
+  host?: string;
+  port?: number;
+  heartbeat?: HeartbeatConfigJson;
+}
+
+/** ``tools.web.search`` — ``openpawlet.config.schema.WebSearchConfig``. */
+export interface WebSearchConfigJson {
+  provider?: string;
+  apiKey?: string;
+  baseUrl?: string;
+  maxResults?: number;
+  timeout?: number;
+}
+
+/** ``tools.web`` — ``openpawlet.config.schema.WebToolsConfig``. */
+export interface WebToolsConfigJson {
+  enable?: boolean;
+  proxy?: string | null;
+  search?: WebSearchConfigJson;
+}
+
+/** ``tools.exec`` — ``openpawlet.config.schema.ExecToolConfig``. */
+export interface ExecToolConfigJson {
+  enable?: boolean;
+  timeout?: number;
+  pathAppend?: string;
+  sandbox?: string;
+  allowedEnvKeys?: string[];
+}
+
+/** ``tools.my`` — ``openpawlet.config.schema.MyToolConfig``. */
+export interface MyToolConfigJson {
+  enable?: boolean;
+  allowSet?: boolean;
+}
+
+/** ``tools`` root section — ``openpawlet.config.schema.ToolsConfig``. */
+export interface ToolsConfig {
+  web?: WebToolsConfigJson;
+  exec?: ExecToolConfigJson;
+  my?: MyToolConfigJson;
+  restrictToWorkspace?: boolean;
+  /** @deprecated Hand-edited JSON; canonical key is ``restrictToWorkspace``. */
+  restrict_to_workspace?: boolean;
+  mcpServers?: Record<string, MCPServerConfig>;
+  ssrfWhitelist?: string[];
+}
+
+/** Single MCP server entry — ``openpawlet.config.schema.MCPServerConfig``. */
+export interface MCPServerConfig {
+  type?: 'stdio' | 'sse' | 'streamableHttp' | null;
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  url?: string;
+  headers?: Record<string, string>;
+  toolTimeout?: number;
+  enabledTools?: string[];
+}
+
+/** Skill bundle toggles from extras / merged ``skills`` map (shape varies). */
+export interface SkillConfig {
+  enabled?: boolean;
+}
+
+/**
+ * GET ``/config`` payload: validated core (``openpawlet.config.schema.Config`` dump ``by_alias``)
+ * merged with extra top-level keys from disk (e.g. ``skills``, non-core blobs).
+ */
+export interface ConfigSection {
+  agents?: AgentsConfigJson;
+  channels?: ChannelsConfigJson;
+  providers?: ProvidersConfigJson;
+  api?: ApiConfigJson;
+  gateway?: GatewayConfigJson;
+  tools?: ToolsConfig;
+  /** Console skill bundles / extras from ``config.json``. */
+  skills?: Record<string, SkillConfig>;
+  /** Serialized key ``skillsGit`` (see ``Config.skills_git``). */
+  skillsGit?: Record<string, unknown>;
+}
+
+/** @deprecated OpenPawlet console config has no ``general`` section; use ``agents.defaults``. */
 export interface GeneralConfig {
   workspace?: string;
   model?: string;
@@ -219,32 +406,13 @@ export interface GeneralConfig {
   reasoning_effort?: string;
 }
 
-export interface ProviderConfig {
-  apiKey?: string;
-  apiBase?: string;
-  [key: string]: unknown;
-}
+/** @deprecated Use ProviderConfigJson — alias kept for gradual migration. */
+export type ProviderConfig = ProviderConfigJson;
 
-export interface ToolsConfig {
-  restrictToWorkspace?: boolean;
-  mcpServers?: Record<string, MCPServerConfig>;
-}
-
-export interface MCPServerConfig {
-  command?: string;
-  args?: string[];
-  url?: string;
-  headers?: Record<string, string>;
-  toolTimeout?: number;
-}
-
+/** @deprecated Prefer ChannelsConfigJson — per-channel plugin shapes vary. */
 export interface ChannelConfig {
   enabled?: boolean;
   [key: string]: unknown;
-}
-
-export interface SkillConfig {
-  enabled?: boolean;
 }
 
 export interface SkillInfo {

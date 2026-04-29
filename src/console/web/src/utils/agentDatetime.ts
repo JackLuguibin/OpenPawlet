@@ -3,13 +3,11 @@
  * so UI matches OpenPawlet ``local_now(agents.defaults.timezone)`` (no process-wide TZ).
  */
 
-export function parseAgentTimeZoneFromConfig(config: unknown): string {
+import type { ConfigSection } from '../api/types';
+
+export function parseAgentTimeZoneFromConfig(config: ConfigSection | unknown): string {
   if (!config || typeof config !== 'object') return 'UTC';
-  const agents = (config as Record<string, unknown>).agents;
-  if (!agents || typeof agents !== 'object') return 'UTC';
-  const defaults = (agents as Record<string, unknown>).defaults;
-  if (!defaults || typeof defaults !== 'object') return 'UTC';
-  const tz = (defaults as Record<string, unknown>).timezone;
+  const tz = (config as ConfigSection).agents?.defaults?.timezone;
   if (typeof tz === 'string' && tz.trim()) return tz.trim();
   return 'UTC';
 }

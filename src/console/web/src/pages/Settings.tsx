@@ -26,7 +26,9 @@ import {
   Divider,
   Row,
   Col,
+  Flex,
   theme,
+  Collapse,
 } from 'antd';
 import {
   SaveOutlined,
@@ -46,6 +48,12 @@ import { PageLayout } from '../components/PageLayout';
 import { PAGE_PRIMARY_TITLE_CLASS } from '../utils/pageTitleClasses';
 import { useBots } from '../hooks/useBots';
 import LLMProvidersPanel from './settings/LLMProvidersPanel';
+import type {
+  AgentDefaultsJson,
+  DreamConfigJson,
+  SettingsGeneralToolsFormValues,
+  ToolsConfig,
+} from '../api/types';
 
 const { Text } = Typography;
 
@@ -70,19 +78,6 @@ type SettingsTab =
   | 'providers'
   | 'tools'
   | 'environment';
-
-interface FormData {
-  workspace: string;
-  model: string;
-  provider: string;
-  timezone: string;
-  max_tokens: number;
-  context_window_tokens: number;
-  max_iterations: number;
-  temperature: number;
-  reasoning_effort: string;
-  restrict_to_workspace: boolean;
-}
 
 const VALID_SETTINGS_TABS: ReadonlyArray<SettingsTab> = [
   'general',
@@ -113,6 +108,132 @@ function normalizeAgentsDefaultProviderValue(raw: string | undefined | null): st
   if (!p) return undefined;
   if (p.toLowerCase() === 'auto') return 'auto';
   return normalizeRegistryProviderName(p) || p;
+}
+
+/**
+ * Read ``agents.defaults`` from GET /config payload.
+ * Matches ``openpawlet.config.schema.AgentDefaults`` (``Base`` uses ``alias_generator=to_camel``):
+ * canonical JSON keys are camelCase as in ``model_dump(mode="json", by_alias=True)``;
+ * also accept snake_case keys from hand-edited ``config.json`` (``populate_by_name``).
+ */
+function readAgentDefaultsStr(
+  defaults: AgentDefaultsJson | undefined,
+  jsonAlias: string,
+  pythonField: string,
+  fallback: string,
+): string {
+  const d = defaults ?? {};
+  const v = d[jsonAlias] ?? d[pythonField];
+  if (typeof v !== 'string') return fallback;
+  const t = v.trim();
+  return t || fallback;
+}
+
+function readAgentDefaultsNum(
+  defaults: AgentDefaultsJson | undefined,
+  jsonAlias: string,
+  pythonField: string,
+  fallback: number,
+): number {
+  const d = defaults ?? {};
+  const v = d[jsonAlias] ?? d[pythonField];
+  if (v === undefined || v === null) return fallback;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+/** Schema allows null; UI treats empty/null as ``medium``. */
+function readAgentDefaultsReasoningEffort(defaults: AgentDefaultsJson | undefined): string {
+  const d = defaults ?? {};
+  const v = d.reasoningEffort ?? d.reasoning_effort;
+  if (typeof v !== 'string' || !v.trim()) return 'medium';
+  return v.trim();
+}
+
+/** ``ToolsConfig`` JSON uses ``restrictToWorkspace``; legacy snake_case accepted. */
+function readToolsRestrictToWorkspace(tools: ToolsConfig | undefined): boolean {
+  const t = tools ?? {};
+  const v = t.restrictToWorkspace ?? t.restrict_to_workspace;
+  return Boolean(v);
+}
+
+function readAgentDefaultsBool(
+  defaults: AgentDefaultsJson | undefined,
+  camel: string,
+  snake: string,
+  fallback: boolean,
+): boolean {
+  const d = defaults ?? {};
+  const v = (d as Record<string, unknown>)[camel] ?? (d as Record<string, unknown>)[snake];
+  if (typeof v === 'boolean') return v;
+  return fallback;
+}
+
+function readAgentDefaultsOptionalNum(
+  defaults: AgentDefaultsJson | undefined,
+  camel: string,
+  snake: string,
+): number | null {
+  const d = defaults ?? {};
+  const v = (d as Record<string, unknown>)[camel] ?? (d as Record<string, unknown>)[snake];
+  if (v === undefined || v === null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function readProviderRetryMode(defaults: AgentDefaultsJson | undefined): 'standard' | 'persistent' {
+  const d = defaults ?? {};
+  const v =
+    (d as Record<string, unknown>).providerRetryMode ??
+    (d as Record<string, unknown>).provider_retry_mode;
+  return v === 'persistent' ? 'persistent' : 'standard';
+}
+
+function readIdleCompactAfterMinutes(defaults: AgentDefaultsJson | undefined): number {
+  const d = defaults ?? {};
+  const v =
+    (d as Record<string, unknown>).idleCompactAfterMinutes ??
+    (d as Record<string, unknown>).sessionTtlMinutes ??
+    (d as Record<string, unknown>).session_ttl_minutes;
+  if (v === undefined || v === null) return 0;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function readDisabledSkillsList(defaults: AgentDefaultsJson | undefined): string[] {
+  const d = defaults ?? {};
+  const raw =
+    (d as Record<string, unknown>).disabledSkills ?? (d as Record<string, unknown>).disabled_skills;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+    .map((s) => s.trim());
+}
+
+function readDreamNested(
+  defaults: AgentDefaultsJson | undefined,
+): NonNullable<SettingsGeneralToolsFormValues['dream']> {
+  const dream = (defaults?.dream ?? {}) as Record<string, unknown>;
+  const num = (c: string, s: string, fb: number) => {
+    const v = dream[c] ?? dream[s];
+    if (v === undefined || v === null) return fb;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : fb;
+  };
+  const mo = dream.modelOverride ?? dream.model_override;
+  const annotate =
+    typeof dream.annotateLineAges === 'boolean'
+      ? dream.annotateLineAges
+      : typeof dream.annotate_line_ages === 'boolean'
+        ? dream.annotate_line_ages
+        : true;
+  return {
+    intervalH: num('intervalH', 'interval_h', 2),
+    maxBatchSize: num('maxBatchSize', 'max_batch_size', 20),
+    maxIterations: num('maxIterations', 'max_iterations', 15),
+    annotateLineAges: annotate,
+    modelOverride: typeof mo === 'string' ? mo : '',
+  };
 }
 
 /**
@@ -158,9 +279,10 @@ export default function Settings() {
     },
     [searchParams, setSearchParams],
   );
-  const [form] = Form.useForm<FormData>();
+  const [form] = Form.useForm<SettingsGeneralToolsFormValues>();
   const watchedModelRaw = Form.useWatch('model', form);
   const watchedProviderRaw = Form.useWatch('provider', form);
+  const watchedDisabledSkills = Form.useWatch('disabledSkills', form);
 
   const modelScopeTrimmed = useMemo(() => {
     const m = typeof watchedModelRaw === 'string' ? watchedModelRaw.trim() : '';
@@ -191,8 +313,32 @@ export default function Settings() {
     enabled: !!llmProvidersBotId,
   });
 
+  const { data: skillCatalog = [], isLoading: skillCatalogLoading } = useQuery({
+    queryKey: ['skills', currentBotId],
+    queryFn: () => api.listSkills(currentBotId),
+  });
+
+  const disabledSkillSelectOptions = useMemo(() => {
+    const byValue = new Map<string, { value: string; label: string }>();
+    for (const s of skillCatalog) {
+      const desc =
+        s.description && s.description.length > 96
+          ? `${s.description.slice(0, 93)}…`
+          : (s.description ?? '');
+      const label = desc ? `${s.name} — ${desc}` : s.name;
+      byValue.set(s.name, { value: s.name, label });
+    }
+    const selected = Array.isArray(watchedDisabledSkills) ? watchedDisabledSkills : [];
+    for (const n of selected) {
+      if (typeof n === 'string' && n.trim() && !byValue.has(n)) {
+        byValue.set(n.trim(), { value: n.trim(), label: n.trim() });
+      }
+    }
+    return Array.from(byValue.values()).sort((a, b) => a.value.localeCompare(b.value));
+  }, [skillCatalog, watchedDisabledSkills]);
+
   const handleModelProviderLink = useCallback(
-    (changed: Partial<FormData>, all: FormData) => {
+    (changed: Partial<SettingsGeneralToolsFormValues>, all: SettingsGeneralToolsFormValues) => {
       if ('model' in changed) {
         const m = String(changed.model ?? '').trim();
         if (!m) return;
@@ -245,11 +391,7 @@ export default function Settings() {
   );
 
   const configuredDefaultModel = useMemo(() => {
-    const agents = (config as Record<string, unknown> | undefined)?.agents as
-      | Record<string, unknown>
-      | undefined;
-    const defaults = agents?.defaults as Record<string, unknown> | undefined;
-    const m = defaults?.model;
+    const m = config?.agents?.defaults?.model;
     return typeof m === 'string' ? m.trim() : '';
   }, [config]);
 
@@ -360,11 +502,7 @@ export default function Settings() {
 
   const timeZoneOptions = useMemo(() => {
     const base = getCommonTimeZoneSelectOptions();
-    const agents = (config as Record<string, unknown> | undefined)?.agents as
-      | Record<string, unknown>
-      | undefined;
-    const defaults = agents?.defaults as Record<string, unknown> | undefined;
-    const rawTz = defaults?.timezone;
+    const rawTz = config?.agents?.defaults?.timezone;
     const tz = typeof rawTz === 'string' ? rawTz.trim() : '';
     if (tz && !base.some((o) => o.value === tz)) {
       return [{ label: tz, value: tz }, ...base];
@@ -393,26 +531,45 @@ export default function Settings() {
 
   useEffect(() => {
     if (config) {
-      const agents = (config as Record<string, unknown>).agents as Record<string, unknown> | undefined;
-      const tools = (config as Record<string, unknown>).tools as Record<string, unknown> | undefined;
-      const defaults = agents?.defaults as Record<string, unknown> | undefined;
-      // 后端返回 camelCase (model_dump by_alias)，兼容 snake_case
-      const raw = (key: string, camel: string, fallback: number | string) => {
-        const d = defaults ?? {};
-        return (d[key] ?? d[camel] ?? fallback) as number | string;
-      };
+      const defaults = config.agents?.defaults;
+      const tools = config.tools;
+
+      const ws =
+        typeof defaults?.workspace === 'string' && defaults.workspace.trim()
+          ? defaults.workspace.trim()
+          : '~/.openpawlet/workspace';
 
       form.setFieldsValue({
-        workspace: (defaults?.workspace as string) ?? '~/.openpawlet/workspace',
-        model: (defaults?.model as string) ?? '',
+        workspace: ws,
+        model: typeof defaults?.model === 'string' ? defaults.model : '',
         provider: normalizeAgentsDefaultProviderValue(defaults?.provider as string | undefined) ?? 'auto',
-        timezone: (raw('timezone', 'timezone', 'UTC') as string) || 'UTC',
-        max_tokens: Number(raw('maxTokens', 'max_tokens', 8192)),
-        context_window_tokens: Number(raw('contextWindowTokens', 'context_window_tokens', 65536)),
-        max_iterations: Number(raw('maxToolIterations', 'max_tool_iterations', 40)),
-        temperature: Number(raw('temperature', 'temperature', 0.1)),
-        reasoning_effort: (raw('reasoningEffort', 'reasoning_effort', 'medium') as string) || 'medium',
-        restrict_to_workspace: (tools?.restrictToWorkspace as boolean) || false,
+        timezone: readAgentDefaultsStr(defaults, 'timezone', 'timezone', 'UTC'),
+        maxTokens: readAgentDefaultsNum(defaults, 'maxTokens', 'max_tokens', 8192),
+        contextWindowTokens: readAgentDefaultsNum(defaults, 'contextWindowTokens', 'context_window_tokens', 65536),
+        maxToolIterations: readAgentDefaultsNum(defaults, 'maxToolIterations', 'max_tool_iterations', 200),
+        temperature: readAgentDefaultsNum(defaults, 'temperature', 'temperature', 0.1),
+        reasoningEffort: readAgentDefaultsReasoningEffort(defaults),
+        restrictToWorkspace: readToolsRestrictToWorkspace(tools),
+        providerRetryMode: readProviderRetryMode(defaults),
+        maxToolResultChars: readAgentDefaultsNum(defaults, 'maxToolResultChars', 'max_tool_result_chars', 16000),
+        contextBlockLimit: readAgentDefaultsOptionalNum(defaults, 'contextBlockLimit', 'context_block_limit'),
+        unifiedSession: readAgentDefaultsBool(defaults, 'unifiedSession', 'unified_session', false),
+        idleCompactAfterMinutes: readIdleCompactAfterMinutes(defaults),
+        consolidationRatio: readAgentDefaultsNum(defaults, 'consolidationRatio', 'consolidation_ratio', 0.5),
+        persistSessionTranscript: readAgentDefaultsBool(
+          defaults,
+          'persistSessionTranscript',
+          'persist_session_transcript',
+          true,
+        ),
+        transcriptIncludeFullToolResults: readAgentDefaultsBool(
+          defaults,
+          'transcriptIncludeFullToolResults',
+          'transcript_include_full_tool_results',
+          true,
+        ),
+        disabledSkills: readDisabledSkillsList(defaults),
+        dream: readDreamNested(defaults),
       });
     }
   }, [config, form]);
@@ -420,26 +577,50 @@ export default function Settings() {
   const saveSettingsMutation = useMutation({
     mutationFn: async () => {
       const values = await form.validateFields();
+      const { restrictToWorkspace, ...rest } = values;
+
+      const disabledSkills = (rest.disabledSkills ?? [])
+        .map((s) => String(s).trim())
+        .filter(Boolean);
+
+      const dreamPayload: DreamConfigJson = {
+        intervalH: rest.dream.intervalH,
+        maxBatchSize: rest.dream.maxBatchSize,
+        maxIterations: rest.dream.maxIterations,
+        annotateLineAges: rest.dream.annotateLineAges,
+        modelOverride: rest.dream.modelOverride.trim() ? rest.dream.modelOverride.trim() : null,
+      };
+
       await api.updateConfig(
         'agents',
         {
           defaults: {
-            workspace: values.workspace?.trim() || undefined,
-            model: values.model?.trim() || undefined,
-            provider: normalizeAgentsDefaultProviderValue(values.provider),
-            timezone: (values.timezone ?? '').trim() || 'UTC',
-            max_tokens: values.max_tokens,
-            context_window_tokens: values.context_window_tokens,
-            max_tool_iterations: values.max_iterations,
-            temperature: values.temperature,
-            reasoning_effort: values.reasoning_effort,
+            workspace: rest.workspace?.trim() || undefined,
+            model: rest.model?.trim() || undefined,
+            provider: normalizeAgentsDefaultProviderValue(rest.provider),
+            timezone: (rest.timezone ?? '').trim() || 'UTC',
+            maxTokens: rest.maxTokens,
+            contextWindowTokens: rest.contextWindowTokens,
+            maxToolIterations: rest.maxToolIterations,
+            temperature: rest.temperature,
+            reasoningEffort: rest.reasoningEffort,
+            providerRetryMode: rest.providerRetryMode,
+            maxToolResultChars: rest.maxToolResultChars,
+            contextBlockLimit: rest.contextBlockLimit ?? null,
+            unifiedSession: rest.unifiedSession,
+            idleCompactAfterMinutes: rest.idleCompactAfterMinutes,
+            consolidationRatio: rest.consolidationRatio,
+            persistSessionTranscript: rest.persistSessionTranscript,
+            transcriptIncludeFullToolResults: rest.transcriptIncludeFullToolResults,
+            disabledSkills,
+            dream: dreamPayload,
           },
         },
         currentBotId
       );
       await api.updateConfig(
         'tools',
-        { restrictToWorkspace: values.restrict_to_workspace },
+        { restrictToWorkspace },
         currentBotId
       );
     },
@@ -589,10 +770,7 @@ export default function Settings() {
     [t],
   );
 
-  const configRaw = config as Record<string, unknown> | undefined;
-  const mcpServers = (configRaw?.tools as Record<string, unknown>)?.mcpServers as
-    | Record<string, unknown>
-    | undefined;
+  const mcpServers = config?.tools?.mcpServers as Record<string, unknown> | undefined;
 
   if (isLoading) {
     return (
@@ -738,7 +916,7 @@ export default function Settings() {
               </Col>
             </Row>
 
-            <Form.Item label={t('settings.reasoningEffort')} name="reasoning_effort" className="!mb-6">
+            <Form.Item label={t('settings.reasoningEffort')} name="reasoningEffort" className="!mb-6">
               <Segmented
                 block
                 size="middle"
@@ -746,6 +924,7 @@ export default function Settings() {
                   { label: t('settings.reasoningLow'), value: 'low' },
                   { label: t('settings.reasoningMedium'), value: 'medium' },
                   { label: t('settings.reasoningHigh'), value: 'high' },
+                  { label: t('settings.reasoningAdaptive'), value: 'adaptive' },
                 ]}
               />
             </Form.Item>
@@ -797,7 +976,7 @@ export default function Settings() {
                       </Text>
                     </span>
                   }
-                  name="max_tokens"
+                  name="maxTokens"
                 >
                   <InputNumber
                     min={1}
@@ -817,7 +996,7 @@ export default function Settings() {
                       </Text>
                     </span>
                   }
-                  name="context_window_tokens"
+                  name="contextWindowTokens"
                 >
                   <InputNumber
                     min={1}
@@ -840,16 +1019,15 @@ export default function Settings() {
                       </Text>
                     </span>
                   }
-                  name="max_iterations"
+                  name="maxToolIterations"
                 >
-                  <div className="w-full pt-1">
-                    <Slider
-                      min={1}
-                      max={100}
-                      marks={{ 1: '1', 50: '50', 100: '100' }}
-                      tooltip={{ formatter: (v) => (v !== undefined ? String(v) : '') }}
-                    />
-                  </div>
+                  <Slider
+                    className="w-full pt-1"
+                    min={1}
+                    max={200}
+                    marks={{ 1: '1', 50: '50', 100: '100', 200: '200' }}
+                    tooltip={{ formatter: (v) => (v !== undefined ? String(v) : '') }}
+                  />
                 </Form.Item>
 
                 <Form.Item
@@ -864,18 +1042,187 @@ export default function Settings() {
                   name="temperature"
                   className="!mb-0"
                 >
-                  <div className="w-full pt-1">
-                    <Slider
-                      min={0}
-                      max={2}
-                      step={0.1}
-                      marks={{ 0: '0.0', 1: '1.0', 2: '2.0' }}
-                      tooltip={{ formatter: (v) => (v !== undefined ? v.toFixed(1) : '') }}
-                    />
-                  </div>
+                  <Slider
+                    className="w-full pt-1"
+                    min={0}
+                    max={2}
+                    step={0.1}
+                    marks={{ 0: '0.0', 1: '1.0', 2: '2.0' }}
+                    tooltip={{ formatter: (v) => (v !== undefined ? v.toFixed(1) : '') }}
+                  />
                 </Form.Item>
               </Col>
             </Row>
+
+            <Divider style={{ marginTop: token.marginXXL, marginBottom: token.marginXXL }} />
+
+            <Collapse
+              ghost
+              bordered={false}
+              expandIconPosition="end"
+              className="[&_.ant-collapse-header]:!px-0 [&_.ant-collapse-header]:!py-3 [&_.ant-collapse-content-box]:!px-0 [&_.ant-collapse-content-box]:!pt-0"
+              items={[
+                {
+                  key: 'advanced',
+                  label: (
+                    <Typography.Text strong style={{ fontSize: token.fontSizeLG }}>
+                      {t('settings.sectionAdvancedToggle')}
+                    </Typography.Text>
+                  ),
+                  children: (
+                    <Flex vertical gap={token.marginLG}>
+                      <Row gutter={[token.marginLG, token.marginSM]}>
+                        <Col xs={24} sm={12}>
+                          <Form.Item label={t('settings.providerRetryMode')} name="providerRetryMode">
+                            <Select
+                              size="middle"
+                              className="w-full"
+                              options={[
+                                { value: 'standard', label: t('settings.providerRetryStandard') },
+                                { value: 'persistent', label: t('settings.providerRetryPersistent') },
+                              ]}
+                            />
+                          </Form.Item>
+                        </Col>
+                        <Col xs={24} sm={12}>
+                          <Form.Item label={t('settings.maxToolResultChars')} name="maxToolResultChars">
+                            <InputNumber min={256} max={500000} size="middle" className="w-full" />
+                          </Form.Item>
+                        </Col>
+                      </Row>
+                      <Row gutter={[token.marginLG, token.marginSM]}>
+                        <Col xs={24} sm={12}>
+                          <Form.Item
+                            label={t('settings.contextBlockLimit')}
+                            name="contextBlockLimit"
+                            tooltip={{ title: t('settings.contextBlockLimitExtra') }}
+                            normalize={(v) => (v === undefined ? null : v)}
+                          >
+                            <InputNumber min={1} max={2000000} size="middle" className="w-full" />
+                          </Form.Item>
+                        </Col>
+                        <Col xs={24} sm={12}>
+                          <Form.Item
+                            label={t('settings.idleCompactAfterMinutes')}
+                            name="idleCompactAfterMinutes"
+                            tooltip={{ title: t('settings.idleCompactAfterMinutesExtra') }}
+                          >
+                            <InputNumber min={0} max={10080} size="middle" className="w-full" />
+                          </Form.Item>
+                        </Col>
+                      </Row>
+                      <Form.Item label={t('settings.consolidationRatio')} name="consolidationRatio">
+                        <Slider
+                          className="mx-0 w-full"
+                          min={0.1}
+                          max={0.95}
+                          step={0.05}
+                          marks={{
+                            0.1: '0.1',
+                            0.95: '0.95',
+                          }}
+                          tooltip={{
+                            formatter: (v) =>
+                              v !== undefined ? `${Number(v).toFixed(2)}` : '',
+                          }}
+                        />
+                      </Form.Item>
+                      <Row gutter={[token.marginLG, token.marginMD]}>
+                        <Col xs={24} lg={8}>
+                          <Form.Item
+                            label={t('settings.unifiedSession')}
+                            name="unifiedSession"
+                            valuePropName="checked"
+                            className="!mb-0 max-lg:!mb-4"
+                          >
+                            <Switch />
+                          </Form.Item>
+                        </Col>
+                        <Col xs={24} lg={8}>
+                          <Form.Item
+                            label={t('settings.persistSessionTranscript')}
+                            name="persistSessionTranscript"
+                            valuePropName="checked"
+                            className="!mb-0 max-lg:!mb-4"
+                          >
+                            <Switch />
+                          </Form.Item>
+                        </Col>
+                        <Col xs={24} lg={8}>
+                          <Form.Item
+                            label={t('settings.transcriptIncludeFullToolResults')}
+                            name="transcriptIncludeFullToolResults"
+                            valuePropName="checked"
+                            className="!mb-0"
+                          >
+                            <Switch />
+                          </Form.Item>
+                        </Col>
+                      </Row>
+                      <Form.Item label={t('settings.disabledSkillsText')} name="disabledSkills">
+                        <Select
+                          mode="multiple"
+                          allowClear
+                          showSearch
+                          loading={skillCatalogLoading}
+                          className="w-full"
+                          placeholder={t('settings.disabledSkillsPlaceholder')}
+                          options={disabledSkillSelectOptions}
+                          optionFilterProp="label"
+                          maxTagCount="responsive"
+                          popupMatchSelectWidth={false}
+                          listHeight={320}
+                        />
+                      </Form.Item>
+
+                      <Divider plain titlePlacement="start" style={{ marginBottom: token.marginMD }}>
+                        <Typography.Text strong>{t('settings.sectionDream')}</Typography.Text>
+                      </Divider>
+                      <Row gutter={[token.marginLG, token.marginSM]}>
+                        <Col xs={24} sm={12}>
+                          <Form.Item name={['dream', 'intervalH']} label={t('settings.dreamIntervalH')}>
+                            <InputNumber min={1} max={168} size="middle" className="w-full" />
+                          </Form.Item>
+                        </Col>
+                        <Col xs={24} sm={12}>
+                          <Form.Item name={['dream', 'maxBatchSize']} label={t('settings.dreamMaxBatchSize')}>
+                            <InputNumber min={1} max={500} size="middle" className="w-full" />
+                          </Form.Item>
+                        </Col>
+                      </Row>
+                      <Row gutter={[token.marginLG, token.marginSM]}>
+                        <Col xs={24} sm={12}>
+                          <Form.Item name={['dream', 'maxIterations']} label={t('settings.dreamMaxIterations')}>
+                            <InputNumber min={1} max={100} size="middle" className="w-full" />
+                          </Form.Item>
+                        </Col>
+                        <Col xs={24} sm={12}>
+                          <Form.Item
+                            name={['dream', 'annotateLineAges']}
+                            label={t('settings.dreamAnnotateLineAges')}
+                            valuePropName="checked"
+                          >
+                            <Switch />
+                          </Form.Item>
+                        </Col>
+                      </Row>
+                      <Form.Item
+                        name={['dream', 'modelOverride']}
+                        label={t('settings.dreamModelOverride')}
+                        className="!mb-0"
+                      >
+                        <Input
+                          className="font-mono text-sm"
+                          placeholder={t('settings.dreamModelOverridePh')}
+                          allowClear
+                          size="middle"
+                        />
+                      </Form.Item>
+                    </Flex>
+                  ),
+                },
+              ]}
+            />
           </Form>
         </Card>
       ),
@@ -923,7 +1270,7 @@ export default function Settings() {
                       {t('settings.restrictWorkspaceDesc')}
                     </Text>
                   </div>
-                  <Form.Item name="restrict_to_workspace" valuePropName="checked" className="!mb-0">
+                  <Form.Item name="restrictToWorkspace" valuePropName="checked" className="!mb-0">
                     <Switch />
                   </Form.Item>
                 </div>
