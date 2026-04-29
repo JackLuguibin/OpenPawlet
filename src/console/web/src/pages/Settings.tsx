@@ -44,7 +44,7 @@ import { formatQueryError } from '../utils/errors';
 import { getCommonTimeZoneSelectOptions } from '../utils/timezones';
 import { PageLayout } from '../components/PageLayout';
 import { PAGE_PRIMARY_TITLE_CLASS } from '../utils/pageTitleClasses';
-import { PROVIDER_NAMES } from './settings/providersUtils';
+import { useBots } from '../hooks/useBots';
 import LLMProvidersPanel from './settings/LLMProvidersPanel';
 
 const { Text } = Typography;
@@ -96,11 +96,54 @@ function readSettingsTab(searchParams: URLSearchParams): SettingsTab {
   return raw && VALID_SETTINGS_TABS.includes(raw) ? raw : 'general';
 }
 
+/** Match backend registry ``name`` (snake_case) for ``agents.defaults.provider`` / instances. */
+function normalizeRegistryProviderName(raw: string): string {
+  const s = raw.trim().replace(/-/g, '_');
+  if (!s) return '';
+  if (s === s.toLowerCase()) return s;
+  return s
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2')
+    .toLowerCase();
+}
+
+/** Normalized ``agents.defaults.provider`` for forms and API (registry snake_case, ``auto`` preserved). */
+function normalizeAgentsDefaultProviderValue(raw: string | undefined | null): string | undefined {
+  const p = (raw ?? '').trim();
+  if (!p) return undefined;
+  if (p.toLowerCase() === 'auto') return 'auto';
+  return normalizeRegistryProviderName(p) || p;
+}
+
+/**
+ * Ant Design AutoComplete filters options against the current input text. When the field still
+ * holds a full known value (e.g. default ``auto``), substring matching would hide every other
+ * option because ``openai``.includes(``auto``) is false. If input equals some option's value,
+ * show the full list so the user can change selection.
+ */
+function autoCompleteFilterOption(
+  input: string,
+  option: unknown,
+  optionsList: ReadonlyArray<{ value?: string; label?: string }>,
+): boolean {
+  const q = (input || '').toLowerCase().trim();
+  if (!q) return true;
+  const ov = option as { value?: string; label?: string };
+  const hay = `${ov?.value ?? ''} ${ov?.label ?? ''}`.toLowerCase();
+  if (optionsList.some((o) => String(o.value ?? '').toLowerCase() === q)) {
+    return true;
+  }
+  return hay.includes(q);
+}
+
 export default function Settings() {
   const { token } = theme.useToken();
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { addToast, currentBotId } = useAppStore();
+  const { data: bots = [] } = useBots();
+  const llmProvidersBotId =
+    currentBotId || bots.find((b) => b.is_default)?.id || bots[0]?.id || null;
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = readSettingsTab(searchParams);
   const setActiveTab = useCallback(
@@ -116,6 +159,22 @@ export default function Settings() {
     [searchParams, setSearchParams],
   );
   const [form] = Form.useForm<FormData>();
+  const watchedModelRaw = Form.useWatch('model', form);
+  const watchedProviderRaw = Form.useWatch('provider', form);
+
+  const modelScopeTrimmed = useMemo(() => {
+    const m = typeof watchedModelRaw === 'string' ? watchedModelRaw.trim() : '';
+    return m;
+  }, [watchedModelRaw]);
+
+  const providerScopeNormalized = useMemo(() => {
+    const v = normalizeAgentsDefaultProviderValue(
+      typeof watchedProviderRaw === 'string' ? watchedProviderRaw : undefined,
+    );
+    if (!v || v === 'auto') return null;
+    return normalizeRegistryProviderName(v) || v;
+  }, [watchedProviderRaw]);
+
   const { data: config, isLoading } = useQuery({
     queryKey: ['config', currentBotId],
     queryFn: () => api.getConfig(currentBotId),
@@ -127,10 +186,63 @@ export default function Settings() {
   });
 
   const { data: llmProviderInstances = [] } = useQuery({
-    queryKey: ['llm-providers', currentBotId],
-    queryFn: () => api.listLLMProviders(currentBotId!),
-    enabled: !!currentBotId,
+    queryKey: ['llm-providers', llmProvidersBotId],
+    queryFn: () => api.listLLMProviders(llmProvidersBotId!),
+    enabled: !!llmProvidersBotId,
   });
+
+  const handleModelProviderLink = useCallback(
+    (changed: Partial<FormData>, all: FormData) => {
+      if ('model' in changed) {
+        const m = String(changed.model ?? '').trim();
+        if (!m) return;
+        const matches = llmProviderInstances.filter(
+          (i) => i.enabled && typeof i.model === 'string' && i.model.trim() === m,
+        );
+        if (matches.length < 1) return;
+        const pick = matches.find((i) => i.isDefault) ?? matches[0];
+        const prov = normalizeRegistryProviderName(
+          typeof pick.provider === 'string' ? pick.provider : '',
+        );
+        if (!prov) return;
+        const cur = normalizeAgentsDefaultProviderValue(
+          typeof all.provider === 'string' ? all.provider : undefined,
+        );
+        if (cur !== prov) {
+          form.setFieldsValue({ provider: prov });
+        }
+      }
+      if ('provider' in changed) {
+        const pNorm = normalizeAgentsDefaultProviderValue(
+          typeof changed.provider === 'string' ? changed.provider : undefined,
+        );
+        const modelNow = String(all.model ?? '').trim();
+        if (!modelNow || !pNorm || pNorm === 'auto') return;
+        const targetP = normalizeRegistryProviderName(pNorm);
+        const ok = llmProviderInstances.some(
+          (i) =>
+            i.enabled &&
+            normalizeRegistryProviderName(typeof i.provider === 'string' ? i.provider : '') ===
+              targetP &&
+            typeof i.model === 'string' &&
+            i.model.trim() === modelNow,
+        );
+        if (ok) return;
+        const first = llmProviderInstances.find(
+          (i) =>
+            i.enabled &&
+            normalizeRegistryProviderName(typeof i.provider === 'string' ? i.provider : '') ===
+              targetP &&
+            typeof i.model === 'string' &&
+            i.model.trim() !== '',
+        );
+        if (first && typeof first.model === 'string') {
+          form.setFieldsValue({ model: first.model.trim() });
+        }
+      }
+    },
+    [form, llmProviderInstances],
+  );
 
   const configuredDefaultModel = useMemo(() => {
     const agents = (config as Record<string, unknown> | undefined)?.agents as
@@ -141,13 +253,70 @@ export default function Settings() {
     return typeof m === 'string' ? m.trim() : '';
   }, [config]);
 
-  /** Suggestions derived from workspace LLM provider instances (Settings → Providers). */
+  /**
+   * Provider picker: tied to current model when the model matches an instance (narrow providers).
+   * Still always offers ``auto`` plus providers from ``GET .../llm-providers``.
+   */
+  const providerAutocompleteOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const opts: Array<{ value: string; label?: string }> = [];
+
+    const push = (value: string, label?: string) => {
+      const v = value.trim();
+      if (!v || seen.has(v)) return;
+      seen.add(v);
+      opts.push(label ? { value: v, label } : { value: v });
+    };
+
+    push('auto');
+
+    let candidates = llmProviderInstances.filter((i) => i.enabled);
+    if (modelScopeTrimmed) {
+      const narrowed = candidates.filter(
+        (i) => typeof i.model === 'string' && i.model.trim() === modelScopeTrimmed,
+      );
+      if (narrowed.length > 0) candidates = narrowed;
+    }
+
+    const byRegistry = new Map<string, { registry: string; label: string }>();
+
+    for (const inst of candidates) {
+      const p = normalizeRegistryProviderName(typeof inst.provider === 'string' ? inst.provider : '');
+      if (!p) continue;
+      if (byRegistry.has(p)) continue;
+      const name = typeof inst.name === 'string' ? inst.name.trim() : '';
+      byRegistry.set(p, { registry: p, label: name ? `${p} (${name})` : p });
+    }
+
+    const sortedProviders = [...byRegistry.keys()].sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: 'base' }),
+    );
+    for (const p of sortedProviders) {
+      const row = byRegistry.get(p)!;
+      push(row.registry, row.label);
+    }
+
+    const curPv = normalizeAgentsDefaultProviderValue(
+      typeof watchedProviderRaw === 'string' ? watchedProviderRaw : undefined,
+    );
+    if (curPv && curPv !== 'auto') {
+      push(curPv);
+    }
+
+    return opts;
+  }, [llmProviderInstances, modelScopeTrimmed, watchedProviderRaw]);
+
+  /** Model suggestions: filtered by selected provider (non-auto) when instances define that scope. */
   const modelAutocompleteOptions = useMemo(() => {
     const seen = new Set<string>();
     const opts: Array<{ value: string; label?: string }> = [];
 
     for (const inst of llmProviderInstances) {
       if (!inst.enabled) continue;
+      if (providerScopeNormalized) {
+        const ip = normalizeRegistryProviderName(typeof inst.provider === 'string' ? inst.provider : '');
+        if (ip !== providerScopeNormalized) continue;
+      }
       const model = typeof inst.model === 'string' ? inst.model.trim() : '';
       if (!model || seen.has(model)) continue;
       seen.add(model);
@@ -164,11 +333,25 @@ export default function Settings() {
       opts.push({ value: v });
     };
 
-    pushBare(configuredDefaultModel);
-    pushBare(status?.model);
+    if (!providerScopeNormalized) {
+      pushBare(configuredDefaultModel);
+      pushBare(status?.model);
+    }
+
+    const curModel = typeof watchedModelRaw === 'string' ? watchedModelRaw.trim() : '';
+    if (curModel && !seen.has(curModel)) {
+      seen.add(curModel);
+      opts.push({ value: curModel });
+    }
 
     return opts;
-  }, [configuredDefaultModel, llmProviderInstances, status?.model]);
+  }, [
+    configuredDefaultModel,
+    llmProviderInstances,
+    providerScopeNormalized,
+    status?.model,
+    watchedModelRaw,
+  ]);
 
   const { data: envData, isLoading: envLoading } = useQuery({
     queryKey: ['env', currentBotId],
@@ -222,7 +405,7 @@ export default function Settings() {
       form.setFieldsValue({
         workspace: (defaults?.workspace as string) ?? '~/.openpawlet/workspace',
         model: (defaults?.model as string) ?? '',
-        provider: (defaults?.provider as string) ?? 'auto',
+        provider: normalizeAgentsDefaultProviderValue(defaults?.provider as string | undefined) ?? 'auto',
         timezone: (raw('timezone', 'timezone', 'UTC') as string) || 'UTC',
         max_tokens: Number(raw('maxTokens', 'max_tokens', 8192)),
         context_window_tokens: Number(raw('contextWindowTokens', 'context_window_tokens', 65536)),
@@ -243,7 +426,7 @@ export default function Settings() {
           defaults: {
             workspace: values.workspace?.trim() || undefined,
             model: values.model?.trim() || undefined,
-            provider: values.provider?.trim() || undefined,
+            provider: normalizeAgentsDefaultProviderValue(values.provider),
             timezone: (values.timezone ?? '').trim() || 'UTC',
             max_tokens: values.max_tokens,
             context_window_tokens: values.context_window_tokens,
@@ -513,6 +696,7 @@ export default function Settings() {
             requiredMark={false}
             className="max-w-[680px]"
             labelAlign="left"
+            onValuesChange={handleModelProviderLink}
           >
             <Typography.Title level={5} className="!mb-3 !mt-0 !text-base !font-semibold">
               {t('settings.sectionModelEnvironment')}
@@ -529,12 +713,9 @@ export default function Settings() {
                     size="middle"
                     placeholder={t('settings.modelPh')}
                     options={modelAutocompleteOptions}
-                    filterOption={(input, option) => {
-                      const q = (input || '').toLowerCase();
-                      const ov = option as { value?: string; label?: string };
-                      const hay = `${ov?.value ?? ''} ${ov?.label ?? ''}`.toLowerCase();
-                      return hay.includes(q);
-                    }}
+                    filterOption={(input, option) =>
+                      autoCompleteFilterOption(input, option, modelAutocompleteOptions)
+                    }
                   />
                 </Form.Item>
               </Col>
@@ -548,12 +729,9 @@ export default function Settings() {
                     className="w-full max-w-full"
                     size="middle"
                     placeholder={t('settings.providerPh')}
-                    options={[
-                      { value: 'auto' },
-                      ...PROVIDER_NAMES.map((p) => ({ value: p })),
-                    ].filter((o, i, arr) => arr.findIndex((x) => x.value === o.value) === i)}
+                    options={providerAutocompleteOptions}
                     filterOption={(input, option) =>
-                      (option?.value ?? '').toLowerCase().includes((input || '').toLowerCase())
+                      autoCompleteFilterOption(input, option, providerAutocompleteOptions)
                     }
                   />
                 </Form.Item>

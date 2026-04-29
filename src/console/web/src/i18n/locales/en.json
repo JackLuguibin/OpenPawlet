@@ -299,6 +299,7 @@
     "provider": "Provider",
     "providerExtra": "Pick an LLM provider or leave as 'auto' for automatic detection",
     "providerPh": "e.g. auto, anthropic, openai, deepseek",
+    "providerFromConfig": "config file",
     "reasoningEffort": "Reasoning effort",
     "reasoningLow": "Low",
     "reasoningMedium": "Medium",
