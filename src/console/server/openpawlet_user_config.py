@@ -82,6 +82,14 @@ def merge_config_section(
     if not isinstance(section_base, dict):
         section_base = {}
     merged_section = deep_merge(section_base, patch)
+    # ``mcpServers`` is a map of server id -> config. A deep-merge would keep
+    # removed server ids when the SPA sends the full current map; replacing the
+    # key wholesale matches editor semantics (same for legacy ``mcp_servers``).
+    if section == "tools":
+        if "mcpServers" in patch and isinstance(patch["mcpServers"], dict):
+            merged_section["mcpServers"] = dict(patch["mcpServers"])
+        if "mcp_servers" in patch and isinstance(patch["mcp_servers"], dict):
+            merged_section["mcp_servers"] = dict(patch["mcp_servers"])
     merged = dict(raw)
     merged[section] = merged_section
     return merged

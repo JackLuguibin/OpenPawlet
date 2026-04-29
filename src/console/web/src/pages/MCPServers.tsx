@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Card,
@@ -10,6 +10,10 @@ import {
   Descriptions,
   Space,
   Typography,
+  Form,
+  Input,
+  Segmented,
+  Modal,
 } from 'antd';
 import {
   ReloadOutlined,
@@ -22,12 +26,16 @@ import {
   ClockCircleOutlined,
   SettingOutlined,
   CopyOutlined,
+  PlusOutlined,
+  DeleteOutlined,
+  SaveOutlined,
+  FormOutlined,
 } from '@ant-design/icons';
 import type { TFunction } from 'i18next';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import * as api from '../api/client';
-import type { MCPStatus } from '../api/types';
+import type { ConfigSection, MCPStatus, MCPServerConfig } from '../api/types';
 import { useAppStore } from '../store';
 import { PageLayout } from '../components/PageLayout';
 import { PAGE_PRIMARY_TITLE_CLASS } from '../utils/pageTitleClasses';
@@ -54,6 +62,307 @@ const EXAMPLE_CONFIG = `{
 
 function mcpStatusLabel(status: MCPStatus['status'], t: TFunction): string {
   return t(`mcp.status.${status}`);
+}
+
+type McpFormRow = {
+  name: string;
+  transport: 'stdio' | 'url';
+  command: string;
+  argsJson: string;
+  url: string;
+};
+
+const EMPTY_MCP_ROW: McpFormRow = {
+  name: '',
+  transport: 'stdio',
+  command: '',
+  argsJson: '[]',
+  url: '',
+};
+
+function readMcpServersFromConfig(
+  config: ConfigSection | undefined,
+): Record<string, MCPServerConfig> | undefined {
+  const raw = config?.tools as Record<string, unknown> | undefined;
+  const mcp = (raw?.mcpServers ?? raw?.mcp_servers) as
+    | Record<string, MCPServerConfig>
+    | undefined;
+  if (!mcp || typeof mcp !== 'object') return undefined;
+  return mcp;
+}
+
+function buildMcpFormRows(config: ConfigSection | undefined): McpFormRow[] {
+  const mcp = readMcpServersFromConfig(config);
+  if (!mcp || Object.keys(mcp).length === 0) {
+    return [{ ...EMPTY_MCP_ROW }];
+  }
+  return Object.entries(mcp).map(([name, cfg]) => {
+    const url = typeof cfg?.url === 'string' ? cfg.url : '';
+    const hasUrl = url.trim().length > 0;
+    const args = Array.isArray(cfg?.args) ? cfg.args : [];
+    return {
+      name,
+      transport: hasUrl ? 'url' : 'stdio',
+      command: typeof cfg?.command === 'string' ? cfg.command : '',
+      argsJson: JSON.stringify(args),
+      url,
+    };
+  });
+}
+
+function McpEmptyConfigDialog({ botId }: { botId: string | null }) {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const { addToast } = useAppStore();
+  const [open, setOpen] = useState(false);
+  const [form] = Form.useForm<{ servers: McpFormRow[] }>();
+
+  const { data: config, isLoading: configLoading } = useQuery({
+    queryKey: ['config', botId],
+    queryFn: () => api.getConfig(botId),
+  });
+
+  useEffect(() => {
+    if (!open || config === undefined) return;
+    form.setFieldsValue({ servers: buildMcpFormRows(config) });
+  }, [open, config, form]);
+
+  const saveMutation = useMutation({
+    mutationFn: async (servers: McpFormRow[]) => {
+      const mcpServers: Record<string, MCPServerConfig> = {};
+      const seen = new Set<string>();
+      for (const row of servers) {
+        const name = row.name.trim();
+        if (!name) continue;
+        if (seen.has(name)) {
+          throw new Error(t('mcp.duplicateName'));
+        }
+        seen.add(name);
+        if (row.transport === 'url') {
+          const url = row.url.trim();
+          if (!url) {
+            throw new Error(t('mcp.urlRequired'));
+          }
+          mcpServers[name] = { url };
+        } else {
+          const command = row.command.trim();
+          if (!command) {
+            throw new Error(t('mcp.commandRequired'));
+          }
+          let args: string[] = [];
+          try {
+            const parsed = JSON.parse(row.argsJson?.trim() || '[]') as unknown;
+            if (!Array.isArray(parsed) || !parsed.every((x) => typeof x === 'string')) {
+              throw new SyntaxError('bad shape');
+            }
+            args = parsed;
+          } catch {
+            throw new Error(t('mcp.argsInvalid'));
+          }
+          mcpServers[name] = { command, args };
+        }
+      }
+      await api.updateConfig('tools', { mcpServers }, botId);
+    },
+    onSuccess: () => {
+      addToast({ type: 'success', message: t('mcp.saveSuccess') });
+      queryClient.invalidateQueries({ queryKey: ['config'] });
+      queryClient.invalidateQueries({ queryKey: ['mcp'] });
+      setOpen(false);
+    },
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : formatQueryError(err);
+      addToast({ type: 'error', message: msg });
+    },
+  });
+
+  const handleSave = async () => {
+    try {
+      const v = await form.validateFields();
+      saveMutation.mutate(v.servers);
+    } catch {
+      /* antd renders field errors */
+    }
+  };
+
+  return (
+    <>
+      <Button
+        type="primary"
+        icon={<FormOutlined />}
+        className="w-full sm:w-auto"
+        onClick={() => setOpen(true)}
+      >
+        {t('mcp.openConfigDialog')}
+      </Button>
+      <Modal
+        title={t('mcp.inlineFormTitle')}
+        open={open}
+        centered
+        onCancel={() => !saveMutation.isPending && setOpen(false)}
+        width={720}
+        maskClosable={!saveMutation.isPending}
+        closable={!saveMutation.isPending}
+        destroyOnHidden
+        styles={{
+          body: { maxHeight: 'min(70vh, 640px)', overflowY: 'auto', paddingTop: 12 },
+        }}
+        footer={
+          <Space className="w-full justify-end">
+            <Button disabled={saveMutation.isPending} onClick={() => setOpen(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              type="primary"
+              icon={<SaveOutlined />}
+              loading={saveMutation.isPending}
+              onClick={() => void handleSave()}
+            >
+              {t('mcp.saveMcp')}
+            </Button>
+          </Space>
+        }
+      >
+        <div className="rounded-md border border-indigo-200/60 bg-indigo-50/35 p-3 dark:border-indigo-500/25 dark:bg-indigo-950/20">
+          {configLoading ? (
+            <div className="flex justify-center py-10">
+              <Spin />
+            </div>
+          ) : (
+            <Form
+              form={form}
+              layout="vertical"
+              preserve={false}
+              disabled={saveMutation.isPending}
+              className="mcp-inline-form [&_.ant-form-item]:mb-0"
+              initialValues={{ servers: [{ ...EMPTY_MCP_ROW }] }}
+            >
+              <Form.List name="servers">
+                {(fields, { add, remove }) => (
+                  <div className="flex flex-col gap-3">
+                    {fields.map((field) => (
+                      <div
+                        key={field.key}
+                        className="rounded-md border border-gray-200/90 bg-white/90 p-3 dark:border-gray-600/70 dark:bg-gray-900/30"
+                      >
+                        <div className="grid grid-cols-1 gap-3 min-[520px]:grid-cols-[minmax(0,1fr)_auto] min-[520px]:items-end">
+                          <Form.Item
+                            name={[field.name, 'name']}
+                            label={t('mcp.serverName')}
+                            className="mb-0 min-w-0"
+                            rules={[
+                              {
+                                validator: (_, value) => {
+                                  const v = typeof value === 'string' ? value.trim() : '';
+                                  if (!v) return Promise.resolve();
+                                  if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(v)) {
+                                    return Promise.reject(new Error(t('mcp.nameInvalid')));
+                                  }
+                                  return Promise.resolve();
+                                },
+                              },
+                            ]}
+                          >
+                            <Input
+                              placeholder={t('mcp.serverNamePh')}
+                              className="font-mono text-sm"
+                              autoComplete="off"
+                            />
+                          </Form.Item>
+                          <div className="flex min-w-0 flex-wrap items-end gap-2 min-[520px]:justify-end">
+                            <Form.Item
+                              name={[field.name, 'transport']}
+                              label={t('mcp.transport')}
+                              className="mb-0 min-w-0 min-[520px]:shrink-0"
+                            >
+                              <Segmented
+                                className="w-full min-[520px]:w-auto"
+                                options={[
+                                  { label: t('mcp.transportStdio'), value: 'stdio' },
+                                  { label: t('mcp.transportUrl'), value: 'url' },
+                                ]}
+                              />
+                            </Form.Item>
+                            {fields.length > 1 ? (
+                              <Button
+                                type="text"
+                                danger
+                                size="small"
+                                icon={<DeleteOutlined />}
+                                className="shrink-0"
+                                onClick={() => remove(field.name)}
+                                aria-label={t('mcp.removeServer')}
+                              />
+                            ) : null}
+                          </div>
+                        </div>
+                        <Form.Item
+                          noStyle
+                          dependencies={[['servers', field.name, 'transport']]}
+                        >
+                          {() =>
+                            form.getFieldValue(['servers', field.name, 'transport']) ===
+                            'url' ? (
+                              <Form.Item
+                                name={[field.name, 'url']}
+                                label={t('mcp.url')}
+                                className="mb-0 mt-4"
+                              >
+                                <Input
+                                  placeholder={t('mcp.urlPh')}
+                                  className="font-mono text-sm"
+                                  autoComplete="off"
+                                />
+                              </Form.Item>
+                            ) : (
+                              <div className="mt-4 flex flex-col gap-4">
+                                <Form.Item
+                                  name={[field.name, 'command']}
+                                  label={t('mcp.command')}
+                                  className="mb-0 min-w-0"
+                                >
+                                  <Input
+                                    placeholder={t('mcp.commandPh')}
+                                    className="font-mono text-sm"
+                                    autoComplete="off"
+                                  />
+                                </Form.Item>
+                                <Form.Item
+                                  name={[field.name, 'argsJson']}
+                                  label={t('mcp.argsJson')}
+                                  className="mb-0 min-w-0"
+                                  tooltip={t('mcp.argsJsonHint')}
+                                >
+                                  <Input.TextArea
+                                    placeholder={t('mcp.argsJsonPh')}
+                                    className="font-mono text-sm"
+                                    rows={3}
+                                    autoComplete="off"
+                                  />
+                                </Form.Item>
+                              </div>
+                            )
+                          }
+                        </Form.Item>
+                      </div>
+                    ))}
+                    <Button
+                      type="dashed"
+                      size="small"
+                      icon={<PlusOutlined />}
+                      onClick={() => add({ ...EMPTY_MCP_ROW })}
+                    >
+                      {t('mcp.addServer')}
+                    </Button>
+                  </div>
+                )}
+              </Form.List>
+            </Form>
+          )}
+        </div>
+      </Modal>
+    </>
+  );
 }
 
 export function MCPServersPanel({
@@ -414,9 +723,12 @@ export function MCPServersPanel({
           )}
         </div>
       ) : (
-        <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-y-auto">
-          <Card className="w-full min-w-0 flex-1 rounded-md border border-gray-200/80 dark:border-gray-700/60 bg-white dark:bg-gray-800/40">
-            <div className="mb-4 min-w-0 space-y-1">
+        <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden">
+          <Card
+            className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col rounded-md border border-gray-200/80 dark:border-gray-700/60 bg-white dark:bg-gray-800/40"
+            classNames={{ body: 'flex min-h-0 flex-1 flex-col overflow-y-auto' }}
+          >
+            <div className="mb-6 min-w-0 shrink-0 space-y-3">
               <h2 className="m-0 text-lg font-semibold tracking-tight text-gray-900 dark:text-gray-100">
                 {t('mcp.emptyTitle')}
               </h2>
@@ -426,44 +738,44 @@ export function MCPServersPanel({
                   tools: t('mcp.emptyToolsKey'),
                 })}
               </p>
+              <McpEmptyConfigDialog botId={currentBotId} />
             </div>
 
-            <div className="grid gap-3 lg:grid-cols-2 lg:gap-5 lg:items-start">
-              <section className="min-w-0 space-y-1.5">
+            <div className="mt-2 grid shrink-0 gap-4 border-t border-gray-100 pt-5 dark:border-gray-700/50 lg:grid-cols-2 lg:gap-5 lg:items-start">
+              <section className="flex min-w-0 flex-col gap-1.5">
                 <h3 className="text-xs font-semibold text-gray-900 dark:text-gray-100">
                   {t('mcp.whatIsTitle')}
                 </h3>
                 <div className="rounded-md border border-gray-200 bg-gray-50/90 p-2.5 text-xs leading-snug text-gray-700 dark:border-gray-600/80 dark:bg-gray-900/40 dark:text-gray-300 sm:text-[13px] sm:leading-relaxed">
-                  <p className="flex gap-2">
+                  <p className="m-0 flex gap-2">
                     <InfoCircleOutlined className="mt-0.5 shrink-0 text-indigo-500 dark:text-indigo-400" />
                     <span>{t('mcp.whatIsBody')}</span>
                   </p>
                 </div>
               </section>
 
-              <section className="min-w-0 space-y-1.5">
+              <section className="flex min-w-0 flex-col gap-1.5">
                 <h3 className="text-xs font-semibold text-gray-900 dark:text-gray-100">
                   {t('mcp.setupTitle')}
                 </h3>
                 <ol className="list-decimal space-y-1 rounded-md border border-gray-200 bg-white py-2 pl-8 pr-2.5 text-xs text-gray-700 dark:border-gray-600/80 dark:bg-gray-900/25 dark:text-gray-300 sm:text-[13px] sm:leading-snug">
+                  <li>{t('mcp.stepFormFirst')}</li>
                   <li>
-                    {t('mcp.step1Prefix')}
+                    {t('mcp.stepSettingsExtra')}{' '}
                     <Link
-                      to="/settings"
+                      to="/settings?tab=tools"
                       className="font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
                     >
                       <SettingOutlined /> {t('layout.navSettings')}
                     </Link>
-                  </li>
-                  <li>
-                    {t('mcp.step2')}
+                    {t('mcp.stepSettingsExtraAfter')}
                   </li>
                   <li>{t('mcp.step3')}</li>
                 </ol>
               </section>
             </div>
 
-            <div className="mt-4 border-t border-gray-100 pt-4 dark:border-gray-700/60">
+            <div className="relative z-[1] mt-4 shrink-0 border-t border-gray-100 bg-white pt-4 dark:border-gray-700/60 dark:bg-gray-800/40">
               <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-xs font-semibold text-gray-900 dark:text-gray-100">
                   {t('mcp.exampleTitle')}
@@ -484,8 +796,8 @@ export function MCPServersPanel({
                 </pre>
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
-                <Link to="/settings">
-                  <Button type="primary" size="small" icon={<SettingOutlined />}>
+                <Link to="/settings?tab=tools">
+                  <Button size="small" icon={<SettingOutlined />}>
                     {t('mcp.goSettings')}
                   </Button>
                 </Link>
