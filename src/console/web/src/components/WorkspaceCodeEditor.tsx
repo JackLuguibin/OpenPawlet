@@ -1,16 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
 import { vscodeDark, vscodeLight } from '@uiw/codemirror-theme-vscode';
-import { css } from '@codemirror/lang-css';
-import { html } from '@codemirror/lang-html';
-import { javascript } from '@codemirror/lang-javascript';
-import { json } from '@codemirror/lang-json';
-import { markdown } from '@codemirror/lang-markdown';
-import { python } from '@codemirror/lang-python';
-import { rust } from '@codemirror/lang-rust';
-import { sql } from '@codemirror/lang-sql';
-import { xml } from '@codemirror/lang-xml';
-import { yaml } from '@codemirror/lang-yaml';
 import type { Extension } from '@codemirror/state';
 import { clsx } from 'clsx';
 import { useAppStore } from '../store';
@@ -21,47 +11,73 @@ function resolveIsDark(theme: 'light' | 'dark' | 'system'): boolean {
   return window.matchMedia('(prefers-color-scheme: dark)').matches;
 }
 
-function languageExtensionsForPath(path: string | null): Extension[] {
+async function loadLanguageExtensionsForPath(path: string | null): Promise<Extension[]> {
   if (!path) return [];
   const base = path.split('/').pop() ?? path;
   const dot = base.lastIndexOf('.');
   const ext = dot >= 0 ? base.slice(dot).toLowerCase() : '';
 
   switch (ext) {
-    case '.ts':
+    case '.ts': {
+      const { javascript } = await import('@codemirror/lang-javascript');
       return [javascript({ typescript: true })];
-    case '.tsx':
+    }
+    case '.tsx': {
+      const { javascript } = await import('@codemirror/lang-javascript');
       return [javascript({ typescript: true, jsx: true })];
+    }
     case '.js':
     case '.mjs':
-    case '.cjs':
+    case '.cjs': {
+      const { javascript } = await import('@codemirror/lang-javascript');
       return [javascript()];
-    case '.jsx':
+    }
+    case '.jsx': {
+      const { javascript } = await import('@codemirror/lang-javascript');
       return [javascript({ jsx: true })];
+    }
     case '.json':
-    case '.jsonc':
+    case '.jsonc': {
+      const { json } = await import('@codemirror/lang-json');
       return [json()];
+    }
     case '.md':
-    case '.mdx':
+    case '.mdx': {
+      const { markdown } = await import('@codemirror/lang-markdown');
       return [markdown()];
+    }
     case '.py':
-    case '.pyw':
+    case '.pyw': {
+      const { python } = await import('@codemirror/lang-python');
       return [python()];
+    }
     case '.yml':
-    case '.yaml':
+    case '.yaml': {
+      const { yaml } = await import('@codemirror/lang-yaml');
       return [yaml()];
-    case '.css':
+    }
+    case '.css': {
+      const { css } = await import('@codemirror/lang-css');
       return [css()];
+    }
     case '.html':
-    case '.htm':
+    case '.htm': {
+      const { html } = await import('@codemirror/lang-html');
       return [html()];
+    }
     case '.xml':
-    case '.svg':
+    case '.svg': {
+      const { xml } = await import('@codemirror/lang-xml');
       return [xml()];
-    case '.sql':
+    }
+    case '.sql': {
+      const { sql } = await import('@codemirror/lang-sql');
       return [sql()];
-    case '.rs':
+    }
+    case '.rs': {
+      const { rust } = await import('@codemirror/lang-rust');
       return [rust()];
+    }
     default:
       return [];
   }
@@ -85,6 +101,7 @@ export function WorkspaceCodeEditor({
 }: WorkspaceCodeEditorProps) {
   const themePref = useAppStore((s) => s.theme);
   const [isDark, setIsDark] = useState(() => resolveIsDark(themePref));
+  const [extensions, setExtensions] = useState<Extension[]>([]);
 
   useEffect(() => {
     setIsDark(resolveIsDark(themePref));
@@ -95,7 +112,15 @@ export function WorkspaceCodeEditor({
     return () => mq.removeEventListener('change', onSchemeChange);
   }, [themePref]);
 
-  const extensions = useMemo(() => languageExtensionsForPath(filePath), [filePath]);
+  useEffect(() => {
+    let cancelled = false;
+    loadLanguageExtensionsForPath(filePath).then((loaded) => {
+      if (!cancelled) setExtensions(loaded);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [filePath]);
 
   return (
     <div

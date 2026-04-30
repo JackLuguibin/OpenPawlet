@@ -58,8 +58,7 @@ export default defineConfig({
     },
   },
   build: {
-    // Slightly raise the warning ceiling: some vendor chunks legitimately exceed 500 kB.
-    chunkSizeWarningLimit: 800,
+    chunkSizeWarningLimit: 600,
     rollupOptions: {
       // Suppress the "Circular chunk: antd-heavy -> antd-core -> antd-heavy"
       // notice. antd's internal modules (e.g. table -> filterDropdown -> tree)
@@ -94,16 +93,31 @@ export default defineConfig({
             return 'chartjs'
           }
 
-          // CodeMirror + language packs + theme are large; co-locate so the
-          // browser caches a single editor chunk for Workspace + Chat.
+          // Icons are tree-shaken but still substantial; keep out of antd-core.
+          if (id.includes('node_modules/@ant-design/icons')) {
+            return 'antd-icons'
+          }
+
+          // CodeMirror: split editor stack so no single vendor chunk exceeds ~600 kB minified.
+          // Language grammars (`@codemirror/lang-*`) are dynamically imported.
+          if (id.includes('node_modules/@codemirror/lang-')) {
+            return undefined
+          }
+          if (id.includes('node_modules/@lezer')) {
+            return 'cm-lezer'
+          }
+          if (id.includes('node_modules/@codemirror/view')) {
+            return 'cm-view'
+          }
           if (
-            id.includes('node_modules/@codemirror') ||
             id.includes('node_modules/@uiw/react-codemirror') ||
             id.includes('node_modules/@uiw/codemirror-extensions-basic-setup') ||
-            id.includes('node_modules/@uiw/codemirror-theme-vscode') ||
-            id.includes('node_modules/@lezer')
+            id.includes('node_modules/@uiw/codemirror-theme-vscode')
           ) {
-            return 'codemirror'
+            return 'cm-uiw'
+          }
+          if (id.includes('node_modules/@codemirror')) {
+            return 'cm-codemirror'
           }
 
           // antd is huge (1MB+ tree-shaken). Pull leaf components that no
@@ -159,6 +173,23 @@ export default defineConfig({
               id.endsWith('node_modules/antd/lib/index.js')
             ) {
               return 'antd-heavy'
+            }
+            // rc-* shared by many widgets — separate from component code to shrink slices.
+            if (
+              id.includes('node_modules/rc-') ||
+              id.includes('node_modules/@rc-component/')
+            ) {
+              return 'antd-rc'
+            }
+            // Shard `antd/es/<component>/` into fixed buckets so no chunk stays ~1 MB.
+            const antdEs = id.match(/node_modules\/antd\/es\/([^/]+)\//)?.[1]
+            if (antdEs && antdEs !== 'style' && antdEs !== 'version') {
+              let h = 2166136261
+              for (let i = 0; i < antdEs.length; i++) {
+                h ^= antdEs.charCodeAt(i)
+                h = Math.imul(h, 16777619)
+              }
+              return `antd-c${Math.abs(h) % 6}`
             }
             return 'antd-core'
           }
