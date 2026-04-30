@@ -9,6 +9,9 @@ import {
 } from "@ant-design/icons";
 import { Tag } from "antd";
 
+import { Streamdown, type Components as StreamdownComponents } from "streamdown";
+
+import { markdownGfmTableComponents } from "../../components/markdownGfmTableComponents";
 import { MessageThinkingBlock } from "./MessageThinkingBlock";
 import { MessageToolCallsBlock } from "./MessageToolCalls";
 import { formatToolHintMultiline } from "./replyGroup";
@@ -46,7 +49,7 @@ function trackedToolTagColor(status: TrackedToolCall["status"]) {
  *   1. Channel notices (amber, top divider).
  *   2. Reasoning ("thinking") block.
  *   3. Tool-calls payload block (rich UI from `MessageToolCallsBlock`).
- *   4. Streamed text body.
+ *   4. Streamed text body (Streamdown: streaming-safe incomplete Markdown + GFM tables).
  *   5. Tool progress hints (lightweight one-liners).
  *   6. A 3-dot pulse shown during the entire streaming phase.
  *   7. Tracked tool-call chips (rendered as a sibling row beneath the bubble).
@@ -115,7 +118,7 @@ export function StreamingAssistantBubble({
           ) : null}
           {streamingContent ? (
             <div
-              className={`text-[15px] leading-relaxed text-gray-900 dark:text-gray-100 whitespace-pre-wrap break-words ${
+              className={`max-w-none min-w-0 w-full break-anywhere text-[15px] leading-relaxed text-gray-900 dark:text-gray-100 ${
                 streamingReasoningContent.length > 0 ||
                 streamingPayloadToolCalls.length > 0 ||
                 streamingChannelNotices.length > 0
@@ -123,7 +126,17 @@ export function StreamingAssistantBubble({
                   : ""
               }`}
             >
-              {streamingContent}
+              <Streamdown
+                mode="streaming"
+                parseIncompleteMarkdown
+                animated={false}
+                components={
+                  markdownGfmTableComponents as Partial<StreamdownComponents>
+                }
+                className="max-w-none min-w-0"
+              >
+                {streamingContent}
+              </Streamdown>
             </div>
           ) : null}
           {streamingToolProgress.length > 0 ? (

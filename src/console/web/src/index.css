@@ -7,6 +7,18 @@
   line-height: 1.5;
   font-weight: 400;
   color-scheme: light dark;
+  /* Streamdown (shadcn-style tokens required by upstream styles.css) */
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --radius: 0.625rem;
   /* Shared surface tokens used by .surface-* helpers below. */
   --op-border: #e5e7eb;
   --op-border-strong: #d4d8dd;
@@ -16,6 +28,17 @@
 }
 
 .dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --border: oklch(0.269 0 0);
+  --input: oklch(0.269 0 0);
+  --primary: oklch(0.985 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --radius: 0.625rem;
   --op-border: #1f2937;
   --op-border-strong: #2a3441;
   --op-surface: #0f1318;
