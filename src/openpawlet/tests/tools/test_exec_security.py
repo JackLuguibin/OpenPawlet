@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
+from openpawlet.agent.tools.errors import AgentToolAbort
 from openpawlet.agent.tools.shell import ExecTool
 
 
@@ -26,19 +27,21 @@ def _fake_resolve_public(hostname, port, family=0, type_=0):
 async def test_exec_blocks_curl_metadata():
     tool = ExecTool()
     with patch("openpawlet.security.network.socket.getaddrinfo", _fake_resolve_private):
-        result = await tool.execute(
-            command='curl -s -H "Metadata-Flavor: Google" http://169.254.169.254/computeMetadata/v1/'
-        )
-    assert "Error" in result
-    assert "internal" in result.lower() or "private" in result.lower()
+        with pytest.raises(AgentToolAbort, match="internal|private|safety"):
+            await tool.execute(
+                command=(
+                    'curl -s -H "Metadata-Flavor: Google" '
+                    "http://169.254.169.254/computeMetadata/v1/"
+                )
+            )
 
 
 @pytest.mark.asyncio
 async def test_exec_blocks_wget_localhost():
     tool = ExecTool()
     with patch("openpawlet.security.network.socket.getaddrinfo", _fake_resolve_localhost):
-        result = await tool.execute(command="wget http://localhost:8080/secret -O /tmp/out")
-    assert "Error" in result
+        with pytest.raises(AgentToolAbort):
+            await tool.execute(command="wget http://localhost:8080/secret -O /tmp/out")
 
 
 @pytest.mark.asyncio
@@ -54,8 +57,7 @@ async def test_exec_allows_curl_to_public_url():
     """Commands with public URLs should not be blocked by the internal URL check."""
     tool = ExecTool()
     with patch("openpawlet.security.network.socket.getaddrinfo", _fake_resolve_public):
-        guard_result = tool._guard_command("curl https://example.com/api", "/tmp")
-    assert guard_result is None
+        tool._guard_command("curl https://example.com/api", "/tmp")
 
 
 @pytest.mark.asyncio
@@ -63,10 +65,10 @@ async def test_exec_blocks_chained_internal_url():
     """Internal URLs buried in chained commands should still be caught."""
     tool = ExecTool()
     with patch("openpawlet.security.network.socket.getaddrinfo", _fake_resolve_private):
-        result = await tool.execute(
-            command="echo start && curl http://169.254.169.254/latest/meta-data/ && echo done"
-        )
-    assert "Error" in result
+        with pytest.raises(AgentToolAbort):
+            await tool.execute(
+                command="echo start && curl http://169.254.169.254/latest/meta-data/ && echo done"
+            )
 
 
 # --- #2989: block writes to OpenPawlet internal state files -----------------
@@ -92,9 +94,8 @@ async def test_exec_blocks_chained_internal_url():
 def test_exec_blocks_writes_to_history_jsonl(command):
     """Direct writes to history.jsonl / .dream_cursor must be blocked (#2989)."""
     tool = ExecTool()
-    result = tool._guard_command(command, "/tmp")
-    assert result is not None
-    assert "dangerous pattern" in result.lower()
+    with pytest.raises(AgentToolAbort, match="dangerous pattern"):
+        tool._guard_command(command, "/tmp")
 
 
 @pytest.mark.parametrize(
@@ -112,8 +113,7 @@ def test_exec_blocks_writes_to_history_jsonl(command):
 def test_exec_allows_reads_of_history_jsonl(command):
     """Read-only access to history.jsonl must still be allowed."""
     tool = ExecTool()
-    result = tool._guard_command(command, "/tmp")
-    assert result is None
+    tool._guard_command(command, "/tmp")
 
 
 # --- #2826: working_dir must not escape the configured workspace ---------
@@ -125,8 +125,8 @@ async def test_exec_blocks_working_dir_outside_workspace(tmp_path):
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     tool = ExecTool(working_dir=str(workspace), restrict_to_workspace=True)
-    result = await tool.execute(command="rm calendar.ics", working_dir="/etc")
-    assert "outside the configured workspace" in result
+    with pytest.raises(AgentToolAbort, match="outside the configured workspace"):
+        await tool.execute(command="rm calendar.ics", working_dir="/etc")
 
 
 @pytest.mark.asyncio
@@ -140,11 +140,11 @@ async def test_exec_blocks_absolute_rm_via_hijacked_working_dir(tmp_path):
     victim.write_text("data")
 
     tool = ExecTool(working_dir=str(workspace), restrict_to_workspace=True)
-    result = await tool.execute(
-        command=f"rm {victim}",
-        working_dir=str(victim_dir),
-    )
-    assert "outside the configured workspace" in result
+    with pytest.raises(AgentToolAbort, match="outside the configured workspace"):
+        await tool.execute(
+            command=f"rm {victim}",
+            working_dir=str(victim_dir),
+        )
     assert victim.exists(), "victim file must not have been deleted"
 
 

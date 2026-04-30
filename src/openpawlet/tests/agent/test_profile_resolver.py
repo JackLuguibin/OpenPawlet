@@ -18,6 +18,7 @@ from openpawlet.config.profile import (
     AgentDefaultsOverride,
     AgentProfile,
     ToolsConfigOverride,
+    merge_agent_defaults,
 )
 from openpawlet.config.schema import AgentDefaults, ToolsConfig
 
@@ -91,6 +92,12 @@ def test_resolve_inherits_when_overrides_empty(tmp_path: Path) -> None:
     assert resolved.allowed_tools is None  # No whitelist => inherit
     assert resolved.tools.exec.enable is True
     assert resolved.bootstrap_text == ""
+
+
+def test_merge_agent_defaults_max_history_messages() -> None:
+    base = AgentDefaults(max_history_messages=0)
+    merged = merge_agent_defaults(base, AgentDefaultsOverride(max_history_messages=25))
+    assert merged.max_history_messages == 25
 
 
 def test_resolve_applies_model_and_tools_overrides(tmp_path: Path) -> None:

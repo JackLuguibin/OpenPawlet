@@ -2,6 +2,7 @@
 
 import pytest
 
+from openpawlet.agent.tools.errors import AgentToolAbort
 from openpawlet.agent.tools.filesystem import (
     EditFileTool,
     ListDirTool,
@@ -305,9 +306,8 @@ class TestWorkspaceRestriction:
         secret.write_text("top secret")
 
         tool = ReadFileTool(workspace=workspace, allowed_dir=workspace)
-        result = await tool.execute(path=str(secret))
-        assert "Error" in result
-        assert "outside" in result.lower()
+        with pytest.raises(AgentToolAbort, match="outside allowed directory"):
+            await tool.execute(path=str(secret))
 
     @pytest.mark.asyncio
     async def test_read_allowed_with_extra_dir(self, tmp_path):
@@ -354,9 +354,8 @@ class TestWorkspaceRestriction:
         outside.mkdir()
 
         tool = WriteFileTool(workspace=workspace, allowed_dir=workspace)
-        result = await tool.execute(path=str(outside / "hack.txt"), content="pwned")
-        assert "Error" in result
-        assert "outside" in result.lower()
+        with pytest.raises(AgentToolAbort, match="outside allowed directory"):
+            await tool.execute(path=str(outside / "hack.txt"), content="pwned")
 
     @pytest.mark.asyncio
     async def test_read_still_blocked_for_unrelated_dir(self, tmp_path):
@@ -374,9 +373,8 @@ class TestWorkspaceRestriction:
             allowed_dir=workspace,
             extra_allowed_dirs=[skills_dir],
         )
-        result = await tool.execute(path=str(secret))
-        assert "Error" in result
-        assert "outside" in result.lower()
+        with pytest.raises(AgentToolAbort, match="outside allowed directory"):
+            await tool.execute(path=str(secret))
 
     @pytest.mark.asyncio
     async def test_workspace_file_still_readable_with_extra_dirs(self, tmp_path):
@@ -409,11 +407,10 @@ class TestWorkspaceRestriction:
         skill_file.write_text("# Weather\nOriginal content.")
 
         tool = EditFileTool(workspace=workspace, allowed_dir=workspace)
-        result = await tool.execute(
-            path=str(skill_file),
-            old_text="Original content.",
-            new_text="Hacked content.",
-        )
-        assert "Error" in result
-        assert "outside" in result.lower()
+        with pytest.raises(AgentToolAbort, match="outside allowed directory"):
+            await tool.execute(
+                path=str(skill_file),
+                old_text="Original content.",
+                new_text="Hacked content.",
+            )
         assert skill_file.read_text() == "# Weather\nOriginal content."

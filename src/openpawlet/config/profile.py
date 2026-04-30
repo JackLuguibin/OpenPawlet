@@ -23,6 +23,7 @@ from openpawlet.config.schema import (
     MCPServerConfig,
     MyToolConfig,
     ToolsConfig,
+    WebFetchConfig,
     WebSearchConfig,
     WebToolsConfig,
 )
@@ -45,6 +46,14 @@ class WebSearchOverride(Base):
 _CAMEL = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid")
 
 
+class WebFetchOverride(Base):
+    """Optional override for :class:`WebFetchConfig`."""
+
+    model_config = _CAMEL
+
+    use_jina_reader: bool | None = None
+
+
 class WebToolsOverride(Base):
     """Optional override for :class:`WebToolsConfig`."""
 
@@ -52,7 +61,9 @@ class WebToolsOverride(Base):
 
     enable: bool | None = None
     proxy: str | None = None
+    user_agent: str | None = None
     search: WebSearchOverride | None = None
+    fetch: WebFetchOverride | None = None
 
 
 class ExecToolOverride(Base):
@@ -111,6 +122,7 @@ class AgentDefaultsOverride(Base):
     context_block_limit: int | None = None
     temperature: float | None = None
     max_tool_iterations: int | None = None
+    max_history_messages: int | None = None
     max_tool_result_chars: int | None = None
     provider_retry_mode: Literal["standard", "persistent"] | None = None
     reasoning_effort: str | None = None
@@ -201,10 +213,16 @@ def _merge_web_config(base: WebToolsConfig, override: WebToolsOverride | None) -
         data["enable"] = override.enable
     if override.proxy is not None:
         data["proxy"] = override.proxy
+    if override.user_agent is not None:
+        data["user_agent"] = override.user_agent
     if override.search is not None:
         search_data = base.search.model_dump(by_alias=False)
         search_data.update(_override_dict(override.search))
         data["search"] = WebSearchConfig.model_validate(search_data).model_dump(by_alias=False)
+    if override.fetch is not None:
+        fetch_data = base.fetch.model_dump(by_alias=False)
+        fetch_data.update(_override_dict(override.fetch))
+        data["fetch"] = WebFetchConfig.model_validate(fetch_data).model_dump(by_alias=False)
     return WebToolsConfig.model_validate(data)
 
 

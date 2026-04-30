@@ -67,6 +67,7 @@ def _instantiate_provider(
     """Instantiate the concrete provider class for ``backend``."""
     api_key = provider_cfg.api_key if provider_cfg else None
     extra_headers = provider_cfg.extra_headers if provider_cfg else None
+    extra_body = getattr(provider_cfg, "extra_body", None) if provider_cfg else None
 
     if backend == "openai_codex":
         from openpawlet.providers.openai_codex_provider import OpenAICodexProvider
@@ -105,6 +106,7 @@ def _instantiate_provider(
         default_model=model,
         extra_headers=extra_headers,
         spec=spec,
+        extra_body=extra_body,
     )
 
 
@@ -227,12 +229,15 @@ def _instance_to_inner_provider(
     from openpawlet.providers.openai_compat_provider import OpenAICompatProvider
 
     effective_base = api_base or (spec.default_api_base if spec else None)
+    inst_extra_body = getattr(instance, "extra_body", None)
+
     return OpenAICompatProvider(
         api_key=api_key,
         api_base=effective_base,
         default_model=model,
         extra_headers=extra_headers,
         spec=spec,
+        extra_body=inst_extra_body,
     )
 
 

@@ -75,6 +75,17 @@ def test_apply_hot_config_changes_max_iterations():
     assert loop.max_iterations == 42
 
 
+def test_apply_hot_config_changes_max_history_messages():
+    loop = _make_loop()
+    assert loop.max_history_messages == 0
+    new_cfg = _config_with(max_history_messages=80)
+
+    changed = loop.apply_hot_config(new_cfg)
+
+    assert changed.get("max_history_messages") is not None
+    assert loop.max_history_messages == 80
+
+
 def test_apply_hot_config_noop_when_identical():
     loop = _make_loop()
     new_cfg = _config_with(model=loop.model, timezone=loop.timezone)

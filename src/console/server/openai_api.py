@@ -12,11 +12,8 @@ processes.
 from __future__ import annotations
 
 import asyncio
-import base64
 import contextlib
 import json
-import mimetypes
-import re
 import time
 import uuid
 from pathlib import Path
@@ -28,10 +25,14 @@ from loguru import logger
 
 from openpawlet.config.paths import get_media_dir
 from openpawlet.utils.helpers import safe_filename
+from openpawlet.utils.media_decode import (
+    DATA_URL_RE as _DATA_URL_RE,
+    FileSizeExceededError as _FileSizeExceededError,
+    save_data_url_to_file,
+)
 from openpawlet.utils.runtime import EMPTY_FINAL_RESPONSE_MESSAGE
 
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
-_DATA_URL_RE = re.compile(r"^data:([^;]+);base64,(.+)$", re.DOTALL)
 
 # Bound the per-session lock cache so attackers cannot OOM the process by
 # rotating ``session_id`` values forever; entries idle beyond _LOCK_TTL_S
@@ -87,10 +88,6 @@ class _SessionLockCache:
 
     def __len__(self) -> int:
         return len(self._items)
-
-
-class _FileSizeExceededError(Exception):
-    """Raised when an uploaded file exceeds the size limit."""
 
 
 API_SESSION_KEY = "api:default"
@@ -171,21 +168,7 @@ _SSE_DONE = b"data: [DONE]\n\n"
 
 def _save_base64_data_url(data_url: str, media_dir: Path) -> str | None:
     """Decode a ``data:...;base64,...`` URL and save to disk."""
-    m = _DATA_URL_RE.match(data_url)
-    if not m:
-        return None
-    mime_type, b64_payload = m.group(1), m.group(2)
-    try:
-        raw = base64.b64decode(b64_payload)
-    except Exception:
-        return None
-    if len(raw) > MAX_FILE_SIZE:
-        raise _FileSizeExceededError(f"File exceeds {MAX_FILE_SIZE // (1024 * 1024)}MB limit")
-    ext = mimetypes.guess_extension(mime_type) or ".bin"
-    filename = f"{uuid.uuid4().hex[:12]}{ext}"
-    dest = media_dir / safe_filename(filename)
-    dest.write_bytes(raw)
-    return str(dest)
+    return save_data_url_to_file(data_url, media_dir, max_bytes=MAX_FILE_SIZE)
 
 
 def _parse_json_content(body: dict) -> tuple[str, list[str]]:

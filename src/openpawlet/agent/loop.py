@@ -154,7 +154,7 @@ class _LoopHook(AgentHook):
 
     async def before_execute_tools(self, context: AgentHookContext) -> None:
         if self._on_progress:
-            if not self._on_stream:
+            if not self._on_stream and not context.streamed_content:
                 thought = self._loop._strip_think(
                     context.response.content if context.response else None
                 )
@@ -302,6 +302,7 @@ class AgentLoop:
         workspace: Path,
         model: str | None = None,
         max_iterations: int | None = None,
+        max_history_messages: int | None = None,
         context_window_tokens: int | None = None,
         context_block_limit: int | None = None,
         max_tool_result_chars: int | None = None,
@@ -365,6 +366,11 @@ class AgentLoop:
         self.model = model or provider.get_default_model()
         self.max_iterations = (
             max_iterations if max_iterations is not None else defaults.max_tool_iterations
+        )
+        self.max_history_messages = (
+            max_history_messages
+            if max_history_messages is not None
+            else defaults.max_history_messages
         )
         self.context_window_tokens = (
             context_window_tokens
@@ -430,6 +436,7 @@ class AgentLoop:
             base_tools=_tc,
             transcript_writer=self._session_transcript,
             session_manager=self.sessions,
+            max_iterations=self.max_iterations,
         )
         self._unified_session = unified_session
         self._running = False
@@ -484,6 +491,7 @@ class AgentLoop:
         if _tc.my.enable:
             self.tools.register(MyTool(loop=self, modify_allowed=_tc.my.allow_set))
         self._runtime_vars: dict[str, Any] = {}
+        self._pending_cron_capture: tuple[dict[str, Any], str] | None = None
         self._current_iteration: int = 0
         self.commands = CommandRouter()
         register_builtin_commands(self.commands)
@@ -494,6 +502,10 @@ class AgentLoop:
         self._identity_state_max_mtime: float = -1.0
         if self._runtime_config is not None:
             self._identity_state_max_mtime = self._compute_identity_sources_mtime()
+
+    def _sync_subagent_runtime_limits(self) -> None:
+        """Keep subagent runtime limits aligned with mutable loop settings."""
+        self.subagents.max_iterations = self.max_iterations
 
     def _logical_agent_id_for_console_row(self) -> str | None:
         """Same resolution as gateway startup: env OPENPAWLET_AGENT_ID, else non-synthetic agent_id."""
@@ -607,6 +619,14 @@ class AgentLoop:
         if defaults.max_tool_iterations != self.max_iterations:
             changed["max_iterations"] = (self.max_iterations, defaults.max_tool_iterations)
             self.max_iterations = defaults.max_tool_iterations
+            self._sync_subagent_runtime_limits()
+
+        if defaults.max_history_messages != self.max_history_messages:
+            changed["max_history_messages"] = (
+                self.max_history_messages,
+                defaults.max_history_messages,
+            )
+            self.max_history_messages = defaults.max_history_messages
 
         if defaults.max_tool_result_chars != self.max_tool_result_chars:
             changed["max_tool_result_chars"] = (
@@ -761,10 +781,17 @@ class AgentLoop:
                 )
             )
         if self.web_config.enable:
+            _ua = self.web_config.user_agent
             self.tools.register(
-                WebSearchTool(config=self.web_config.search, proxy=self.web_config.proxy)
+                WebSearchTool(config=self.web_config.search, proxy=self.web_config.proxy, user_agent=_ua)
             )
-            self.tools.register(WebFetchTool(proxy=self.web_config.proxy))
+            self.tools.register(
+                WebFetchTool(
+                    config=self.web_config.fetch,
+                    proxy=self.web_config.proxy,
+                    user_agent=_ua,
+                )
+            )
         self.tools.register(MessageTool(send_callback=self.bus.publish_outbound))
         self.tools.register(AskUserTool())
         self.tools.register(SpawnTool(manager=self.subagents))
@@ -820,11 +847,25 @@ class AgentLoop:
         # Compute the effective session key (accounts for unified sessions)
         # so that subagent results route to the correct pending queue.
         effective_key = UNIFIED_SESSION_KEY if self._unified_session else f"{channel}:{chat_id}"
+        cron_meta: dict[str, Any] = {}
+        cron_sess = ""
+        if self._pending_cron_capture:
+            cron_meta, cron_sess = self._pending_cron_capture
+        cron_session_resolved = (
+            cron_sess.strip() if isinstance(cron_sess, str) and cron_sess.strip() else effective_key
+        )
         for name in ("message", "spawn", "cron", "my"):
             if tool := self.tools.get(name):
                 if hasattr(tool, "set_context"):
                     if name == "spawn":
                         tool.set_context(channel, chat_id, effective_key=effective_key)
+                    elif name == "cron":
+                        tool.set_context(
+                            channel,
+                            chat_id,
+                            metadata=cron_meta or None,
+                            session_key=cron_session_resolved,
+                        )
                     else:
                         tool.set_context(
                             channel, chat_id, *([message_id] if name == "message" else [])
@@ -1030,6 +1071,8 @@ class AgentLoop:
 
         Returns (final_content, tools_used, messages, stop_reason, had_injections).
         """
+        self._sync_subagent_runtime_limits()
+
         loop_hook = _LoopHook(
             self,
             on_progress=on_progress,
@@ -1546,8 +1589,10 @@ class AgentLoop:
             is_subagent = msg.sender_id == "subagent"
             if is_subagent and self._persist_subagent_followup(session, msg):
                 self.sessions.save(session)
+            self._pending_cron_capture = (dict(msg.metadata or {}), key)
             self._set_tool_context(channel, chat_id, msg.metadata.get("message_id"))
-            history = session.get_history(max_messages=0)
+            _hcap = self.max_history_messages if self.max_history_messages > 0 else 0
+            history = session.get_history(max_messages=_hcap)
             current_role = "assistant" if is_subagent else "user"
 
             # Subagent content is already in `history` above; passing it again
@@ -1638,21 +1683,24 @@ class AgentLoop:
             session_summary=pending,
         )
 
+        self._pending_cron_capture = (dict(msg.metadata or {}), key)
         self._set_tool_context(msg.channel, msg.chat_id, msg.metadata.get("message_id"))
         if message_tool := self.tools.get("message"):
             if isinstance(message_tool, MessageTool):
                 message_tool.start_turn()
 
-        history = session.get_history(max_messages=0)
+        history_full = session.get_history(max_messages=0)
+        pending_ask_id = pending_ask_user_id(history_full)
+        _hcap = self.max_history_messages if self.max_history_messages > 0 else 0
+        history = history_full if pending_ask_id else session.get_history(max_messages=_hcap)
 
         # If the previous turn ended on an ``ask_user`` interrupt, treat
         # this inbound message as the user's answer and feed it back as
         # the missing tool result rather than starting a fresh user turn.
-        pending_ask_id = pending_ask_user_id(history)
         if pending_ask_id:
             initial_messages = ask_user_tool_result_messages(
                 self.context.build_system_prompt(channel=msg.channel),
-                history,
+                history_full,
                 pending_ask_id,
                 msg.content,
             )

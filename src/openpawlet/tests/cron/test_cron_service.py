@@ -43,6 +43,52 @@ def test_add_job_accepts_valid_timezone(tmp_path) -> None:
     assert job.state.next_run_at_ms is not None
 
 
+def test_load_jobs_roundtrips_payload_channel_meta_and_session_key(tmp_path) -> None:
+    store_path = tmp_path / "cron" / "jobs.json"
+    store_path.parent.mkdir(parents=True)
+    store_path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "jobs": [
+                    {
+                        "id": "j1",
+                        "name": "m",
+                        "enabled": True,
+                        "schedule": {
+                            "kind": "every",
+                            "everyMs": 60_000,
+                        },
+                        "payload": {
+                            "kind": "agent_turn",
+                            "message": "hi",
+                            "deliver": False,
+                            "channel": "feishu",
+                            "to": None,
+                            "channelMeta": {"t": 1},
+                            "sessionKey": "sk-1",
+                        },
+                        "state": {"nextRunAtMs": None},
+                        "createdAtMs": 0,
+                        "updatedAtMs": 0,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    service = CronService(store_path)
+    job = service.get_job("j1")
+    assert job is not None
+    assert job.payload.channel_meta == {"t": 1}
+    assert job.payload.session_key == "sk-1"
+    service._save_store()
+    data = json.loads(store_path.read_text())
+    p = data["jobs"][0]["payload"]
+    assert p["channelMeta"] == {"t": 1}
+    assert p["sessionKey"] == "sk-1"
+
+
 @pytest.mark.asyncio
 async def test_execute_job_records_run_history(tmp_path) -> None:
     store_path = tmp_path / "cron" / "jobs.json"

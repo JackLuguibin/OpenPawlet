@@ -12,6 +12,7 @@ import pytest
 
 from openpawlet.agent.loop import AgentLoop
 from openpawlet.agent.subagent import SubagentManager, SubagentStatus
+from openpawlet.agent.tools.errors import AgentToolAbort
 from openpawlet.agent.tools.search import GlobTool, GrepTool
 from openpawlet.bus.queue import MessageBus
 
@@ -281,11 +282,10 @@ async def test_search_tools_reject_paths_outside_workspace(tmp_path: Path) -> No
     grep_tool = GrepTool(workspace=tmp_path, allowed_dir=tmp_path)
     glob_tool = GlobTool(workspace=tmp_path, allowed_dir=tmp_path)
 
-    grep_result = await grep_tool.execute(pattern="secret", path=str(outside))
-    glob_result = await glob_tool.execute(pattern="*.txt", path=str(outside.parent))
-
-    assert grep_result.startswith("Error:")
-    assert glob_result.startswith("Error:")
+    with pytest.raises(AgentToolAbort, match="outside allowed directory"):
+        await grep_tool.execute(pattern="secret", path=str(outside))
+    with pytest.raises(AgentToolAbort, match="outside allowed directory"):
+        await glob_tool.execute(pattern="*.txt", path=str(outside.parent))
 
 
 def test_agent_loop_registers_grep_and_glob(tmp_path: Path) -> None:

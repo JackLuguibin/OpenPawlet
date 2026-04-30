@@ -1003,6 +1003,17 @@ def test_kimi_k25_thinking_disabled_for_minimal() -> None:
     assert kw.get("extra_body") == {"thinking": {"type": "disabled"}}
 
 
+def test_openai_compat_omits_reasoning_effort_when_none_string() -> None:
+    kw = _build_kwargs_for("openai", "gpt-5", reasoning_effort="none")
+    assert "reasoning_effort" not in kw
+
+
+def test_kimi_k25_thinking_disabled_when_reasoning_effort_none_string() -> None:
+    kw = _build_kwargs_for("moonshot", "kimi-k2.5", reasoning_effort="none")
+    assert kw.get("extra_body") == {"thinking": {"type": "disabled"}}
+    assert "reasoning_effort" not in kw
+
+
 def test_kimi_k25_no_extra_body_when_reasoning_effort_none() -> None:
     """Without reasoning_effort the thinking param must not be injected."""
     kw = _build_kwargs_for("moonshot", "kimi-k2.5", reasoning_effort=None)

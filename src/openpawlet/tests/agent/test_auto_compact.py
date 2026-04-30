@@ -73,6 +73,22 @@ class TestSessionTTLConfig:
         assert "sessionTtlMinutes" not in data
 
 
+class TestMaxHistoryMessagesConfig:
+    """Agent defaults: cap unconsolidated history sent to the LLM (0 = unlimited)."""
+
+    def test_defaults_to_zero_unlimited(self):
+        assert AgentDefaults().max_history_messages == 0
+
+    def test_accepts_max_messages_json_key(self):
+        d = AgentDefaults.model_validate({"max_messages": 100})
+        assert d.max_history_messages == 100
+
+    def test_serializes_with_camel_alias(self):
+        d = AgentDefaults(max_history_messages=50)
+        data = d.model_dump(mode="json", by_alias=True)
+        assert data.get("maxHistoryMessages") == 50
+
+
 class TestAgentLoopTTLParam:
     """Test that AutoCompact receives and stores session_ttl_minutes."""
 

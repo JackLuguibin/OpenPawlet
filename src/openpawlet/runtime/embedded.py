@@ -162,6 +162,7 @@ class EmbeddedOpenPawlet:
             workspace=config.workspace_path,
             model=gw_model,
             max_iterations=config.agents.defaults.max_tool_iterations,
+            max_history_messages=config.agents.defaults.max_history_messages,
             context_window_tokens=config.agents.defaults.context_window_tokens,
             web_config=config.tools.web,
             context_block_limit=config.agents.defaults.context_block_limit,
@@ -476,6 +477,7 @@ class EmbeddedOpenPawlet:
             workspace=cfg.workspace_path,
             model=m_model,
             max_iterations=cfg.agents.defaults.max_tool_iterations,
+            max_history_messages=cfg.agents.defaults.max_history_messages,
             context_window_tokens=cfg.agents.defaults.context_window_tokens,
             web_config=cfg.tools.web,
             context_block_limit=cfg.agents.defaults.context_block_limit,
@@ -919,6 +921,8 @@ class EmbeddedOpenPawlet:
                             "channel": job.payload.channel,
                             "chat_id": job.payload.to,
                             "message": job.payload.message,
+                            "session_key": job.payload.session_key,
+                            "channel_meta": job.payload.channel_meta,
                         },
                     )
                 )
@@ -952,13 +956,27 @@ class EmbeddedOpenPawlet:
         if isinstance(message_tool, MessageTool):
             message_record_token = message_tool.set_record_channel_delivery(True)
 
+        cron_session_key = ""
+        try:
+            sk_raw = getattr(job.payload, "session_key", None)
+            if isinstance(sk_raw, str) and sk_raw.strip():
+                cron_session_key = sk_raw.strip()
+        except Exception:
+            cron_session_key = ""
+        run_session_key = cron_session_key or f"cron:{job.id}"
+
+        channel_meta_raw = getattr(job.payload, "channel_meta", None) or {}
+        delivery_meta = (
+            dict(channel_meta_raw) if isinstance(channel_meta_raw, dict) else {}
+        )
+
         async def _silent(*_args: Any, **_kwargs: Any) -> None:
             return None
 
         try:
             resp = await self.agent.process_direct(
                 reminder_note,
-                session_key=f"cron:{job.id}",
+                session_key=run_session_key,
                 channel=job.payload.channel or "cli",
                 chat_id=job.payload.to or "direct",
                 on_progress=_silent,
@@ -988,6 +1006,7 @@ class EmbeddedOpenPawlet:
                         channel=job.payload.channel or "cli",
                         chat_id=job.payload.to,
                         content=response,
+                        metadata=delivery_meta,
                     ),
                     record=True,
                 )

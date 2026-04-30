@@ -268,7 +268,7 @@ class RequestReplyMixin:
             try:
                 reply = await asyncio.wait_for(fut, timeout=float(timeout_s))
                 return (reply, attempt + 1, "ok")
-            except TimeoutError:
+            except asyncio.TimeoutError:
                 async with self._request_waiters_lock:
                     if self._request_waiters.get(cid) is fut:
                         self._request_waiters.pop(cid, None)

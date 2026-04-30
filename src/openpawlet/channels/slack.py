@@ -130,7 +130,10 @@ class SlackChannel(BaseChannel):
 
             # Slack rejects empty text payloads. Keep media-only messages media-only,
             # but send a single blank message when the bot has no text or files to send.
-            if msg.content or not (msg.media or []):
+            is_progress = (msg.metadata or {}).get("_progress", False)
+            if is_progress and not msg.content:
+                pass  # skip empty progress (e.g. tool-event-only deltas that render as blank lines)
+            elif msg.content or not (msg.media or []):
                 await self._web_client.chat_postMessage(
                     channel=target_chat_id,
                     text=self._to_mrkdwn(msg.content) if msg.content else " ",

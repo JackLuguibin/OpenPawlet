@@ -216,6 +216,7 @@ export interface AgentDefaultsJson {
   contextBlockLimit?: number | null;
   temperature?: number;
   maxToolIterations?: number;
+  maxHistoryMessages?: number;
   maxToolResultChars?: number;
   providerRetryMode?: string;
   reasoningEffort?: string | null;
@@ -253,6 +254,7 @@ export interface SettingsGeneralToolsFormValues {
   maxTokens: number;
   contextWindowTokens: number;
   maxToolIterations: number;
+  maxHistoryMessages: number;
   temperature: number;
   reasoningEffort: string;
   restrictToWorkspace: boolean;
@@ -356,11 +358,18 @@ export interface WebSearchConfigJson {
   timeout?: number;
 }
 
+/** ``tools.web.fetch`` — ``openpawlet.config.schema.WebFetchConfig``. */
+export interface WebFetchConfigJson {
+  useJinaReader?: boolean;
+}
+
 /** ``tools.web`` — ``openpawlet.config.schema.WebToolsConfig``. */
 export interface WebToolsConfigJson {
   enable?: boolean;
   proxy?: string | null;
+  userAgent?: string | null;
   search?: WebSearchConfigJson;
+  fetch?: WebFetchConfigJson;
 }
 
 /** ``tools.exec`` — ``openpawlet.config.schema.ExecToolConfig``. */

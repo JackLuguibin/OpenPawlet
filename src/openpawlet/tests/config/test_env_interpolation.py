@@ -63,6 +63,24 @@ class TestResolveConfig:
         resolved = resolve_config_env_vars(raw)
         assert resolved.providers.groq.api_key == "resolved-key"
 
+    def test_preserves_exclude_true_fields(self, monkeypatch):
+        monkeypatch.setenv("TEST_API_KEY", "resolved-key")
+        from openpawlet.config.schema import Config
+
+        cfg = Config()
+        cfg.providers.groq.api_key = "${TEST_API_KEY}"
+        cfg.agents.defaults.dream.cron = "0 * * * *"
+
+        out = resolve_config_env_vars(cfg)
+        assert out.providers.groq.api_key == "resolved-key"
+        assert out.agents.defaults.dream.cron == "0 * * * *"
+
+    def test_no_references_returns_same_root(self):
+        from openpawlet.config.schema import Config
+
+        cfg = Config()
+        assert resolve_config_env_vars(cfg) is cfg
+
     def test_save_preserves_templates(self, tmp_path, monkeypatch):
         monkeypatch.setenv("MY_TOKEN", "real-token")
         config_path = tmp_path / "config.json"

@@ -22,6 +22,9 @@ class ChannelsConfig(Base):
     Built-in and plugin channel configs are stored as extra fields (dicts).
     Each channel parses its own config in __init__.
     Per-channel "streaming": true enables streaming output (requires send_delta impl).
+
+    Per-channel overrides (dict or model): ``send_progress``, ``send_tool_hints`` (camelCase
+    aliases ``sendProgress``, ``sendToolHints``) fall back to the top-level defaults when unset.
     """
 
     model_config = ConfigDict(extra="allow")
@@ -92,6 +95,17 @@ class AgentDefaults(Base):
     context_block_limit: int | None = None
     temperature: float = 0.1
     max_tool_iterations: int = 200
+    # Unconsolidated tail passed to the LLM via get_history; 0 = unlimited.
+    max_history_messages: int = Field(
+        default=0,
+        ge=0,
+        le=100_000,
+        validation_alias=AliasChoices(
+            "maxHistoryMessages",
+            "max_messages",
+            "max_history_messages",
+        ),
+    )
     max_tool_result_chars: int = 16_000
     provider_retry_mode: Literal["standard", "persistent"] = "standard"
     reasoning_effort: str | None = (
@@ -143,6 +157,7 @@ class ProviderConfig(Base):
     api_key: str | None = None
     api_base: str | None = None
     extra_headers: dict[str, str] | None = None  # Custom headers (e.g. APP-Code for AiHubMix)
+    extra_body: dict[str, Any] | None = None  # Merged into every OpenAI-compat request body
 
 
 class ProvidersConfig(Base):
@@ -155,6 +170,9 @@ class ProvidersConfig(Base):
     anthropic: ProviderConfig = Field(default_factory=ProviderConfig)
     openai: ProviderConfig = Field(default_factory=ProviderConfig)
     openrouter: ProviderConfig = Field(default_factory=ProviderConfig)
+    huggingface: ProviderConfig = Field(
+        default_factory=ProviderConfig
+    )  # Hugging Face Inference Providers
     deepseek: ProviderConfig = Field(default_factory=ProviderConfig)
     groq: ProviderConfig = Field(default_factory=ProviderConfig)
     zhipu: ProviderConfig = Field(default_factory=ProviderConfig)
@@ -220,11 +238,17 @@ class GatewayConfig(Base):
 class WebSearchConfig(Base):
     """Web search tool configuration."""
 
-    provider: str = "duckduckgo"  # brave, tavily, duckduckgo, searxng, jina, kagi
+    provider: str = "duckduckgo"  # brave, tavily, duckduckgo, searxng, jina, kagi, olostep
     api_key: str = ""
     base_url: str = ""  # SearXNG base URL
     max_results: int = 5
     timeout: int = 30  # Wall-clock timeout (seconds) for search operations
+
+
+class WebFetchConfig(Base):
+    """Web fetch tool configuration."""
+
+    use_jina_reader: bool = True
 
 
 class WebToolsConfig(Base):
@@ -234,7 +258,11 @@ class WebToolsConfig(Base):
     proxy: str | None = (
         None  # HTTP/SOCKS5 proxy URL, e.g. "http://127.0.0.1:7890" or "socks5://127.0.0.1:1080"
     )
+    user_agent: str | None = (
+        None  # Default browser-like UA for web_search / web_fetch; None = bundled default string
+    )
     search: WebSearchConfig = Field(default_factory=WebSearchConfig)
+    fetch: WebFetchConfig = Field(default_factory=WebFetchConfig)
 
 
 class ExecToolConfig(Base):

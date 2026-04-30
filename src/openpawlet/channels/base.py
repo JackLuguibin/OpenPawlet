@@ -26,6 +26,8 @@ class BaseChannel(ABC):
     transcription_api_key: str = ""
     transcription_api_base: str = ""
     transcription_language: str | None = None
+    send_progress: bool = True
+    send_tool_hints: bool = False
 
     def __init__(self, config: Any, bus: MessageBus):
         """
@@ -50,7 +52,7 @@ class BaseChannel(ABC):
                 provider = OpenAITranscriptionProvider(
                     api_key=self.transcription_api_key,
                     api_base=self.transcription_api_base or None,
-                    language=self.transcription_language,
+                    language=self.transcription_language or None,
                 )
             else:
                 from openpawlet.providers.transcription import GroqTranscriptionProvider
@@ -58,7 +60,7 @@ class BaseChannel(ABC):
                 provider = GroqTranscriptionProvider(
                     api_key=self.transcription_api_key,
                     api_base=self.transcription_api_base or None,
-                    language=self.transcription_language,
+                    language=self.transcription_language or None,
                 )
             return await provider.transcribe(file_path)
         except Exception as e:

@@ -224,6 +224,84 @@ async def test_tick_suppresses_when_evaluator_says_no(tmp_path, monkeypatch) -> 
 
 
 @pytest.mark.asyncio
+async def test_tick_skips_evaluator_for_non_deliverable_response(tmp_path, monkeypatch) -> None:
+    (tmp_path / "HEARTBEAT.md").write_text("- [ ] x", encoding="utf-8")
+    provider = DummyProvider(
+        [
+            LLMResponse(
+                content="",
+                tool_calls=[
+                    ToolCallRequest(
+                        id="hb_1",
+                        name="heartbeat",
+                        arguments={"action": "run", "tasks": "t"},
+                    )
+                ],
+            ),
+        ]
+    )
+    evaluated: list[tuple] = []
+
+    async def _on_execute(_tasks: str) -> str:
+        return "Read HEARTBEAT.md and decided to skip."
+
+    async def _on_notify(_response: str) -> None:
+        raise AssertionError("should not notify")
+
+    async def _capture_eval(*a, **kw):
+        evaluated.append((a, kw))
+        return True
+
+    monkeypatch.setattr("openpawlet.utils.evaluator.evaluate_response", _capture_eval)
+    service = HeartbeatService(
+        workspace=tmp_path,
+        provider=provider,
+        model="openai/gpt-4o-mini",
+        on_execute=_on_execute,
+        on_notify=_on_notify,
+    )
+    await service._tick()
+    assert evaluated == []
+
+
+@pytest.mark.asyncio
+async def test_tick_empty_execute_response_skips_evaluator(tmp_path, monkeypatch) -> None:
+    (tmp_path / "HEARTBEAT.md").write_text("- [ ] x", encoding="utf-8")
+    provider = DummyProvider(
+        [
+            LLMResponse(
+                content="",
+                tool_calls=[
+                    ToolCallRequest(
+                        id="hb_1",
+                        name="heartbeat",
+                        arguments={"action": "run", "tasks": "t"},
+                    )
+                ],
+            ),
+        ]
+    )
+    evaluated: list = []
+
+    async def _on_execute(_tasks: str) -> str:
+        return ""
+
+    monkeypatch.setattr(
+        "openpawlet.utils.evaluator.evaluate_response",
+        lambda *a, **kw: evaluated.append(1) or True,
+    )
+    service = HeartbeatService(
+        workspace=tmp_path,
+        provider=provider,
+        model="openai/gpt-4o-mini",
+        on_execute=_on_execute,
+        on_notify=lambda _r: None,
+    )
+    await service._tick()
+    assert evaluated == []
+
+
+@pytest.mark.asyncio
 async def test_decide_retries_transient_error_then_succeeds(tmp_path, monkeypatch) -> None:
     provider = DummyProvider(
         [

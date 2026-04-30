@@ -298,12 +298,19 @@ class MatrixChannel(BaseChannel):
         self.store_path.mkdir(parents=True, exist_ok=True)
         self.session_path = self.store_path / "session.json"
 
+        # Replace ':' so matrix-nio store filenames are valid on Windows (WinError 123).
+        safe_store_name = (
+            self.config.user_id.replace(":", "_") + f"_{self.config.device_id}.db"
+        )
+
         self.client = AsyncClient(
             homeserver=self.config.homeserver,
             user=self.config.user_id,
             store_path=self.store_path,
             config=AsyncClientConfig(
-                store_sync_tokens=True, encryption_enabled=self.config.e2ee_enabled
+                store_sync_tokens=True,
+                encryption_enabled=self.config.e2ee_enabled,
+                store_name=safe_store_name,
             ),
         )
 

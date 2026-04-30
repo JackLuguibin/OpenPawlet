@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
 import weakref
 from collections.abc import Callable, Iterator
@@ -384,10 +385,31 @@ class MemoryStore:
             return None
 
     def _write_entries(self, entries: list[dict[str, Any]]) -> None:
-        """Overwrite history.jsonl with the given entries."""
-        with open(self.history_file, "w", encoding="utf-8") as f:
-            for entry in entries:
-                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        """Overwrite history.jsonl with the given entries (atomic write)."""
+        tmp_path = self.history_file.with_suffix(self.history_file.suffix + ".tmp")
+        try:
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                for entry in entries:
+                    f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path, self.history_file)
+
+            # fsync the directory so the rename is durable.
+            # On Windows, opening a directory with O_RDONLY raises
+            # PermissionError — skip the dir sync there (NTFS
+            # journals metadata synchronously).
+            try:
+                fd = os.open(str(self.history_file.parent), os.O_RDONLY)
+                try:
+                    os.fsync(fd)
+                finally:
+                    os.close(fd)
+            except PermissionError:
+                pass  # Windows — directory fsync not supported
+        except BaseException:
+            tmp_path.unlink(missing_ok=True)
+            raise
 
     # -- dream cursor --------------------------------------------------------
 

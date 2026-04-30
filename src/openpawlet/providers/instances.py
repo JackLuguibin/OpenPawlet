@@ -45,7 +45,7 @@ import re
 import threading
 import uuid
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.alias_generators import to_camel
@@ -176,6 +176,7 @@ class LLMProviderInstance(BaseModel):
     api_keys: list[ApiKeyEntry] = Field(default_factory=list)
     api_base: str | None = None
     extra_headers: dict[str, str] = Field(default_factory=dict)
+    extra_body: dict[str, Any] | None = None
     # Per-request timeout in seconds (None inherits provider default).
     timeout_s: float | None = None
     # Ordered chain of *other* instance ids to try when this one keeps

@@ -14,6 +14,7 @@ from loguru import logger
 
 from openpawlet.agent.hook import AgentHook, AgentHookContext
 from openpawlet.agent.tools.ask import AskUserInterrupt
+from openpawlet.agent.tools.errors import AgentToolAbort
 from openpawlet.agent.tools.registry import ToolRegistry
 from openpawlet.observability.telemetry import (
     agent_run_context,
@@ -29,6 +30,7 @@ from openpawlet.utils.helpers import (
     estimate_prompt_tokens_chain,
     find_legal_message_start,
     maybe_persist_tool_result,
+    strip_think,
     truncate_text,
 )
 from openpawlet.utils.prompt_templates import render_template
@@ -109,6 +111,14 @@ class AgentRunResult:
 
 class AgentRunner:
     """Run a tool-capable LLM loop without product-layer concerns."""
+
+    @staticmethod
+    def _tool_error_display_message(exc: BaseException) -> str:
+        """User-visible line for outbound / logs when a tool fatal stops the loop."""
+        if isinstance(exc, AgentToolAbort):
+            msg = str(exc).strip()
+            return msg if msg.lower().startswith("error") else f"Error: {msg}"
+        return f"Error: {type(exc).__name__}: {exc}"
 
     def __init__(self, provider: LLMProvider):
         self.provider = provider
@@ -378,7 +388,7 @@ class AgentRunner:
                             await hook.on_stream_end(context, resuming=False)
                         await hook.after_iteration(context)
                         break
-                    error = f"Error: {type(fatal_error).__name__}: {fatal_error}"
+                    error = self._tool_error_display_message(fatal_error)
                     final_content = error
                     stop_reason = "tool_error"
                     self._append_final_message(messages, final_content)
@@ -386,6 +396,8 @@ class AgentRunner:
                     context.error = error
                     context.stop_reason = stop_reason
                     await hook.after_iteration(context)
+                    if isinstance(fatal_error, AgentToolAbort):
+                        break
                     should_continue, injection_cycles = await self._try_drain_injections(
                         spec,
                         messages,
@@ -680,7 +692,13 @@ class AgentRunner:
             messages,
             tools=spec.tools.get_definitions(),
         )
-        streaming = hook.wants_streaming()
+        wants_streaming = hook.wants_streaming()
+        wants_progress_streaming = (
+            not wants_streaming
+            and spec.progress_callback is not None
+            and getattr(self.provider, "supports_progress_deltas", False) is True
+        )
+        streaming = wants_streaming or wants_progress_streaming
         t0 = time.perf_counter()
         with llm_request_span(
             kind="chat",
@@ -688,14 +706,35 @@ class AgentRunner:
             iteration=context.iteration,
             streaming=streaming,
         ):
-            if streaming:
+            if wants_streaming:
 
                 async def _stream(delta: str) -> None:
+                    if delta:
+                        context.streamed_content = True
                     await hook.on_stream(context, delta)
 
                 llm_call = self.provider.chat_stream_with_retry(
                     **kwargs,
                     on_content_delta=_stream,
+                )
+            elif wants_progress_streaming:
+                progress_buf = ""
+
+                async def _stream_progress(delta: str) -> None:
+                    nonlocal progress_buf
+                    if not delta:
+                        return
+                    prev_clean = strip_think(progress_buf)
+                    progress_buf += delta
+                    new_clean = strip_think(progress_buf)
+                    incremental = new_clean[len(prev_clean) :]
+                    if incremental:
+                        context.streamed_content = True
+                        await spec.progress_callback(incremental)
+
+                llm_call = self.provider.chat_stream_with_retry(
+                    **kwargs,
+                    on_content_delta=_stream_progress,
                 )
             else:
                 llm_call = self.provider.chat_with_retry(**kwargs)
@@ -771,6 +810,71 @@ class AgentRunner:
             merged[key] = merged.get(key, 0) + value
         return merged
 
+    @staticmethod
+    def _peer_cancelled_tool_outcome(
+        tool_call: ToolCallRequest,
+    ) -> tuple[Any, dict[str, str], BaseException | None]:
+        """Synthetic result when a sibling tool in a concurrent batch ended the batch early."""
+        return (
+            "",
+            {
+                "name": tool_call.name,
+                "status": "error",
+                "detail": "cancelled (peer tool ended batch early)",
+            },
+            None,
+        )
+
+    async def _run_tool_batch_concurrent(
+        self,
+        spec: AgentRunSpec,
+        batch: list[ToolCallRequest],
+        external_lookup_counts: dict[str, int],
+        iteration: int,
+    ) -> list[tuple[Any, dict[str, str], BaseException | None]]:
+        """Run concurrency-safe tools in parallel; cancel peers on abort/interrupt."""
+        task_to_index: dict[asyncio.Task, int] = {}
+        pending: set[asyncio.Task] = set()
+        for i, tc in enumerate(batch):
+            t = asyncio.create_task(
+                self._run_tool(spec, tc, external_lookup_counts, iteration)
+            )
+            task_to_index[t] = i
+            pending.add(t)
+
+        slots: list[tuple[Any, dict[str, str], BaseException | None] | None] = [None] * len(
+            batch
+        )
+        stop_early = False
+        while pending:
+            done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+            for task in done:
+                idx = task_to_index[task]
+                tc = batch[idx]
+                try:
+                    out = task.result()
+                except asyncio.CancelledError:
+                    out = AgentRunner._peer_cancelled_tool_outcome(tc)
+                slots[idx] = out
+                err = out[2]
+                if isinstance(err, (AskUserInterrupt, AgentToolAbort)):
+                    stop_early = True
+            if stop_early:
+                for t in pending:
+                    t.cancel()
+                if pending:
+                    await asyncio.gather(*pending, return_exceptions=True)
+                pending.clear()
+                break
+
+        resolved: list[tuple[Any, dict[str, str], BaseException | None]] = []
+        for i, tc in enumerate(batch):
+            row = slots[i]
+            if row is None:
+                row = AgentRunner._peer_cancelled_tool_outcome(tc)
+            resolved.append(row)
+        return resolved
+
     async def _execute_tools(
         self,
         spec: AgentRunSpec,
@@ -782,11 +886,11 @@ class AgentRunner:
         tool_results: list[tuple[Any, dict[str, str], BaseException | None]] = []
         for batch in batches:
             if spec.concurrent_tools and len(batch) > 1:
-                batch_results = await asyncio.gather(
-                    *(
-                        self._run_tool(spec, tool_call, external_lookup_counts, iteration)
-                        for tool_call in batch
-                    )
+                batch_results = await self._run_tool_batch_concurrent(
+                    spec,
+                    batch,
+                    external_lookup_counts,
+                    iteration,
                 )
                 tool_results.extend(batch_results)
             else:
@@ -796,10 +900,16 @@ class AgentRunner:
                     tool_results.append(out)
                     batch_results.append(out)
                     # Stop further calls in this batch on ask_user so the
-                    # turn pauses cleanly without queuing new work.
-                    if isinstance(out[2], AskUserInterrupt):
+                    # turn pauses cleanly without queuing new work. Policy
+                    # aborts end the turn fatally and must not run later tools
+                    # in the same sequential batch.
+                    fatal_batch = out[2]
+                    if isinstance(fatal_batch, (AskUserInterrupt, AgentToolAbort)):
                         break
-            if any(isinstance(error, AskUserInterrupt) for _, _, error in batch_results):
+            if any(
+                isinstance(error, (AskUserInterrupt, AgentToolAbort))
+                for _, _, error in batch_results
+            ):
                 break
 
         results: list[Any] = []
@@ -897,6 +1007,14 @@ class AgentRunner:
                 "detail": exc.question[:120],
             }
             return "", event, exc
+        except AgentToolAbort as exc:
+            text = AgentRunner._tool_error_display_message(exc)
+            event = {
+                "name": tool_call.name,
+                "status": "error",
+                "detail": text.replace("\n", " ").strip()[:120],
+            }
+            return text, event, exc
         except BaseException as exc:
             event = {
                 "name": tool_call.name,

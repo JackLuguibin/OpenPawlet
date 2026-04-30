@@ -559,8 +559,8 @@ async def test_group_thread_reply_gets_scoped_session_key() -> None:
 
 
 @pytest.mark.asyncio
-async def test_group_top_level_message_keeps_default_session_key() -> None:
-    """Group top-level messages (no root_id) must NOT get a thread-scoped key."""
+async def test_group_top_level_message_topics_session_by_message_id() -> None:
+    """Group top-level messages (no root_id) scope session to message_id (upstream parity)."""
     channel = _make_feishu_channel()
     channel._processed_message_ids.clear()
 
@@ -578,7 +578,7 @@ async def test_group_top_level_message_keeps_default_session_key() -> None:
         await channel._on_message(_make_feishu_event(chat_type="group"))
 
     assert len(captured) == 1
-    assert captured[0]["session_key"] is None
+    assert captured[0]["session_key"] == "feishu:oc_abc:om_001"
 
 
 @pytest.mark.asyncio
@@ -608,8 +608,8 @@ async def test_private_chat_thread_keeps_default_session_key() -> None:
 
 
 @pytest.mark.asyncio
-async def test_self_reply_in_group_keeps_default_session_key() -> None:
-    """Edge case: root_id == message_id (the message is its own root, not a reply)."""
+async def test_self_reply_in_group_scopes_session_when_root_equals_message() -> None:
+    """Edge case: root_id == message_id still gets a stable feishu:{chat}:{id} session key."""
     channel = _make_feishu_channel()
     channel._processed_message_ids.clear()
 
@@ -633,4 +633,4 @@ async def test_self_reply_in_group_keeps_default_session_key() -> None:
         )
 
     assert len(captured) == 1
-    assert captured[0]["session_key"] is None
+    assert captured[0]["session_key"] == "feishu:oc_abc:om_001"

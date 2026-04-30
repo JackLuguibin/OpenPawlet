@@ -82,6 +82,8 @@ async def add_cron_job(
             delete_after_run=bool(body.delete_after_run)
             if body.delete_after_run is not None
             else False,
+            channel_meta=dict(body.channel_meta or {}),
+            session_key=body.session_key,
         )
     except ValueError as exc:
         bad_request(str(exc))

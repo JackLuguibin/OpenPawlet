@@ -103,6 +103,29 @@ def test_channels_config_send_reasoning_content_alias():
     assert cfg.send_reasoning_content is False
 
 
+def test_channel_manager_resolve_bool_override_dict_and_aliases():
+    from openpawlet.channels.manager import ChannelManager
+
+    mgr = ChannelManager.__new__(ChannelManager)
+    assert mgr._resolve_bool_override({}, "send_progress", True) is True
+    assert mgr._resolve_bool_override({"send_progress": False}, "send_progress", True) is False
+    assert mgr._resolve_bool_override({"sendProgress": False}, "send_progress", True) is False
+    assert mgr._resolve_bool_override({"sendToolHints": True}, "send_tool_hints", False) is True
+
+
+def test_channel_manager_should_send_progress_uses_channel_flags():
+    from openpawlet.channels.manager import ChannelManager
+
+    class _Ch:
+        send_progress = False
+        send_tool_hints = True
+
+    mgr = ChannelManager.__new__(ChannelManager)
+    mgr.channels = {"tel": _Ch()}
+    assert mgr._should_send_progress("tel", tool_hint=False) is False
+    assert mgr._should_send_progress("tel", tool_hint=True) is True
+
+
 # ---------------------------------------------------------------------------
 # discover_plugins
 # ---------------------------------------------------------------------------
@@ -1381,7 +1404,12 @@ async def test_notify_restart_done_enqueues_outbound_message():
     mgr._dispatch_task = None
     mgr._send_with_retry = AsyncMock()
 
-    notice = RestartNotice(channel="feishu", chat_id="oc_123", started_at_raw="100.0")
+    notice = RestartNotice(
+        channel="feishu",
+        chat_id="oc_123",
+        started_at_raw="100.0",
+        metadata={"thread": "t1"},
+    )
     with patch("openpawlet.channels.manager.consume_restart_notice_from_env", return_value=notice):
         mgr._notify_restart_done_if_needed()
 
@@ -1392,3 +1420,4 @@ async def test_notify_restart_done_enqueues_outbound_message():
     assert sent_msg.channel == "feishu"
     assert sent_msg.chat_id == "oc_123"
     assert sent_msg.content.startswith("Restart completed")
+    assert sent_msg.metadata == {"thread": "t1"}

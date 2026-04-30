@@ -70,6 +70,46 @@ _KIMI_THINKING_MODELS: frozenset[str] = frozenset(
         "k2.6-code-preview",
     }
 )
+_OPENAI_COMPAT_REQUEST_TIMEOUT_S = 120.0
+
+
+def _float_env(name: str, default: float) -> float:
+    raw = os.environ.get(name)
+    if raw is None or not str(raw).strip():
+        return default
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        logger.warning("Ignoring invalid {}={!r}; using {}", name, raw, default)
+        return default
+    if value <= 0:
+        logger.warning("Ignoring non-positive {}={!r}; using {}", name, raw, default)
+        return default
+    return value
+
+
+def _openai_compat_timeout_s() -> float:
+    """Bounded HTTP timeout for OpenAI-compatible SDK calls (seconds)."""
+    raw = os.environ.get("OPENPAWLET_OPENAI_COMPAT_TIMEOUT_S")
+    if raw is not None and str(raw).strip():
+        return _float_env("OPENPAWLET_OPENAI_COMPAT_TIMEOUT_S", _OPENAI_COMPAT_REQUEST_TIMEOUT_S)
+    return _OPENAI_COMPAT_REQUEST_TIMEOUT_S
+
+
+def _stream_idle_timeout_s() -> int:
+    """Per-chunk idle limit while reading an LLM stream (seconds)."""
+    raw = os.environ.get("OPENPAWLET_STREAM_IDLE_TIMEOUT_S")
+    if raw is not None and str(raw).strip():
+        try:
+            v = int(str(raw).strip())
+            return max(1, v)
+        except ValueError:
+            logger.warning(
+                "Ignoring invalid OPENPAWLET_STREAM_IDLE_TIMEOUT_S={!r}; using 90", raw
+            )
+            return 90
+    return 90
+
 
 _THINKING_STYLE_MAP: dict[str, Any] = {
     "thinking_type": lambda enabled: {"thinking": {"type": "enabled" if enabled else "disabled"}},
@@ -249,6 +289,21 @@ def _responses_circuit_key(
     return f"{model_name}:{effort}"
 
 
+def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    """Recursively merge *override* into *base*, returning a new dict."""
+    merged = dict(base)
+    for key, value in override.items():
+        if (
+            key in merged
+            and isinstance(merged[key], dict)
+            and isinstance(value, dict)
+        ):
+            merged[key] = _deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
 class OpenAICompatProvider(LLMProvider):
     """Unified provider for all OpenAI-compatible APIs.
 
@@ -263,11 +318,13 @@ class OpenAICompatProvider(LLMProvider):
         default_model: str = "gpt-4o",
         extra_headers: dict[str, str] | None = None,
         spec: ProviderSpec | None = None,
+        extra_body: dict[str, Any] | None = None,
     ):
         super().__init__(api_key, api_base)
         self.default_model = default_model
         self.extra_headers = extra_headers or {}
         self._spec = spec
+        self._extra_body = extra_body or {}
 
         if api_key and spec and spec.env_key:
             self._setup_env(api_key, api_base)
@@ -280,10 +337,14 @@ class OpenAICompatProvider(LLMProvider):
         if extra_headers:
             default_headers.update(extra_headers)
 
+        # Local servers may close idle pooled connections; disable keepalive.
+        # Cloud benefits from keepalive; use default pool there.
+        timeout_s = _openai_compat_timeout_s()
         http_client: httpx.AsyncClient | None = None
         if _is_local_endpoint(spec, effective_base):
             http_client = httpx.AsyncClient(
                 limits=httpx.Limits(keepalive_expiry=0),
+                timeout=timeout_s,
             )
 
         self._client = AsyncOpenAI(
@@ -291,6 +352,7 @@ class OpenAICompatProvider(LLMProvider):
             base_url=effective_base,
             default_headers=default_headers,
             max_retries=0,
+            timeout=timeout_s,
             http_client=http_client,
         )
 
@@ -539,7 +601,7 @@ class OpenAICompatProvider(LLMProvider):
             # "minimal" yields 400 invalid_value; map to "minimum" on the wire.
             wire_effort = "minimum"
 
-        if wire_effort:
+        if wire_effort and semantic_effort != "none":
             kwargs["reasoning_effort"] = wire_effort
 
         # Provider-specific thinking parameters.
@@ -558,7 +620,7 @@ class OpenAICompatProvider(LLMProvider):
             and not third_party_base
         )
         if thinking_style_active and spec is not None:
-            thinking_enabled = semantic_effort != "minimal"
+            thinking_enabled = semantic_effort not in ("none", "minimal")
             extra = _THINKING_STYLE_MAP.get(spec.thinking_style, lambda _: None)(thinking_enabled)
             if extra:
                 kwargs.setdefault("extra_body", {}).update(extra)
@@ -573,7 +635,7 @@ class OpenAICompatProvider(LLMProvider):
             and not third_party_base
         )
         if kimi_thinking_active:
-            thinking_enabled = semantic_effort != "minimal"
+            thinking_enabled = semantic_effort not in ("none", "minimal")
             kwargs.setdefault("extra_body", {}).update(
                 {"thinking": {"type": "enabled" if thinking_enabled else "disabled"}}
             )
@@ -583,13 +645,17 @@ class OpenAICompatProvider(LLMProvider):
             kwargs["tool_choice"] = tool_choice or "auto"
 
         thinking_active = (
-            (thinking_style_active and semantic_effort != "minimal")
-            or (kimi_thinking_active and semantic_effort != "minimal")
+            (thinking_style_active and semantic_effort not in ("none", "minimal"))
+            or (kimi_thinking_active and semantic_effort not in ("none", "minimal"))
         )
         if thinking_active:
             for msg in kwargs["messages"]:
                 if msg.get("role") == "assistant" and "reasoning_content" not in msg:
                     msg["reasoning_content"] = ""
+
+        if self._extra_body:
+            existing = kwargs.get("extra_body", {})
+            kwargs["extra_body"] = _deep_merge(existing, self._extra_body)
 
         return kwargs
 
@@ -1204,7 +1270,7 @@ class OpenAICompatProvider(LLMProvider):
         tool_choice: str | dict[str, Any] | None = None,
         on_content_delta: Callable[[str], Awaitable[None]] | None = None,
     ) -> LLMResponse:
-        idle_timeout_s = int(os.environ.get("OPENPAWLET_STREAM_IDLE_TIMEOUT_S", "90"))
+        idle_timeout_s = _stream_idle_timeout_s()
         try:
             if self._should_use_responses_api(model, reasoning_effort):
                 try:
@@ -1287,10 +1353,11 @@ class OpenAICompatProvider(LLMProvider):
                     if text:
                         await on_content_delta(text)
             return self._parse_chunks(chunks)
-        except TimeoutError:
+        except asyncio.TimeoutError:
             return LLMResponse(
                 content=(
-                    f"Error calling LLM: stream stalled for more than {idle_timeout_s} seconds"
+                    "Error calling LLM: stream stalled for more than "
+                    f"{idle_timeout_s} seconds"
                 ),
                 finish_reason="error",
                 error_kind="timeout",

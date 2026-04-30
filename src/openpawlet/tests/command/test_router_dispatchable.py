@@ -25,10 +25,12 @@ class TestIsDispatchableCommand:
         assert router.is_dispatchable_command("/dream")
         assert router.is_dispatchable_command("/dream-log")
         assert router.is_dispatchable_command("/dream-restore")
+        assert router.is_dispatchable_command("/history")
 
     def test_prefix_commands_match(self, router: CommandRouter) -> None:
         assert router.is_dispatchable_command("/dream-log abc123")
         assert router.is_dispatchable_command("/dream-restore def456")
+        assert router.is_dispatchable_command("/history 5")
 
     def test_priority_commands_not_matched(self, router: CommandRouter) -> None:
         # Priority commands are NOT in the dispatchable tiers — they are
@@ -44,6 +46,7 @@ class TestIsDispatchableCommand:
     def test_case_insensitive(self, router: CommandRouter) -> None:
         assert router.is_dispatchable_command("/NEW")
         assert router.is_dispatchable_command("/Help")
+        assert router.is_dispatchable_command("/HiStOrY")
 
     def test_strips_whitespace(self, router: CommandRouter) -> None:
         assert router.is_dispatchable_command("  /new  ")

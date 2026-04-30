@@ -1,6 +1,7 @@
 """Tests for the restructured MemoryStore — pure file I/O layer."""
 
 import json
+import os
 from datetime import datetime
 
 import pytest
@@ -144,6 +145,31 @@ class TestHistoryWithCursor:
         entries = store.read_unprocessed_history(since_cursor=0)
         assert len(entries) == 2
         assert entries[0]["cursor"] in {4, 5}
+
+    def test_compact_history_atomic_no_orphan_tmp(self, tmp_path):
+        store = MemoryStore(tmp_path, max_history_entries=2)
+        store.append_history("event 1")
+        store.append_history("event 2")
+        store.append_history("event 3")
+        store.compact_history()
+        assert not list(store.memory_dir.glob("*.tmp"))
+
+    def test_compact_history_cleans_tmp_when_replace_fails(self, tmp_path, monkeypatch):
+        store = MemoryStore(tmp_path, max_history_entries=2)
+        store.append_history("event 1")
+        store.append_history("event 2")
+        store.append_history("event 3")
+        before = store.history_file.read_text(encoding="utf-8")
+
+        def fail_replace(src, dst):  # noqa: ARG001 — os.replace signature
+            raise OSError("simulated replace failure")
+
+        monkeypatch.setattr(os, "replace", fail_replace)
+        with pytest.raises(OSError, match="simulated"):
+            store.compact_history()
+
+        assert not list(store.memory_dir.glob("*.tmp"))
+        assert store.history_file.read_text(encoding="utf-8") == before
 
 
 class TestDreamCursor:

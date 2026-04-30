@@ -56,6 +56,7 @@ def _build_agent_loop(config: Config, *, bus: MessageBus | None = None) -> Agent
         workspace=config.workspace_path,
         model=defaults.model,
         max_iterations=defaults.max_tool_iterations,
+        max_history_messages=defaults.max_history_messages,
         context_window_tokens=defaults.context_window_tokens,
         context_block_limit=defaults.context_block_limit,
         max_tool_result_chars=defaults.max_tool_result_chars,

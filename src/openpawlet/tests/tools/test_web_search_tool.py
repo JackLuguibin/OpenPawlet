@@ -1,5 +1,8 @@
 """Tests for multi-provider web search."""
 
+import sys
+import types
+
 import httpx
 import pytest
 
@@ -44,6 +47,7 @@ async def test_brave_search(monkeypatch):
     async def mock_get(self, url, **kw):
         assert "brave" in url
         assert kw["headers"]["X-Subscription-Token"] == "brave-key"
+        assert kw["headers"].get("User-Agent")
         return _response(
             json={
                 "web": {
@@ -322,3 +326,93 @@ async def test_duckduckgo_timeout_returns_error(monkeypatch):
     result = await tool.execute(query="test")
     gate.set()
     assert "Error" in result
+
+
+def test_olostep_with_api_key_is_concurrency_safe():
+    tool = _tool(provider="olostep", api_key="secret")
+    assert tool.exclusive is False
+    assert tool.concurrency_safe is True
+
+
+@pytest.mark.asyncio
+async def test_olostep_missing_key_falls_back_to_duckduckgo(monkeypatch):
+    class MockDDGS:
+        def __init__(self, **kw):
+            pass
+
+        def text(self, query, max_results=5):
+            return [
+                {"title": "Fallback", "href": "https://ddg.example", "body": "DuckDuckGo fallback"}
+            ]
+
+    monkeypatch.setattr("ddgs.DDGS", MockDDGS)
+    monkeypatch.delenv("OLOSTEP_API_KEY", raising=False)
+
+    tool = _tool(provider="olostep", api_key="")
+    result = await tool.execute(query="test")
+    assert "Fallback" in result
+
+
+@pytest.mark.asyncio
+async def test_olostep_search_formats_answer_and_sources(monkeypatch):
+    calls: dict[str, object] = {}
+
+    class FakeSource:
+        title = "Src Title"
+        url = "https://src.example/page"
+
+    class FakeResult:
+        answer = "Composite answer."
+        sources = [FakeSource()]
+
+    class FakeAnswers:
+        async def create(self, task):
+            calls["task"] = task
+            return FakeResult()
+
+    class FakeClient:
+        def __init__(self, api_key="", **kw):
+            calls["api_key"] = api_key
+            self.answers = FakeAnswers()
+            self._transport = None
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+    fake_mod = types.ModuleType("olostep")
+    fake_mod.AsyncOlostep = FakeClient
+
+    class Olostep_BaseError(Exception):
+        pass
+
+    fake_mod.Olostep_BaseError = Olostep_BaseError
+    monkeypatch.delitem(sys.modules, "olostep", raising=False)
+    monkeypatch.setitem(sys.modules, "olostep", fake_mod)
+
+    tool = _tool(provider="olostep", api_key="olostep-key")
+    result = await tool.execute(query="q1", count=5)
+    assert calls["task"] == "q1"
+    assert calls["api_key"] == "olostep-key"
+    assert "Composite answer" in result
+    assert "src.example" in result
+
+
+@pytest.mark.asyncio
+async def test_olostep_import_error_returns_install_message(monkeypatch):
+    import builtins
+
+    real_import = builtins.__import__
+
+    def guarding_import(name, *args, **kwargs):
+        if name == "olostep":
+            raise ImportError("blocked")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", guarding_import)
+
+    tool = _tool(provider="olostep", api_key="x")
+    text = await tool.execute(query="q")
+    assert "pip install olostep" in text

@@ -164,6 +164,7 @@ class SubagentManager:
         base_tools: ToolsConfig | None = None,
         transcript_writer: SessionTranscriptWriter | None = None,
         session_manager: SessionManager | None = None,
+        max_iterations: int | None = None,
     ):
         self.provider = provider
         self.workspace = workspace
@@ -204,6 +205,11 @@ class SubagentManager:
             web=self.web_config,
             exec=self.exec_config,
             restrict_to_workspace=self.restrict_to_workspace,
+        )
+        self.max_iterations = (
+            max_iterations
+            if max_iterations is not None
+            else self._base_defaults.max_tool_iterations
         )
 
     async def spawn(
@@ -439,9 +445,16 @@ class SubagentManager:
         if web.enable:
             _register(
                 "web_search",
-                lambda: WebSearchTool(config=web.search, proxy=web.proxy),
+                lambda: WebSearchTool(config=web.search, proxy=web.proxy, user_agent=web.user_agent),
             )
-            _register("web_fetch", lambda: WebFetchTool(proxy=web.proxy))
+            _register(
+                "web_fetch",
+                lambda: WebFetchTool(
+                    config=web.fetch,
+                    proxy=web.proxy,
+                    user_agent=web.user_agent,
+                ),
+            )
 
         # Event channel tools (used by sub-agents to talk back / listen).
         # Subscribe tool's context is set after registration.
@@ -557,7 +570,7 @@ class SubagentManager:
                 system_prompt = self._build_subagent_prompt()
                 effective_model = self.model
                 effective_max_chars = self.max_tool_result_chars
-                effective_max_iter = 15
+                effective_max_iter = self.max_iterations
 
             # If the profile explicitly bound to an LLM provider instance,
             # build a fail-over-aware provider on demand and use a runner

@@ -3,6 +3,8 @@ import subprocess
 import sys
 from typing import Any
 
+import pytest
+
 from openpawlet.agent.tools import (
     ArraySchema,
     IntegerSchema,
@@ -13,6 +15,7 @@ from openpawlet.agent.tools import (
     tool_parameters_schema,
 )
 from openpawlet.agent.tools.base import Tool
+from openpawlet.agent.tools.errors import AgentToolAbort
 from openpawlet.agent.tools.registry import ToolRegistry
 from openpawlet.agent.tools.shell import ExecTool
 
@@ -241,14 +244,20 @@ def test_exec_extract_absolute_paths_captures_quoted_paths() -> None:
 
 def test_exec_guard_blocks_home_path_outside_workspace(tmp_path) -> None:
     tool = ExecTool(restrict_to_workspace=True)
-    error = tool._guard_command("cat ~/.openpawlet/config.json", str(tmp_path))
-    assert error == "Error: Command blocked by safety guard (path outside working dir)"
+    with pytest.raises(
+        AgentToolAbort,
+        match="path outside working dir",
+    ):
+        tool._guard_command("cat ~/.openpawlet/config.json", str(tmp_path))
 
 
 def test_exec_guard_blocks_quoted_home_path_outside_workspace(tmp_path) -> None:
     tool = ExecTool(restrict_to_workspace=True)
-    error = tool._guard_command('cat "~/.openpawlet/config.json"', str(tmp_path))
-    assert error == "Error: Command blocked by safety guard (path outside working dir)"
+    with pytest.raises(
+        AgentToolAbort,
+        match="path outside working dir",
+    ):
+        tool._guard_command('cat "~/.openpawlet/config.json"', str(tmp_path))
 
 
 def test_exec_guard_allows_media_path_outside_workspace(tmp_path, monkeypatch) -> None:
@@ -260,8 +269,7 @@ def test_exec_guard_allows_media_path_outside_workspace(tmp_path, monkeypatch) -
     monkeypatch.setattr("openpawlet.agent.tools.shell.get_media_dir", lambda: media_dir)
 
     tool = ExecTool(restrict_to_workspace=True)
-    error = tool._guard_command(f'cat "{media_file}"', str(tmp_path / "workspace"))
-    assert error is None
+    tool._guard_command(f'cat "{media_file}"', str(tmp_path / "workspace"))
 
 
 def test_exec_guard_blocks_windows_drive_root_outside_workspace(monkeypatch) -> None:
@@ -299,8 +307,11 @@ def test_exec_guard_blocks_windows_drive_root_outside_workspace(monkeypatch) -> 
     monkeypatch.setattr(shell_mod, "Path", FakeWindowsPath)
 
     tool = ExecTool(restrict_to_workspace=True)
-    error = tool._guard_command("dir E:\\", "E:\\workspace")
-    assert error == "Error: Command blocked by safety guard (path outside working dir)"
+    with pytest.raises(
+        AgentToolAbort,
+        match="path outside working dir",
+    ):
+        tool._guard_command("dir E:\\", "E:\\workspace")
 
 
 # --- cast_params tests ---

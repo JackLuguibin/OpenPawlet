@@ -62,12 +62,29 @@ class CronTool(Tool):
         self._default_timezone = default_timezone
         self._channel_ctx: ContextVar[str] = ContextVar("cron_tool_channel", default="")
         self._chat_id_ctx: ContextVar[str] = ContextVar("cron_tool_chat_id", default="")
+        self._metadata_ctx: ContextVar[dict[str, Any] | None] = ContextVar(
+            "cron_tool_metadata", default=None
+        )
+        self._session_key_ctx: ContextVar[str | None] = ContextVar(
+            "cron_tool_session_key", default=None
+        )
         self._in_cron_context: ContextVar[bool] = ContextVar("cron_in_context", default=False)
 
-    def set_context(self, channel: str, chat_id: str) -> None:
+    def set_context(
+        self,
+        channel: str,
+        chat_id: str,
+        *,
+        metadata: dict[str, Any] | None = None,
+        session_key: str | None = None,
+    ) -> None:
         """Set the current session context for delivery (task-local under asyncio)."""
         self._channel_ctx.set(channel)
         self._chat_id_ctx.set(chat_id)
+        self._metadata_ctx.set(dict(metadata or {}))
+        self._session_key_ctx.set(
+            (session_key or "").strip() or f"{channel}:{chat_id}"
+        )
 
     def set_cron_context(self, active: bool):
         """Mark whether the tool is executing inside a cron job callback."""
@@ -200,6 +217,8 @@ class CronTool(Tool):
             channel=ch,
             to=cid,
             delete_after_run=delete_after,
+            channel_meta=dict(self._metadata_ctx.get() or {}),
+            session_key=self._session_key_ctx.get(),
         )
         return f"Created job '{job.name}' (id: {job.id})"
 

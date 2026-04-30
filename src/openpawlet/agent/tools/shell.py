@@ -11,6 +11,7 @@ from typing import Any
 from loguru import logger
 
 from openpawlet.agent.tools.base import Tool, tool_parameters
+from openpawlet.agent.tools.errors import AgentToolAbort
 from openpawlet.agent.tools.sandbox import wrap_command
 from openpawlet.agent.tools.schema import IntegerSchema, StringSchema, tool_parameters_schema
 from openpawlet.config.paths import get_media_dir
@@ -118,13 +119,15 @@ class ExecTool(Tool):
                 requested = Path(cwd).expanduser().resolve()
                 workspace_root = Path(self.working_dir).expanduser().resolve()
             except Exception:
-                return "Error: working_dir could not be resolved"
+                raise AgentToolAbort(
+                    "Error: working_dir could not be resolved"
+                ) from None
             if requested != workspace_root and workspace_root not in requested.parents:
-                return "Error: working_dir is outside the configured workspace"
+                raise AgentToolAbort(
+                    "Error: working_dir is outside the configured workspace"
+                )
 
-        guard_error = self._guard_command(command, cwd)
-        if guard_error:
-            return guard_error
+        self._guard_command(command, cwd)
 
         if self.sandbox:
             if _IS_WINDOWS:
@@ -281,27 +284,39 @@ class ExecTool(Tool):
                 env[key] = val
         return env
 
-    def _guard_command(self, command: str, cwd: str) -> str | None:
-        """Best-effort safety guard for potentially destructive commands."""
+    def _guard_command(self, command: str, cwd: str) -> None:
+        """Best-effort safety guard for destructive or out-of-scope commands.
+
+        Raises :class:`~openpawlet.agent.tools.errors.AgentToolAbort` when the command
+        must not run so the agent loop can end the turn consistently.
+        """
         cmd = command.strip()
         lower = cmd.lower()
 
         for pattern in self.deny_patterns:
             if re.search(pattern, lower):
-                return "Error: Command blocked by safety guard (dangerous pattern detected)"
+                raise AgentToolAbort(
+                    "Error: Command blocked by safety guard (dangerous pattern detected)"
+                )
 
         if self.allow_patterns:
             if not any(re.search(p, lower) for p in self.allow_patterns):
-                return "Error: Command blocked by safety guard (not in allowlist)"
+                raise AgentToolAbort(
+                    "Error: Command blocked by safety guard (not in allowlist)"
+                )
 
         from openpawlet.security.network import contains_internal_url
 
         if contains_internal_url(cmd):
-            return "Error: Command blocked by safety guard (internal/private URL detected)"
+            raise AgentToolAbort(
+                "Error: Command blocked by safety guard (internal/private URL detected)"
+            )
 
         if self.restrict_to_workspace:
             if "..\\" in cmd or "../" in cmd:
-                return "Error: Command blocked by safety guard (path traversal detected)"
+                raise AgentToolAbort(
+                    "Error: Command blocked by safety guard (path traversal detected)"
+                )
 
             cwd_path = Path(cwd).resolve()
 
@@ -320,7 +335,9 @@ class ExecTool(Tool):
                     and media_path not in p.parents
                     and p != media_path
                 ):
-                    return "Error: Command blocked by safety guard (path outside working dir)"
+                    raise AgentToolAbort(
+                        "Error: Command blocked by safety guard (path outside working dir)"
+                    )
 
         return None
 

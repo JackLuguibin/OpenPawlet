@@ -11,6 +11,7 @@ import pytest
 
 from openpawlet.agent.profile_resolver import ProfileStore, resolve_profile
 from openpawlet.agent.subagent import SubagentManager, SubagentStatus
+from openpawlet.agent.tools.errors import AgentToolAbort
 from openpawlet.bus.queue import MessageBus
 from openpawlet.config.profile import (
     AgentDefaultsOverride,
@@ -250,24 +251,18 @@ def test_profile_subagent_filesystem_locked_to_agent_dir(tmp_path: Path) -> None
 
     async def _try_writes():
         ok = await write_file.execute(path="note.txt", content="hi")
-        # Try to climb out of the sandbox into the bot workspace.
-        outside_relative = await write_file.execute(
-            path="../../secret.txt", content="hijacked"
-        )
-        # Try an absolute path into the parent workspace.
-        outside_absolute = await write_file.execute(
-            path=str(tmp_path / "secret.txt"), content="hijacked"
-        )
-        return ok, outside_relative, outside_absolute
+        with pytest.raises(AgentToolAbort, match="outside allowed directory"):
+            await write_file.execute(path="../../secret.txt", content="hijacked")
+        with pytest.raises(AgentToolAbort, match="outside allowed directory"):
+            await write_file.execute(path=str(tmp_path / "secret.txt"), content="hijacked")
+        return ok
 
-    ok, out_rel, out_abs = asyncio.run(_try_writes())
+    ok = asyncio.run(_try_writes())
 
     # In-sandbox write succeeded.
     assert "Error" not in str(ok), ok
     assert (agent_root / "note.txt").read_text(encoding="utf-8") == "hi"
     # Out-of-sandbox attempts must be refused and leave the original file intact.
-    assert "outside allowed directory" in str(out_rel) or "Error" in str(out_rel)
-    assert "outside allowed directory" in str(out_abs) or "Error" in str(out_abs)
     assert (tmp_path / "secret.txt").read_text(encoding="utf-8") == "top-secret"
 
 
@@ -294,8 +289,8 @@ def test_profile_cannot_relax_sandbox_via_restrict_flag(tmp_path: Path) -> None:
 
     import asyncio
 
-    result = asyncio.run(read_file.execute(path=str(tmp_path / "leak.txt")))
-    assert "outside allowed directory" in str(result) or "Error" in str(result)
+    with pytest.raises(AgentToolAbort, match="outside allowed directory"):
+        asyncio.run(read_file.execute(path=str(tmp_path / "leak.txt")))
 
 
 def test_profile_exec_cwd_is_agent_dir(tmp_path: Path) -> None:

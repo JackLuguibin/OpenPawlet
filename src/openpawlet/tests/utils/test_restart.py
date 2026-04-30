@@ -17,20 +17,32 @@ def test_set_and_consume_restart_notice_env_roundtrip(monkeypatch):
     monkeypatch.delenv("OPENPAWLET_RESTART_NOTIFY_CHANNEL", raising=False)
     monkeypatch.delenv("OPENPAWLET_RESTART_NOTIFY_CHAT_ID", raising=False)
     monkeypatch.delenv("OPENPAWLET_RESTART_STARTED_AT", raising=False)
+    monkeypatch.delenv("OPENPAWLET_RESTART_NOTIFY_METADATA", raising=False)
 
-    set_restart_notice_to_env(channel="feishu", chat_id="oc_123")
+    set_restart_notice_to_env(
+        channel="feishu", chat_id="oc_123", metadata={"reply_to": "t1"}
+    )
 
     notice = consume_restart_notice_from_env()
     assert notice is not None
     assert notice.channel == "feishu"
     assert notice.chat_id == "oc_123"
     assert notice.started_at_raw
+    assert notice.metadata == {"reply_to": "t1"}
 
-    # Consumed values should be cleared from env.
     assert consume_restart_notice_from_env() is None
     assert "OPENPAWLET_RESTART_NOTIFY_CHANNEL" not in os.environ
     assert "OPENPAWLET_RESTART_NOTIFY_CHAT_ID" not in os.environ
     assert "OPENPAWLET_RESTART_STARTED_AT" not in os.environ
+    assert "OPENPAWLET_RESTART_NOTIFY_METADATA" not in os.environ
+
+
+def test_consume_without_complete_pair_returns_none_but_clears_env(monkeypatch):
+    monkeypatch.setenv("OPENPAWLET_RESTART_NOTIFY_CHANNEL", "cli")
+    monkeypatch.delenv("OPENPAWLET_RESTART_NOTIFY_CHAT_ID", raising=False)
+
+    assert consume_restart_notice_from_env() is None
+    assert "OPENPAWLET_RESTART_NOTIFY_CHANNEL" not in os.environ
 
 
 def test_format_restart_completed_message_with_elapsed(monkeypatch):

@@ -7,6 +7,7 @@ import re
 import time
 import unicodedata
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Literal
 
 from loguru import logger
@@ -23,7 +24,7 @@ from openpawlet.command.builtin import build_help_text
 from openpawlet.config.paths import get_media_dir
 from openpawlet.config.schema import Base
 from openpawlet.security.network import validate_url_target
-from openpawlet.utils.helpers import split_message
+from openpawlet.utils.helpers import safe_filename, split_message
 
 TELEGRAM_MAX_MESSAGE_LEN = 4000  # Telegram message character limit
 # Telegram's actual API limit is 4096; we split raw markdown at 4000 as a
@@ -428,6 +429,31 @@ class TelegramChannel(BaseChannel):
             self._app = None
 
     @staticmethod
+    def _disk_name_for_inbound_media(media_file, ext: str) -> str:
+        """Stable unique prefix + optional sanitized original basename (Telegram file_name).
+
+        Path-like ``file_name`` values are reduced with :func:`pathlib.Path.name`;
+        absent or useless ``file_name`` keeps ``{unique_id}{ext}``.
+        """
+        unique_id = getattr(media_file, "file_unique_id", None) or getattr(
+            media_file, "file_id", "media"
+        )
+        raw_name = getattr(media_file, "file_name", None)
+        base = Path(str(raw_name)).name if raw_name else ""
+        base = safe_filename(base).strip()
+        if len(base) > 200:
+            p = Path(base)
+            stem = (p.stem or "file")[:120]
+            suf = "".join(p.suffixes)[:80]
+            base = f"{stem}{suf}" if suf else stem[:200]
+        if not base or base in (".", ".."):
+            return f"{unique_id}{ext}"
+        # If Telegram already gave an extension, keep a single suffix (do not append ext).
+        if "." in base:
+            return f"{unique_id}_{base}"
+        return f"{unique_id}_{base}{ext}"
+
+    @staticmethod
     def _get_media_type(path: str) -> str:
         """Guess media type from file extension."""
         ext = path.rsplit(".", 1)[-1].lower() if "." in path else ""
@@ -517,7 +543,7 @@ class TelegramChannel(BaseChannel):
                         **thread_kwargs,
                     )
             except Exception as e:
-                filename = media_path.rsplit("/", 1)[-1]
+                filename = Path(str(media_path)).name
                 logger.error("Failed to send media {}: {}", media_path, e)
                 await self._app.bot.send_message(
                     chat_id=chat_id,
@@ -915,17 +941,18 @@ class TelegramChannel(BaseChannel):
                 getattr(media_file, "file_name", None),
             )
             media_dir = get_media_dir("telegram")
-            unique_id = getattr(media_file, "file_unique_id", media_file.file_id)
-            file_path = media_dir / f"{unique_id}{ext}"
+            disk_name = self._disk_name_for_inbound_media(media_file, ext)
+            file_path = media_dir / disk_name
             await file.download_to_drive(str(file_path))
             path_str = str(file_path)
+            label = Path(path_str).name
             if media_type in ("voice", "audio"):
                 transcription = await self.transcribe_audio(file_path)
                 if transcription:
                     logger.info("Transcribed {}: {}...", media_type, transcription[:50])
                     return [path_str], [f"[transcription: {transcription}]"]
-                return [path_str], [f"[{media_type}: {path_str}]"]
-            return [path_str], [f"[{media_type}: {path_str}]"]
+                return [path_str], [f"[{media_type}: {label}]"]
+            return [path_str], [f"[{media_type}: {label}]"]
         except Exception as e:
             logger.warning("Failed to download message media: {}", e)
             if add_failure_content:
@@ -1251,8 +1278,6 @@ class TelegramChannel(BaseChannel):
             return ext
 
         if filename:
-            from pathlib import Path
-
             return "".join(Path(filename).suffixes)
 
         return ""

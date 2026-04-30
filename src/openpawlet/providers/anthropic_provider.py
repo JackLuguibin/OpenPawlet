@@ -11,10 +11,31 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 import json_repair
+from loguru import logger
 
-from openpawlet.providers.base import LLMProvider, LLMResponse, ToolCallRequest
+from openpawlet.providers.base import (
+    LLMProvider,
+    LLMResponse,
+    ToolCallRequest,
+    _SYNTHETIC_USER_CONTENT,
+)
 
 _ALNUM = string.ascii_letters + string.digits
+
+
+def _stream_idle_timeout_s() -> int:
+    """Per-chunk idle limit while reading an LLM stream (seconds)."""
+    raw = os.environ.get("OPENPAWLET_STREAM_IDLE_TIMEOUT_S")
+    if raw is not None and str(raw).strip():
+        try:
+            v = int(str(raw).strip())
+            return max(1, v)
+        except ValueError:
+            logger.warning(
+                "Ignoring invalid OPENPAWLET_STREAM_IDLE_TIMEOUT_S={!r}; using 90", raw
+            )
+            return 90
+    return 90
 
 
 def _gen_tool_id() -> str:
@@ -175,7 +196,9 @@ class AnthropicProvider(LLMProvider):
             "type": "tool_result",
             "tool_use_id": msg.get("tool_call_id", ""),
         }
-        if isinstance(content, (str, list)):
+        if isinstance(content, list):
+            block["content"] = AnthropicProvider._convert_user_content(content)
+        elif isinstance(content, str):
             block["content"] = content
         else:
             block["content"] = str(content) if content else ""
@@ -222,7 +245,8 @@ class AnthropicProvider(LLMProvider):
 
         return blocks or [{"type": "text", "text": ""}]
 
-    def _convert_user_content(self, content: Any) -> Any:
+    @staticmethod
+    def _convert_user_content(content: Any) -> Any:
         """Convert user message content, translating image_url blocks."""
         if isinstance(content, str) or content is None:
             return content or "(empty)"
@@ -235,7 +259,7 @@ class AnthropicProvider(LLMProvider):
                 result.append({"type": "text", "text": str(item)})
                 continue
             if item.get("type") == "image_url":
-                converted = self._convert_image_block(item)
+                converted = AnthropicProvider._convert_image_block(item)
                 if converted:
                     result.append(converted)
                 continue
@@ -260,8 +284,18 @@ class AnthropicProvider(LLMProvider):
         }
 
     @staticmethod
+    def _has_tool_use(msg: dict[str, Any]) -> bool:
+        """True if ``msg.content`` carries any ``tool_use`` block."""
+        content = msg.get("content")
+        if not isinstance(content, list):
+            return False
+        return any(
+            isinstance(block, dict) and block.get("type") == "tool_use" for block in content
+        )
+
+    @staticmethod
     def _merge_consecutive(msgs: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """Anthropic requires alternating user/assistant roles."""
+        """Normalize messages for Anthropic: merge same-role turns; fix leading/trailing assistant."""
         merged: list[dict[str, Any]] = []
         for msg in msgs:
             if merged and merged[-1]["role"] == msg["role"]:
@@ -276,6 +310,25 @@ class AnthropicProvider(LLMProvider):
                 merged[-1]["content"] = prev_c
             else:
                 merged.append(msg)
+
+        last_popped: dict[str, Any] | None = None
+        while merged and merged[-1].get("role") == "assistant":
+            last_popped = merged.pop()
+
+        if (
+            not merged
+            and last_popped is not None
+            and not AnthropicProvider._has_tool_use(last_popped)
+        ):
+            merged.append({"role": "user", "content": last_popped.get("content")})
+
+        if (
+            merged
+            and merged[0].get("role") == "assistant"
+            and not AnthropicProvider._has_tool_use(merged[0])
+        ):
+            merged.insert(0, {"role": "user", "content": _SYNTHETIC_USER_CONTENT})
+
         return merged
 
     # ------------------------------------------------------------------
@@ -388,7 +441,10 @@ class AnthropicProvider(LLMProvider):
             )
 
         max_tokens = max(1, max_tokens)
-        thinking_enabled = bool(reasoning_effort)
+        thinking_enabled = bool(reasoning_effort) and (
+            not isinstance(reasoning_effort, str) or reasoning_effort.lower() != "none"
+        )
+        # claude-opus-4-7 rejects the temperature parameter on any code path.
         omit_temperature = "opus-4-7" in model_name
 
         kwargs: dict[str, Any] = {
@@ -537,7 +593,7 @@ class AnthropicProvider(LLMProvider):
             reasoning_effort,
             tool_choice,
         )
-        idle_timeout_s = int(os.environ.get("OPENPAWLET_STREAM_IDLE_TIMEOUT_S", "90"))
+        idle_timeout_s = _stream_idle_timeout_s()
         try:
             async with self._client.messages.stream(**kwargs) as stream:
                 if on_content_delta:
@@ -556,10 +612,11 @@ class AnthropicProvider(LLMProvider):
                     timeout=idle_timeout_s,
                 )
             return self._parse_response(response)
-        except TimeoutError:
+        except asyncio.TimeoutError:
             return LLMResponse(
                 content=(
-                    f"Error calling LLM: stream stalled for more than {idle_timeout_s} seconds"
+                    "Error calling LLM: stream stalled for more than "
+                    f"{idle_timeout_s} seconds"
                 ),
                 finish_reason="error",
                 error_kind="timeout",

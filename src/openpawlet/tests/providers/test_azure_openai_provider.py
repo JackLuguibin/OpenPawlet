@@ -79,6 +79,10 @@ def test_supports_temperature_with_reasoning_effort():
     assert AzureOpenAIProvider._supports_temperature("gpt-4o", reasoning_effort="medium") is False
 
 
+def test_supports_temperature_allows_temperature_when_reasoning_effort_none():
+    assert AzureOpenAIProvider._supports_temperature("gpt-4o", reasoning_effort="none") is True
+
+
 # ---------------------------------------------------------------------------
 # _build_body — Responses API body construction
 # ---------------------------------------------------------------------------
@@ -104,6 +108,15 @@ def test_build_body_basic():
     assert "reasoning" not in body
     # input should contain the converted user message only (system extracted)
     assert any(item.get("role") == "user" for item in body["input"])
+
+
+def test_build_body_omits_reasoning_when_effort_none():
+    provider = AzureOpenAIProvider(api_key="k", api_base="https://r.com", default_model="gpt-4o")
+    body = provider._build_body(
+        [{"role": "user", "content": "hi"}], None, None, 4096, 0.7, "none", None
+    )
+    assert "reasoning" not in body
+    assert body.get("temperature") == 0.7
 
 
 def test_build_body_max_tokens_minimum():

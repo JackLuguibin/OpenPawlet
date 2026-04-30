@@ -9,6 +9,7 @@ from unittest.mock import patch
 import pytest
 
 from openpawlet.agent.tools.web import WebFetchTool
+from openpawlet.config.schema import WebFetchConfig
 
 
 def _fake_resolve_private(hostname, port, family=0, type_=0):
@@ -117,3 +118,75 @@ async def test_web_fetch_blocks_private_redirect_before_returning_image(monkeypa
     data = json.loads(result)
     assert "error" in data
     assert "redirect blocked" in data["error"].lower()
+
+
+def test_web_fetch_tool_stores_custom_user_agent():
+    tool = WebFetchTool(user_agent="OpenPawletTestUA/2")
+    assert tool.user_agent == "OpenPawletTestUA/2"
+
+
+@pytest.mark.asyncio
+async def test_web_fetch_skips_jina_when_disabled(monkeypatch):
+    """When fetch.use_jina_reader is False, execute must never call _fetch_jina."""
+
+    async def boom(self, url, max_chars):
+        raise RuntimeError("_fetch_jina should not run")
+
+    monkeypatch.setattr(WebFetchTool, "_fetch_jina", boom)
+
+    tool = WebFetchTool(config=WebFetchConfig(use_jina_reader=False))
+
+    fake_html = "<html><head><title>T</title></head><body><p>Hello world</p></body></html>"
+
+    class FakeResponse:
+        status_code = 200
+        url = "https://example.com/page"
+        text = fake_html
+        headers = {"content-type": "text/html"}
+        content = b""
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {}
+
+    class FakeStreamResponse:
+        headers = {"content-type": "text/html"}
+        url = "https://example.com/page"
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def aread(self):
+            return b""
+
+        def raise_for_status(self):
+            return None
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        def stream(self, method, url, headers=None):
+            return FakeStreamResponse()
+
+        async def get(self, url, **kwargs):
+            return FakeResponse()
+
+    monkeypatch.setattr("openpawlet.agent.tools.web.httpx.AsyncClient", FakeClient)
+
+    with patch("openpawlet.security.network.socket.getaddrinfo", _fake_resolve_public):
+        result = await tool.execute(url="https://example.com/page")
+
+    data = json.loads(result)
+    assert data.get("untrusted") is True

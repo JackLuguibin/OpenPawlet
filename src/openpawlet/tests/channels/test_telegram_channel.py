@@ -681,6 +681,21 @@ def test_get_extension_falls_back_to_original_filename() -> None:
     assert channel._get_extension("file", None, "archive.tar.gz") == ".tar.gz"
 
 
+def test_disk_name_for_inbound_media_strips_parent_path_segments() -> None:
+    doc = SimpleNamespace(file_unique_id="uq", file_id="id", file_name="a/b/../../evil.pdf")
+    assert TelegramChannel._disk_name_for_inbound_media(doc, ".pdf") == "uq_evil.pdf"
+
+
+def test_disk_name_for_inbound_media_keeps_sanitized_basename_with_spaces() -> None:
+    doc = SimpleNamespace(file_unique_id="uq2", file_id="id", file_name="My Report.pdf")
+    assert TelegramChannel._disk_name_for_inbound_media(doc, ".pdf") == "uq2_My Report.pdf"
+
+
+def test_disk_name_for_inbound_media_without_file_name_is_unique_plus_ext() -> None:
+    ph = SimpleNamespace(file_unique_id="st", file_id="legacy-id", file_name=None)
+    assert TelegramChannel._disk_name_for_inbound_media(ph, ".jpg") == "st.jpg"
+
+
 def test_telegram_group_policy_defaults_to_mention() -> None:
     assert TelegramConfig().group_policy == "mention"
 
@@ -1089,7 +1104,7 @@ async def test_download_message_media_returns_path_when_download_succeeds(
     assert len(paths) == 1
     assert len(parts) == 1
     assert "fid123" in paths[0]
-    assert "[image:" in parts[0]
+    assert parts == ["[image: fid123.jpg]"]
 
 
 @pytest.mark.asyncio
@@ -1137,7 +1152,7 @@ async def test_download_message_media_uses_file_unique_id_when_available(
 
     assert downloaded["path"].endswith("stable-unique-id.jpg")
     assert paths == [str(media_dir / "stable-unique-id.jpg")]
-    assert parts == [f"[image: {media_dir / 'stable-unique-id.jpg'}]"]
+    assert parts == ["[image: stable-unique-id.jpg]"]
 
 
 @pytest.mark.asyncio
@@ -1185,7 +1200,7 @@ async def test_on_message_attaches_reply_to_media_when_available(monkeypatch, tm
     await channel._on_message(update, None)
 
     assert len(handled) == 1
-    assert handled[0]["content"].startswith("[Reply to: [image:")
+    assert handled[0]["content"].startswith("[Reply to: [image: reply_photo_fid.jpg]")
     assert "what is the image?" in handled[0]["content"]
     assert len(handled[0]["media"]) == 1
     assert "reply_photo_fid" in handled[0]["media"][0]

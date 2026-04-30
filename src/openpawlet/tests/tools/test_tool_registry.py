@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from openpawlet.agent.tools.base import Tool
+from openpawlet.agent.tools.errors import AgentToolAbort
 from openpawlet.agent.tools.registry import ToolRegistry
 
 
@@ -32,6 +35,19 @@ def _tool_names(definitions: list[dict[str, Any]]) -> list[str]:
         fn = definition.get("function", {})
         names.append(fn.get("name", ""))
     return names
+
+
+class _AbortTool(_FakeTool):
+    async def execute(self, **kwargs: Any) -> Any:
+        raise AgentToolAbort("sandbox boundary")
+
+
+@pytest.mark.asyncio
+async def test_execute_reraises_agent_tool_abort() -> None:
+    registry = ToolRegistry()
+    registry.register(_AbortTool("risky_read"))
+    with pytest.raises(AgentToolAbort, match="sandbox boundary"):
+        await registry.execute("risky_read", {})
 
 
 def test_get_definitions_orders_builtins_then_mcp_tools() -> None:

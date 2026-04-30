@@ -81,3 +81,49 @@ def test_opus_4_7_omits_temperature_none() -> None:
     kw = _build(_make_provider("claude-opus-4-7"), None)
     assert "temperature" not in kw
     assert "thinking" not in kw
+
+
+def test_reasoning_effort_none_string_disables_thinking() -> None:
+    kw = _build(_make_provider(), "none")
+    assert "thinking" not in kw
+    assert kw["temperature"] == 0.7
+
+
+def test_merge_consecutive_drops_trailing_assistant_keeps_prior_user() -> None:
+    """Anthropic forbids conversations ending with an assistant turn."""
+    merged = AnthropicProvider._merge_consecutive(
+        [
+            {"role": "user", "content": "hi"},
+            {"role": "assistant", "content": [{"type": "text", "text": "partial"}]},
+        ]
+    )
+    assert len(merged) == 1
+    assert merged[0]["role"] == "user"
+    assert merged[0]["content"] == "hi"
+
+
+def test_merge_consecutive_assistant_only_turn_rerouted_to_user() -> None:
+    """Empty history after stripping trailing assistant becomes one user message."""
+    merged = AnthropicProvider._merge_consecutive(
+        [
+            {"role": "assistant", "content": [{"type": "text", "text": "orphan reply"}]},
+        ]
+    )
+    assert len(merged) == 1
+    assert merged[0]["role"] == "user"
+    assert merged[0]["content"] == [{"type": "text", "text": "orphan reply"}]
+
+
+def test_merge_consecutive_prepends_when_leading_assistant_after_merge() -> None:
+    """When merge leaves a leading assistant (e.g. merged user+assistant blocks), prepend opener."""
+    from openpawlet.providers.base import _SYNTHETIC_USER_CONTENT
+
+    merged = AnthropicProvider._merge_consecutive(
+        [
+            {"role": "assistant", "content": [{"type": "text", "text": "say hi"}]},
+            {"role": "user", "content": "hi"},
+            {"role": "assistant", "content": [{"type": "text", "text": "draft"}]},
+        ]
+    )
+    assert merged[0]["role"] == "user"
+    assert merged[0]["content"] == _SYNTHETIC_USER_CONTENT

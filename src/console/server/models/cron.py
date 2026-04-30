@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -40,6 +40,8 @@ class CronPayload(BaseModel):
     deliver: bool | None = None
     channel: str | None = None
     to: str | None = None
+    channel_meta: dict[str, Any] = Field(default_factory=dict)
+    session_key: str | None = None
 
 
 class CronJob(BaseModel):
@@ -70,6 +72,8 @@ class CronAddRequest(BaseModel):
     channel: str | None = None
     to: str | None = None
     delete_after_run: bool | None = None
+    channel_meta: dict[str, Any] | None = None
+    session_key: str | None = None
 
 
 class CronUpdateRequest(BaseModel):

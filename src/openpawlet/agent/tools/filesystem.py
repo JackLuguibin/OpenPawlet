@@ -9,6 +9,7 @@ from typing import Any
 
 from openpawlet.agent.tools import file_state
 from openpawlet.agent.tools.base import Tool, tool_parameters
+from openpawlet.agent.tools.errors import AgentToolAbort
 from openpawlet.agent.tools.schema import (
     BooleanSchema,
     IntegerSchema,
@@ -34,7 +35,9 @@ def _resolve_path(
         media_path = get_media_dir().resolve()
         all_dirs = [allowed_dir] + [media_path] + (extra_allowed_dirs or [])
         if not any(_is_under(resolved, d) for d in all_dirs):
-            raise PermissionError(f"Path {path} is outside allowed directory {allowed_dir}")
+            raise AgentToolAbort(
+                f"Path {path} is outside allowed directory {allowed_dir}"
+            )
     return resolved
 
 

@@ -335,6 +335,223 @@ async def test_runner_returns_structured_tool_error():
 
 
 @pytest.mark.asyncio
+async def test_runner_agent_tool_abort_is_fatal_without_fail_on_tool_error():
+    """AgentToolAbort must end the loop even when fail_on_tool_error is False."""
+    from openpawlet.agent.runner import AgentRunner, AgentRunSpec
+    from openpawlet.agent.tools.errors import AgentToolAbort
+
+    provider = MagicMock()
+    call_count = {"n": 0}
+
+    async def chat_with_retry(**kwargs):
+        call_count["n"] += 1
+        return LLMResponse(
+            content="working",
+            tool_calls=[ToolCallRequest(id="call_1", name="list_dir", arguments={})],
+        )
+
+    provider.chat_with_retry = chat_with_retry
+    tools = MagicMock()
+    tools.get_definitions.return_value = []
+    tools.execute = AsyncMock(side_effect=AgentToolAbort("outside allowed directory"))
+
+    runner = AgentRunner(provider)
+    result = await runner.run(
+        AgentRunSpec(
+            initial_messages=[{"role": "user", "content": "hi"}],
+            tools=tools,
+            model="test-model",
+            max_iterations=5,
+            max_tool_result_chars=_MAX_TOOL_RESULT_CHARS,
+            fail_on_tool_error=False,
+        )
+    )
+
+    assert call_count["n"] == 1
+    assert result.stop_reason == "tool_error"
+    assert result.error == "Error: outside allowed directory"
+
+
+@pytest.mark.asyncio
+async def test_runner_agent_tool_abort_skips_injection_drain():
+    """Policy aborts must not continue the turn via pending injections."""
+    from openpawlet.agent.runner import AgentRunner, AgentRunSpec
+    from openpawlet.agent.tools.errors import AgentToolAbort
+    from openpawlet.bus.events import InboundMessage
+
+    provider = MagicMock()
+    call_count = {"n": 0}
+
+    async def chat_with_retry(**kwargs):
+        call_count["n"] += 1
+        return LLMResponse(
+            content="",
+            tool_calls=[ToolCallRequest(id="c1", name="exec", arguments={"cmd": "x"})],
+        )
+
+    provider.chat_with_retry = chat_with_retry
+    tools = MagicMock()
+    tools.get_definitions.return_value = []
+    tools.execute = AsyncMock(side_effect=AgentToolAbort("policy violation"))
+
+    injection_queue = asyncio.Queue()
+    inject_cb = _make_injection_callback(injection_queue)
+    await injection_queue.put(
+        InboundMessage(channel="cli", sender_id="u", chat_id="c", content="should not run")
+    )
+
+    runner = AgentRunner(provider)
+    result = await runner.run(
+        AgentRunSpec(
+            initial_messages=[{"role": "user", "content": "hello"}],
+            tools=tools,
+            model="test-model",
+            max_iterations=5,
+            max_tool_result_chars=_MAX_TOOL_RESULT_CHARS,
+            fail_on_tool_error=False,
+            injection_callback=inject_cb,
+        )
+    )
+
+    assert call_count["n"] == 1
+    assert result.stop_reason == "tool_error"
+    assert result.had_injections is False
+    assert result.final_content == "Error: policy violation"
+    assert not any(
+        m.get("role") == "user" and m.get("content") == "should not run"
+        for m in result.messages
+    )
+
+
+@pytest.mark.asyncio
+async def test_runner_agent_tool_abort_skips_remaining_tool_calls_in_turn():
+    """After AgentToolAbort, later tool_calls from the same LLM reply must not run."""
+    from openpawlet.agent.runner import AgentRunner, AgentRunSpec
+    from openpawlet.agent.tools.errors import AgentToolAbort
+
+    provider = MagicMock()
+    llm_calls = {"n": 0}
+
+    async def chat_with_retry(**kwargs):
+        llm_calls["n"] += 1
+        if llm_calls["n"] == 1:
+            return LLMResponse(
+                content="",
+                tool_calls=[
+                    ToolCallRequest(id="first", name="list_dir", arguments={"path": "."}),
+                    ToolCallRequest(id="second", name="read_file", arguments={"path": "x"}),
+                ],
+                usage={},
+            )
+        return LLMResponse(content="unexpected second LLM round", tool_calls=[], usage={})
+
+    provider.chat_with_retry = chat_with_retry
+    tool_exec_calls: list[str] = []
+
+    async def execute_stub(name: str, params: dict):
+        tool_exec_calls.append(name)
+        if name == "list_dir":
+            raise AgentToolAbort("outside workspace")
+        return "file contents"
+
+    tools = MagicMock()
+    tools.get_definitions.return_value = []
+    tools.execute = AsyncMock(side_effect=execute_stub)
+
+    runner = AgentRunner(provider)
+    result = await runner.run(
+        AgentRunSpec(
+            initial_messages=[{"role": "user", "content": "go"}],
+            tools=tools,
+            model="test-model",
+            max_iterations=3,
+            max_tool_result_chars=_MAX_TOOL_RESULT_CHARS,
+            fail_on_tool_error=False,
+        )
+    )
+
+    assert llm_calls["n"] == 1
+    assert tool_exec_calls == ["list_dir"]
+    assert result.stop_reason == "tool_error"
+    assert "outside workspace" in (result.error or "").lower()
+
+
+@pytest.mark.asyncio
+async def test_runner_concurrent_batch_cancels_peers_on_agent_tool_abort():
+    """Concurrency-safe peers are cancelled when one tool raises AgentToolAbort."""
+    from openpawlet.agent.runner import AgentRunner, AgentRunSpec
+    from openpawlet.agent.tools.errors import AgentToolAbort
+
+    state = {"slow_started": False, "slow_cancelled": False}
+    slow_ready = asyncio.Event()
+
+    class FastTool:
+        concurrency_safe = True
+
+        async def execute(self, **kwargs):
+            await asyncio.wait_for(slow_ready.wait(), timeout=5.0)
+            raise AgentToolAbort("stop concurrent batch")
+
+    class SlowTool:
+        concurrency_safe = True
+
+        async def execute(self, **kwargs):
+            state["slow_started"] = True
+            slow_ready.set()
+            try:
+                await asyncio.sleep(3600)
+            except asyncio.CancelledError:
+                state["slow_cancelled"] = True
+                raise
+
+    tools = MagicMock()
+    tools.get_definitions.return_value = []
+    tools.get = lambda name: FastTool() if name == "fast" else SlowTool()
+
+    def prepare_call(name: str, args: dict):
+        tool = tools.get(name)
+        return tool, dict(args), None
+
+    tools.prepare_call = prepare_call
+
+    provider = MagicMock()
+    llm_calls = {"n": 0}
+
+    async def chat_with_retry(**kwargs):
+        llm_calls["n"] += 1
+        return LLMResponse(
+            content="",
+            tool_calls=[
+                ToolCallRequest(id="a", name="fast", arguments={}),
+                ToolCallRequest(id="b", name="slow", arguments={}),
+            ],
+            usage={},
+        )
+
+    provider.chat_with_retry = chat_with_retry
+
+    runner = AgentRunner(provider)
+    result = await runner.run(
+        AgentRunSpec(
+            initial_messages=[{"role": "user", "content": "go"}],
+            tools=tools,
+            model="test-model",
+            max_iterations=2,
+            max_tool_result_chars=_MAX_TOOL_RESULT_CHARS,
+            fail_on_tool_error=False,
+            concurrent_tools=True,
+        )
+    )
+
+    assert llm_calls["n"] == 1
+    assert result.stop_reason == "tool_error"
+    assert state["slow_started"] is True
+    assert state["slow_cancelled"] is True
+    slow_events = [e for e in result.tool_events if e.get("name") == "slow"]
+    assert slow_events and "cancelled" in (slow_events[0].get("detail") or "").lower()
+
+
+@pytest.mark.asyncio
 async def test_runner_persists_large_tool_results_for_follow_up_calls(tmp_path):
     from openpawlet.agent.runner import AgentRunner, AgentRunSpec
 

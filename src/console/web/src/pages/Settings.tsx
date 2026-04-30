@@ -155,6 +155,15 @@ function readAgentDefaultsNum(
   return Number.isFinite(n) ? n : fallback;
 }
 
+/** ``max_history_messages`` (+ nanobot-style ``max_messages``) for LLM history cap. */
+function readMaxHistoryMessages(defaults: AgentDefaultsJson | undefined): number {
+  const d = (defaults ?? {}) as Record<string, unknown>;
+  const v = d.maxHistoryMessages ?? d.max_history_messages ?? d.max_messages;
+  if (v === undefined || v === null) return 0;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
 /** Schema allows null; UI treats empty/null as ``medium``. */
 function readAgentDefaultsReasoningEffort(defaults: AgentDefaultsJson | undefined): string {
   const d = defaults ?? {};
@@ -661,6 +670,7 @@ export default function Settings() {
         maxTokens: readAgentDefaultsNum(defaults, 'maxTokens', 'max_tokens', 8192),
         contextWindowTokens: readAgentDefaultsNum(defaults, 'contextWindowTokens', 'context_window_tokens', 65536),
         maxToolIterations: readAgentDefaultsNum(defaults, 'maxToolIterations', 'max_tool_iterations', 200),
+        maxHistoryMessages: readMaxHistoryMessages(defaults),
         temperature: readAgentDefaultsNum(defaults, 'temperature', 'temperature', 0.1),
         reasoningEffort: readAgentDefaultsReasoningEffort(defaults),
         restrictToWorkspace: readToolsRestrictToWorkspace(tools),
@@ -727,6 +737,7 @@ export default function Settings() {
             maxTokens: rest.maxTokens,
             contextWindowTokens: rest.contextWindowTokens,
             maxToolIterations: rest.maxToolIterations,
+            maxHistoryMessages: rest.maxHistoryMessages,
             temperature: rest.temperature,
             reasoningEffort: rest.reasoningEffort,
             providerRetryMode: rest.providerRetryMode,
@@ -1164,6 +1175,22 @@ export default function Settings() {
                     size="middle"
                     className="w-full"
                   />
+                </Form.Item>
+              </Col>
+              <Col xs={24} sm={12}>
+                <Form.Item
+                  label={
+                    <span>
+                      {t('settings.maxHistoryMessages')}{' '}
+                      <Text type="secondary" className="text-xs font-normal">
+                        {t('settings.maxHistoryMessagesRange')}
+                      </Text>
+                    </span>
+                  }
+                  name="maxHistoryMessages"
+                  extra={<Text type="secondary">{t('settings.maxHistoryMessagesHint')}</Text>}
+                >
+                  <InputNumber min={0} max={100000} size="middle" className="w-full" />
                 </Form.Item>
               </Col>
             </Row>

@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict
 class RuntimeAgentStatus(BaseModel):
     """Unified runtime status for main or subagent (HTTP projection)."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", from_attributes=True)
 
     agent_id: str
     role: str

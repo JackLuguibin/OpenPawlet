@@ -167,6 +167,8 @@ def cron_job_to_dict(job: Any) -> dict[str, Any]:
             "deliver": payload.deliver,
             "channel": payload.channel,
             "to": payload.to,
+            "channel_meta": dict(getattr(payload, "channel_meta", None) or {}),
+            "session_key": getattr(payload, "session_key", None),
         },
         "state": {
             "next_run_at_ms": state.next_run_at_ms,

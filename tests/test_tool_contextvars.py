@@ -112,6 +112,23 @@ async def test_cron_tool_keeps_task_local_context(tmp_path) -> None:
     assert {job.payload.to for job in jobs} == {"chat-a", "chat-b"}
 
 
+@pytest.mark.asyncio
+async def test_cron_tool_persists_channel_meta_and_session_key(tmp_path) -> None:
+    tool = CronTool(CronService(tmp_path / "jobs.json"))
+    tool.set_context(
+        "feishu",
+        "oc_1",
+        metadata={"reply_to": "t1"},
+        session_key="custom:session",
+    )
+    result = await tool.execute(action="add", message="ping", every_seconds=3600)
+    assert result.startswith("Created job")
+    jobs = tool._cron.list_jobs()
+    assert len(jobs) == 1
+    assert jobs[0].payload.channel_meta == {"reply_to": "t1"}
+    assert jobs[0].payload.session_key == "custom:session"
+
+
 # --- Basic single-task regression tests ---
 
 
