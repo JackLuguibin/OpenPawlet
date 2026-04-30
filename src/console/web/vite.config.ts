@@ -58,9 +58,7 @@ export default defineConfig({
     },
   },
   build: {
-    // Slightly raise the warning ceiling: the largest legitimate chunk
-    // (echarts) is ~600 kB after manualChunks, which is acceptable for a
-    // route that is already code-split.
+    // Slightly raise the warning ceiling: some vendor chunks legitimately exceed 500 kB.
     chunkSizeWarningLimit: 800,
     rollupOptions: {
       // Suppress the "Circular chunk: antd-heavy -> antd-core -> antd-heavy"
@@ -80,22 +78,20 @@ export default defineConfig({
       output: {
         // Split heavy 3rd-party libs into their own long-lived chunks so the
         // main entry chunk stays small and per-route lazy chunks don't
-        // accidentally inline an entire library (e.g. echarts being pulled
-        // into the first route that imports it).
+        // accidentally inline an entire library into the wrong route bundle.
         manualChunks(rawId) {
           // Normalise Windows backslashes so the path tests below work on
           // every platform identically.
           const id = rawId.replace(/\\/g, '/')
           if (!id.includes('node_modules')) return undefined
 
-          // echarts is ~1MB raw; keep it isolated so only Dashboard /
-          // Observability routes pay the cost when first opened.
+          // chart.js (~200+kB gzip pre-split) stays isolated so only routes
+          // that render charts pull it after lazy loading.
           if (
-            id.includes('node_modules/echarts') ||
-            id.includes('node_modules/zrender') ||
-            id.includes('node_modules/echarts-for-react')
+            id.includes('node_modules/chart.js') ||
+            id.includes('node_modules/react-chartjs-2')
           ) {
-            return 'echarts'
+            return 'chartjs'
           }
 
           // CodeMirror + language packs + theme are large; co-locate so the

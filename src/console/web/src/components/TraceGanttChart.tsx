@@ -1,9 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import type {
-  CustomSeriesRenderItemAPI,
-  CustomSeriesRenderItemParams,
-  TopLevelFormatterParams,
-} from 'echarts/types/dist/shared';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { TFunction } from 'i18next';
 import type { AgentObservabilityEvent } from '../api/types';
 import { useAppStore } from '../store';
@@ -13,8 +9,6 @@ import {
   runTypeChartColor,
   runTypeLabelKey,
 } from '../utils/observabilityRunType';
-import type { EChartsOption } from './ModelPieChart';
-import { EChartsWithResize } from './ModelPieChart';
 
 type Segment = { ev: AgentObservabilityEvent; startMs: number; endMs: number; rt: RunType };
 
@@ -74,6 +68,10 @@ function buildSegments(events: AgentObservabilityEvent[]): Segment[] {
 
 const ROW_PX = 30;
 const CHART_TOP_PAD = 6;
+const LABEL_COL = 112;
+const AXIS_BOTTOM = 22;
+const PLOT_RIGHT = 10;
+const PLOT_LEFT = 6;
 
 function formatEventTimestamp(rawTs: number, locale: string): string {
   const ms = typeof rawTs === 'number' && rawTs < 1e12 ? rawTs * 1000 : Number(rawTs) || 0;
@@ -100,14 +98,6 @@ function formatPayloadPreview(payload: Record<string, unknown> | undefined): str
   }
 }
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
 function useChartDarkMode(): boolean {
   const theme = useAppStore((s) => s.theme);
   const [mediaDark, setMediaDark] = useState(() =>
@@ -131,8 +121,95 @@ type Props = {
   dateLocale: string;
 };
 
+type TipState = { idx: number; clientX: number; clientY: number };
+
+function GanttTooltipPanel({
+  segment,
+  t,
+  dateLocale,
+  isDark,
+}: {
+  segment: Segment;
+  t: TFunction;
+  dateLocale: string;
+  isDark: boolean;
+}) {
+  const ev = segment.ev;
+  const rt = segment.rt;
+  const barMs = segment.endMs - segment.startMs;
+  const payloadText = formatPayloadPreview(ev.payload as Record<string, unknown>);
+  const border = isDark ? 'rgba(148,163,184,.25)' : 'rgba(15,23,42,.1)';
+  const preBg = isDark ? 'rgba(0,0,0,.35)' : 'rgba(241,245,249,.9)';
+
+  return (
+    <div
+      className={`pointer-events-auto max-h-[min(70vh,22rem)] max-w-[min(90vw,22rem)] overflow-hidden rounded-lg border px-3 py-2 text-[11px] shadow-lg ${
+        isDark
+          ? 'border-slate-600 bg-slate-900/95 text-slate-100'
+          : 'border-slate-200 bg-white/98 text-slate-900'
+      }`}
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      <div className="mb-1.5 font-semibold leading-tight">{ev.event}</div>
+      <div className="space-y-1 text-[11px] leading-snug opacity-90">
+        <div>
+          <span className="opacity-55">{t('observability.colTime')}</span>:{' '}
+          {formatEventTimestamp(ev.ts, dateLocale)}
+        </div>
+        <div>
+          <span className="opacity-55">{t('observability.colRunType')}</span>: {t(runTypeLabelKey(rt))}
+        </div>
+        <div>
+          <span className="opacity-55">{t('observability.ganttTooltipBar')}</span>:{' '}
+          {Math.max(0, Math.round(barMs))} ms
+        </div>
+        {ev.trace_id ? (
+          <div className="break-all">
+            <span className="opacity-55">{t('observability.colTraceId')}</span>: {String(ev.trace_id)}
+          </div>
+        ) : null}
+        {ev.session_key ? (
+          <div className="break-all">
+            <span className="opacity-55">{t('observability.colSession')}</span>: {String(ev.session_key)}
+          </div>
+        ) : null}
+      </div>
+      <div className="mt-2 border-t pt-2" style={{ borderColor: border }}>
+        <div className="mb-1 text-[10px] uppercase tracking-wide opacity-55">
+          {t('observability.detailInputOutput')}
+        </div>
+        <pre
+          className="max-h-44 overflow-auto whitespace-pre-wrap break-all rounded-md p-2 font-mono text-[10px] leading-snug"
+          style={{ background: preBg }}
+        >
+          {payloadText}
+        </pre>
+      </div>
+      <div className="mt-2 border-t pt-1.5 text-[10px] opacity-55" style={{ borderColor: border }}>
+        {t('observability.ganttTooltipHint')}
+      </div>
+    </div>
+  );
+}
+
 export function TraceGanttChart({ events, t, onSelectEvent, dateLocale }: Props) {
   const isDark = useChartDarkMode();
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [plotW, setPlotW] = useState(400);
+  const [tip, setTip] = useState<TipState | null>(null);
+  const closeTimer = useRef<number | null>(null);
+
+  const clearCloseTimer = () => {
+    if (closeTimer.current != null) {
+      window.clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+  };
+
+  const scheduleHide = () => {
+    clearCloseTimer();
+    closeTimer.current = window.setTimeout(() => setTip(null), 160);
+  };
 
   const { segments, winMin, winMax } = useMemo(() => {
     const segs = buildSegments(events);
@@ -145,179 +222,39 @@ export function TraceGanttChart({ events, t, onSelectEvent, dateLocale }: Props)
     return { segments: segs, winMin: t0 - pad, winMax: t1 + pad };
   }, [events]);
 
-  const chartHeight = Math.max(96, CHART_TOP_PAD + segments.length * ROW_PX + 36);
+  const chartHeight = Math.max(96, CHART_TOP_PAD + segments.length * ROW_PX + AXIS_BOTTOM);
 
-  const option = useMemo((): EChartsOption | null => {
-    if (segments.length === 0) return null;
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      const w = el.getBoundingClientRect().width;
+      const next = Math.max(120, w - LABEL_COL - PLOT_LEFT - PLOT_RIGHT);
+      setPlotW(next);
+    });
+    ro.observe(el);
+    const w0 = el.getBoundingClientRect().width;
+    setPlotW(Math.max(120, w0 - LABEL_COL - PLOT_LEFT - PLOT_RIGHT));
+    return () => ro.disconnect();
+  }, []);
 
-    const labelColor = isDark ? '#94a3b8' : '#475569';
-    const axisMuted = isDark ? '#64748b' : '#94a3b8';
-    const splitOpacity = isDark ? 0.12 : 0.28;
+  const span = winMax - winMin || 1;
+  const xOf = (ms: number) => PLOT_LEFT + LABEL_COL + ((ms - winMin) / span) * plotW;
 
-    return {
-      animation: false,
-      grid: {
-        left: 6,
-        right: 10,
-        top: CHART_TOP_PAD,
-        bottom: 22,
-        containLabel: true,
-      },
-      xAxis: {
-        type: 'value',
-        min: winMin,
-        max: winMax,
-        axisLabel: {
-          formatter: (v: number) => `+${Math.round(v - winMin)}ms`,
-          fontSize: 9,
-          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-          color: axisMuted,
-        },
-        axisLine: { lineStyle: { color: axisMuted } },
-        splitLine: {
-          show: true,
-          lineStyle: { type: 'dashed', opacity: splitOpacity },
-        },
-      },
-      yAxis: {
-        type: 'category',
-        inverse: true,
-        data: segments.map((_, i) => i),
-        axisLine: { show: false },
-        axisTick: { show: false },
-        axisLabel: {
-          width: 112,
-          overflow: 'truncate',
-          align: 'right',
-          margin: 6,
-          fontSize: 10,
-          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-          color: labelColor,
-          formatter: (val: string | number) => {
-            const i = typeof val === 'number' ? val : Number(val);
-            if (!Number.isFinite(i) || i < 0 || i >= segments.length) return '';
-            const name = segments[i]!.ev.event;
-            return name.length > 26 ? `${name.slice(0, 26)}…` : name;
-          },
-        },
-        splitLine: { show: false },
-      },
-      tooltip: {
-        trigger: 'item',
-        confine: true,
-        enterable: true,
-        showDelay: 0,
-        backgroundColor: isDark ? 'rgba(15, 23, 42, 0.96)' : 'rgba(255, 255, 255, 0.98)',
-        borderColor: isDark ? '#334155' : '#e2e8f0',
-        textStyle: {
-          color: isDark ? '#f1f5f9' : '#0f172a',
-          fontSize: 11,
-        },
-        extraCssText: 'max-width:min(90vw,22rem);box-shadow:0 4px 24px rgba(0,0,0,0.12);',
-        formatter: (raw: TopLevelFormatterParams) => {
-          if (Array.isArray(raw)) return '';
-          const params = raw as { seriesType?: string; dataIndex?: number };
-          if (params.seriesType !== 'custom' || params.dataIndex == null) return '';
-          const s = segments[params.dataIndex];
-          if (!s) return '';
-          const ev = s.ev;
-          const rt = classifyRunType(ev.event);
-          const barMs = s.endMs - s.startMs;
-          const payloadText = formatPayloadPreview(ev.payload as Record<string, unknown>);
-          const lines: string[] = [
-            `<div style="font-weight:600;margin-bottom:6px">${escapeHtml(ev.event)}</div>`,
-            `<div style="opacity:.9;font-size:11px;line-height:1.45">`,
-            `<div><span style="opacity:.55">${escapeHtml(t('observability.colTime'))}</span>: ${escapeHtml(formatEventTimestamp(ev.ts, dateLocale))}</div>`,
-            `<div><span style="opacity:.55">${escapeHtml(t('observability.colRunType'))}</span>: ${escapeHtml(t(runTypeLabelKey(rt)))}</div>`,
-            `<div><span style="opacity:.55">${escapeHtml(t('observability.ganttTooltipBar'))}</span>: ${Math.max(0, Math.round(barMs))} ms</div>`,
-          ];
-          if (ev.trace_id) {
-            lines.push(
-              `<div style="word-break:break-all"><span style="opacity:.55">${escapeHtml(t('observability.colTraceId'))}</span>: ${escapeHtml(String(ev.trace_id))}</div>`,
-            );
-          }
-          if (ev.session_key) {
-            lines.push(
-              `<div style="word-break:break-all"><span style="opacity:.55">${escapeHtml(t('observability.colSession'))}</span>: ${escapeHtml(String(ev.session_key))}</div>`,
-            );
-          }
-          lines.push(`</div>`);
-          lines.push(
-            `<div style="margin-top:8px;padding-top:8px;border-top:1px solid ${isDark ? 'rgba(148,163,184,.25)' : 'rgba(15,23,42,.1)'}">`,
-            `<div style="font-size:10px;opacity:.55;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">${escapeHtml(t('observability.detailInputOutput'))}</div>`,
-            `<pre style="margin:0;max-height:176px;overflow:auto;white-space:pre-wrap;word-break:break-all;font-family:ui-monospace,monospace;font-size:10px;line-height:1.35;padding:8px;border-radius:6px;background:${isDark ? 'rgba(0,0,0,.35)' : 'rgba(241,245,249,.9)'}">${escapeHtml(payloadText)}</pre>`,
-            `</div>`,
-            `<div style="margin-top:8px;padding-top:6px;border-top:1px solid ${isDark ? 'rgba(148,163,184,.25)' : 'rgba(15,23,42,.1)'};font-size:10px;opacity:.55">${escapeHtml(t('observability.ganttTooltipHint'))}</div>`,
-          );
-          return lines.join('');
-        },
-      },
-      series: [
-        {
-          type: 'custom',
-          name: 'spans',
-          renderItem: (_params: CustomSeriesRenderItemParams, api: CustomSeriesRenderItemAPI) => {
-            const yIdx = Number(api.value(0));
-            const x0 = Number(api.value(1));
-            const x1 = Number(api.value(2));
-            const start = api.coord([x0, yIdx]);
-            const end = api.coord([x1, yIdx]);
-            const sizeRet = api.size?.([0, 1]);
-            const band =
-              Array.isArray(sizeRet) && typeof sizeRet[1] === 'number'
-                ? sizeRet[1]
-                : typeof sizeRet === 'number'
-                  ? sizeRet
-                  : ROW_PX;
-            const height = Math.min(Math.max(band * 0.52, 10), 20);
-            const width = Math.max(end[0]! - start[0]!, 2);
-            return {
-              type: 'rect' as const,
-              shape: {
-                x: start[0],
-                y: start[1] - height / 2,
-                width,
-                height,
-                r: 2,
-              },
-              style: api.style(),
-            };
-          },
-          encode: { x: [1, 2], y: 0 },
-          dimensions: ['y', 'x0', 'x1'],
-          data: segments.map((s, i) => ({
-            value: [i, s.startMs, s.endMs] as [number, number, number],
-            itemStyle: {
-              color: runTypeChartColor(s.rt),
-              borderColor: isDark ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.35)',
-              borderWidth: 1,
-            },
-          })),
-          emphasis: {
-            itemStyle: {
-              shadowBlur: 8,
-              shadowColor: isDark ? 'rgba(0,0,0,0.45)' : 'rgba(15,23,42,0.18)',
-            },
-          },
-        },
-      ],
-    };
-  }, [segments, winMin, winMax, t, dateLocale, isDark]);
+  const splitCount = 5;
+  const gridLines = useMemo(() => {
+    const lines: number[] = [];
+    for (let i = 0; i <= splitCount; i++) {
+      lines.push(winMin + (span * i) / splitCount);
+    }
+    return lines;
+  }, [winMin, span]);
 
-  const onEvents = useMemo(
-    () => ({
-      click: (raw: unknown) => {
-        const p = raw as { componentType?: string; seriesType?: string; dataIndex?: number };
-        if (p.componentType === 'series' && p.seriesType === 'custom' && typeof p.dataIndex === 'number') {
-          const seg = segments[p.dataIndex];
-          if (seg) onSelectEvent(seg.ev);
-        }
-      },
-    }),
-    [segments, onSelectEvent],
-  );
+  const axisMuted = isDark ? '#64748b' : '#94a3b8';
+  const labelColor = isDark ? '#94a3b8' : '#475569';
+  const splitOpacity = isDark ? 0.12 : 0.28;
 
-  if (segments.length === 0 || !option) return null;
+  if (segments.length === 0) return null;
 
   return (
     <div
@@ -334,7 +271,136 @@ export function TraceGanttChart({ events, t, onSelectEvent, dateLocale }: Props)
             {t('observability.ganttWindowMs', { ms: Math.max(0, Math.round(winMax - winMin)) })}
           </span>
         </div>
-        <EChartsWithResize option={option} style={{ height: chartHeight }} onEvents={onEvents} />
+        <div ref={wrapRef} style={{ height: chartHeight }} className="relative w-full select-none">
+          <svg
+            width="100%"
+            height={chartHeight}
+            className="block"
+            style={{ minWidth: 280 }}
+            onMouseLeave={scheduleHide}
+          >
+            {/* Grid + plot frame */}
+            {gridLines.map((ms) => {
+              const x = xOf(ms);
+              return (
+                <line
+                  key={ms}
+                  x1={x}
+                  x2={x}
+                  y1={CHART_TOP_PAD}
+                  y2={chartHeight - AXIS_BOTTOM}
+                  stroke={axisMuted}
+                  strokeOpacity={splitOpacity}
+                  strokeDasharray="4 4"
+                  strokeWidth={1}
+                />
+              );
+            })}
+            <line
+              x1={PLOT_LEFT + LABEL_COL}
+              x2={PLOT_LEFT + LABEL_COL + plotW}
+              y1={chartHeight - AXIS_BOTTOM + 4}
+              y2={chartHeight - AXIS_BOTTOM + 4}
+              stroke={axisMuted}
+              strokeWidth={1}
+            />
+            {gridLines.map((ms) => {
+              const x = xOf(ms);
+              return (
+                <text
+                  key={`t-${ms}`}
+                  x={x}
+                  y={chartHeight - 4}
+                  textAnchor="middle"
+                  fill={axisMuted}
+                  fontSize={9}
+                  fontFamily="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace"
+                >
+                  +{Math.round(ms - winMin)}ms
+                </text>
+              );
+            })}
+
+            {segments.map((s, i) => {
+              const name = s.ev.event;
+              const short = name.length > 26 ? `${name.slice(0, 26)}…` : name;
+              const rowY = CHART_TOP_PAD + i * ROW_PX + ROW_PX / 2;
+              const x0 = xOf(s.startMs);
+              const x1 = xOf(s.endMs);
+              const w = Math.max(x1 - x0, 2);
+              const h = Math.min(Math.max(ROW_PX * 0.52, 10), 20);
+              const fill = runTypeChartColor(s.rt);
+              const stroke = isDark ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.35)';
+
+              return (
+                <g key={`${s.ev.ts}-${i}`}>
+                  <text
+                    x={PLOT_LEFT + LABEL_COL - 6}
+                    y={rowY}
+                    textAnchor="end"
+                    dominantBaseline="middle"
+                    fill={labelColor}
+                    fontSize={10}
+                    fontFamily="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace"
+                  >
+                    {short}
+                  </text>
+                  <rect
+                    x={x0}
+                    y={rowY - h / 2}
+                    width={w}
+                    height={h}
+                    rx={2}
+                    ry={2}
+                    fill={fill}
+                    stroke={stroke}
+                    strokeWidth={1}
+                    className="cursor-pointer"
+                    onMouseEnter={(e) => {
+                      clearCloseTimer();
+                      setTip({ idx: i, clientX: e.clientX, clientY: e.clientY });
+                    }}
+                    onMouseMove={(e) => {
+                      setTip((prev) =>
+                        prev && prev.idx === i
+                          ? { idx: i, clientX: e.clientX, clientY: e.clientY }
+                          : prev,
+                      );
+                    }}
+                    onMouseLeave={scheduleHide}
+                    onClick={() => onSelectEvent(s.ev)}
+                  />
+                </g>
+              );
+            })}
+          </svg>
+
+          {tip &&
+            typeof document !== 'undefined' &&
+            createPortal(
+              <div
+                className="pointer-events-none fixed z-[1100]"
+                style={{
+                  left: Math.min(tip.clientX + 12, window.innerWidth - 320),
+                  top: Math.min(tip.clientY + 12, window.innerHeight - 120),
+                }}
+              >
+                <div
+                  className="pointer-events-auto"
+                  onMouseEnter={clearCloseTimer}
+                  onMouseLeave={scheduleHide}
+                >
+                  <GanttTooltipPanel
+                    segment={segments[tip.idx]!}
+                    t={t}
+                    dateLocale={dateLocale}
+                    isDark={isDark}
+                  />
+                </div>
+              </div>,
+              document.body,
+            )}
+        </div>
       </div>
     </div>
   );

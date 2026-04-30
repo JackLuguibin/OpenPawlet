@@ -208,7 +208,7 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
     subRows.filter((r) => r.running).length +
     agentRows.filter((r) => r.running).length;
 
-  const openStartModalForProfile = (row: RuntimeAgentStatus) => {
+  const openStartModalForProfile = useCallback((row: RuntimeAgentStatus) => {
     setProfileSeed(row);
     form.setFieldsValue({
       task: '',
@@ -218,7 +218,7 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
       profile_id: row.profile_id || null,
     } as RuntimeSubagentStartBody);
     setStartModalOpen(true);
-  };
+  }, [form]);
 
   const openStartModalBlank = () => {
     setProfileSeed(null);
@@ -522,11 +522,10 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
     showUptimeCol,
     showMetaCol,
     mainRow,
-    startMainMutation.isPending,
-    stopMainMutation.isPending,
-    stopMainMutation.variables,
-    stopSubMutation.isPending,
-    stopSubMutation.variables,
+    openStartModalForProfile,
+    startMainMutation,
+    stopMainMutation,
+    stopSubMutation,
   ]);
 
   return (

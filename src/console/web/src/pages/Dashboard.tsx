@@ -24,8 +24,13 @@ import {
   DollarOutlined,
   ThunderboltOutlined,
   BarChartOutlined,
+  PieChartOutlined,
 } from '@ant-design/icons';
-import { EChartsWithResize, ModelPieChart, type EChartsOption } from '../components/ModelPieChart';
+import {
+  DailyTokenSparklineChart,
+  DailyTokenStackedBarChart,
+  ModelSharePieChart,
+} from '../components/DashboardCharts';
 import { formatTokenCount, formatCost } from '../utils/format';
 import { PageLayout } from '../components/PageLayout';
 import { PAGE_PRIMARY_TITLE_CLASS } from '../utils/pageTitleClasses';
@@ -78,6 +83,10 @@ const DASHBOARD_STAT_CARD_CLASS =
 
 /** Pie / bar chart layout: when the charts area (not window) is this narrow, use compact + scrollable charts. */
 const CHARTS_AREA_NARROW_PX = 640;
+
+/** Matching Ant Card chrome for the Dashboard chart pair (same head + flex body). */
+const DASHBOARD_CHART_PAIR_CARD_CLASS =
+  'flex h-full min-h-0 min-w-0 flex-col overflow-hidden [&_.ant-card-head]:shrink-0 [&_.ant-card-body]:flex [&_.ant-card-body]:min-h-0 [&_.ant-card-body]:flex-1 [&_.ant-card-body]:flex-col [&_.ant-card-body]:overflow-visible';
 
 function formatUptime(seconds: number): string {
   const hours = Math.floor(seconds / 3600);
@@ -147,336 +156,6 @@ export default function Dashboard() {
     const base = isDarkUi ? MODEL_PIE_PALETTE_DARK : MODEL_PIE_PALETTE_LIGHT;
     return Array.from({ length: n }, (_, i) => base[i % base.length]);
   }, [modelPieRows.length, isDarkUi]);
-
-  const modelPieChartOption = useMemo((): EChartsOption => {
-    const titleTextColor = isDarkUi ? '#f3f4f6' : '#111827';
-    const subtextColor = isDarkUi ? '#9ca3af' : '#6b7280';
-    const legendTextColor = isDarkUi ? '#d1d5db' : '#4b5563';
-    const tooltipTextColor = isDarkUi ? '#e5e7eb' : '#1f2937';
-    const tooltipBg = isDarkUi ? 'rgba(17, 24, 39, 0.92)' : 'rgba(255, 255, 255, 0.96)';
-
-    const empty = modelPieRows.length === 0;
-    if (empty) {
-      return {
-        backgroundColor: 'transparent',
-        title: {
-          text: t('dashboard.modelShareTitle'),
-          subtext: t('dashboard.noUsageData'),
-          left: 'center',
-          textStyle: {
-            color: titleTextColor,
-            fontSize: chartLayoutNarrow ? 14 : 16,
-            fontWeight: 600,
-          },
-          subtextStyle: { color: subtextColor, fontSize: chartLayoutNarrow ? 11 : 12 },
-        },
-        tooltip: { show: false },
-        legend: { show: false },
-        series: [
-          {
-            type: 'pie',
-            radius: chartLayoutNarrow ? ['36%', '58%'] : '50%',
-            center: chartLayoutNarrow ? ['50%', '46%'] : ['50%', '55%'],
-            silent: true,
-            animation: false,
-            label: { show: false },
-            labelLine: { show: false },
-            data: [
-              {
-                value: 1,
-                name: '',
-                itemStyle: { color: modelPieEmptyFill },
-              },
-            ],
-          },
-        ],
-      };
-    }
-
-    return {
-      backgroundColor: 'transparent',
-      title: {
-        text: t('dashboard.modelShareTitle'),
-        subtext: formatTokenCount(modelPieTotal),
-        left: 'center',
-        textStyle: {
-          color: titleTextColor,
-          fontSize: chartLayoutNarrow ? 14 : 16,
-          fontWeight: 600,
-        },
-        subtextStyle: { color: subtextColor, fontSize: chartLayoutNarrow ? 11 : 12 },
-      },
-      tooltip: {
-        trigger: 'item',
-        backgroundColor: tooltipBg,
-        borderColor: isDarkUi ? '#374151' : '#e5e7eb',
-        textStyle: { color: tooltipTextColor },
-        formatter: (params) => {
-          if (!params || typeof params !== 'object' || !('name' in params)) return '';
-          const p = params as { name: string; value: number; percent: number };
-          return `${p.name}<br/><span style="font-variant-numeric: tabular-nums">${formatTokenCount(p.value)} (${p.percent.toFixed(1)}%)</span>`;
-        },
-      },
-      legend: chartLayoutNarrow
-        ? {
-            orient: 'horizontal',
-            bottom: 2,
-            left: 'center',
-            itemWidth: 10,
-            itemHeight: 10,
-            itemGap: 8,
-            textStyle: { color: legendTextColor, fontSize: 11 },
-            type: 'scroll',
-            pageIconSize: 10,
-          }
-        : {
-            orient: 'vertical',
-            left: 'left',
-            textStyle: { color: legendTextColor },
-            type: 'scroll',
-          },
-      color: modelPieColorRange,
-      series: [
-        {
-          name: t('dashboard.modelUsageAllTime'),
-          type: 'pie',
-          radius: chartLayoutNarrow ? ['36%', '58%'] : '50%',
-          center: chartLayoutNarrow ? ['50%', '46%'] : ['50%', '55%'],
-          data: modelPieRows.map((r) => ({ name: r.type, value: r.value })),
-          emphasis: {
-            itemStyle: {
-              shadowBlur: 10,
-              shadowOffsetX: 0,
-              shadowColor: 'rgba(0, 0, 0, 0.5)',
-            },
-          },
-        },
-      ],
-    };
-  }, [
-    modelPieRows,
-    modelPieColorRange,
-    modelPieEmptyFill,
-    modelPieTotal,
-    isDarkUi,
-    chartLayoutNarrow,
-    t,
-  ]);
-
-  /** Daily token: vertical stacked bars (same stack/tooltip style as horizontal example, rotated 90°) */
-  const dailyTokenStackBarOption = useMemo((): EChartsOption => {
-    const history = usageHistory ?? [];
-    if (history.length === 0) {
-      return { series: [] };
-    }
-
-    const axisLabelColor = isDarkUi ? '#9ca3af' : '#6b7280';
-    const totalLabelColor = isDarkUi ? '#e5e7eb' : '#374151';
-    const legendTextColor = isDarkUi ? '#d1d5db' : '#4b5563';
-    const tooltipTextColor = isDarkUi ? '#e5e7eb' : '#1f2937';
-    const tooltipBg = isDarkUi ? 'rgba(17, 24, 39, 0.92)' : 'rgba(255, 255, 255, 0.96)';
-    const splitLineColor = isDarkUi ? '#374151' : '#e5e7eb';
-
-    const xCategories = history.map((d) => d.date.slice(5));
-    const promptLabel = t('dashboard.chartPrompt');
-    const completionLabel = t('dashboard.chartCompletion');
-    const promptData = history.map((d) => d.prompt_tokens ?? 0);
-    const completionData = history.map((d) => d.completion_tokens ?? 0);
-
-    return {
-      backgroundColor: 'transparent',
-      tooltip: {
-        trigger: 'axis',
-        axisPointer: { type: 'shadow' },
-        backgroundColor: tooltipBg,
-        borderColor: isDarkUi ? '#374151' : '#e5e7eb',
-        textStyle: { color: tooltipTextColor },
-        formatter: (params: unknown) => {
-          if (!Array.isArray(params) || params.length === 0) return '';
-          const rows = params as Array<{
-            axisValue?: string;
-            seriesName?: string;
-            value?: number | string;
-            marker?: string;
-          }>;
-          const axis = rows[0].axisValue ?? '';
-          const lines = rows.map(
-            (p) =>
-              `${p.marker ?? ''} ${p.seriesName ?? ''}: ${formatTokenCount(Number(p.value ?? 0))}`,
-          );
-          return [axis, ...lines].join('<br/>');
-        },
-      },
-      legend: {
-        bottom: chartLayoutNarrow ? undefined : 0,
-        top: chartLayoutNarrow ? 0 : undefined,
-        left: 'center',
-        textStyle: {
-          color: legendTextColor,
-          fontSize: chartLayoutNarrow ? 11 : 12,
-        },
-        itemGap: chartLayoutNarrow ? 10 : 14,
-      },
-      ...(chartLayoutNarrow
-        ? {
-            dataZoom: [
-              {
-                type: 'inside',
-                xAxisIndex: 0,
-                start: 52,
-                end: 100,
-                zoomOnMouseWheel: true,
-                moveOnMouseMove: true,
-              },
-              {
-                type: 'slider',
-                xAxisIndex: 0,
-                start: 52,
-                end: 100,
-                height: 26,
-                bottom: 4,
-                borderColor: isDarkUi ? '#4b5563' : '#d1d5db',
-                fillerColor: isDarkUi ? 'rgba(107, 114, 128, 0.35)' : 'rgba(148, 163, 184, 0.45)',
-                handleStyle: { color: isDarkUi ? '#9ca3af' : '#64748b' },
-                textStyle: { color: axisLabelColor, fontSize: 10 },
-              },
-            ],
-          }
-        : {}),
-      grid: {
-        left: chartLayoutNarrow ? 10 : 12,
-        right: chartLayoutNarrow ? 10 : 12,
-        top: chartLayoutNarrow ? 40 : 12,
-        bottom: chartLayoutNarrow ? 88 : 42,
-        containLabel: true,
-      },
-      xAxis: {
-        type: 'category',
-        data: xCategories,
-        axisLabel: {
-          color: axisLabelColor,
-          rotate: chartLayoutNarrow ? 0 : 38,
-          fontSize: chartLayoutNarrow ? 10 : 12,
-          margin: chartLayoutNarrow ? 8 : 12,
-          hideOverlap: true,
-        },
-        axisTick: { alignWithLabel: true },
-      },
-      yAxis: {
-        type: 'value',
-        axisLabel: {
-          color: axisLabelColor,
-          formatter: (v: string | number) => formatTokenCount(Number(v)),
-        },
-        splitLine: { lineStyle: { color: splitLineColor, type: 'dashed' } },
-      },
-      series: [
-        {
-          name: promptLabel,
-          type: 'bar',
-          stack: 'total',
-          barMaxWidth: chartLayoutNarrow ? 22 : 44,
-          barCategoryGap: '12%',
-          itemStyle: { color: '#3b82f6' },
-          emphasis: { focus: 'series' },
-          label: { show: false },
-          data: promptData,
-        },
-        {
-          name: completionLabel,
-          type: 'bar',
-          stack: 'total',
-          barMaxWidth: chartLayoutNarrow ? 22 : 44,
-          barCategoryGap: '12%',
-          itemStyle: { color: '#22c55e' },
-          emphasis: { focus: 'series' },
-          label: {
-            show: true,
-            position: 'top',
-            distance: chartLayoutNarrow ? 2 : 6,
-            color: totalLabelColor,
-            fontSize: chartLayoutNarrow ? 9 : 11,
-            fontWeight: 600,
-            formatter: (p: unknown) => {
-              const idx =
-                typeof p === 'object' && p !== null && 'dataIndex' in p
-                  ? Number((p as { dataIndex: unknown }).dataIndex)
-                  : 0;
-              const total = (promptData[idx] ?? 0) + (completionData[idx] ?? 0);
-              return total > 0 ? formatTokenCount(total) : '';
-            },
-          },
-          data: completionData,
-        },
-      ],
-    };
-  }, [usageHistory, t, isDarkUi, chartLayoutNarrow]);
-
-  /** Compact sparkline for model card: daily total tokens (ECharts, matches main charts) */
-  const dailyTokenSparklineOption = useMemo((): EChartsOption => {
-    const history = usageHistory ?? [];
-    if (history.length === 0) {
-      return { series: [] };
-    }
-    const dates = history.map((d) => d.date.slice(5));
-    const values = history.map((d) => d.total_tokens ?? 0);
-    const tooltipBg = isDarkUi ? 'rgba(17, 24, 39, 0.92)' : 'rgba(255, 255, 255, 0.96)';
-    const tooltipTextColor = isDarkUi ? '#e5e7eb' : '#1f2937';
-
-    return {
-      backgroundColor: 'transparent',
-      grid: { left: 0, right: 0, top: 2, bottom: 0, containLabel: false },
-      xAxis: {
-        type: 'category',
-        data: dates,
-        boundaryGap: false,
-        show: false,
-      },
-      yAxis: {
-        type: 'value',
-        show: false,
-        scale: true,
-      },
-      tooltip: {
-        trigger: 'axis',
-        // Sparkline sits in overflow-hidden cards; render tooltip on body so it is not clipped.
-        appendToBody: true,
-        axisPointer: { type: 'line', lineStyle: { color: '#3b82f6', width: 1 } },
-        backgroundColor: tooltipBg,
-        borderColor: isDarkUi ? '#374151' : '#e5e7eb',
-        textStyle: { color: tooltipTextColor, fontSize: 12 },
-        formatter: (params: unknown) => {
-          if (!Array.isArray(params) || params.length === 0) return '';
-          const p = params[0] as { axisValue?: string; value?: number };
-          const v = Number(p.value ?? 0);
-          return `${p.axisValue ?? ''}<br/>${formatTokenCount(v)}`;
-        },
-      },
-      series: [
-        {
-          type: 'line',
-          smooth: true,
-          symbol: 'none',
-          sampling: 'lttb',
-          lineStyle: { width: 1.5, color: '#3b82f6' },
-          areaStyle: {
-            color: {
-              type: 'linear',
-              x: 0,
-              y: 0,
-              x2: 0,
-              y2: 1,
-              colorStops: [
-                { offset: 0, color: 'rgba(59, 130, 246, 0.35)' },
-                { offset: 1, color: 'rgba(59, 130, 246, 0.05)' },
-              ],
-            },
-          },
-          data: values,
-        },
-      ],
-    };
-  }, [usageHistory, isDarkUi]);
 
   useEffect(() => {
     if (data) {
@@ -737,10 +416,11 @@ export default function Dashboard() {
                 <Text type="secondary" className="mb-1 block text-xs">
                   {t('dashboard.dailyTokenUsage')}
                 </Text>
-                <div className="h-11 w-full min-w-0 max-w-full overflow-hidden sm:max-w-[280px]">
-                  <EChartsWithResize
+                <div className="h-11 w-full min-w-0 max-w-full overflow-visible sm:max-w-[280px]">
+                  <DailyTokenSparklineChart
+                    isDarkUi={isDarkUi}
+                    history={usageHistory}
                     style={{ width: '100%', height: '100%' }}
-                    option={dailyTokenSparklineOption}
                   />
                 </div>
               </div>
@@ -759,7 +439,7 @@ export default function Dashboard() {
             </span>
           }
           size="small"
-          className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden [&_.ant-card-head]:shrink-0 [&_.ant-card-body]:flex [&_.ant-card-body]:min-h-0 [&_.ant-card-body]:flex-1 [&_.ant-card-body]:flex-col [&_.ant-card-body]:overflow-visible"
+          className={DASHBOARD_CHART_PAIR_CARD_CLASS}
         >
           {usageLoading ? (
             <div className="flex flex-1 items-center justify-center py-12">
@@ -770,10 +450,14 @@ export default function Dashboard() {
               <Text type="secondary" className="text-xs shrink-0 mb-1">
                 {t('dashboard.usageDailyByCalendar', { tz: agentTz })}
               </Text>
-              <div className="min-h-[240px] w-full min-w-0 flex-1 overflow-visible pb-1 sm:min-h-[260px] lg:min-h-[280px]">
-                <EChartsWithResize
+              <div className="flex min-h-[240px] w-full min-w-0 flex-1 flex-col overflow-visible pb-1 sm:min-h-[260px] lg:min-h-[280px]">
+                <DailyTokenStackedBarChart
+                  chartLayoutNarrow={chartLayoutNarrow}
+                  isDarkUi={isDarkUi}
+                  history={usageHistory}
+                  promptLabel={t('dashboard.chartPrompt')}
+                  completionLabel={t('dashboard.chartCompletion')}
                   style={{ width: '100%', height: '100%', minHeight: 236 }}
-                  option={dailyTokenStackBarOption}
                 />
               </div>
             </div>
@@ -787,15 +471,39 @@ export default function Dashboard() {
         </Card>
 
         <Card
+          title={
+            <span className="flex items-center gap-2">
+              <PieChartOutlined className="text-amber-500" /> {t('dashboard.modelShareTitle')}
+            </span>
+          }
           size="small"
-          className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden [&_.ant-card-head]:shrink-0 [&_.ant-card-body]:flex [&_.ant-card-body]:min-h-0 [&_.ant-card-body]:flex-1 [&_.ant-card-body]:flex-col [&_.ant-card-body]:overflow-x-hidden [&_.ant-card-body]:overflow-y-hidden"
+          className={DASHBOARD_CHART_PAIR_CARD_CLASS}
         >
-          <div className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col">
-            <ModelPieChart
-              option={modelPieChartOption}
-              style={{ height: '100%', width: '100%' }}
-            />
-          </div>
+          {modelPieRows.length === 0 ? (
+            <div className="flex flex-1 flex-col items-center justify-center py-8">
+              <Text type="secondary" className="text-center">
+                {t('dashboard.noUsageData')}
+              </Text>
+            </div>
+          ) : (
+            <div className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col">
+              <Text type="secondary" className="text-xs shrink-0 mb-1 tabular-nums">
+                {formatTokenCount(modelPieTotal)}
+              </Text>
+              <div className="flex min-h-[240px] w-full min-w-0 flex-1 flex-col overflow-visible pb-1 sm:min-h-[260px] lg:min-h-[280px]">
+                <ModelSharePieChart
+                  chartLayoutNarrow={chartLayoutNarrow}
+                  isDarkUi={isDarkUi}
+                  modelPieRows={modelPieRows}
+                  modelPieTotal={modelPieTotal}
+                  colors={modelPieColorRange}
+                  emptyFill={modelPieEmptyFill}
+                  seriesNameAllTime={t('dashboard.modelUsageAllTime')}
+                  style={{ width: '100%', height: '100%', minHeight: 236 }}
+                />
+              </div>
+            </div>
+          )}
         </Card>
       </div>
       </div>

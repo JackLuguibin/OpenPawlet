@@ -37,7 +37,7 @@ export function runTypeTagClass(rt: RunType): string {
   }
 }
 
-/** Solid fills for ECharts (align with Tailwind accent bars). */
+/** Solid fills for trace / chart UI (aligned with Tailwind accent bars). */
 export function runTypeChartColor(rt: RunType): string {
   switch (rt) {
     case 'llm':
