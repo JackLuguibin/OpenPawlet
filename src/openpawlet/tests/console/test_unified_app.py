@@ -71,6 +71,10 @@ def test_lifespan_brings_up_and_tears_down_subsystems(
         message_bus = _FakeBus()
         session_manager = _FakeSessions()
 
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            # Console lifespan constructs EmbeddedOpenPawlet(config=..., verbose=..., provider_factory=...).
+            pass
+
         @classmethod
         def from_environment(cls, **_kw: Any) -> _FakeEmbedded:
             return cls()
@@ -388,6 +392,7 @@ def test_ensure_web_dependencies_runs_install_when_missing(
     import console.cli as cli_mod
 
     web = tmp_path / "console-web"
+    web.mkdir(parents=True)
     (web / "package.json").write_text("{}")
     calls: list[list[str]] = []
 

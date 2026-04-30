@@ -6,8 +6,11 @@ history.jsonl (e.g. ``"cursor": "abc"``).  The original ``_next_cursor`` and
 ``TypeError`` / ``ValueError``, blocking all subsequent history appends.
 """
 
+from unittest.mock import patch
+
 import pytest
 
+from openpawlet.agent import memory as memory_mod
 from openpawlet.agent.memory import MemoryStore
 
 
@@ -152,14 +155,10 @@ class TestCursorValidationInvariant:
         store._cursor_file.unlink(missing_ok=True)
         assert store.append_history("safe next") == 101
 
-    def test_corruption_is_logged_exactly_once_per_store(self, store, caplog):
+    def test_corruption_is_logged_exactly_once_per_store(self, store):
         """Observability without spam: the first non-int cursor emits one
         warning, subsequent reads on the same store stay quiet.  Without
         this, a poisoned file produces one warning per agent turn."""
-        import logging
-
-        from loguru import logger as loguru_logger
-
         store.history_file.write_text(
             '{"cursor": "bad1", "timestamp": "2026-04-01 10:00", "content": "x"}\n'
             '{"cursor": 2, "timestamp": "2026-04-01 10:01", "content": "y"}\n',
@@ -167,21 +166,21 @@ class TestCursorValidationInvariant:
         )
         store._cursor_file.unlink(missing_ok=True)
 
-        handler_id = loguru_logger.add(
-            caplog.handler, format="{message}", level="WARNING"
-        )
-        try:
-            with caplog.at_level(logging.WARNING):
-                store.read_unprocessed_history(since_cursor=0)
-                store.read_unprocessed_history(since_cursor=0)
-                store.append_history("another")
-        finally:
-            loguru_logger.remove(handler_id)
+        corruption_warnings: list[str] = []
+        real_warning = memory_mod.logger.warning
 
-        corruption_warnings = [
-            r for r in caplog.records if "non-int cursor" in r.getMessage()
-        ]
+        def _track_warning(message: object, *args: object, **kwargs: object) -> None:
+            text = str(message)
+            if "non-int cursor" in text:
+                corruption_warnings.append(text)
+            real_warning(message, *args, **kwargs)
+
+        with patch.object(memory_mod.logger, "warning", side_effect=_track_warning):
+            store.read_unprocessed_history(since_cursor=0)
+            store.read_unprocessed_history(since_cursor=0)
+            store.append_history("another")
+
         assert len(corruption_warnings) == 1, (
             "Expected exactly one corruption warning per store instance; "
-            f"got {len(corruption_warnings)}: {[r.getMessage() for r in corruption_warnings]}"
+            f"got {len(corruption_warnings)}: {corruption_warnings!r}"
         )

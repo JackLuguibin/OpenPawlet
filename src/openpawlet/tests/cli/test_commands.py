@@ -400,7 +400,12 @@ def test_make_provider_uses_github_copilot_backend():
         }
     )
 
-    with patch("openpawlet.providers.openai_compat_provider.AsyncOpenAI"):
+    # Force legacy ProvidersConfig path so this test targets GitHubCopilotProvider
+    # construction instead of workspace LLM instances + MultiInstanceFailoverProvider.
+    with (
+        patch("openpawlet.providers.openai_compat_provider.AsyncOpenAI"),
+        patch("openpawlet.providers.factory.find_default_instance_id", return_value=None),
+    ):
         provider = _make_provider(config)
 
     assert provider.__class__.__name__ == "GitHubCopilotProvider"
@@ -478,7 +483,10 @@ def test_make_provider_passes_extra_headers_to_custom_provider():
         }
     )
 
-    with patch("openpawlet.providers.openai_compat_provider.AsyncOpenAI") as mock_async_openai:
+    with (
+        patch("openpawlet.providers.openai_compat_provider.AsyncOpenAI") as mock_async_openai,
+        patch("openpawlet.providers.factory.find_default_instance_id", return_value=None),
+    ):
         _make_provider(config)
 
     kwargs = mock_async_openai.call_args.kwargs
