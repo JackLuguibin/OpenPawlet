@@ -27,6 +27,7 @@ import os
 import time
 from collections import defaultdict
 from collections.abc import Callable
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -589,9 +590,8 @@ class EmbeddedOpenPawlet:
             ):
                 self._primary_team_event_task.cancel()
                 try:
-                    await self._primary_team_event_task
-                except asyncio.CancelledError:
-                    pass
+                    with suppress(asyncio.CancelledError):
+                        await self._primary_team_event_task
                 except Exception:  # pragma: no cover
                     logger.exception("primary team direct loop cancel")
             self._primary_team_event_task = None

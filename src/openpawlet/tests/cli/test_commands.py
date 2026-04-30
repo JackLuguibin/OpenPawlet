@@ -33,7 +33,7 @@ runner = CliRunner()
 
 
 class _StopGatewayError(RuntimeError):
-    pass
+    """Sentinel used by legacy CLI tests that monkeypatch the gateway loop."""
 
 
 @pytest.fixture
@@ -590,7 +590,7 @@ def test_agent_config_sets_active_path(monkeypatch, tmp_path: Path) -> None:
 
     class _FakeAgentLoop:
         def __init__(self, *args, **kwargs) -> None:
-            pass
+            return
 
         async def process_direct(self, *_args, **_kwargs):
             return OutboundMessage(channel="cli", chat_id="direct", content="ok")
@@ -630,7 +630,7 @@ def test_agent_uses_workspace_directory_for_cron_store(monkeypatch, tmp_path: Pa
 
     class _FakeAgentLoop:
         def __init__(self, *args, **kwargs) -> None:
-            pass
+            return
 
         async def process_direct(self, *_args, **_kwargs):
             return OutboundMessage(channel="cli", chat_id="direct", content="ok")
@@ -677,7 +677,7 @@ def test_agent_workspace_override_does_not_migrate_legacy_cron(monkeypatch, tmp_
 
     class _FakeAgentLoop:
         def __init__(self, *args, **kwargs) -> None:
-            pass
+            return
 
         async def process_direct(self, *_args, **_kwargs):
             return OutboundMessage(channel="cli", chat_id="direct", content="ok")
@@ -732,7 +732,7 @@ def test_agent_custom_config_workspace_does_not_migrate_legacy_cron(
 
     class _FakeAgentLoop:
         def __init__(self, *args, **kwargs) -> None:
-            pass
+            return
 
         async def process_direct(self, *_args, **_kwargs):
             return OutboundMessage(channel="cli", chat_id="direct", content="ok")

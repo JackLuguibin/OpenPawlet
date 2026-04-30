@@ -1,6 +1,7 @@
 """Tests for atomic session save and corrupt-file repair."""
 
 import json
+from contextlib import suppress
 from datetime import datetime
 from pathlib import Path
 
@@ -65,10 +66,8 @@ class TestAtomicSave:
         import unittest.mock
 
         with unittest.mock.patch("openpawlet.session.manager.json.dumps", side_effect=failing_dumps):
-            try:
+            with suppress(OSError):
                 mgr.save(session)
-            except OSError:
-                pass
 
         assert not tmp_path_file.exists()
 

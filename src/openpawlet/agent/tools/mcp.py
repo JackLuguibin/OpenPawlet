@@ -3,7 +3,7 @@
 import asyncio
 import os
 import shutil
-from contextlib import AsyncExitStack
+from contextlib import AsyncExitStack, suppress
 from typing import Any
 
 import httpx
@@ -599,10 +599,8 @@ async def connect_mcp_servers(
                     "only JSON-RPC to stdout and sends logs/debug output to stderr instead."
                 )
             logger.error("MCP server '{}': failed to connect: {}{}", name, e, hint)
-            try:
+            with suppress(Exception):
                 await server_stack.aclose()
-            except Exception:
-                pass
             return name, None
 
     server_stacks: dict[str, AsyncExitStack] = {}

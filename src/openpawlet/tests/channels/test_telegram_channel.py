@@ -73,13 +73,13 @@ class _FakeBot:
         self.sent_media.append({"kind": "document", **kwargs})
 
     async def send_chat_action(self, **kwargs) -> None:
-        pass
+        return
 
     async def get_file(self, file_id: str):
         """Return a fake file that 'downloads' to a path (for reply-to-media tests)."""
 
         async def _fake_download(path) -> None:
-            pass
+            return
 
         return SimpleNamespace(download_to_drive=_fake_download)
 
@@ -98,10 +98,10 @@ class _FakeApp:
         self.handlers.append(handler)
 
     async def initialize(self) -> None:
-        pass
+        return
 
     async def start(self) -> None:
-        pass
+        return
 
 
 class _FakeBuilder:

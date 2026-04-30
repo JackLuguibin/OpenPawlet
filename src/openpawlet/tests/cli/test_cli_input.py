@@ -71,7 +71,7 @@ def test_thinking_spinner_pause_stops_and_restarts():
     thinking = stream_mod.ThinkingSpinner(console=mock_console)
     with thinking:
         with thinking.pause():
-            pass
+            ...
 
     assert spinner.method_calls == [
         call.start(),

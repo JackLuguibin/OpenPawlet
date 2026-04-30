@@ -29,7 +29,7 @@ class _SvcStub:
 
     def add_job(self, **kwargs):
         class _J:
-            pass
+            """Minimal job object returned by the stub service."""
 
         j = _J()
         j.id = "id1"

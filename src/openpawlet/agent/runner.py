@@ -976,8 +976,8 @@ class AgentRunner:
                 prepared = prepare_call(tool_call.name, tool_call.arguments)
                 if isinstance(prepared, tuple) and len(prepared) == 3:
                     tool, params, prep_error = prepared
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("prepare_call failed for {}: {}", tool_call.name, exc)
         if prep_error:
             event = {
                 "name": tool_call.name,

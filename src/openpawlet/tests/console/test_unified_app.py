@@ -64,7 +64,7 @@ def test_lifespan_brings_up_and_tears_down_subsystems(
         outbound_size = 0
 
     class _FakeSessions:
-        pass
+        """Placeholder session manager for lifespan tests."""
 
     class _FakeEmbedded:
         agent = _FakeAgent()
@@ -73,7 +73,7 @@ def test_lifespan_brings_up_and_tears_down_subsystems(
 
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             # Console lifespan constructs EmbeddedOpenPawlet(config=..., verbose=..., provider_factory=...).
-            pass
+            return
 
         @classmethod
         def from_environment(cls, **_kw: Any) -> _FakeEmbedded:
@@ -326,7 +326,7 @@ def test_signal_handlers_install_cross_platform_fallback(
     loop = _DummyLoop()
 
     def _stop() -> None:  # pragma: no cover - never invoked
-        pass
+        return
 
     signals.install_async_signal_handlers(loop, _stop)
     # Both SIGINT (and SIGTERM where available) attempted on the loop and then on signal.signal.

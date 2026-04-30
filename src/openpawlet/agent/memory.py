@@ -8,6 +8,7 @@ import os
 import re
 import weakref
 from collections.abc import Callable, Iterator
+from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -321,10 +322,8 @@ class MemoryStore:
     def _next_cursor(self) -> int:
         """Read the current cursor counter and return the next value."""
         if self._cursor_file.exists():
-            try:
+            with suppress(ValueError, OSError):
                 return int(self._cursor_file.read_text(encoding="utf-8").strip()) + 1
-            except (ValueError, OSError):
-                pass
         # Fast path: trust the tail when intact.  Otherwise scan the whole
         # file and take ``max`` — that stays correct even if the monotonic
         # invariant was broken by external writes.
@@ -363,7 +362,7 @@ class MemoryStore:
                         except json.JSONDecodeError:
                             continue
         except FileNotFoundError:
-            pass
+            return entries
         return entries
 
     def _read_last_entry(self) -> dict[str, Any] | None:
@@ -399,14 +398,12 @@ class MemoryStore:
             # On Windows, opening a directory with O_RDONLY raises
             # PermissionError — skip the dir sync there (NTFS
             # journals metadata synchronously).
-            try:
+            with suppress(PermissionError):
                 fd = os.open(str(self.history_file.parent), os.O_RDONLY)
                 try:
                     os.fsync(fd)
                 finally:
                     os.close(fd)
-            except PermissionError:
-                pass  # Windows — directory fsync not supported
         except BaseException:
             tmp_path.unlink(missing_ok=True)
             raise
@@ -415,10 +412,8 @@ class MemoryStore:
 
     def get_last_dream_cursor(self) -> int:
         if self._dream_cursor_file.exists():
-            try:
+            with suppress(ValueError, OSError):
                 return int(self._dream_cursor_file.read_text(encoding="utf-8").strip())
-            except (ValueError, OSError):
-                pass
         return 0
 
     def set_last_dream_cursor(self, cursor: int) -> None:

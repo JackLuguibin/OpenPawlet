@@ -2,6 +2,7 @@
 
 import asyncio
 import time
+from contextlib import suppress
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -263,10 +264,8 @@ async def test_drain_pending_blocks_while_subagents_running(tmp_path):
 
     # Cleanup
     hang_task.cancel()
-    try:
+    with suppress(asyncio.CancelledError):
         await hang_task
-    except asyncio.CancelledError:
-        pass
 
 
 @pytest.mark.asyncio
@@ -374,7 +373,5 @@ async def test_drain_pending_timeout(tmp_path):
 
     # Cleanup
     hang_task.cancel()
-    try:
+    with suppress(asyncio.CancelledError):
         await hang_task
-    except asyncio.CancelledError:
-        pass

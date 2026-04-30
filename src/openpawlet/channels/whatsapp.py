@@ -9,6 +9,7 @@ import secrets
 import shutil
 import subprocess
 from collections import OrderedDict
+from contextlib import suppress
 from pathlib import Path
 from typing import Any, Literal
 
@@ -49,10 +50,8 @@ def _load_or_create_bridge_token(path: Path) -> str:
     path.parent.mkdir(parents=True, exist_ok=True)
     token = secrets.token_urlsafe(32)
     path.write_text(token, encoding="utf-8")
-    try:
+    with suppress(OSError):
         path.chmod(0o600)
-    except OSError:
-        pass
     return token
 
 

@@ -9,6 +9,7 @@ import threading
 import time
 import uuid
 from collections import OrderedDict
+from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -612,12 +613,11 @@ class FeishuChannel(BaseChannel):
         """Callback: store reaction_id after background add-reaction completes."""
         if task.cancelled():
             return
-        try:
+        with suppress(Exception):
+            # Errors are also logged by _on_background_task_done.
             reaction_id = task.result()
             if reaction_id:
                 self._reaction_ids[message_id] = reaction_id
-        except Exception:
-            pass  # already logged by _on_background_task_done
         # Trim cache to prevent unbounded growth
         if len(self._reaction_ids) > 500:
             self._reaction_ids.pop(next(iter(self._reaction_ids)))
@@ -1822,20 +1822,19 @@ class FeishuChannel(BaseChannel):
 
     def _on_reaction_created(self, data: Any) -> None:
         """Ignore reaction events so they do not generate SDK noise."""
-        pass
+        return
 
     def _on_reaction_deleted(self, data: Any) -> None:
         """Ignore reaction deleted events so they do not generate SDK noise."""
-        pass
+        return
 
     def _on_message_read(self, data: Any) -> None:
         """Ignore read events so they do not generate SDK noise."""
-        pass
+        return
 
     def _on_bot_p2p_chat_entered(self, data: Any) -> None:
         """Ignore p2p-enter events when a user opens a bot chat."""
         logger.debug("Bot entered p2p chat (user opened chat window)")
-        pass
 
     @staticmethod
     def _format_tool_hint_lines(tool_hint: str) -> str:

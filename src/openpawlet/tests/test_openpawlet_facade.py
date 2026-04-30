@@ -77,7 +77,7 @@ async def test_run_with_hooks(tmp_path):
 
     class TestHook(AgentHook):
         async def before_iteration(self, context: AgentHookContext) -> None:
-            pass
+            return
 
     mock_response = OutboundMessage(channel="cli", chat_id="direct", content="done")
     bot._loop.process_direct = AsyncMock(return_value=mock_response)

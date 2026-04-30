@@ -593,7 +593,7 @@ async def test_token_rejects_handshake_when_mismatch(bus: MagicMock) -> None:
     try:
         with pytest.raises(websockets.exceptions.InvalidStatus) as excinfo:
             async with websockets.connect(f"ws://127.0.0.1:{port}/?token=wrong"):
-                pass
+                ...
         assert excinfo.value.response.status_code == 401
     finally:
         await channel.stop()
@@ -611,7 +611,7 @@ async def test_wrong_path_returns_404(bus: MagicMock) -> None:
     try:
         with pytest.raises(websockets.exceptions.InvalidStatus) as excinfo:
             async with websockets.connect(f"ws://127.0.0.1:{port}/other"):
-                pass
+                ...
         assert excinfo.value.response.status_code == 404
     finally:
         await channel.stop()
@@ -653,7 +653,7 @@ async def test_http_route_issues_token_then_websocket_requires_it(bus: MagicMock
 
         with pytest.raises(websockets.exceptions.InvalidStatus) as missing_token:
             async with websockets.connect(f"ws://127.0.0.1:{port}/ws?client_id=x"):
-                pass
+                ...
         assert missing_token.value.response.status_code == 401
 
         uri = f"ws://127.0.0.1:{port}/ws?token={token}&client_id=caller"
@@ -664,7 +664,7 @@ async def test_http_route_issues_token_then_websocket_requires_it(bus: MagicMock
 
         with pytest.raises(websockets.exceptions.InvalidStatus) as reuse:
             async with websockets.connect(uri):
-                pass
+                ...
         assert reuse.value.response.status_code == 401
     finally:
         await channel.stop()
@@ -747,7 +747,7 @@ async def test_allow_from_rejects_unauthorized_client_id(bus: MagicMock) -> None
     try:
         with pytest.raises(websockets.exceptions.InvalidStatus) as exc_info:
             async with websockets.connect(f"ws://127.0.0.1:{port}/ws?client_id=eve"):
-                pass
+                ...
         assert exc_info.value.response.status_code == 403
     finally:
         await channel.stop()
@@ -839,7 +839,7 @@ async def test_allow_from_empty_list_denies_all(bus: MagicMock) -> None:
     try:
         with pytest.raises(websockets.exceptions.InvalidStatus) as exc_info:
             async with websockets.connect(f"ws://127.0.0.1:{port}/ws?client_id=anyone"):
-                pass
+                ...
         assert exc_info.value.response.status_code == 403
     finally:
         await channel.stop()
@@ -859,13 +859,13 @@ async def test_websocket_requires_token_without_issue_path(bus: MagicMock) -> No
         # No token at all → 401
         with pytest.raises(websockets.exceptions.InvalidStatus) as exc_info:
             async with websockets.connect(f"ws://127.0.0.1:{port}/ws?client_id=u"):
-                pass
+                ...
         assert exc_info.value.response.status_code == 401
 
         # Wrong token → 401
         with pytest.raises(websockets.exceptions.InvalidStatus) as exc_info:
             async with websockets.connect(f"ws://127.0.0.1:{port}/ws?client_id=u&token=wrong"):
-                pass
+                ...
         assert exc_info.value.response.status_code == 401
     finally:
         await channel.stop()
@@ -885,7 +885,7 @@ async def test_invalid_chat_id_query_returns_400(bus: MagicMock) -> None:
             async with websockets.connect(
                 f"ws://127.0.0.1:{port}/ws?client_id=u&chat_id=not-a-uuid"
             ):
-                pass
+                ...
         assert exc_info.value.response.status_code == 400
     finally:
         await channel.stop()

@@ -3,6 +3,7 @@
 import difflib
 import mimetypes
 import os
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -42,11 +43,10 @@ def _resolve_path(
 
 
 def _is_under(path: Path, directory: Path) -> bool:
-    try:
+    with suppress(ValueError):
         path.relative_to(directory.resolve())
         return True
-    except ValueError:
-        return False
+    return False
 
 
 class _FsTool(Tool):
@@ -96,10 +96,9 @@ def _is_blocked_device(path: str | Path) -> bool:
     raw = str(path)
 
     # Resolve symlinks to check the actual target
-    try:
+    resolved = raw
+    with suppress(OSError, ValueError):
         resolved = str(Path(raw).resolve())
-    except (OSError, ValueError):
-        resolved = raw
 
     if raw in _BLOCKED_DEVICE_PATHS or resolved in _BLOCKED_DEVICE_PATHS:
         return True
@@ -211,10 +210,9 @@ class ReadFileTool(_FsTool):
             # Read dedup: same path + offset + limit + unchanged mtime → stub
             # Always check for external modifications before dedup
             entry = file_state._state.get(str(fp.resolve()))
-            try:
+            current_mtime = 0.0
+            with suppress(OSError):
                 current_mtime = os.path.getmtime(fp)
-            except OSError:
-                current_mtime = 0.0
             if entry and entry.can_dedup and entry.offset == offset and entry.limit == limit:
                 if current_mtime != entry.mtime:
                     # File was modified externally - force full read and mark as not dedupable

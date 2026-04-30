@@ -1,6 +1,7 @@
 """Tests for ChannelManager delta coalescing to reduce streaming latency."""
 
 import asyncio
+from contextlib import suppress
 from unittest.mock import AsyncMock
 
 import pytest
@@ -24,10 +25,10 @@ class MockChannel(BaseChannel):
         self._send_mock = AsyncMock()
 
     async def start(self):
-        pass
+        return
 
     async def stop(self):
-        pass
+        return
 
     async def send(self, msg):
         """Implement abstract method."""
@@ -85,7 +86,7 @@ class TestDeltaCoalescing:
                 if channel:
                     await channel.send_delta(m.chat_id, m.content, m.metadata)
             except TimeoutError:
-                pass
+                return
 
         await process_one()
 
@@ -418,10 +419,8 @@ class TestRetryWaitFiltering:
                 await asyncio.sleep(0.05)
         finally:
             task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await task
-            except asyncio.CancelledError:
-                pass
 
         send_mock = manager.channels["mock"]._send_mock
         assert send_mock.await_count == 1

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import suppress
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -29,13 +30,13 @@ class _FakePlugin(BaseChannel):
         self.login_calls: list[bool] = []
 
     async def start(self) -> None:
-        pass
+        return
 
     async def stop(self) -> None:
-        pass
+        return
 
     async def send(self, msg: OutboundMessage) -> None:
-        pass
+        return
 
     async def login(self, force: bool = False) -> bool:
         self.login_calls.append(force)
@@ -49,13 +50,13 @@ class _FakeTelegram(BaseChannel):
     display_name = "Fake Telegram"
 
     async def start(self) -> None:
-        pass
+        return
 
     async def stop(self) -> None:
-        pass
+        return
 
     async def send(self, msg: OutboundMessage) -> None:
-        pass
+        return
 
 
 def _make_entry_point(name: str, cls: type):
@@ -656,10 +657,10 @@ async def test_send_with_retry_succeeds_first_try():
         display_name = "Failing"
 
         async def start(self) -> None:
-            pass
+            return
 
         async def stop(self) -> None:
-            pass
+            return
 
         async def send(self, msg: OutboundMessage) -> None:
             nonlocal call_count
@@ -693,10 +694,10 @@ async def test_send_with_retry_retries_on_failure():
         display_name = "Failing"
 
         async def start(self) -> None:
-            pass
+            return
 
         async def stop(self) -> None:
-            pass
+            return
 
         async def send(self, msg: OutboundMessage) -> None:
             nonlocal call_count
@@ -734,10 +735,10 @@ async def test_send_with_retry_no_retry_when_max_is_zero():
         display_name = "Failing"
 
         async def start(self) -> None:
-            pass
+            return
 
         async def stop(self) -> None:
-            pass
+            return
 
         async def send(self, msg: OutboundMessage) -> None:
             nonlocal call_count
@@ -773,13 +774,13 @@ async def test_send_with_retry_calls_send_delta():
         display_name = "Streaming"
 
         async def start(self) -> None:
-            pass
+            return
 
         async def stop(self) -> None:
-            pass
+            return
 
         async def send(self, msg: OutboundMessage) -> None:
-            pass  # Should not be called
+            raise AssertionError("send should not be called for streaming delta path")
 
         async def send_delta(self, chat_id: str, delta: str, metadata: dict | None = None) -> None:
             nonlocal send_delta_called
@@ -815,10 +816,10 @@ async def test_send_with_retry_skips_send_when_streamed():
         display_name = "Streamed"
 
         async def start(self) -> None:
-            pass
+            return
 
         async def stop(self) -> None:
-            pass
+            return
 
         async def send(self, msg: OutboundMessage) -> None:
             nonlocal send_called
@@ -859,16 +860,16 @@ async def test_send_with_retry_sends_reasoning_only_when_streamed():
         display_name = "Streamed"
 
         async def start(self) -> None:
-            pass
+            return
 
         async def stop(self) -> None:
-            pass
+            return
 
         async def send(self, msg: OutboundMessage) -> None:
             send_calls.append(msg)
 
         async def send_delta(self, chat_id: str, delta: str, metadata: dict | None = None) -> None:
-            pass
+            return
 
     fake_config = SimpleNamespace(
         channels=ChannelsConfig(send_max_retries=3),
@@ -907,16 +908,16 @@ async def test_send_with_retry_skips_reasoning_followup_when_send_reasoning_disa
         display_name = "Streamed"
 
         async def start(self) -> None:
-            pass
+            return
 
         async def stop(self) -> None:
-            pass
+            return
 
         async def send(self, msg: OutboundMessage) -> None:
             send_calls.append(msg)
 
         async def send_delta(self, chat_id: str, delta: str, metadata: dict | None = None) -> None:
-            pass
+            return
 
     fake_config = SimpleNamespace(
         channels=ChannelsConfig(send_max_retries=3, send_reasoning_content=False),
@@ -950,16 +951,16 @@ async def test_send_with_retry_sends_reasoning_followup_for_non_websocket_channe
         display_name = "Telegram"
 
         async def start(self) -> None:
-            pass
+            return
 
         async def stop(self) -> None:
-            pass
+            return
 
         async def send(self, msg: OutboundMessage) -> None:
             send_calls.append(msg)
 
         async def send_delta(self, chat_id: str, delta: str, metadata: dict | None = None) -> None:
-            pass
+            return
 
     fake_config = SimpleNamespace(
         channels=ChannelsConfig(send_max_retries=3, send_reasoning_content=True),
@@ -996,10 +997,10 @@ async def test_send_with_retry_propagates_cancelled_error():
         display_name = "Cancelling"
 
         async def start(self) -> None:
-            pass
+            return
 
         async def stop(self) -> None:
-            pass
+            return
 
         async def send(self, msg: OutboundMessage) -> None:
             raise asyncio.CancelledError("simulated cancellation")
@@ -1031,10 +1032,10 @@ async def test_send_with_retry_propagates_cancelled_error_during_sleep():
         display_name = "Failing"
 
         async def start(self) -> None:
-            pass
+            return
 
         async def stop(self) -> None:
-            pass
+            return
 
         async def send(self, msg: OutboundMessage) -> None:
             nonlocal call_count
@@ -1085,13 +1086,13 @@ class _ChannelWithAllowFrom(BaseChannel):
             self.config.allow_from = allow_from
 
     async def start(self) -> None:
-        pass
+        return
 
     async def stop(self) -> None:
-        pass
+        return
 
     async def send(self, msg: OutboundMessage) -> None:
-        pass
+        return
 
 
 class _StartableChannel(BaseChannel):
@@ -1112,7 +1113,7 @@ class _StartableChannel(BaseChannel):
         self.stopped = True
 
     async def send(self, msg: OutboundMessage) -> None:
-        pass
+        return
 
 
 @pytest.mark.asyncio
@@ -1276,10 +1277,10 @@ async def test_start_channel_logs_error_on_failure():
             raise RuntimeError("connection failed")
 
         async def stop(self) -> None:
-            pass
+            return
 
         async def send(self, msg: OutboundMessage) -> None:
-            pass
+            return
 
     fake_config = SimpleNamespace(
         channels=ChannelsConfig(),
@@ -1307,13 +1308,13 @@ async def test_stop_all_handles_channel_exception():
         display_name = "Stop Failing"
 
         async def start(self) -> None:
-            pass
+            return
 
         async def stop(self) -> None:
             raise RuntimeError("stop failed")
 
         async def send(self, msg: OutboundMessage) -> None:
-            pass
+            return
 
     fake_config = SimpleNamespace(
         channels=ChannelsConfig(),
@@ -1374,16 +1375,11 @@ async def test_start_all_creates_dispatch_task():
 
     cancel_task = asyncio.create_task(cancel_after_start())
 
-    try:
+    with suppress(asyncio.CancelledError):
         await mgr.start_all()
-    except asyncio.CancelledError:
-        pass
-    finally:
-        cancel_task.cancel()
-        try:
-            await cancel_task
-        except asyncio.CancelledError:
-            pass
+    cancel_task.cancel()
+    with suppress(asyncio.CancelledError):
+        await cancel_task
 
     # Dispatch task should have been created
     assert mgr._dispatch_task is not None

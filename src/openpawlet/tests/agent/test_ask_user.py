@@ -133,10 +133,10 @@ async def test_ask_user_text_fallback_resumes_with_next_message(tmp_path):
     )
 
     async def on_stream(delta: str) -> None:
-        pass
+        return
 
     async def on_stream_end(**kwargs) -> None:
-        pass
+        return
 
     first = await loop._process_message(
         InboundMessage(channel="cli", sender_id="user", chat_id="direct", content="set it up"),

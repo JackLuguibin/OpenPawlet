@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -21,10 +22,9 @@ _state: dict[str, ReadState] = {}
 
 
 def _hash_file(p: str) -> str | None:
-    try:
+    with suppress(OSError):
         return hashlib.sha256(Path(p).read_bytes()).hexdigest()
-    except OSError:
-        return None
+    return None
 
 
 def record_read(path: str | Path, offset: int = 1, limit: int | None = None) -> None:

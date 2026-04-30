@@ -230,7 +230,7 @@ class ExecTool(Tool):
         try:
             await asyncio.wait_for(process.wait(), timeout=5.0)
         except TimeoutError:
-            pass
+            logger.debug("Subprocess {} still running after kill + 5s wait", process.pid)
         finally:
             if not _IS_WINDOWS:
                 try:

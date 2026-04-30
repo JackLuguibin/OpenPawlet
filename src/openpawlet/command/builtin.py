@@ -7,6 +7,7 @@ import json
 import os
 import sys
 import time
+from contextlib import suppress
 
 from openpawlet import __version__
 from openpawlet.bus.events import OutboundMessage
@@ -96,16 +97,14 @@ async def _build_status_payload(ctx: CommandContext) -> tuple[dict[str, object],
     loop = ctx.loop
     session = ctx.session or loop.sessions.get_or_create(ctx.key)
     ctx_est = 0
-    try:
+    with suppress(Exception):
         ctx_est, _ = loop.consolidator.estimate_session_prompt_tokens(session)
-    except Exception:
-        pass
     if ctx_est <= 0:
         ctx_est = loop._last_usage.get("prompt_tokens", 0)
 
     # Fetch web search provider usage (best-effort, never blocks the response)
     search_usage_text: str | None = None
-    try:
+    with suppress(Exception):
         from openpawlet.utils.searchusage import fetch_search_usage
 
         web_cfg = getattr(loop, "web_config", None)
@@ -115,14 +114,10 @@ async def _build_status_payload(ctx: CommandContext) -> tuple[dict[str, object],
             api_key = getattr(search_cfg, "api_key", "") or None
             usage = await fetch_search_usage(provider=provider, api_key=api_key)
             search_usage_text = usage.format()
-    except Exception:
-        pass  # Never let usage fetch break /status
     active_tasks = loop._active_tasks.get(ctx.key, [])
     task_count = sum(1 for t in active_tasks if not t.done())
-    try:
+    with suppress(Exception):
         task_count += loop.subagents.get_running_count_by_session(ctx.key)
-    except Exception:
-        pass
     max_completion_tokens = getattr(getattr(loop.provider, "generation", None), "max_tokens", 8192)
     ctx_total = max(int(loop.context_window_tokens), 0)
     ctx_budget = max(ctx_total - int(max_completion_tokens) - 1024, 1)

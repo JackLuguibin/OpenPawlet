@@ -55,7 +55,7 @@ def test_extract_post_content_keeps_direct_shape_behavior() -> None:
 
 def test_register_optional_event_keeps_builder_when_method_missing() -> None:
     class Builder:
-        pass
+        """Stub without register_event (optional Feishu builder)."""
 
     builder = Builder()
     same = FeishuChannel._register_optional_event(builder, "missing", object())

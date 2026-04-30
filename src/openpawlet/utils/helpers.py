@@ -6,6 +6,7 @@ import re
 import shutil
 import time
 import uuid
+from contextlib import suppress
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -417,11 +418,10 @@ def estimate_message_tokens(message: dict[str, Any]) -> int:
     payload = "\n".join(parts)
     if not payload:
         return 4
-    try:
+    with suppress(Exception):
         enc = tiktoken.get_encoding("cl100k_base")
         return max(4, len(enc.encode(payload)) + 4)
-    except Exception:
-        return max(4, len(payload) // 4 + 4)
+    return max(4, len(payload) // 4 + 4)
 
 
 def estimate_prompt_tokens_chain(
@@ -433,12 +433,10 @@ def estimate_prompt_tokens_chain(
     """Estimate prompt tokens via provider counter first, then tiktoken fallback."""
     provider_counter = getattr(provider, "estimate_prompt_tokens", None)
     if callable(provider_counter):
-        try:
+        with suppress(Exception):
             tokens, source = provider_counter(messages, tools, model)
             if isinstance(tokens, (int, float)) and tokens > 0:
                 return int(tokens), str(source or "provider_counter")
-        except Exception:
-            pass
 
     estimated = estimate_prompt_tokens(messages, tools)
     if estimated > 0:
@@ -506,11 +504,10 @@ def sync_workspace_templates(workspace: Path, silent: bool = False) -> list[str]
     """Sync bundled templates to workspace. Only creates missing files."""
     from importlib.resources import files as pkg_files
 
-    try:
+    tpl = None
+    with suppress(Exception):
         tpl = pkg_files("openpawlet") / "templates"
-    except Exception:
-        return []
-    if not tpl.is_dir():
+    if tpl is None or not tpl.is_dir():
         return []
 
     added: list[str] = []

@@ -111,7 +111,7 @@ async def test_searxng_search(monkeypatch):
 async def test_duckduckgo_search(monkeypatch):
     class MockDDGS:
         def __init__(self, **kw):
-            pass
+            return
 
         def text(self, query, max_results=5):
             return [
@@ -134,7 +134,7 @@ async def test_duckduckgo_search(monkeypatch):
 async def test_brave_fallback_to_duckduckgo_when_no_key(monkeypatch):
     class MockDDGS:
         def __init__(self, **kw):
-            pass
+            return
 
         def text(self, query, max_results=5):
             return [
@@ -219,7 +219,7 @@ async def test_default_provider_is_brave(monkeypatch):
 async def test_searxng_no_base_url_falls_back(monkeypatch):
     class MockDDGS:
         def __init__(self, **kw):
-            pass
+            return
 
         def text(self, query, max_results=5):
             return [{"title": "Fallback", "href": "https://ddg.example", "body": "fallback"}]
@@ -243,7 +243,7 @@ async def test_searxng_invalid_url():
 async def test_jina_422_falls_back_to_duckduckgo(monkeypatch):
     class MockDDGS:
         def __init__(self, **kw):
-            pass
+            return
 
         def text(self, query, max_results=5):
             return [
@@ -270,7 +270,7 @@ async def test_jina_422_falls_back_to_duckduckgo(monkeypatch):
 async def test_kagi_fallback_to_duckduckgo_when_no_key(monkeypatch):
     class MockDDGS:
         def __init__(self, **kw):
-            pass
+            return
 
         def text(self, query, max_results=5):
             return [
@@ -314,7 +314,7 @@ async def test_duckduckgo_timeout_returns_error(monkeypatch):
 
     class HangingDDGS:
         def __init__(self, **kw):
-            pass
+            return
 
         def text(self, query, max_results=5):
             gate.wait(timeout=10)
@@ -338,7 +338,7 @@ def test_olostep_with_api_key_is_concurrency_safe():
 async def test_olostep_missing_key_falls_back_to_duckduckgo(monkeypatch):
     class MockDDGS:
         def __init__(self, **kw):
-            pass
+            return
 
         def text(self, query, max_results=5):
             return [
@@ -386,7 +386,7 @@ async def test_olostep_search_formats_answer_and_sources(monkeypatch):
     fake_mod.AsyncOlostep = FakeClient
 
     class Olostep_BaseError(Exception):
-        pass
+        """Test stub exception."""
 
     fake_mod.Olostep_BaseError = Olostep_BaseError
     monkeypatch.delitem(sys.modules, "olostep", raising=False)

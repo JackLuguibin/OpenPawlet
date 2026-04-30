@@ -3,6 +3,7 @@
 import json
 import os
 import shutil
+from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -359,25 +360,21 @@ class SessionManager:
                     if data.get("_type") == "metadata":
                         metadata = data.get("metadata", {})
                         if data.get("created_at"):
-                            try:
+                            with suppress(ValueError, TypeError):
                                 created_at = _as_agent_aware(
                                     datetime.fromisoformat(
                                         data["created_at"].replace("Z", "+00:00")
                                     ),
                                     self._timezone,
                                 )
-                            except (ValueError, TypeError):
-                                pass
                         if data.get("updated_at"):
-                            try:
+                            with suppress(ValueError, TypeError):
                                 updated_at = _as_agent_aware(
                                     datetime.fromisoformat(
                                         data["updated_at"].replace("Z", "+00:00")
                                     ),
                                     self._timezone,
                                 )
-                            except (ValueError, TypeError):
-                                pass
                         last_consolidated = data.get("last_consolidated", 0)
                     else:
                         messages.append(data)
@@ -460,14 +457,12 @@ class SessionManager:
                 # On Windows, opening a directory with O_RDONLY raises
                 # PermissionError — skip the dir sync there (NTFS
                 # journals metadata synchronously).
-                try:
+                with suppress(PermissionError):
                     fd = os.open(str(path.parent), os.O_RDONLY)
                     try:
                         os.fsync(fd)
                     finally:
                         os.close(fd)
-                except PermissionError:
-                    pass  # Windows — directory fsync not supported
         except BaseException:
             tmp_path.unlink(missing_ok=True)
             raise

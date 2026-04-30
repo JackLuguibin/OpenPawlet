@@ -57,7 +57,7 @@ class FakeHttpClient:
         return FakeResponse(self.payload, should_raise=self.should_raise)
 
     async def aclose(self):
-        pass
+        return
 
 
 @pytest.fixture

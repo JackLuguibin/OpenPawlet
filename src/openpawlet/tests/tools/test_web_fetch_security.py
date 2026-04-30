@@ -57,7 +57,7 @@ async def test_web_fetch_result_contains_untrusted_flag():
         headers = {"content-type": "text/html"}
 
         def raise_for_status(self):
-            pass
+            return None
 
         def json(self):
             return {}
@@ -99,7 +99,7 @@ async def test_web_fetch_blocks_private_redirect_before_returning_image(monkeypa
 
     class FakeClient:
         def __init__(self, *args, **kwargs):
-            pass
+            return
 
         async def __aenter__(self):
             return self
@@ -146,7 +146,7 @@ async def test_web_fetch_skips_jina_when_disabled(monkeypatch):
         content = b""
 
         def raise_for_status(self):
-            pass
+            return None
 
         def json(self):
             return {}
@@ -169,7 +169,7 @@ async def test_web_fetch_skips_jina_when_disabled(monkeypatch):
 
     class FakeClient:
         def __init__(self, *args, **kwargs) -> None:
-            pass
+            return
 
         async def __aenter__(self):
             return self

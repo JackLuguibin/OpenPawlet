@@ -19,7 +19,7 @@ def _fake_response(
 
 def test_openai_handle_error_extracts_structured_metadata() -> None:
     class FakeStatusError(Exception):
-        pass
+        """Test stub exception."""
 
     err = FakeStatusError("boom")
     err.status_code = 409
@@ -42,7 +42,7 @@ def test_openai_handle_error_extracts_structured_metadata() -> None:
 
 def test_openai_handle_error_marks_timeout_kind() -> None:
     class FakeTimeoutError(Exception):
-        pass
+        """Test stub exception."""
 
     response = OpenAICompatProvider._handle_error(FakeTimeoutError("timeout"))
 
@@ -52,7 +52,7 @@ def test_openai_handle_error_marks_timeout_kind() -> None:
 
 def test_anthropic_handle_error_extracts_structured_metadata() -> None:
     class FakeStatusError(Exception):
-        pass
+        """Test stub exception."""
 
     err = FakeStatusError("boom")
     err.status_code = 408
@@ -73,7 +73,7 @@ def test_anthropic_handle_error_extracts_structured_metadata() -> None:
 
 def test_anthropic_handle_error_marks_connection_kind() -> None:
     class FakeConnectionError(Exception):
-        pass
+        """Test stub exception."""
 
     response = AnthropicProvider._handle_error(FakeConnectionError("connection"))
 

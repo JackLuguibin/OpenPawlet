@@ -470,9 +470,8 @@ class MyTool(Tool):
             old = getattr(self._loop, key)
             if isinstance(old, (str, int, float, bool)):
                 old_t, new_t = type(old), type(value)
-                if old_t is float and new_t is int:
-                    pass  # int → float coercion allowed
-                elif old_t is not new_t:
+                type_ok = old_t is new_t or (old_t is float and new_t is int)
+                if not type_ok:
                     self._audit(
                         "modify",
                         f"REJECTED type mismatch {key}: expects {old_t.__name__}, got {new_t.__name__}",

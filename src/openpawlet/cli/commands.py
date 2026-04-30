@@ -5,7 +5,7 @@ import os
 import select
 import signal
 import sys
-from contextlib import nullcontext
+from contextlib import nullcontext, suppress
 from pathlib import Path
 from typing import Any, NoReturn
 
@@ -14,11 +14,9 @@ if sys.platform == "win32":
     if sys.stdout.encoding != "utf-8":
         os.environ["PYTHONIOENCODING"] = "utf-8"
         # Re-open stdout/stderr with UTF-8 encoding
-        try:
+        with suppress(Exception):
             sys.stdout.reconfigure(encoding="utf-8", errors="replace")
             sys.stderr.reconfigure(encoding="utf-8", errors="replace")
-        except Exception:
-            pass
 
 import typer
 from loguru import logger
@@ -93,35 +91,29 @@ def _flush_pending_tty_input() -> None:
     except Exception:
         return
 
-    try:
+    with suppress(Exception):
         import termios
 
         termios.tcflush(fd, termios.TCIFLUSH)
         return
-    except Exception:
-        pass
 
-    try:
+    with suppress(Exception):
         while True:
             ready, _, _ = select.select([fd], [], [], 0)
             if not ready:
                 break
             if not os.read(fd, 4096):
                 break
-    except Exception:
-        return
 
 
 def _restore_terminal() -> None:
     """Restore terminal to its original state (echo, line buffering, etc.)."""
     if _SAVED_TERM_ATTRS is None:
         return
-    try:
+    with suppress(Exception):
         import termios
 
         termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, _SAVED_TERM_ATTRS)
-    except Exception:
-        pass
 
 
 def _init_prompt_session() -> None:
@@ -129,12 +121,10 @@ def _init_prompt_session() -> None:
     global _PROMPT_SESSION, _SAVED_TERM_ATTRS
 
     # Save terminal state so we can restore it on exit
-    try:
+    with suppress(Exception):
         import termios
 
         _SAVED_TERM_ATTRS = termios.tcgetattr(sys.stdin.fileno())
-    except Exception:
-        pass
 
     from openpawlet.config.paths import get_cli_history_path
 
@@ -271,7 +261,7 @@ def main(
     version: bool = typer.Option(None, "--version", "-v", callback=version_callback, is_eager=True),
 ):
     """OpenPawlet - Personal AI Assistant."""
-    pass
+    return
 
 
 # ============================================================================
@@ -665,11 +655,14 @@ def agent(
                         if msg.metadata.get("_progress"):
                             is_tool_hint = msg.metadata.get("_tool_hint", False)
                             ch = agent_loop.channels_config
-                            if ch and is_tool_hint and not ch.send_tool_hints:
-                                pass
-                            elif ch and not is_tool_hint and not ch.send_progress:
-                                pass
-                            else:
+                            skip_progress = bool(
+                                ch
+                                and (
+                                    (is_tool_hint and not ch.send_tool_hints)
+                                    or (not is_tool_hint and not ch.send_progress)
+                                )
+                            )
+                            if not skip_progress:
                                 await _print_interactive_progress_line(msg.content, _thinking)
                             continue
 
@@ -1055,10 +1048,8 @@ def _login_openai_codex() -> None:
         from oauth_cli_kit import get_token, login_oauth_interactive
 
         token = None
-        try:
+        with suppress(Exception):
             token = get_token()
-        except Exception:
-            pass
         if not (token and token.access):
             console.print("[cyan]Starting interactive OAuth login...[/cyan]\n")
             token = login_oauth_interactive(

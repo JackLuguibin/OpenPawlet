@@ -440,7 +440,7 @@ class TestStopCommandWithUnifiedSession:
 
         # Mock _dispatch to complete immediately
         async def fake_dispatch(m):
-            pass
+            return
 
         loop._dispatch = fake_dispatch  # type: ignore[method-assign]
 

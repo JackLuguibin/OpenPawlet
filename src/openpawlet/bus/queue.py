@@ -13,6 +13,7 @@ import dataclasses
 import time as _time
 from collections import deque
 from collections.abc import Iterable
+from contextlib import suppress
 from typing import Any, Protocol
 
 from loguru import logger
@@ -133,17 +134,15 @@ class EventSubscription:
             self._queue.put_nowait(ev)
         except asyncio.QueueFull:
             # at-most-once semantics: drop on overflow to protect the producer.
-            pass
+            return
 
     def close(self) -> None:
         if self._closed:
             return
         self._closed = True
         if self._detach is not None:
-            try:
+            with suppress(Exception):  # pragma: no cover - defensive, detach is best-effort
                 self._detach(self)
-            except Exception:  # pragma: no cover - defensive, detach is best-effort
-                pass
 
     async def __aenter__(self) -> EventSubscription:
         return self
@@ -210,10 +209,8 @@ class RequestReplyMixin:
             return False
         if fut.done():
             return True
-        try:
+        with suppress(asyncio.InvalidStateError):
             fut.set_result(ev)
-        except asyncio.InvalidStateError:
-            pass
         return True
 
     async def request_event(
@@ -260,10 +257,8 @@ class RequestReplyMixin:
                     if self._request_waiters.get(cid) is fut:
                         self._request_waiters.pop(cid, None)
                 if not fut.done():
-                    try:
+                    with suppress(asyncio.InvalidStateError, RuntimeError):
                         fut.set_exception(exc)
-                    except (asyncio.InvalidStateError, RuntimeError):
-                        pass
                 return (None, attempt + 1, f"error:{exc!s}")
             try:
                 reply = await asyncio.wait_for(fut, timeout=float(timeout_s))
@@ -279,10 +274,8 @@ class RequestReplyMixin:
                     if self._request_waiters.get(cid) is fut:
                         self._request_waiters.pop(cid, None)
                 if not fut.done():
-                    try:
+                    with suppress(asyncio.InvalidStateError, RuntimeError):
                         fut.set_exception(exc)
-                    except (asyncio.InvalidStateError, RuntimeError):
-                        pass
                 return (None, attempt + 1, f"error:{exc!s}")
             if attempt >= n_extra:
                 return (None, attempts_cap, "timeout")
@@ -556,10 +549,8 @@ class MessageBus(RequestReplyMixin):
         return sub
 
     def _detach_subscription(self, sub: EventSubscription) -> None:
-        try:
+        with suppress(ValueError):
             self._event_subs.remove(sub)
-        except ValueError:
-            pass
 
     async def list_pending_direct_events(self, *, agent_id: str) -> list[AgentEvent]:
         """Return pending direct events for *agent_id* (oldest first)."""

@@ -37,19 +37,19 @@ class AgentHook:
         return False
 
     async def before_iteration(self, context: AgentHookContext) -> None:
-        pass
+        return
 
     async def on_stream(self, context: AgentHookContext, delta: str) -> None:
-        pass
+        return
 
     async def on_stream_end(self, context: AgentHookContext, *, resuming: bool) -> None:
-        pass
+        return
 
     async def before_execute_tools(self, context: AgentHookContext) -> None:
-        pass
+        return
 
     async def after_iteration(self, context: AgentHookContext) -> None:
-        pass
+        return
 
     def finalize_content(self, context: AgentHookContext, content: str | None) -> str | None:
         return content

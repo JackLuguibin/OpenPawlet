@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 import time
+from contextlib import suppress
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -96,10 +97,8 @@ class TestRestartCommand:
             await asyncio.sleep(0.1)
             loop._running = False
             run_task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await run_task
-            except asyncio.CancelledError:
-                pass
 
             mock_dispatch.assert_not_called()
             out = await asyncio.wait_for(bus.consume_outbound(), timeout=1.0)
@@ -119,10 +118,8 @@ class TestRestartCommand:
             await asyncio.sleep(0.1)
             loop._running = False
             run_task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await run_task
-            except asyncio.CancelledError:
-                pass
 
             mock_dispatch.assert_not_called()
             out = await asyncio.wait_for(bus.consume_outbound(), timeout=1.0)

@@ -1595,7 +1595,7 @@ async def test_length_recovery_streaming_calls_on_stream_end_with_resuming():
             return True
 
         async def on_stream(self, context: AgentHookContext, delta: str) -> None:
-            pass
+            return
 
         async def on_stream_end(self, context: AgentHookContext, resuming: bool = False) -> None:
             stream_end_calls.append(resuming)

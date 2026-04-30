@@ -360,7 +360,7 @@ async def test_static_token_rejected(bus: MagicMock) -> None:
     try:
         with pytest.raises(websockets.exceptions.InvalidStatus) as exc:
             async with WsTestClient("ws://127.0.0.1:29916/", client_id="b", token="wrong"):
-                pass
+                ...
         assert exc.value.response.status_code == 401
     finally:
         await ch.stop()
@@ -390,7 +390,7 @@ async def test_token_issue_full_flow(bus: MagicMock) -> None:
         # no token -> 401
         with pytest.raises(websockets.exceptions.InvalidStatus) as exc:
             async with WsTestClient("ws://127.0.0.1:29917/ws", client_id="x"):
-                pass
+                ...
         assert exc.value.response.status_code == 401
 
         # valid token -> ok
@@ -400,7 +400,7 @@ async def test_token_issue_full_flow(bus: MagicMock) -> None:
         # reuse -> 401
         with pytest.raises(websockets.exceptions.InvalidStatus) as exc:
             async with WsTestClient("ws://127.0.0.1:29917/ws", client_id="r", token=token):
-                pass
+                ...
         assert exc.value.response.status_code == 401
     finally:
         await ch.stop()
@@ -431,7 +431,7 @@ async def test_wrong_path_404(bus: MagicMock) -> None:
     try:
         with pytest.raises(websockets.exceptions.InvalidStatus) as exc:
             async with WsTestClient("ws://127.0.0.1:29919/wrong", client_id="x"):
-                pass
+                ...
         assert exc.value.response.status_code == 404
     finally:
         await ch.stop()

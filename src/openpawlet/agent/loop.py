@@ -12,7 +12,7 @@ import socket
 import time
 import uuid
 from collections.abc import Awaitable, Callable
-from contextlib import AsyncExitStack, nullcontext
+from contextlib import AsyncExitStack, nullcontext, suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -525,25 +525,19 @@ class AgentLoop:
         for name in ("teams.json", "active_team_gateway.json"):
             f = nc / name
             if f.is_file():
-                try:
+                with suppress(OSError):
                     t = max(t, f.stat().st_mtime)
-                except OSError:
-                    pass
         aid = self._logical_agent_id_for_console_row()
         if aid:
             one = w / "agents" / f"{aid}.json"
             if one.is_file():
-                try:
+                with suppress(OSError):
                     t = max(t, one.stat().st_mtime)
-                except OSError:
-                    pass
             else:
                 legacy = nc / "agents.json"
                 if legacy.is_file():
-                    try:
+                    with suppress(OSError):
                         t = max(t, legacy.stat().st_mtime)
-                    except OSError:
-                        pass
         return t
 
     def _maybe_refresh_gateway_identity(self) -> None:
@@ -601,20 +595,16 @@ class AgentLoop:
             self.model = new_model
             self.consolidator.model = new_model
             self.dream.model = new_model
-            try:
+            with suppress(AttributeError):
                 self.subagents.model = new_model
-            except AttributeError:
-                pass
 
         if defaults.timezone != self.timezone:
             changed["timezone"] = (self.timezone, defaults.timezone)
             self.timezone = defaults.timezone
             self.context.timezone = defaults.timezone
             self.sessions.configure_timezone(defaults.timezone)
-            try:
+            with suppress(AttributeError):
                 self.subagents.timezone = defaults.timezone
-            except AttributeError:
-                pass
 
         if defaults.max_tool_iterations != self.max_iterations:
             changed["max_iterations"] = (self.max_iterations, defaults.max_tool_iterations)
@@ -693,10 +683,8 @@ class AgentLoop:
         self.runner.provider = new_provider
         self.consolidator.provider = new_provider
         self.dream.provider = new_provider
-        try:
+        with suppress(AttributeError):
             self.subagents.provider = new_provider
-        except AttributeError:
-            pass
 
         if new_model:
             target_model = new_model
@@ -712,11 +700,9 @@ class AgentLoop:
             # model field at construction time (see EmbeddedOpenPawlet).
             # Only realign it when it was tracking the loop's previous
             # model — never overwrite an explicit ``dream.model_override``.
-            try:
+            with suppress(AttributeError):
                 if getattr(self.dream, "model", None) in (None, previous_model):
                     self.dream.model = target_model
-            except AttributeError:
-                pass
 
     def _snapshot_turn_context(
         self,
@@ -941,10 +927,8 @@ class AgentLoop:
         tasks = self._active_tasks.pop(key, [])
         cancelled = sum(1 for t in tasks if not t.done() and t.cancel())
         for t in tasks:
-            try:
+            with suppress(asyncio.CancelledError, Exception):
                 await t
-            except (asyncio.CancelledError, Exception):
-                pass
         sub_cancelled = await self.subagents.cancel_by_session(key)
         return cancelled + sub_cancelled
 
@@ -1541,13 +1525,11 @@ class AgentLoop:
         meta["reply_group_id"] = new_id
         # ``InboundMessage`` is a dataclass so mutating metadata in place is
         # acceptable; callers may also dataclasses.replace to refresh.
-        try:
-            msg.metadata.clear()
-            msg.metadata.update(meta)
-        except Exception:
+        with suppress(Exception):
             # Best-effort: if metadata is immutable, the caller is expected to
             # propagate ``new_id`` explicitly via ``_run_agent_loop``.
-            pass
+            msg.metadata.clear()
+            msg.metadata.update(meta)
         return new_id
 
     async def _process_message(
