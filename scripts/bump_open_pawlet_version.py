@@ -162,9 +162,16 @@ def replace_schema_api_version(content: str, new_version: str) -> str:
         return m.group(1) + new_version + m.group(3)
 
     new_content, n = re.subn(pat, _repl, content, count=1)
-    if n != 1:
-        raise ValueError("Could not patch ServerSettings.version Field in schema.py")
-    return new_content
+    if n == 1:
+        return new_content
+    # ServerSettings.version may use default_factory=_resolve_package_version(); then
+    # the reported API version follows pyproject.toml / the wheel and needs no edit here.
+    if re.search(
+        r"version:\s*str\s*=\s*Field\(\s*\n\s*default_factory=_resolve_package_version",
+        content,
+    ):
+        return content
+    raise ValueError("Could not patch ServerSettings.version Field in schema.py")
 
 
 def apply_version(new_version: str, dry_run: bool) -> list[Path]:
