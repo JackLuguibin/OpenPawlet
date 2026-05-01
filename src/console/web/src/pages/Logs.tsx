@@ -132,7 +132,7 @@ function LogPanel({
             </Tooltip>
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2 [&_.ant-input-search]:!h-8 [&_.ant-input-search]:!min-h-8 [&_.ant-input-search]:!max-h-8 [&_.ant-input-search_.ant-input-affix-wrapper]:!h-full [&_.ant-input-search_.ant-input-affix-wrapper]:!min-h-0 [&_.ant-input-search_.ant-btn]:!h-full [&_.ant-input-search_.ant-btn]:!min-h-0 [&_.ant-input-search_.ant-input]:!h-full">
           <Input.Search
             allowClear
             size="middle"
@@ -145,7 +145,7 @@ function LogPanel({
             <Button
               type="default"
               size="middle"
-              className="shrink-0"
+              className="shrink-0 !h-8 !min-h-8 !max-h-8"
               icon={<VerticalAlignTopOutlined />}
               onClick={scrollToTop}
               aria-label={t('logs.scrollTop')}
@@ -155,7 +155,7 @@ function LogPanel({
             <Button
               type="default"
               size="middle"
-              className="shrink-0"
+              className="shrink-0 !h-8 !min-h-8 !max-h-8"
               icon={<VerticalAlignBottomOutlined />}
               onClick={scrollToBottom}
               aria-label={t('logs.scrollBottom')}
@@ -164,7 +164,7 @@ function LogPanel({
           <Button
             type="default"
             size="middle"
-            className="shrink-0"
+            className="shrink-0 !h-8 !min-h-8 !max-h-8"
             icon={copied ? <CheckOutlined className="text-emerald-500" /> : <CopyOutlined />}
             onClick={onCopy}
             disabled={showMissing && !chunk.text}
@@ -365,7 +365,7 @@ export default function Logs({ embedded = false }: { embedded?: boolean } = {}) 
   return (
     <ConsolePageShell
       embedded={embedded}
-      innerClassName="gap-5 [&_.ant-input-affix-wrapper]:!rounded-md [&_.ant-btn]:!rounded-md [&_.ant-alert]:!rounded-md"
+      innerClassName="gap-5 [&_.ant-input-affix-wrapper]:!rounded-md [&_.ant-btn]:!rounded-md [&_.ant-alert]:!rounded-md [&_.ant-input-search_.ant-input-affix-wrapper]:!rounded-none [&_.ant-input-search_.ant-btn]:!rounded-none"
     >
       <ConsolePageHeading
         surface={embedded ? 'plain' : 'hero'}

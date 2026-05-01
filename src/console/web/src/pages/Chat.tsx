@@ -2897,14 +2897,20 @@ export default function Chat() {
         title={t("chat.viewContextJsonl")}
         footer={null}
         width="min(100vw - 2rem, 48rem)"
+        height="70vh"
         destroyOnHidden
         styles={{
-          root: { maxHeight: "min(92vh, 44rem)" },
-          body: {
+          container: {
+            height: "100%",
             display: "flex",
             flexDirection: "column",
             minHeight: 0,
-            maxHeight: "min(82vh, 40rem)",
+          },
+          body: {
+            display: "flex",
+            flexDirection: "column",
+            flex: 1,
+            minHeight: 0,
             overflow: "hidden",
             padding: "8px 24px 20px",
           },
@@ -2915,7 +2921,7 @@ export default function Chat() {
           onChange={(k) =>
             setSessionContextTab(k === "raw" ? "raw" : "assembled")
           }
-          className="h-[min(70vh,32rem)] min-h-[14rem] flex flex-col [&>.ant-tabs-content-holder]:flex-1 [&>.ant-tabs-content-holder]:min-h-0 [&_.ant-tabs-content]:h-full [&_.ant-tabs-tabpane]:h-full"
+          className="flex min-h-0 flex-1 flex-col [&>.ant-tabs-content-holder]:flex-1 [&>.ant-tabs-content-holder]:min-h-0 [&_.ant-tabs-content]:h-full [&_.ant-tabs-tabpane]:h-full"
           destroyOnHidden
           items={[
             {
@@ -2923,8 +2929,8 @@ export default function Chat() {
               label: t("chat.contextAssembledTab"),
               children: (
                 <div className="flex h-full min-h-0 flex-col gap-3">
-                  <div className="flex shrink-0 flex-wrap items-center gap-2">
-                    <span className="text-sm text-gray-500 dark:text-gray-400">
+                  <div className="flex w-full min-w-0 shrink-0 flex-wrap items-center gap-2">
+                    <span className="min-w-0 text-sm text-gray-500 dark:text-gray-400">
                       {sessionContextHasRecord
                         ? sessionContextTurnIndex != null
                           ? t("chat.contextAssembledTurnInfo", {
@@ -2936,27 +2942,29 @@ export default function Chat() {
                             })
                         : t("chat.contextAssembledEmpty")}
                     </span>
-                    {sessionContextFetching && !sessionContextPending ? (
-                      <Spin size="small" />
-                    ) : null}
-                    <Button
-                      type="primary"
-                      icon={<CopyOutlined />}
-                      disabled={!sessionContextLatestText}
-                      onClick={() => {
-                        if (sessionContextLatestText) {
-                          void navigator.clipboard.writeText(
-                            sessionContextLatestText,
-                          );
-                          addToast({
-                            type: "success",
-                            message: t("chat.contextJsonlCopied"),
-                          });
-                        }
-                      }}
-                    >
-                      {t("chat.contextJsonlCopy")}
-                    </Button>
+                    <div className="ml-auto flex shrink-0 flex-wrap items-center gap-2">
+                      {sessionContextFetching && !sessionContextPending ? (
+                        <Spin size="small" />
+                      ) : null}
+                      <Button
+                        type="primary"
+                        icon={<CopyOutlined />}
+                        disabled={!sessionContextLatestText}
+                        onClick={() => {
+                          if (sessionContextLatestText) {
+                            void navigator.clipboard.writeText(
+                              sessionContextLatestText,
+                            );
+                            addToast({
+                              type: "success",
+                              message: t("chat.contextJsonlCopied"),
+                            });
+                          }
+                        }}
+                      >
+                        {t("chat.contextJsonlCopy")}
+                      </Button>
+                    </div>
                   </div>
                   {sessionContextPending ? (
                     <div className="flex min-h-0 flex-1 items-center justify-center">
@@ -2998,46 +3006,48 @@ export default function Chat() {
               label: t("chat.contextRawTab"),
               children: (
                 <div className="flex h-full min-h-0 flex-col gap-3">
-                  <div className="flex shrink-0 flex-wrap items-center gap-2">
-                    <span className="text-sm text-gray-500 dark:text-gray-400">
+                  <div className="flex w-full min-w-0 shrink-0 flex-wrap items-center gap-2">
+                    <span className="shrink-0 text-sm text-gray-500 dark:text-gray-400">
                       {t("chat.contextJsonlFileSource")}
                     </span>
-                    <Select
-                      value={sessionJsonlFileSource}
-                      onChange={(v) => setSessionJsonlFileSource(v)}
-                      className="min-w-[12rem]"
-                      options={[
-                        {
-                          value: "session",
-                          label: t("chat.contextJsonlFileSession"),
-                        },
-                        {
-                          value: "transcript",
-                          label: t("chat.contextJsonlFileTranscript"),
-                        },
-                      ]}
-                    />
-                    {sessionJsonlFetching && !sessionJsonlPending ? (
-                      <Spin size="small" />
-                    ) : null}
-                    <Button
-                      type="primary"
-                      icon={<CopyOutlined />}
-                      disabled={!sessionJsonlData?.text}
-                      onClick={() => {
-                        if (sessionJsonlData?.text) {
-                          void navigator.clipboard.writeText(
-                            sessionJsonlData.text,
-                          );
-                          addToast({
-                            type: "success",
-                            message: t("chat.contextJsonlCopied"),
-                          });
-                        }
-                      }}
-                    >
-                      {t("chat.contextJsonlCopy")}
-                    </Button>
+                    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                      <Select
+                        value={sessionJsonlFileSource}
+                        onChange={(v) => setSessionJsonlFileSource(v)}
+                        className="min-w-0 max-w-full flex-1 [&_.ant-select-selector]:!w-full"
+                        options={[
+                          {
+                            value: "session",
+                            label: t("chat.contextJsonlFileSession"),
+                          },
+                          {
+                            value: "transcript",
+                            label: t("chat.contextJsonlFileTranscript"),
+                          },
+                        ]}
+                      />
+                      {sessionJsonlFetching && !sessionJsonlPending ? (
+                        <Spin size="small" />
+                      ) : null}
+                      <Button
+                        type="primary"
+                        icon={<CopyOutlined />}
+                        disabled={!sessionJsonlData?.text}
+                        onClick={() => {
+                          if (sessionJsonlData?.text) {
+                            void navigator.clipboard.writeText(
+                              sessionJsonlData.text,
+                            );
+                            addToast({
+                              type: "success",
+                              message: t("chat.contextJsonlCopied"),
+                            });
+                          }
+                        }}
+                      >
+                        {t("chat.contextJsonlCopy")}
+                      </Button>
+                    </div>
                   </div>
                   {sessionJsonlPending ? (
                     <div className="flex min-h-0 flex-1 items-center justify-center">
