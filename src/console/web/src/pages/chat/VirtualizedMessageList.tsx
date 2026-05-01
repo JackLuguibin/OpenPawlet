@@ -229,8 +229,9 @@ export function VirtualizedMessageList<T>({
     setScrollTop(el.scrollTop);
   }, []);
 
-  // Expose imperative handle.
-  useEffect(() => {
+  // Expose imperative handle synchronously after DOM commit so parents can
+  // rely on scroll helpers in layout effects without missing the first paint.
+  useLayoutEffect(() => {
     if (!registerHandle) return undefined;
     const handle: VirtualMessageListHandle = {
       scrollToBottom: (smooth = false) => {

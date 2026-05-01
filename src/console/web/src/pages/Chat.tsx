@@ -1,6 +1,7 @@
 import {
   useState,
   useEffect,
+  useLayoutEffect,
   useRef,
   useCallback,
   useMemo,
@@ -237,7 +238,8 @@ export default function Chat() {
   /** When false, new tokens must not force scroll (user scrolled up to read). */
   const messagesStickToBottomRef = useRef(true);
   /** Imperative handle into the virtualized message list (scroll helpers). */
-  const [virtualListHandleRef, setVirtualListHandle] = useVirtualListHandle();
+  const [virtualListHandleRef, setVirtualListHandle, virtualListHandleEpoch] =
+    useVirtualListHandle();
   /** Tracks unseen new-message count while the user is scrolled away from the bottom. */
   const [unreadBelowCount, setUnreadBelowCount] = useState(0);
   /** Drives the "jump to bottom" button visibility; updated from scroll events. */
@@ -1413,27 +1415,45 @@ export default function Chat() {
    * unread assistant bubbles while the user is reading older history so the
    * "jump to latest" pill can surface a helpful hint.
    */
-  useEffect(() => {
+  useLayoutEffect(() => {
     const handle = virtualListHandleRef.current;
     if (!handle) return;
+    const scrollNow = () => handle.scrollToBottom(false);
     if (displayMessages.length <= 1 && !isStreaming) {
-      handle.scrollToBottom(false);
+      scrollNow();
       messagesStickToBottomRef.current = true;
       setShowJumpToBottom(false);
       setUnreadBelowCount(0);
+      requestAnimationFrame(scrollNow);
       return;
     }
     if (messagesStickToBottomRef.current) {
-      handle.scrollToBottom(false);
+      scrollNow();
+      requestAnimationFrame(scrollNow);
     } else {
       // User scrolled up; bump the unread counter whenever a new message is
       // appended (either assistant finalization or streaming start).
       setUnreadBelowCount((n) => n + 1);
     }
+  }, [virtualListHandleRef, displayMessages.length, isStreaming]);
+
+  /**
+   * When the imperative list handle mounts, `messagesStickToBottomRef` won't
+   * trigger a rerun on its own. Re-run sticky tail scroll whenever the epoch
+   * bumps without counting that as newly-unread tail traffic.
+   */
+  useLayoutEffect(() => {
+    const handle = virtualListHandleRef.current;
+    if (!handle) return;
+    if (displayMessages.length === 0) return;
+    if (!messagesStickToBottomRef.current) return;
+    const scrollNow = () => handle.scrollToBottom(false);
+    scrollNow();
+    requestAnimationFrame(scrollNow);
   }, [
     virtualListHandleRef,
+    virtualListHandleEpoch,
     displayMessages.length,
-    isStreaming,
   ]);
 
   /**
@@ -1450,6 +1470,7 @@ export default function Chat() {
     handle.scrollToBottom(false);
   }, [
     virtualListHandleRef,
+    virtualListHandleEpoch,
     streamingContent,
     streamingToolProgress.length,
     streamingChannelNotices.length,
