@@ -30,7 +30,6 @@ dmypy.json
 .hypothesis/
 
 # Build & packaging
-dist/
 build/
 *.manifest
 *.spec
