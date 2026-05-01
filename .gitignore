@@ -30,6 +30,7 @@ dmypy.json
 .hypothesis/
 
 # Build & packaging
+dist/
 build/
 *.manifest
 *.spec
@@ -39,6 +40,7 @@ share/python-wheels/
 # Frontend build artefacts and deps (web SPA bundled at runtime by FastAPI).
 # We intentionally do not track Vite output or npm caches even though the
 # project is a web app, so PR diffs stay focused on source.
+src/console/web/dist/
 src/console/web/node_modules/
 node_modules/
 
