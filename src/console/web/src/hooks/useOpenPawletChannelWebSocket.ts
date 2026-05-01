@@ -79,7 +79,7 @@ function openpawletStatusJsonChunk(
   legacyStringContent: boolean,
 ): StreamChunk {
   const chunk: StreamChunk = {
-    type: "openpawlet_status_json",
+    type: "status",
     openpawlet_status_payload: innerObj,
   };
   if (legacyStringContent) {
@@ -107,7 +107,7 @@ function optionalToolFrameFields(
 
 /**
  * Maps OpenPawlet WS frames to StreamChunk.
- * `stream_end` = one streaming segment/frame finished (`stream_frame_end`).
+ * `stream_end` = one streaming segment finished (OpenPawlet `event: stream_end`).
  * `message` = non-final channel text (retries, status); show until `chat_end`.
  * `chat_end` = full assistant turn finished (`chat_done`); optional `text` for final body.
  *
@@ -188,7 +188,7 @@ function mapNativeFrameToStreamChunk(
   }
   if (ev === "stream_end") {
     const extra = optionalToolFrameFields(data);
-    const chunk: StreamChunk = { type: "stream_frame_end", ...extra };
+    const chunk: StreamChunk = { type: "stream_end", ...extra };
     if (data.stream_id !== undefined) {
       chunk.stream_id = data.stream_id;
     }

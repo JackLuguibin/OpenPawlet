@@ -518,8 +518,8 @@ export type WSMessageType =
   | 'chat_token'
   | 'chat_done'
   | 'chat_start'
-  /** One streaming segment ended (OpenPawlet `stream_end`); not the full assistant turn. */
-  | 'stream_frame_end'
+  /** One streaming segment ended (OpenPawlet `event: stream_end`); not the full assistant turn. */
+  | 'stream_end'
   | 'session_key'
   | 'tool_call'
   | 'tool_result'
@@ -535,7 +535,7 @@ export type WSMessageType =
   /** OpenPawlet `event: message` — status / retry lines until `chat_end` */
   | 'channel_notice'
   /** Native `event: status` (`openpawlet_status_payload`) or legacy `message`+`content` (`/status-json`) */
-  | 'openpawlet_status_json'
+  | 'status'
   /** Welcome frame from `/ws/state` after the upgrade settles. */
   | 'welcome'
   /** Server-side keepalive ping; SPA replies are not required. */

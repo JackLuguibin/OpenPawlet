@@ -216,11 +216,11 @@ export function useWebSocket() {
 
         // Dispatch chat streaming messages to registered handlers.
         const chatTypes: WSMessage['type'][] = [
-          'chat_token', 'chat_done', 'chat_start', 'stream_frame_end',
+          'chat_token', 'chat_done', 'chat_start', 'stream_end',
           'session_key', 'tool_call',
           'tool_result', 'tool_progress', 'channel_notice', 'subagent_start',
           'subagent_done', 'assistant_message', 'error',
-          'openpawlet_status_json',
+          'status',
         ];
         if (chatTypes.includes(message.type)) {
           _dispatchChat(message as StreamChunk, "console");

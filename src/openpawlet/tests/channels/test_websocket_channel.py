@@ -238,6 +238,39 @@ async def test_send_session_turn_lifecycle_emits_chat_start_and_chat_end() -> No
 
 
 @pytest.mark.asyncio
+async def test_send_plain_text_via_delta_segment() -> None:
+    """Non-media outbound assistant text routes through ``delta`` + ``stream_end``."""
+    bus = MagicMock()
+    channel = WebSocketChannel(
+        {"enabled": True, "allowFrom": ["*"], "streaming": True, "deltaChunkChars": 0},
+        bus,
+    )
+    mock_ws = AsyncMock()
+    channel._attach(mock_ws, "chat-1")
+
+    msg = OutboundMessage(
+        channel="websocket",
+        chat_id="chat-1",
+        content="hello",
+        reply_to=None,
+        media=[],
+    )
+    await channel.send(msg)
+
+    assert mock_ws.send.await_count == 2
+    first = json.loads(mock_ws.send.call_args_list[0][0][0])
+    second = json.loads(mock_ws.send.call_args_list[1][0][0])
+    assert first["event"] == "delta"
+    assert first["chat_id"] == "chat-1"
+    assert first["text"] == "hello"
+    assert isinstance(first["stream_id"], str) and first["stream_id"].startswith("m:")
+    sid = first["stream_id"]
+    assert second["event"] == "stream_end"
+    assert second["chat_id"] == "chat-1"
+    assert second["stream_id"] == sid
+
+
+@pytest.mark.asyncio
 async def test_send_delivers_json_message_with_media_and_reply() -> None:
     bus = MagicMock()
     channel = WebSocketChannel({"enabled": True, "allowFrom": ["*"]}, bus)
@@ -317,10 +350,14 @@ async def test_send_includes_reasoning_content_on_message_event() -> None:
     )
     await channel.send(msg)
 
-    payload = json.loads(mock_ws.send.call_args[0][0])
-    assert payload["event"] == "message"
+    assert mock_ws.send.await_count == 2
+    payload = json.loads(mock_ws.send.call_args_list[0][0][0])
+    assert payload["event"] == "delta"
     assert payload["text"] == "hello"
     assert payload["reasoning_content"] == "internal chain"
+    tail = json.loads(mock_ws.send.call_args_list[1][0][0])
+    assert tail["event"] == "stream_end"
+    assert tail["stream_id"] == payload["stream_id"]
 
 
 @pytest.mark.asyncio
@@ -339,9 +376,12 @@ async def test_send_attaches_reply_group_id_on_message_and_chat_lifecycle() -> N
         metadata={"reply_group_id": rg_id},
     )
     await channel.send(msg)
-    payload = json.loads(mock_ws.send.call_args[0][0])
-    assert payload["event"] == "message"
-    assert payload["reply_group_id"] == rg_id
+    delta = json.loads(mock_ws.send.call_args_list[0][0][0])
+    tail = json.loads(mock_ws.send.call_args_list[1][0][0])
+    assert delta["event"] == "delta"
+    assert delta["reply_group_id"] == rg_id
+    assert tail["event"] == "stream_end"
+    assert tail["reply_group_id"] == rg_id
 
     mock_ws.send.reset_mock()
     await channel.send(
@@ -1005,10 +1045,13 @@ async def test_multiplex_legacy_still_works(bus: MagicMock) -> None:
             await channel.send(
                 OutboundMessage(channel="websocket", chat_id=default_chat, content="reply")
             )
-            reply = json.loads(await client.recv())
-            assert reply["event"] == "message"
-            assert reply["chat_id"] == default_chat
-            assert reply["text"] == "reply"
+            delta = json.loads(await client.recv())
+            assert delta["event"] == "delta"
+            assert delta["chat_id"] == default_chat
+            assert delta["text"] == "reply"
+            end = json.loads(await client.recv())
+            assert end["event"] == "stream_end"
+            assert end["stream_id"] == delta["stream_id"]
     finally:
         await channel.stop()
         await server_task
@@ -1043,10 +1086,13 @@ async def test_multiplex_new_chat_roundtrip(bus: MagicMock) -> None:
 
             # Server pushes a message back; chat_id must match
             await channel.send(OutboundMessage(channel="websocket", chat_id=new_chat, content="ok"))
-            reply = json.loads(await client.recv())
-            assert reply["event"] == "message"
-            assert reply["chat_id"] == new_chat
-            assert reply["text"] == "ok"
+            d1 = json.loads(await client.recv())
+            assert d1["event"] == "delta"
+            assert d1["chat_id"] == new_chat
+            assert d1["text"] == "ok"
+            end = json.loads(await client.recv())
+            assert end["event"] == "stream_end"
+            assert end["chat_id"] == new_chat
     finally:
         await channel.stop()
         await server_task
@@ -1074,16 +1120,20 @@ async def test_multiplex_two_chats_isolated(bus: MagicMock) -> None:
                 OutboundMessage(channel="websocket", chat_id=chat_a, content="for-A")
             )
             msg_a = json.loads(await client.recv())
+            assert msg_a["event"] == "delta"
             assert msg_a["chat_id"] == chat_a
             assert msg_a["text"] == "for-A"
+            assert json.loads(await client.recv())["event"] == "stream_end"
 
             # Push B → client sees B only.
             await channel.send(
                 OutboundMessage(channel="websocket", chat_id=chat_b, content="for-B")
             )
             msg_b = json.loads(await client.recv())
+            assert msg_b["event"] == "delta"
             assert msg_b["chat_id"] == chat_b
             assert msg_b["text"] == "for-B"
+            assert json.loads(await client.recv())["event"] == "stream_end"
     finally:
         await channel.stop()
         await server_task

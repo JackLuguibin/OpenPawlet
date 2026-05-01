@@ -106,7 +106,7 @@ Note: agent-to-agent bus events (`agent.direct` / `agent.request.reply`) support
 
 `resumed` is present and `true` only when the client supplied a valid `chat_id` query parameter to resume an existing session. Omit it on fresh connections (server-assigned `chat_id`).
 
-**`message`** — full agent response:
+**`message`** — discrete agent payload (used when the outbound carries `media` / `reply_to`, or other non-streaming routing). Typical assistant **plain text** is **not** sent as `event: "message"`; it is emitted as one or more **`delta`** frames followed by **`stream_end`** (see below).
 
 ```json
 {
@@ -120,26 +120,7 @@ Note: agent-to-agent bus events (`agent.direct` / `agent.request.reply`) support
 
 `media` and `reply_to` are only present when applicable.
 
-**`delta`** — streaming text chunk (only when `streaming: true`):
-
-```json
-{
-  "event": "delta",
-  "chat_id": "uuid-v4",
-  "text": "Hello",
-  "stream_id": "s1"
-}
-```
-
-**`stream_end`** — signals the end of a streaming segment:
-
-```json
-{
-  "event": "stream_end",
-  "chat_id": "uuid-v4",
-  "stream_id": "s1"
-}
-```
+**`delta`** / **`stream_end`** — streaming segments. The server delivers **all** ordinary assistant/progress text through this pair (LLM token stream and bus `send()` bodies). Each segment has a `stream_id`; multi-chunk replies reuse the same id until `stream_end`. Segments synthesized from non-streaming `OutboundMessage.send` use ids prefixed with `m:`.
 
 **`attached`** — confirmation for `new_chat` / `attach` inbound envelopes (see [Multi-chat multiplexing](#multi-chat-multiplexing)):
 

@@ -6,7 +6,7 @@
  * / `percent_used`. Both the chat page renderer and the `/openpawlet-ws` frame
  * mapper need to detect this shape:
  *   - `useOpenPawletChannelWebSocket.ts` maps native `event: status` to
- *     `openpawlet_status_json` with `openpawlet_status_payload`; legacy `message`
+ *     chunk `type: "status"` with `openpawlet_status_payload`; legacy `message`
  *     + empty text may still stringify into `content`.
  *   - `Chat.tsx` reads structured payloads for the context meter; human-readable
  *     `/status` lines use `parseOpenPawletStatusPlainText`.

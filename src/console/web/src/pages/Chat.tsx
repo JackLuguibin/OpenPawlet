@@ -1496,7 +1496,7 @@ export default function Chat() {
         if (chunk.type === "chat_start") {
           return;
         }
-        if (chunk.type === "openpawlet_status_json") {
+        if (chunk.type === "status") {
           completeSilentStatusJsonPoll("", {
             fromEarlyParse: true,
             parsedUsage: parseOpenPawletStatusFromChunk(chunk),
@@ -1506,7 +1506,7 @@ export default function Chat() {
         if (chunk.type === "chat_token" || chunk.type === "channel_notice") {
           return;
         }
-        if (chunk.type === "stream_frame_end") {
+        if (chunk.type === "stream_end") {
           return;
         }
         if (chunk.type === "chat_done") {
@@ -1519,7 +1519,7 @@ export default function Chat() {
         }
         return;
       }
-      if (chunk.type === "openpawlet_status_json") {
+      if (chunk.type === "status") {
         const parsed = parseOpenPawletStatusFromChunk(chunk);
         if (parsed) {
           setOpenPawletContextUsage(parsed);
@@ -1677,7 +1677,7 @@ export default function Chat() {
             setStreamingReasoningContent(r);
           }
         }
-      } else if (chunk.type === "stream_frame_end") {
+      } else if (chunk.type === "stream_end") {
         cancelStreamTokenFlush();
         if (chunk.tool_calls?.length) {
           const incoming = chunk.tool_calls;
@@ -1881,9 +1881,9 @@ export default function Chat() {
         streamingReplyGroupIdRef.current = null;
         setMessages((prev) => [...prev, assistantMsg]);
         setToolCalls([]);
-        // Scope to the active bot to match the canonical sessions query key
-        // used elsewhere in the file (e.g. ["sessions", currentBotId]).
-        queryClient.invalidateQueries({ queryKey: ["sessions", currentBotId] });
+        // Avoid invalidating ["sessions"]; that refetches the full sidebar list each
+        // `chat_done` / `chat_end` and feels like a page refresh. Count sync is handled
+        // by session cache + setQueryData below and the `sessionMessageCount` effect.
         // Update the session cache so sessionData stays in sync with the latest session.
         // Functional form reads current cache at call time, avoiding stale closure values.
         queryClient.setQueryData(

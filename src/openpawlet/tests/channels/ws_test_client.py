@@ -134,10 +134,40 @@ class WsTestClient:
         return msg
 
     async def recv_message(self, timeout: float = 5.0) -> WsMessage:
-        """Receive and validate a 'message' event."""
+        """Receive one logical assistant text segment.
+
+        Plain ``event: "message"`` frames are returned as-is. Streaming segments
+        (``delta`` … ``stream_end``) emitted for the same outbound are collapsed into a
+        synthetic ``WsMessage(event="message")`` whose ``text`` is the concatenation of
+        delta bodies — matching historical test expectations against ``recv_message``.
+        """
         msg = await self.recv(timeout)
-        assert msg.event == "message", f"Expected 'message' event, got '{msg.event}'"
-        return msg
+        if msg.event == "message":
+            return msg
+        if msg.event != "delta":
+            raise AssertionError(
+                f"Expected 'message' or streaming 'delta', got '{msg.event}'"
+            )
+        parts: list[str] = [str(msg.raw.get("text") or "")]
+        stream_id = msg.raw.get("stream_id")
+        while True:
+            nxt = await self.recv(timeout)
+            if nxt.event == "delta":
+                parts.append(str(nxt.raw.get("text") or ""))
+            elif nxt.event == "stream_end":
+                if stream_id is not None and nxt.raw.get("stream_id") != stream_id:
+                    raise AssertionError("stream_end stream_id mismatch")
+                break
+            else:
+                raise AssertionError(
+                    f"Expected trailing 'delta' or 'stream_end', got '{nxt.event}'"
+                )
+        merged = "".join(parts)
+        raw = dict(msg.raw)
+        raw["event"] = "message"
+        raw["text"] = merged
+        raw.pop("stream_id", None)
+        return WsMessage(event="message", raw=raw)
 
     async def recv_delta(self, timeout: float = 5.0) -> WsMessage:
         """Receive and validate a 'delta' event."""

@@ -74,11 +74,15 @@ class WebSocketConfig(Base):
       :meth:`WebSocketChannel.set_session_busy_resolver` to the agent loop, so clients can restore
       \"in progress\" UI after reconnecting while a turn is still running.
     - Assistant ``reasoning_content`` from the persisted turn is sent as ``event: "reasoning"`` after
-      streaming completes when applicable, or on ``event: "message"`` as field ``reasoning_content``,
+      streaming completes when applicable, or on streamed ``delta`` frames as ``reasoning_content``,
       when global ``channels.sendReasoningContent`` / ``send_reasoning_content`` is true (default).
       The same global flag controls whether other channels receive reasoning on outbound messages.
     - Slash command ``/status-json`` replies use ``event: "status"`` (empty ``text``, JSON body in ``data``)
-      so clients can distinguish silent status polls from ordinary ``event: "message"`` notifications.
+      so clients can distinguish silent status polls from channel notifications.
+    - Ordinary assistant/progress outbound (legacy ``event: "message"`` bodies) are delivered as
+      ``event: "delta"`` chunks followed by ``event: "stream_end"`` so all client-visible assistant
+      text uses the streaming wire segment. Frames that carry ``reply_to``, ``media``, or RPC-style
+      ``event: "status"`` still use discrete JSON payloads.
     - ``max_delta_buffer_chars``: When ``delta_chunk_chars`` > 0, caps buffered stream text per stream;
       overflow is flushed as extra delta frames before ``stream_end``. ``0`` means no cap.
     - When the gateway passes a :class:`~openpawlet.session.manager.SessionManager` into
@@ -912,6 +916,44 @@ class WebSocketChannel(BaseChannel):
         if isinstance(rg, str) and rg:
             payload["reply_group_id"] = rg
 
+    @staticmethod
+    def _attach_message_wire_extras(payload: dict[str, Any], msg: OutboundMessage, meta: dict[str, Any]) -> None:
+        """Populate shared JSON fields used by discrete ``message``/``status`` envelopes and deltas."""
+        if "data" in meta:
+            payload["data"] = meta["data"]
+        media = getattr(msg, "media", None)
+        if media:
+            payload["media"] = media
+        reply_to = getattr(msg, "reply_to", None)
+        if reply_to:
+            payload["reply_to"] = reply_to
+        if meta.get("_tool_hint"):
+            payload["kind"] = "tool_hint"
+        elif meta.get("_progress"):
+            payload["kind"] = "progress"
+        rc = meta.get("reasoning_content")
+        if isinstance(rc, str) and rc:
+            payload["reasoning_content"] = rc
+
+    def _sanitize_stream_carrier_metadata(self, meta: dict[str, Any]) -> dict[str, Any]:
+        carrier = dict(meta)
+        for k in ("_stream_delta", "_stream_end", "_streamed", "_resuming"):
+            carrier.pop(k, None)
+        return carrier
+
+    async def _send_assistant_plaintext_as_delta_stream(self, msg: OutboundMessage, meta: dict[str, Any]) -> None:
+        """Emit one streaming segment ``delta → stream_end`` for plain assistant/progress outbound."""
+        sid = f"m:{uuid.uuid4().hex}"
+        carry = self._sanitize_stream_carrier_metadata(meta)
+        carry["_stream_id"] = sid
+        carry["_stream_delta"] = True
+        text = msg.content if isinstance(msg.content, str) else ""
+        await self.send_delta(msg.chat_id, text, carry)
+        tail = dict(carry)
+        tail.pop("_stream_delta", None)
+        tail["_stream_end"] = True
+        await self.send_delta(msg.chat_id, "", tail)
+
     async def send(self, msg: OutboundMessage) -> None:
         # Snapshot the subscriber set so ConnectionClosed cleanups mid-iteration are safe.
         conns = list(self._subs.get(msg.chat_id, ()))
@@ -944,40 +986,62 @@ class WebSocketChannel(BaseChannel):
             for key in ("tool_calls", "tool_results"):
                 if key in metadata:
                     payload[key] = metadata[key]
-        else:
-            ws_ev = "status" if metadata.get("_status_json_ws") else "message"
-            payload = {
-                "event": ws_ev,
-                "chat_id": msg.chat_id,
-                "text": msg.content,
-            }
-            if "data" in metadata:
-                payload["data"] = metadata["data"]
-            if msg.media:
-                payload["media"] = msg.media
-            if msg.reply_to:
-                payload["reply_to"] = msg.reply_to
-            if metadata.get("_tool_hint"):
-                payload["kind"] = "tool_hint"
-            elif metadata.get("_progress"):
-                payload["kind"] = "progress"
-            rc = metadata.get("reasoning_content")
-            if isinstance(rc, str) and rc:
-                payload["reasoning_content"] = rc
-        self._attach_reply_group_id(payload, metadata)
-        raw = json.dumps(payload, ensure_ascii=False)
-        for connection in conns:
-            await self._safe_send_to(connection, raw, label=" ")
+            self._attach_reply_group_id(payload, metadata)
+            raw = json.dumps(payload, ensure_ascii=False)
+            for connection in conns:
+                await self._safe_send_to(connection, raw, label=" tool ")
+            return
+
+        ws_ev = "status" if metadata.get("_status_json_ws") else "message"
+        payload_for_discrete = {
+            "event": ws_ev,
+            "chat_id": msg.chat_id,
+            "text": msg.content,
+        }
+        self._attach_message_wire_extras(payload_for_discrete, msg, metadata)
+        if ws_ev == "status":
+            self._attach_reply_group_id(payload_for_discrete, metadata)
+            raw = json.dumps(payload_for_discrete, ensure_ascii=False)
+            for connection in conns:
+                await self._safe_send_to(connection, raw, label=" status ")
+            return
+
+        # Legacy envelopes with routing fields keep a single ``event: message`` frame.
+        if msg.media or msg.reply_to:
+            self._attach_reply_group_id(payload_for_discrete, metadata)
+            raw = json.dumps(payload_for_discrete, ensure_ascii=False)
+            for connection in conns:
+                await self._safe_send_to(connection, raw, label=" ")
+            return
+
+        await self._send_assistant_plaintext_as_delta_stream(msg, metadata)
 
     async def _send_delta_frame(
         self,
         chat_id: str,
         text: str,
         meta: dict[str, Any],
+        *,
+        msg: OutboundMessage | None = None,
     ) -> None:
+        """Wire one ``delta`` frame; optional outbound message supplies media/reply (rare)."""
         body: dict[str, Any] = {"event": "delta", "chat_id": chat_id, "text": text}
         if meta.get("_stream_id") is not None:
             body["stream_id"] = meta["_stream_id"]
+        if msg is None:
+            # Mirror ``send`` enrichment for synthesized stream segments — without media/ref.
+            stub_meta = meta
+            if "data" in stub_meta:
+                body["data"] = stub_meta["data"]
+            if stub_meta.get("_tool_hint"):
+                body["kind"] = "tool_hint"
+            elif stub_meta.get("_progress"):
+                body["kind"] = "progress"
+            rc = stub_meta.get("reasoning_content")
+            if isinstance(rc, str) and rc:
+                body["reasoning_content"] = rc
+        else:
+            self._attach_message_wire_extras(body, msg, meta)
         self._attach_reply_group_id(body, meta)
         raw = json.dumps(body, ensure_ascii=False)
         for connection in list(self._subs.get(chat_id, ())):
