@@ -5,7 +5,9 @@ Settings are resolved in this priority order (highest wins):
 1. Arguments passed to :class:`ServerSettings` directly (``__init__`` kwargs)
 2. ``OPENPAWLET_SERVER_*`` environment variables
 3. ``.env`` file in the current working directory (optional)
-4. ``~/.openpawlet/openpawlet_web.json`` under the ``server`` key (optional)
+4. ``~/.openpawlet/openpawlet_web.json`` under the ``server`` key (optional;
+   legacy ``server.version`` snapshots are ignored so the reported API version
+   always matches the installed ``open-pawlet`` wheel)
 5. Built-in defaults on each field
 
 The JSON file is **opt-in**: it is no longer written automatically on first
@@ -50,6 +52,11 @@ class JsonServerFileSource(PydanticBaseSettingsSource):
     The file path is resolved lazily via :func:`console.server.config.loader
     .find_config_file` so tests can override ``openpawlet.config.loader`` state
     without triggering an import cycle at class definition time.
+
+    ``server.version`` keys are deliberately ignored: ``console init-config``
+    snapshots the resolved version at creation time and would otherwise pin a
+    stale string across ``pip install -U`` / editable reloads while the embedded
+    OpenPawlet runtime already reflects the upgraded wheel (see lifespan logs).
     """
 
     _SERVER_KEY = "server"
@@ -82,12 +89,18 @@ class JsonServerFileSource(PydanticBaseSettingsSource):
         return self._cached
 
     def get_field_value(self, field: FieldInfo, field_name: str) -> tuple[Any, str, bool]:
+        if field_name == "version":
+            return None, field_name, False
         value = self._load().get(field_name)
         return value, field_name, False
 
     def __call__(self) -> dict[str, Any]:
         data = self._load()
-        return {name: data[name] for name in self.settings_cls.model_fields if name in data}
+        return {
+            name: data[name]
+            for name in self.settings_cls.model_fields
+            if name in data and name != "version"
+        }
 
 
 class ServerSettings(BaseSettings):

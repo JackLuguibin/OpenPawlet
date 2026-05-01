@@ -5,7 +5,10 @@ The console resolves settings in this order (highest priority first):
 1. ``__init__`` kwargs
 2. ``OPENPAWLET_SERVER_*`` environment variables
 3. ``.env`` file in the working directory
-4. ``~/.openpawlet/openpawlet_web.json`` under the ``server`` key
+4. ``~/.openpawlet/openpawlet_web.json`` under the ``server`` key (optional).
+   Historical ``server.version`` keys in this file are ignored so the resolved
+   value always reflects the installed ``open-pawlet`` metadata (env / init may
+   still override).
 5. Built-in field defaults
 
 These tests pin that behaviour so future pydantic-settings upgrades or
@@ -18,6 +21,7 @@ import json
 from pathlib import Path
 
 import pytest
+from importlib.metadata import version as distro_version
 
 from console.server.config import (
     ServerSettings,
@@ -119,6 +123,17 @@ def test_get_settings_is_cached(isolated_config: Path) -> None:
     first = get_settings()
     second = get_settings()
     assert first is second
+
+
+def test_json_server_section_does_not_pin_stale_version(isolated_config: Path) -> None:
+    """``openpawlet_web.json`` may contain a pinned ``server.version`` from older init-config snapshots."""
+    _write_server_json(
+        isolated_config,
+        {"version": "0.3.0", "port": 9100},
+    )
+    settings = ServerSettings()
+    assert settings.port == 9100
+    assert settings.version == distro_version("open-pawlet")
 
 
 def test_reset_settings_cache_picks_up_new_env(
