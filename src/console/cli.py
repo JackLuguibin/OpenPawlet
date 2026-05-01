@@ -233,15 +233,8 @@ def main() -> None:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    start_parser = subparsers.add_parser(
-        "start",
-        help=(
-            "Run the unified server. The embedded OpenPawlet runtime "
-            "(agent + channels + cron + heartbeat) starts in the same "
-            "event loop, so a single HTTP port serves everything."
-        ),
-    )
-    start_parser.add_argument(
+    start_parent = argparse.ArgumentParser(add_help=False)
+    start_parent.add_argument(
         "--no-spa",
         action="store_true",
         help=(
@@ -250,9 +243,20 @@ def main() -> None:
         ),
     )
 
+    subparsers.add_parser(
+        "start",
+        parents=[start_parent],
+        help=(
+            "Run the unified server. The embedded OpenPawlet runtime "
+            "(agent + channels + cron + heartbeat) starts in the same "
+            "event loop, so a single HTTP port serves everything."
+        ),
+    )
+
     # Backwards-compatible alias used by older docs/scripts.
     subparsers.add_parser(
         "server",
+        parents=[start_parent],
         help="Alias of 'start' kept for backwards compatibility.",
     )
 
@@ -281,10 +285,8 @@ def main() -> None:
     )
 
     args = parser.parse_args()
-    if args.command == "start":
+    if args.command in ("start", "server"):
         _run_start(mount_spa=not args.no_spa)
-    elif args.command == "server":
-        _run_start(mount_spa=False)
     elif args.command == "init-config":
         _run_init_config(force=bool(args.force))
     elif args.command == "web":

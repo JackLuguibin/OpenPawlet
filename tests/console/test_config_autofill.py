@@ -109,7 +109,7 @@ def test_ensure_server_config_fills_missing_fields(tmp_path: Path) -> None:
     # User override preserved.
     assert data["server"]["port"] == 9100
     # New defaults present (sample a few stable settings).
-    assert data["server"]["host"] == "127.0.0.1"
+    assert data["server"]["host"] == "localhost"
     assert "log_level" in data["server"]
     # Unknown top-level keys preserved.
     assert data["extra"] == {"foo": "bar"}

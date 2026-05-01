@@ -64,9 +64,9 @@ def _write_server_json(path: Path, overrides: dict) -> None:
 
 def test_defaults_when_nothing_is_set(isolated_config: Path) -> None:
     settings = ServerSettings()
-    # Default host is loopback so the unauthenticated API is not exposed
-    # to the network without an explicit opt-in.
-    assert settings.host == "127.0.0.1"
+    # Default host is ``localhost`` so asyncio binds both loopback stacks
+    # (IPv4 + IPv6); browsers that resolve localhost to ::1 still connect.
+    assert settings.host == "localhost"
     assert settings.port == 8000
     assert settings.reload is False
     assert settings.effective_docs_url == "/docs"

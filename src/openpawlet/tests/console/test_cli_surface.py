@@ -47,6 +47,16 @@ def test_start_help_documents_no_spa_flag(
     assert "--strict-gateway" not in out
 
 
+def test_server_help_documents_no_spa_flag(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as exc:
+        _call_with_args(["server", "--help"])
+    assert exc.value.code == 0
+    out = capsys.readouterr().out
+    assert "--no-spa" in out
+
+
 def test_init_config_writes_default_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import openpawlet.config.loader as openpawlet_loader
 

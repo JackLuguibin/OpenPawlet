@@ -93,105 +93,31 @@ export default defineConfig({
             return 'chartjs'
           }
 
-          // Icons are tree-shaken but still substantial; keep out of antd-core.
-          if (id.includes('node_modules/@ant-design/icons')) {
-            return 'antd-icons'
-          }
-
-          // CodeMirror: split editor stack so no single vendor chunk exceeds ~600 kB minified.
-          // Language grammars (`@codemirror/lang-*`) are dynamically imported.
-          if (id.includes('node_modules/@codemirror/lang-')) {
-            return undefined
-          }
-          if (id.includes('node_modules/@lezer')) {
-            return 'cm-lezer'
-          }
-          if (id.includes('node_modules/@codemirror/view')) {
-            return 'cm-view'
-          }
-          if (
-            id.includes('node_modules/@uiw/react-codemirror') ||
-            id.includes('node_modules/@uiw/codemirror-extensions-basic-setup') ||
-            id.includes('node_modules/@uiw/codemirror-theme-vscode')
-          ) {
-            return 'cm-uiw'
-          }
-          if (id.includes('node_modules/@codemirror')) {
-            return 'cm-codemirror'
-          }
-
-          // antd is huge (1MB+ tree-shaken). Pull leaf components that no
-          // other antd module depends on into a separate `antd-heavy`
-          // chunk, so non-Workspace/Runtime/Queues/Agents routes don't pay
-          // the cost. Components imported by `antd-core` (date-picker,
-          // calendar, time-picker, color-picker, steps – referenced by
-          // locale strings or shared tokens) MUST stay in `antd-core` to
-          // avoid Rollup circular-chunk warnings.
+          // antd + @ant-design/* + rc-*: keep in ONE chunk. Splitting into
+          // core / rc / heavy caused rollup chunk cycles → minified TDZ errors
+          // ("Cannot access 'X' before initialization") in production.
           if (
             id.includes('node_modules/antd/') ||
             id.includes('node_modules/@ant-design/') ||
             id.includes('node_modules/@rc-component/') ||
             id.includes('node_modules/rc-')
           ) {
-            // Verified leaves via dependency analysis of antd@6.3.1 — none
-            // of these are imported by sibling antd modules (other than the
-            // top-level barrel `antd/es/index.js`, which we co-locate below),
-            // so isolating them does not create runtime cycles. Tree-shaking
-            // ensures unused leaf imports from the barrel drop out entirely.
-            const leafSegments = [
-              'antd/es/cascader/',
-              'antd/es/transfer/',
-              'antd/es/splitter/',
-              'antd/es/upload/',
-              'antd/es/table/',
-              'antd/es/tree/',
-              'antd/es/tree-select/',
-              'antd/es/anchor/',
-              'antd/es/carousel/',
-              'antd/es/result/',
-              'antd/es/mentions/',
-              'antd/es/auto-complete/',
-              // Heavy @rc-component/* packages that exclusively back the
-              // leaves above (antd v6 moved rc-* into @rc-component/*).
-              '@rc-component/table/',
-              '@rc-component/tree/',
-              '@rc-component/tree-select/',
-              '@rc-component/cascader/',
-              '@rc-component/mentions/',
-              '@rc-component/upload/',
-            ]
-            if (leafSegments.some((seg) => id.includes(seg))) {
-              return 'antd-heavy'
-            }
-            // The top-level barrel re-exports the leaves above, which would
-            // otherwise create a circular chunk reference (core <-> heavy).
-            // Co-locating the barrel with the leaves means consumers that
-            // don't tree-shake the barrel still get a clean dependency edge:
-            // antd-heavy -> antd-core (one direction only).
-            if (
-              id.endsWith('node_modules/antd/es/index.js') ||
-              id.endsWith('node_modules/antd/lib/index.js')
-            ) {
-              return 'antd-heavy'
-            }
-            // rc-* shared by many widgets — separate from component code to shrink slices.
-            if (
-              id.includes('node_modules/rc-') ||
-              id.includes('node_modules/@rc-component/')
-            ) {
-              return 'antd-rc'
-            }
-            // Shard `antd/es/<component>/` into fixed buckets so no chunk stays ~1 MB.
-            const antdEs = id.match(/node_modules\/antd\/es\/([^/]+)\//)?.[1]
-            if (antdEs && antdEs !== 'style' && antdEs !== 'version') {
-              let h = 2166136261
-              for (let i = 0; i < antdEs.length; i++) {
-                h ^= antdEs.charCodeAt(i)
-                h = Math.imul(h, 16777619)
-              }
-              return `antd-c${Math.abs(h) % 6}`
-            }
-            return 'antd-core'
+            return 'antd-vendor'
+          }
+
+          // CodeMirror 6 stack: MUST stay one chunk. Splitting cm-view /
+          // cm-lezer / cm-codemirror produces cross-chunk cycles → TDZ in prod.
+          if (
+            id.includes('node_modules/@codemirror/') ||
+            id.includes('node_modules/@lezer/') ||
+            id.includes('node_modules/@marijn/') ||
+            id.includes('node_modules/@uiw/react-codemirror') ||
+            id.includes('node_modules/@uiw/codemirror-') ||
+            id.includes('node_modules/crelt/') ||
+            id.includes('node_modules/style-mod/') ||
+            id.includes('node_modules/w3c-keyname/')
+          ) {
+            return 'codemirror-vendor'
           }
 
           // Markdown stack (used by Chat / Workspace) is ~150kB on its own.

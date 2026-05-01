@@ -118,11 +118,12 @@ class ServerSettings(BaseSettings):
     )
 
     host: str = Field(
-        default="127.0.0.1",
+        default="localhost",
         description=(
-            "Bind address. Defaults to loopback so the unauthenticated API is "
-            "not exposed to other hosts; set to 0.0.0.0 explicitly only on "
-            "trusted networks."
+            "Bind address. Defaults to the name ``localhost`` so the server "
+            "listens on loopback for both IPv4 and IPv6; browsers that resolve "
+            "``localhost`` to ::1 first still work. Use 127.0.0.1 for IPv4-only. "
+            "Set 0.0.0.0 only on trusted networks (unauthenticated API)."
         ),
     )
     port: int = Field(default=8000, ge=1, le=65535, description="Bind port")
