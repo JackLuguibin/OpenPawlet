@@ -41,6 +41,13 @@ from console.server.services.session_view import (
 from console.server.services.session_view import (
     row_to_session_info as _row_to_session_info,
 )
+from console.server.services.session_view import (
+    session_key_is_ephemeral_sidebar as _session_key_is_ephemeral_sidebar,
+)
+from console.server.services.session_view import (
+    attach_session_agent_names,
+    with_session_agent_name,
+)
 from console.server.session_store import (
     delete_session_files,
     list_session_rows,
@@ -100,6 +107,12 @@ def _preview_message_from_raw(raw: dict[str, object]) -> Message | None:
     source = str(src) if src is not None else None
     rg = raw.get("reply_group_id")
     reply_group_id = str(rg) if isinstance(rg, str) and rg else None
+    aid = raw.get("agent_id")
+    agent_id = str(aid) if aid is not None and str(aid).strip() else None
+    an = raw.get("agent_name")
+    agent_name = str(an) if an is not None and str(an).strip() else None
+    sid = raw.get("sender_agent_id")
+    sender_agent_id = str(sid) if sid is not None and str(sid).strip() else None
     return Message(
         role=role,
         content=content,
@@ -108,6 +121,9 @@ def _preview_message_from_raw(raw: dict[str, object]) -> Message | None:
         timestamp=timestamp,
         source=source,
         reply_group_id=reply_group_id,
+        agent_id=agent_id,
+        agent_name=agent_name,
+        sender_agent_id=sender_agent_id,
     )
 
 
@@ -358,7 +374,8 @@ async def list_sessions(
 ) -> DataResponse[list[SessionInfo]]:
     """List sessions from ``<workspace>/sessions``."""
     rows = list_session_rows(bot_id)
-    return DataResponse(data=[_row_to_session_info(r) for r in rows])
+    infos = [_row_to_session_info(r) for r in rows]
+    return DataResponse(data=attach_session_agent_names(bot_id, infos))
 
 
 @router.post("/sessions", response_model=DataResponse[SessionInfo])
@@ -394,19 +411,23 @@ async def create_session(
     push_sessions_snapshot(bot_id)
     push_status_snapshot(bot_id)
     return DataResponse(
-        data=SessionInfo(
-            key=key,
-            title=None,
-            message_count=len(session.messages),
-            last_message=None,
-            created_at=_iso(session.created_at),
-            updated_at=_iso(session.updated_at),
-            team_id=team_id,
-            room_id=room_id,
-            agent_id=agent_id,
-            is_subagent=is_sub,
-            subagent_task_id=sub_task,
-            parent_session_key=parent_key,
+        data=with_session_agent_name(
+            bot_id,
+            SessionInfo(
+                key=key,
+                title=None,
+                message_count=len(session.messages),
+                last_message=None,
+                created_at=_iso(session.created_at),
+                updated_at=_iso(session.updated_at),
+                team_id=team_id,
+                room_id=room_id,
+                agent_id=agent_id,
+                is_subagent=is_sub,
+                subagent_task_id=sub_task,
+                parent_session_key=parent_key,
+                ephemeral_session=_session_key_is_ephemeral_sidebar(key),
+            ),
         )
     )
 
@@ -443,6 +464,7 @@ async def get_session(
                 created_at=_iso(session.created_at),
                 updated_at=_iso(session.updated_at),
                 preview_messages=previews,
+                ephemeral_session=_session_key_is_ephemeral_sidebar(session_key),
             )
         )
     return DataResponse(
@@ -476,19 +498,23 @@ async def update_session(
         agent_id = match.group("agent_id")
     is_sub, parent_key, sub_task = _parse_subagent_key(session_key)
     return DataResponse(
-        data=SessionInfo(
-            key=session_key,
-            title=title,
-            message_count=len(session.messages),
-            last_message=last_message,
-            created_at=_iso(session.created_at),
-            updated_at=_iso(session.updated_at),
-            team_id=team_id,
-            room_id=room_id,
-            agent_id=agent_id,
-            is_subagent=is_sub,
-            subagent_task_id=sub_task,
-            parent_session_key=parent_key,
+        data=with_session_agent_name(
+            bot_id,
+            SessionInfo(
+                key=session_key,
+                title=title,
+                message_count=len(session.messages),
+                last_message=last_message,
+                created_at=_iso(session.created_at),
+                updated_at=_iso(session.updated_at),
+                team_id=team_id,
+                room_id=room_id,
+                agent_id=agent_id,
+                is_subagent=is_sub,
+                subagent_task_id=sub_task,
+                parent_session_key=parent_key,
+                ephemeral_session=_session_key_is_ephemeral_sidebar(session_key),
+            ),
         )
     )
 

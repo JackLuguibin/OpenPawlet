@@ -241,21 +241,21 @@ def _validated_ws_session_override(raw: Any) -> str | None:
     return s
 
 
-def _parse_legacy_json_inbound(raw: str) -> tuple[str | None, str | None]:
-    """Parse legacy JSON body; return ``(content, session_key_override)``."""
+def _parse_legacy_json_inbound(raw: str) -> tuple[str | None, str | None, dict[str, Any]]:
+    """Parse legacy JSON body; return ``(content, session_key_override, client_metadata)``."""
     text = raw.strip()
     if not text:
-        return None, None
+        return None, None, {}
     if not text.startswith("{"):
         c = _parse_inbound_payload(raw)
-        return (c, None)
+        return (c, None, {})
     try:
         data = json.loads(text)
     except json.JSONDecodeError:
         c = _parse_inbound_payload(raw)
-        return (c, None)
+        return (c, None, {})
     if not isinstance(data, dict):
-        return (None, None)
+        return None, None, {}
     content: str | None = None
     for key in ("content", "text", "message"):
         value = data.get(key)
@@ -263,12 +263,16 @@ def _parse_legacy_json_inbound(raw: str) -> tuple[str | None, str | None]:
             content = value
             break
     if content is None:
-        return (None, None)
+        return None, None, {}
     sk_raw = data.get("session_key")
     if sk_raw is None:
         sk_raw = data.get("console_session_key")
     override = _validated_ws_session_override(sk_raw)
-    return (content, override)
+    extra_meta: dict[str, Any] = {}
+    raw_meta = data.get("metadata")
+    if isinstance(raw_meta, dict):
+        extra_meta = dict(raw_meta)
+    return (content, override, extra_meta)
 
 
 # Accept UUIDs and short scoped keys like "unified:default". Keeps the capability
@@ -811,10 +815,12 @@ class WebSocketChannel(BaseChannel):
                     await self._dispatch_envelope(connection, client_id, envelope)
                     continue
 
-                content, sk_override = _parse_legacy_json_inbound(raw)
+                content, sk_override, client_meta = _parse_legacy_json_inbound(raw)
                 if content is None:
                     continue
                 meta: dict[str, Any] = {"remote": getattr(connection, "remote_address", None)}
+                if client_meta:
+                    meta.update(client_meta)
                 await self._handle_message(
                     sender_id=client_id,
                     chat_id=default_chat_id,
@@ -863,6 +869,9 @@ class WebSocketChannel(BaseChannel):
                 envelope.get("session_key") or envelope.get("console_session_key")
             )
             meta_msg: dict[str, Any] = {"remote": getattr(connection, "remote_address", None)}
+            env_meta = envelope.get("metadata")
+            if isinstance(env_meta, dict):
+                meta_msg.update(env_meta)
             await self._handle_message(
                 sender_id=client_id,
                 chat_id=cid,
@@ -917,6 +926,21 @@ class WebSocketChannel(BaseChannel):
             payload["reply_group_id"] = rg
 
     @staticmethod
+    def _attach_agent_identity(payload: dict[str, Any], metadata: dict[str, Any]) -> None:
+        """Copy ``agent_id`` / ``agent_name`` from outbound metadata (``AgentLoop``)."""
+        aid = metadata.get("agent_id")
+        if isinstance(aid, str) and aid.strip():
+            payload["agent_id"] = aid.strip()
+        an = metadata.get("agent_name")
+        if isinstance(an, str) and an.strip():
+            payload["agent_name"] = an.strip()
+
+    @staticmethod
+    def _attach_turn_correlation(payload: dict[str, Any], metadata: dict[str, Any]) -> None:
+        WebSocketChannel._attach_reply_group_id(payload, metadata)
+        WebSocketChannel._attach_agent_identity(payload, metadata)
+
+    @staticmethod
     def _attach_message_wire_extras(payload: dict[str, Any], msg: OutboundMessage, meta: dict[str, Any]) -> None:
         """Populate shared JSON fields used by discrete ``message``/``status`` envelopes and deltas."""
         if "data" in meta:
@@ -965,7 +989,7 @@ class WebSocketChannel(BaseChannel):
             rc = metadata.get("reasoning_content")
             if isinstance(rc, str) and rc:
                 payload = {"event": "reasoning", "chat_id": msg.chat_id, "text": rc}
-                self._attach_reply_group_id(payload, metadata)
+                self._attach_turn_correlation(payload, metadata)
                 raw = json.dumps(payload, ensure_ascii=False)
                 for connection in conns:
                     await self._safe_send_to(connection, raw, label=" reasoning ")
@@ -976,7 +1000,7 @@ class WebSocketChannel(BaseChannel):
                 "event": "chat_start" if turn_phase == "start" else "chat_end",
                 "chat_id": msg.chat_id,
             }
-            self._attach_reply_group_id(payload, metadata)
+            self._attach_turn_correlation(payload, metadata)
             raw = json.dumps(payload, ensure_ascii=False)
             for connection in conns:
                 await self._safe_send_to(connection, raw, label=" turn ")
@@ -986,7 +1010,7 @@ class WebSocketChannel(BaseChannel):
             for key in ("tool_calls", "tool_results"):
                 if key in metadata:
                     payload[key] = metadata[key]
-            self._attach_reply_group_id(payload, metadata)
+            self._attach_turn_correlation(payload, metadata)
             raw = json.dumps(payload, ensure_ascii=False)
             for connection in conns:
                 await self._safe_send_to(connection, raw, label=" tool ")
@@ -1000,7 +1024,7 @@ class WebSocketChannel(BaseChannel):
         }
         self._attach_message_wire_extras(payload_for_discrete, msg, metadata)
         if ws_ev == "status":
-            self._attach_reply_group_id(payload_for_discrete, metadata)
+            self._attach_turn_correlation(payload_for_discrete, metadata)
             raw = json.dumps(payload_for_discrete, ensure_ascii=False)
             for connection in conns:
                 await self._safe_send_to(connection, raw, label=" status ")
@@ -1008,7 +1032,7 @@ class WebSocketChannel(BaseChannel):
 
         # Legacy envelopes with routing fields keep a single ``event: message`` frame.
         if msg.media or msg.reply_to:
-            self._attach_reply_group_id(payload_for_discrete, metadata)
+            self._attach_turn_correlation(payload_for_discrete, metadata)
             raw = json.dumps(payload_for_discrete, ensure_ascii=False)
             for connection in conns:
                 await self._safe_send_to(connection, raw, label=" ")
@@ -1042,7 +1066,7 @@ class WebSocketChannel(BaseChannel):
                 body["reasoning_content"] = rc
         else:
             self._attach_message_wire_extras(body, msg, meta)
-        self._attach_reply_group_id(body, meta)
+        self._attach_turn_correlation(body, meta)
         raw = json.dumps(body, ensure_ascii=False)
         for connection in list(self._subs.get(chat_id, ())):
             await self._safe_send_to(connection, raw, label=" stream ")
@@ -1074,7 +1098,7 @@ class WebSocketChannel(BaseChannel):
             body_end: dict[str, Any] = {"event": "stream_end", "chat_id": chat_id}
             if meta.get("_stream_id") is not None:
                 body_end["stream_id"] = meta["_stream_id"]
-            self._attach_reply_group_id(body_end, meta)
+            self._attach_turn_correlation(body_end, meta)
             raw = json.dumps(body_end, ensure_ascii=False)
             for connection in list(self._subs.get(chat_id, ())):
                 await self._safe_send_to(connection, raw, label=" stream ")

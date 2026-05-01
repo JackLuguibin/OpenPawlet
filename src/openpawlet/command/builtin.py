@@ -181,7 +181,8 @@ async def cmd_dream(ctx: CommandContext) -> OutboundMessage:
     async def _run_dream():
         t0 = time.monotonic()
         try:
-            did_work = await loop.dream.run()
+            dr = await loop.dream.run()
+            did_work = dr.did_work
             elapsed = time.monotonic() - t0
             if did_work:
                 content = f"Dream completed in {elapsed:.1f}s."

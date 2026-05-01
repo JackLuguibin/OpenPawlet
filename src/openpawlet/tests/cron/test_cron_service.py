@@ -283,6 +283,34 @@ async def test_register_system_job_preserves_run_history(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_dream_run_history_records_hook_prompt(tmp_path) -> None:
+    store_path = tmp_path / "cron" / "jobs.json"
+
+    async def on_job(job):
+        if job.name == "dream":
+            return "Dream prompt snapshot for cron UI"
+        return None
+
+    service = CronService(store_path, on_job=on_job)
+    service.register_system_job(
+        CronJob(
+            id="dream",
+            name="dream",
+            schedule=CronSchedule(kind="every", every_ms=60_000),
+            payload=CronPayload(kind="system_event"),
+        )
+    )
+    await service.run_job("dream", force=True)
+    rec = service.get_job("dream").state.run_history[-1]
+    assert rec.prompt == "Dream prompt snapshot for cron UI"
+
+    reloaded = CronService(store_path, on_job=lambda _: asyncio.sleep(0))
+    reloaded._load_store()
+    persisted = reloaded.get_job("dream").state.run_history[-1]
+    assert persisted.prompt == "Dream prompt snapshot for cron UI"
+
+
+@pytest.mark.asyncio
 async def test_start_server_not_jobs(tmp_path):
     store_path = tmp_path / "cron" / "jobs.json"
     called = []

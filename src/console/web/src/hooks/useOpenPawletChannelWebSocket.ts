@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type MutableRefObject,
+} from "react";
 
 import type { StreamChunk } from "../api/types";
 import { useAppStore } from "../store";
@@ -11,6 +18,12 @@ import {
 } from "../utils/toolCalls";
 
 import { dispatchChatChunk } from "./useWebSocket";
+
+/** Console → OpenPawlet WS JSON body (see `sendMessage`). */
+export type OpenPawletWsSendPayload = {
+  content: string;
+  botId: string | null;
+};
 
 /**
  * Latest OpenPawlet socket teardown from `useOpenPawletChannelWebSocket` (e.g. delete flow:
@@ -55,6 +68,9 @@ export interface OpenPawletNativeWsFrame {
   stream_id?: unknown;
   tool_calls?: unknown;
   reasoning_content?: string;
+  reply_group_id?: string;
+  agent_id?: string;
+  agent_name?: string;
   /** OutboundMessage.data — may carry status/command JSON (see `outboundDataHasStatusContext`). */
   data?: unknown;
 }
@@ -125,6 +141,14 @@ function _withReplyGroupId(
   const rg = data.reply_group_id;
   if (typeof rg === "string" && rg) {
     chunk.reply_group_id = rg;
+  }
+  const aid = data.agent_id;
+  if (typeof aid === "string" && aid.trim()) {
+    chunk.agent_id = aid.trim();
+  }
+  const an = data.agent_name;
+  if (typeof an === "string" && an.trim()) {
+    chunk.agent_name = an.trim();
   }
   return chunk;
 }
@@ -372,12 +396,18 @@ export function useOpenPawletChannelWebSocket(options: {
    * (agent turn still running for this chat).
    */
   onReadySessionBusy?: (busy: boolean) => void;
+  /**
+   * When set, each outbound message includes ``metadata.console_chat_profile_id``
+   * (workspace agent id) except when the current value is ``main``.
+   */
+  chatProfileIdRef?: MutableRefObject<string>;
 }) {
   const {
     enabled,
     canonicalSessionKeyFromRoute = null,
     resumeChatId = null,
     onReadySessionBusy,
+    chatProfileIdRef = undefined,
   } = options;
   const onReadySessionBusyRef = useRef(onReadySessionBusy);
   onReadySessionBusyRef.current = onReadySessionBusy;
@@ -629,7 +659,7 @@ export function useOpenPawletChannelWebSocket(options: {
   ]);
 
   const sendMessage = useCallback(
-    (payload: { content: string; botId: string | null }) => {
+    (payload: OpenPawletWsSendPayload) => {
       const ws = wsRef.current;
       if (!ws || ws.readyState !== WebSocket.OPEN) {
         throw new Error("openpawlet WebSocket not connected");
@@ -665,6 +695,10 @@ export function useOpenPawletChannelWebSocket(options: {
       const metadata: Record<string, unknown> = { source: "console" };
       if (payload.botId) {
         metadata.bot_id = payload.botId;
+      }
+      const profileId = chatProfileIdRef?.current?.trim();
+      if (profileId && profileId !== "main") {
+        metadata.console_chat_profile_id = profileId;
       }
       body.metadata = metadata;
       const outbound = JSON.stringify(body);

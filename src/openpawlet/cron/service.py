@@ -141,6 +141,7 @@ class CronService:
                                         status=r["status"],
                                         duration_ms=r.get("durationMs", 0),
                                         error=r.get("error"),
+                                        prompt=r.get("prompt"),
                                     )
                                     for r in j.get("state", {}).get("runHistory", [])
                                 ],
@@ -246,6 +247,7 @@ class CronService:
                                 "status": r.status,
                                 "durationMs": r.duration_ms,
                                 "error": r.error,
+                                **({"prompt": r.prompt} if r.prompt else {}),
                             }
                             for r in j.state.run_history
                         ],
@@ -347,9 +349,10 @@ class CronService:
         start_ms = _now_ms()
         logger.info("Cron: executing job '{}' ({})", job.name, job.id)
 
+        hook_prompt: str | None = None
         try:
             if self.on_job:
-                await self.on_job(job)
+                hook_prompt = await self.on_job(job)
 
             job.state.last_status = "ok"
             job.state.last_error = None
@@ -364,12 +367,17 @@ class CronService:
         job.state.last_run_at_ms = start_ms
         job.updated_at_ms = end_ms
 
+        record_prompt: str | None = None
+        if job.name == "dream" and hook_prompt and str(hook_prompt).strip():
+            record_prompt = str(hook_prompt).strip()
+
         job.state.run_history.append(
             CronRunRecord(
                 run_at_ms=start_ms,
                 status=job.state.last_status,
                 duration_ms=end_ms - start_ms,
                 error=job.state.last_error,
+                prompt=record_prompt,
             )
         )
         job.state.run_history = job.state.run_history[-self._MAX_RUN_HISTORY :]

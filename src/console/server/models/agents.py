@@ -49,6 +49,8 @@ class Agent(BaseModel):
     has_user: bool = False
     has_agents_md: bool = False
     has_tools_md: bool = False
+    # Synthetic row from GET /agents (main gateway); not stored under workspace/agents/.
+    is_main: bool = False
 
 
 class AgentCreateRequest(BaseModel):

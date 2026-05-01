@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
 
+import type { OpenPawletWsSendPayload } from "../../hooks/useOpenPawletChannelWebSocket";
 import { parseOpenPawletStatusJson } from "./statusParse";
 import type { OpenPawletContextUsage } from "./types";
 
@@ -11,7 +12,7 @@ interface UseOpenPawletContextUsageParams {
   useOpenPawletChannel: boolean;
   openpawletWsReady: boolean;
   currentBotId: string | null;
-  sendOpenPawletMessage: (payload: { content: string; botId: string | null }) => void;
+  sendOpenPawletMessage: (payload: OpenPawletWsSendPayload) => void;
   /**
    * Which session the page is currently bound to. Each change advances an
    * internal epoch so a stale `/status-json` reply for a previous session

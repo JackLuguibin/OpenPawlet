@@ -10,22 +10,29 @@ from __future__ import annotations
 from console.server.models import Agent
 
 
-def list_agent_ids(bot_id: str) -> set[str]:
+def list_agent_ids(bot_id: str | None) -> set[str]:
     """Return the set of agent ids currently registered for ``bot_id``."""
     return {a.id for a in list_agents(bot_id)}
 
 
-def list_agents(bot_id: str) -> list[Agent]:
+def list_agents(bot_id: str | None) -> list[Agent]:
     """Return parsed ``Agent`` objects for ``bot_id``.
 
     The router module owns the actual file layout / migration logic; this
     helper imports it lazily to break the circular dependency between
     ``teams`` and ``agents`` routers.
     """
-    from console.server.routers.v1.agents import _load_raw_state, _parse_agents
+    from console.server.routers.v1.agents import (
+        _load_raw_state,
+        _merge_workspace_agents_with_main,
+        _parse_agents,
+    )
 
     raw = _load_raw_state(bot_id)
-    return _parse_agents(raw["agents"])
+    bid = str(bot_id or "").strip()
+    return _merge_workspace_agents_with_main(
+        bid, _parse_agents(raw["agents"])
+    )
 
 
 __all__ = ["list_agent_ids", "list_agents"]

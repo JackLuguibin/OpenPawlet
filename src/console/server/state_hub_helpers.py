@@ -91,12 +91,15 @@ def push_sessions_snapshot(bot_id: str | None) -> None:
     """
 
     def _impl() -> None:
-        from console.server.services.session_view import row_to_session_info
+        from console.server.services.session_view import (
+            attach_session_agent_names,
+            row_to_session_info,
+        )
         from console.server.session_store import list_session_rows
-
         rows = list_session_rows(bot_id)
+        infos = [row_to_session_info(r) for r in rows]
         sessions: list[dict[str, Any]] = [
-            row_to_session_info(r).model_dump(mode="json") for r in rows
+            s.model_dump(mode="json") for s in attach_session_agent_names(bot_id, infos)
         ]
         publish_sessions_update(bot_id, sessions)
 

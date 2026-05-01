@@ -104,9 +104,10 @@ class CronHistoryRun(BaseModel):
     """One execution record returned to the client.
 
     Includes the job snapshot at execution time so the UI can show which
-    agent / skills / tools / prompt were used – the underlying OpenPawlet
-    cron service stores ``run_at_ms``/``status``/``duration_ms``/``error``;
-    the prompt-side fields are derived from the job's persisted ``message``
+    agent / skills / tools / prompt were used. The OpenPawlet cron service
+    stores ``run_at_ms``/``status``/``duration_ms``/``error`` on each run, and
+    optionally ``prompt`` when the hook supplies a per-run transcript (e.g.
+    Dream). Otherwise ``prompt`` comes from the job's persisted ``message``
     metadata block (see ``cronMetadata.ts`` on the web client).
     """
 

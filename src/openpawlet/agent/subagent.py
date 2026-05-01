@@ -46,7 +46,7 @@ from openpawlet.config.schema import (
 )
 from openpawlet.providers.base import LLMProvider
 from openpawlet.session.manager import SessionManager
-from openpawlet.session.transcript import SessionTranscriptWriter
+from openpawlet.session.transcript import SessionTranscriptWriter, stamp_transcript_agent_fields
 from openpawlet.utils.prompt_templates import render_template
 
 
@@ -77,6 +77,22 @@ class SubagentStatus:
     profile_id: str | None = None  # Resolved profile (None when running as inherited sub-agent)
 
 
+def _subagent_transcript_display_name(
+    resolved: ResolvedProfile | None,
+    status: SubagentStatus,
+    fallback_label: str,
+) -> str:
+    """Human-readable label written next to every sub-agent transcript line."""
+    if resolved is not None:
+        n = (resolved.profile.name or "").strip()
+        if n:
+            return n
+    n2 = (status.label or fallback_label or "").strip()
+    if n2:
+        return n2
+    return f"sub:{status.task_id}"
+
+
 class _SubagentHook(AgentHook):
     """Hook for subagent execution — logs tool calls and updates status.
 
@@ -93,6 +109,8 @@ class _SubagentHook(AgentHook):
         transcript: SessionTranscriptWriter | None = None,
         session_key: str | None = None,
         initial_message_count: int = 0,
+        transcript_agent_id: str = "",
+        transcript_agent_name: str = "",
     ) -> None:
         super().__init__()
         self._task_id = task_id
@@ -103,6 +121,8 @@ class _SubagentHook(AgentHook):
         # written to the transcript. Initial system+user messages are
         # flushed up-front by SubagentManager so we start past them.
         self._written_count = initial_message_count
+        self._transcript_agent_id = transcript_agent_id
+        self._transcript_agent_name = transcript_agent_name
 
     async def before_execute_tools(self, context: AgentHookContext) -> None:
         for tool_call in context.tool_calls:
@@ -133,6 +153,11 @@ class _SubagentHook(AgentHook):
         if self._written_count >= len(messages):
             return
         for m in messages[self._written_count:]:
+            stamp_transcript_agent_fields(
+                m,
+                agent_id=self._transcript_agent_id or None,
+                agent_name=self._transcript_agent_name or None,
+            )
             try:
                 self._transcript.append_raw_turn_message(self._session_key, m)
             except Exception as exc:  # pragma: no cover - transcript IO is best-effort
@@ -592,10 +617,18 @@ class SubagentManager:
                 {"role": "user", "content": f"{runtime}\n\n{task}"},
             ]
 
+            sub_agent_id = f"sub:{task_id}"
+            sub_agent_name = _subagent_transcript_display_name(resolved, status, label)
+
             # Persist the seed system+user messages immediately so the console
             # can render the sub-agent's task brief while the LLM is still
             # working on the first turn.
-            self._flush_initial_messages(sub_session_key, messages)
+            self._flush_initial_messages(
+                sub_session_key,
+                messages,
+                agent_id=sub_agent_id,
+                agent_name=sub_agent_name,
+            )
 
             result = await runner_for_task.run(
                 AgentRunSpec(
@@ -610,6 +643,8 @@ class SubagentManager:
                         transcript=self._transcript,
                         session_key=sub_session_key,
                         initial_message_count=len(messages),
+                        transcript_agent_id=sub_agent_id,
+                        transcript_agent_name=sub_agent_name,
                     ),
                     max_iterations_message="Task completed but no final response was generated.",
                     error_message=None,
@@ -626,7 +661,10 @@ class SubagentManager:
             # Make sure any tail messages produced after the final hook tick
             # (e.g. assistant final response) land in the transcript too.
             self._flush_result_tail(
-                sub_session_key, getattr(result, "messages", None)
+                sub_session_key,
+                getattr(result, "messages", None),
+                agent_id=sub_agent_id,
+                agent_name=sub_agent_name,
             )
 
             if result.stop_reason == "tool_error":
@@ -827,11 +865,15 @@ class SubagentManager:
         self,
         sub_session_key: str,
         messages: list[dict[str, Any]],
+        *,
+        agent_id: str,
+        agent_name: str,
     ) -> None:
         """Persist the seed system+user messages for the sub-agent transcript."""
         if self._transcript is None or not sub_session_key:
             return
         for m in messages:
+            stamp_transcript_agent_fields(m, agent_id=agent_id, agent_name=agent_name)
             try:
                 self._transcript.append_raw_turn_message(sub_session_key, m)
             except Exception as exc:  # pragma: no cover - transcript IO is best-effort
@@ -842,6 +884,9 @@ class SubagentManager:
         self,
         sub_session_key: str,
         result_messages: list[dict[str, Any]] | None,
+        *,
+        agent_id: str,
+        agent_name: str,
     ) -> None:
         """Append any messages produced after the last hook tick.
 
@@ -859,6 +904,7 @@ class SubagentManager:
         if existing >= len(result_messages):
             return
         for m in result_messages[existing:]:
+            stamp_transcript_agent_fields(m, agent_id=agent_id, agent_name=agent_name)
             try:
                 self._transcript.append_raw_turn_message(sub_session_key, m)
             except Exception as exc:  # pragma: no cover - transcript IO is best-effort

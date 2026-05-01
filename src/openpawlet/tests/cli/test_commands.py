@@ -1341,8 +1341,10 @@ def test_gateway_health_endpoint_binds_and_serves_expected_responses(
         max_batch_size = 0
         max_iterations = 0
 
-        async def run(self) -> None:
-            return None
+        async def run(self):
+            from openpawlet.agent.memory import DreamRunResult
+
+            return DreamRunResult(False, "fake dream summary")
 
     class _FakeSessionManager:
         def flush_all(self) -> int:

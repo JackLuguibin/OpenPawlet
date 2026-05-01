@@ -31,17 +31,27 @@ export interface MessageRowMsg {
   sender_agent_id?: string;
   tool_calls?: ToolCall[];
   reasoning_content?: string;
+  /** From transcript: loop identity for attribution. */
+  agent_id?: string;
+  agent_name?: string;
 }
 
 interface MessageRowProps {
   msg: MessageRowMsg;
+  /** Display name above assistant bubbles (session persona / sender id). */
+  assistantLabel?: string | null;
   /** Pre-rendered blocks that live above the markdown body (thinking / tool calls). */
   extraAbove?: ReactNode;
   /** Formatted "HH:mm" style timestamp; omitted when empty. */
   formattedTime?: string | null;
 }
 
-function MessageRowComponent({ msg, extraAbove, formattedTime }: MessageRowProps) {
+function MessageRowComponent({
+  msg,
+  assistantLabel,
+  extraAbove,
+  formattedTime,
+}: MessageRowProps) {
   const { t } = useTranslation();
   const isUser = msg.role === "user";
   const isAssistant = msg.role === "assistant";
@@ -103,6 +113,11 @@ function MessageRowComponent({ msg, extraAbove, formattedTime }: MessageRowProps
             {t("chat.peerAgentInbound", {
               id: formatPeerAgentLabel(msg.sender_agent_id),
             })}
+          </div>
+        ) : null}
+        {isAssistant && assistantLabel ? (
+          <div className="text-xs font-semibold text-gray-700 dark:text-gray-200 mb-2">
+            {assistantLabel}
           </div>
         ) : null}
         {extraAbove}

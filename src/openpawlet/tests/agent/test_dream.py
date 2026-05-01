@@ -58,7 +58,8 @@ class TestDreamRun:
     async def test_noop_when_no_unprocessed_history(self, dream, mock_provider, mock_runner, store):
         """Dream should not call LLM when there's nothing to process."""
         result = await dream.run()
-        assert result is False
+        assert result.did_work is False
+        assert "nothing to process" in result.cron_history_prompt
         mock_provider.chat_with_retry.assert_not_called()
         mock_runner.run.assert_not_called()
 
@@ -74,7 +75,7 @@ class TestDreamRun:
             )
         )
         result = await dream.run()
-        assert result is True
+        assert result.did_work is True
         mock_runner.run.assert_called_once()
         spec = mock_runner.run.call_args[0][0]
         assert spec.max_iterations == 10

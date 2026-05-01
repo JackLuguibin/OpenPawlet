@@ -77,6 +77,11 @@ import { ChatInput } from "./chat/ChatInput";
 import { ChatHeroSuggestions } from "./chat/ChatHeroSuggestions";
 import { JumpToBottomButton } from "./chat/JumpToBottomButton";
 import { StreamingAssistantBubble } from "./chat/StreamingAssistantBubble";
+import {
+  buildAgentNameById,
+  resolveAssistantBubbleLabel,
+  resolveDefaultAssistantLabel,
+} from "./chat/assistantDisplayLabel";
 import { SessionSidebarItem } from "./chat/SessionSidebarItem";
 import { useOpenPawletContextUsage } from "./chat/useOpenPawletContextUsage";
 import {
@@ -84,6 +89,10 @@ import {
   CHAT_HISTORY_TOP_TRIGGER_PX,
   useChatHistoryPaging,
 } from "./chat/useChatHistoryPaging";
+
+/** Primary gateway agent id (synthetic row from GET /bots/.../agents). */
+const CHAT_MAIN_AGENT_ID = "main";
+const CHAT_TARGET_AGENT_STORAGE_PREFIX = "openpawlet.chatTargetAgent.";
 
 /** Near-bottom threshold (mirrors the pre-virtualization scroll sticky rule). */
 const CHAT_NEAR_BOTTOM_PX = 100;
@@ -120,10 +129,12 @@ export default function Chat() {
     useState(false);
   const [sessionTreeExpanded, setSessionTreeExpanded] = useState<{
     main: boolean;
+    ephemeral: boolean;
     teams: boolean;
     subagents: boolean;
   }>({
     main: true,
+    ephemeral: false,
     teams: false,
     subagents: false,
   });
@@ -149,6 +160,14 @@ export default function Chat() {
    * bubble we materialize on chat_done. Reset on chat_done / new turn.
    */
   const streamingReplyGroupIdRef = useRef<string | null>(null);
+  const streamingAgentIdRef = useRef<string | undefined>(undefined);
+  const streamingAgentNameRef = useRef<string | undefined>(undefined);
+  const [streamingAgentId, setStreamingAgentId] = useState<string | undefined>(
+    undefined,
+  );
+  const [streamingAgentName, setStreamingAgentName] = useState<
+    string | undefined
+  >(undefined);
   /** 流式过程中后端单独下发的工具调用摘要（与正文 Markdown 分离） */
   const [streamingToolProgress, setStreamingToolProgress] = useState<string[]>(
     [],
@@ -322,6 +341,52 @@ export default function Chat() {
     enabled: !!currentBotId,
   });
 
+  const chatTargetAgentIdRef = useRef(CHAT_MAIN_AGENT_ID);
+  const [chatTargetAgentId, setChatTargetAgentId] = useState(
+    CHAT_MAIN_AGENT_ID,
+  );
+
+  useEffect(() => {
+    chatTargetAgentIdRef.current = chatTargetAgentId;
+  }, [chatTargetAgentId]);
+
+  useEffect(() => {
+    if (!currentBotId) {
+      setChatTargetAgentId(CHAT_MAIN_AGENT_ID);
+      return;
+    }
+    try {
+      const raw = localStorage
+        .getItem(`${CHAT_TARGET_AGENT_STORAGE_PREFIX}${currentBotId}`)
+        ?.trim();
+      setChatTargetAgentId(
+        raw && raw.length > 0 ? raw : CHAT_MAIN_AGENT_ID,
+      );
+    } catch {
+      setChatTargetAgentId(CHAT_MAIN_AGENT_ID);
+    }
+  }, [currentBotId]);
+
+  useEffect(() => {
+    if (!currentBotId) return;
+    try {
+      localStorage.setItem(
+        `${CHAT_TARGET_AGENT_STORAGE_PREFIX}${currentBotId}`,
+        chatTargetAgentId,
+      );
+    } catch {
+      // ignore quota / private mode
+    }
+  }, [currentBotId, chatTargetAgentId]);
+
+  useEffect(() => {
+    if (!consoleAgents?.length) return;
+    const ids = new Set(consoleAgents.map((a) => a.id));
+    if (!ids.has(chatTargetAgentId)) {
+      setChatTargetAgentId(CHAT_MAIN_AGENT_ID);
+    }
+  }, [consoleAgents, chatTargetAgentId]);
+
   // Live runtime agents (main + subagent tasks): `/ws/state` ->
   // `runtime_agents_update` updates the cache; HTTP fallback only offline.
   const { data: runtimeAgents } = useQuery({
@@ -331,6 +396,50 @@ export default function Chat() {
     refetchInterval: wsConnected ? false : 30_000,
     refetchOnWindowFocus: !wsConnected,
   });
+
+  const agentNameById = useMemo(
+    () => buildAgentNameById(consoleAgents),
+    [consoleAgents],
+  );
+
+  const defaultAssistantLabel = useMemo(
+    () =>
+      resolveDefaultAssistantLabel({
+        sessions,
+        activeSessionKey: activeSessionKey ?? undefined,
+        agentNameById,
+        runtimeAgents,
+        consoleAgents,
+        fallback: t("chat.assistantFallbackName"),
+      }),
+    [
+      sessions,
+      activeSessionKey,
+      agentNameById,
+      runtimeAgents,
+      consoleAgents,
+      t,
+    ],
+  );
+
+  const streamingBubbleAssistantLabel = useMemo(
+    () =>
+      resolveAssistantBubbleLabel(
+        {
+          role: "assistant",
+          agent_id: streamingAgentId,
+          agent_name: streamingAgentName,
+        },
+        defaultAssistantLabel,
+        agentNameById,
+      ),
+    [
+      streamingAgentId,
+      streamingAgentName,
+      defaultAssistantLabel,
+      agentNameById,
+    ],
+  );
 
   useEffect(() => {
     if (!sessions?.length) {
@@ -475,6 +584,7 @@ export default function Chat() {
       canonicalSessionKeyFromRoute: paramSessionKey ?? null,
       resumeChatId: resumeOpenPawletChatUuid,
       onReadySessionBusy: useOpenPawletChannel ? onOpenPawletReadySessionBusy : undefined,
+      chatProfileIdRef: chatTargetAgentIdRef,
     });
 
   /**
@@ -561,6 +671,7 @@ export default function Chat() {
   const groupedSessions = useMemo(() => {
     const list = sessions ?? [];
     const main: typeof list = [];
+    const ephemeral: typeof list = [];
     const teams: typeof list = [];
     const subAgentRows = new Map<string, typeof list>();
     const subagentSessions: typeof list = [];
@@ -582,6 +693,10 @@ export default function Chat() {
         subAgentRows.set(row.agent_id, bucket);
         continue;
       }
+      if (row.ephemeral_session) {
+        ephemeral.push(row);
+        continue;
+      }
       main.push(row);
     }
     if (showSubagentSessions) {
@@ -589,7 +704,7 @@ export default function Chat() {
       // the top level so users can navigate into them like any other session.
       main.push(...subagentSessions);
     }
-    return { main, teams, subAgentRows, subagentSessions };
+    return { main, ephemeral, teams, subAgentRows, subagentSessions };
   }, [sessions, showSubagentSessions]);
 
   // Sub-Agents grouping: Console-agent id → { name, sessions, runtime tasks }.
@@ -1510,6 +1625,24 @@ export default function Chat() {
       ) {
         streamingReplyGroupIdRef.current = chunk.reply_group_id;
       }
+      {
+        const aid =
+          typeof chunk.agent_id === "string" && chunk.agent_id.trim()
+            ? chunk.agent_id.trim()
+            : undefined;
+        const an =
+          typeof chunk.agent_name === "string" && chunk.agent_name.trim()
+            ? chunk.agent_name.trim()
+            : undefined;
+        if (an && streamingAgentNameRef.current !== an) {
+          streamingAgentNameRef.current = an;
+          setStreamingAgentName(an);
+        }
+        if (aid && streamingAgentIdRef.current !== aid) {
+          streamingAgentIdRef.current = aid;
+          setStreamingAgentId(aid);
+        }
+      }
       if (silentStatusJsonRef.current) {
         if (chunk.type === "session_key") {
           return;
@@ -1569,6 +1702,10 @@ export default function Chat() {
         queryClient.invalidateQueries({ queryKey: ["sessions"] });
       } else if (chunk.type === "chat_start") {
         streamingPrimedByServerRef.current = false;
+        streamingAgentIdRef.current = undefined;
+        streamingAgentNameRef.current = undefined;
+        setStreamingAgentId(undefined);
+        setStreamingAgentName(undefined);
         setIsStreaming(true);
       } else if (chunk.type === "channel_notice" && chunk.content) {
         const noticeText = chunk.content as string;
@@ -1594,6 +1731,12 @@ export default function Chat() {
             source: "main_agent",
             ...(chunk.reply_group_id
               ? { reply_group_id: chunk.reply_group_id }
+              : {}),
+            ...(typeof chunk.agent_id === "string" && chunk.agent_id.trim()
+              ? { agent_id: chunk.agent_id.trim() }
+              : {}),
+            ...(typeof chunk.agent_name === "string" && chunk.agent_name.trim()
+              ? { agent_name: chunk.agent_name.trim() }
               : {}),
           };
           setMessages((prev) => [...prev, systemMsg]);
@@ -1762,6 +1905,14 @@ export default function Chat() {
         setSubagentPanelOpen(true);
       } else if (chunk.type === "assistant_message" && chunk.content) {
         const assistantContent = chunk.content;
+        const aid =
+          typeof chunk.agent_id === "string" && chunk.agent_id.trim()
+            ? chunk.agent_id.trim()
+            : undefined;
+        const an =
+          typeof chunk.agent_name === "string" && chunk.agent_name.trim()
+            ? chunk.agent_name.trim()
+            : undefined;
         setMessages((prev) => [
           ...prev,
           {
@@ -1777,6 +1928,8 @@ export default function Chat() {
             ...(chunk.reply_group_id
               ? { reply_group_id: chunk.reply_group_id }
               : {}),
+            ...(aid ? { agent_id: aid } : {}),
+            ...(an ? { agent_name: an } : {}),
           },
         ]);
       } else if (chunk.type === "subagent_done" && chunk.subagent_id) {
@@ -1881,6 +2034,14 @@ export default function Chat() {
           }
           return;
         }
+        const doneAid =
+          typeof chunk.agent_id === "string" && chunk.agent_id.trim()
+            ? chunk.agent_id.trim()
+            : streamingAgentIdRef.current;
+        const doneAn =
+          typeof chunk.agent_name === "string" && chunk.agent_name.trim()
+            ? chunk.agent_name.trim()
+            : streamingAgentNameRef.current;
         const assistantMsg: Message = {
           id: `msg-${Date.now()}`,
           role: "assistant",
@@ -1898,8 +2059,14 @@ export default function Chat() {
             : streamingReplyGroupIdRef.current
               ? { reply_group_id: streamingReplyGroupIdRef.current }
               : {}),
+          ...(doneAid ? { agent_id: doneAid } : {}),
+          ...(doneAn ? { agent_name: doneAn } : {}),
         };
         streamingReplyGroupIdRef.current = null;
+        streamingAgentIdRef.current = undefined;
+        streamingAgentNameRef.current = undefined;
+        setStreamingAgentId(undefined);
+        setStreamingAgentName(undefined);
         setMessages((prev) => [...prev, assistantMsg]);
         setToolCalls([]);
         // Avoid invalidating ["sessions"]; that refetches the full sidebar list each
@@ -2034,6 +2201,10 @@ export default function Chat() {
     streamingPayloadToolCallsRef.current = [];
     streamingReasoningContentRef.current = "";
     streamingReplyGroupIdRef.current = null;
+    streamingAgentIdRef.current = undefined;
+    streamingAgentNameRef.current = undefined;
+    setStreamingAgentId(undefined);
+    setStreamingAgentName(undefined);
 
     if (useOpenPawletChannel) {
       if (!activeSessionKey) {
@@ -2165,6 +2336,8 @@ export default function Chat() {
       partialText.length > 0 ||
       partialTools.length > 0 ||
       partialReasoning.length > 0;
+    const stopAid = streamingAgentIdRef.current;
+    const stopAn = streamingAgentNameRef.current;
     if (hasPartialContent) {
       const interruptedMsg: Message = {
         id: `msg-${Date.now()}`,
@@ -2179,6 +2352,8 @@ export default function Chat() {
         ...(streamingReplyGroupIdRef.current
           ? { reply_group_id: streamingReplyGroupIdRef.current }
           : {}),
+        ...(stopAid ? { agent_id: stopAid } : {}),
+        ...(stopAn ? { agent_name: stopAn } : {}),
       };
       setMessages((prev) => [...prev, interruptedMsg]);
     }
@@ -2194,6 +2369,10 @@ export default function Chat() {
     streamingPayloadToolCallsRef.current = [];
     streamingReasoningContentRef.current = "";
     streamingReplyGroupIdRef.current = null;
+    streamingAgentIdRef.current = undefined;
+    streamingAgentNameRef.current = undefined;
+    setStreamingAgentId(undefined);
+    setStreamingAgentName(undefined);
 
     if (dispatched) {
       addToast({ type: "info", message: t("chat.toastStopped") });
@@ -2441,6 +2620,11 @@ export default function Chat() {
                 key: "main" as const,
                 label: t("chat.mainAgentSessions"),
                 rows: groupedSessions.main,
+              },
+              {
+                key: "ephemeral" as const,
+                label: t("chat.ephemeralSessions"),
+                rows: groupedSessions.ephemeral,
               },
               {
                 key: "teams" as const,
@@ -2711,7 +2895,24 @@ export default function Chat() {
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-2 shrink-0 min-w-0">
+              {useOpenPawletChannel && currentBotId && consoleAgents?.length ? (
+                <Select
+                  size="small"
+                  className="min-w-[7rem] max-w-[14rem] shrink"
+                  value={chatTargetAgentId}
+                  onChange={setChatTargetAgentId}
+                  options={consoleAgents.map((a) => ({
+                    value: a.id,
+                    label: a.is_main
+                      ? `${a.name} (${t("chat.chatAgentMainBadge")})`
+                      : a.name,
+                  }))}
+                  disabled={isStreaming}
+                  popupMatchSelectWidth={false}
+                  aria-label={t("chat.chatAgentSelectLabel")}
+                />
+              ) : null}
               {activeSessionKey ? (
                 <>
                   <Button
@@ -2802,6 +3003,14 @@ export default function Chat() {
                 renderItem={(msg) => {
                   const isLatestPendingAskUser =
                     msg.id === latestPendingAskUserMsgId;
+                  const assistantLabelForRow =
+                    msg.role === "assistant"
+                      ? resolveAssistantBubbleLabel(
+                          msg,
+                          defaultAssistantLabel,
+                          agentNameById,
+                        )
+                      : undefined;
                   const extraAbove =
                     msg.role === "assistant" ? (
                       <>
@@ -2824,6 +3033,7 @@ export default function Chat() {
                   return (
                     <MessageRow
                       msg={msg}
+                      assistantLabel={assistantLabelForRow}
                       extraAbove={extraAbove}
                       formattedTime={ts ? formatMessageTime(ts) : null}
                     />
@@ -2833,6 +3043,7 @@ export default function Chat() {
                   <>
                     {showStreamingAssistantBubble && (
                       <StreamingAssistantBubble
+                        assistantLabel={streamingBubbleAssistantLabel}
                         streamingChannelNotices={streamingChannelNotices}
                         streamingReasoningContent={streamingReasoningContent}
                         streamingPayloadToolCalls={streamingPayloadToolCalls}

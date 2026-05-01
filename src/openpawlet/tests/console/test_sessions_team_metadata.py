@@ -17,6 +17,7 @@ def test_row_to_session_info_extracts_team_metadata() -> None:
     assert info.team_id == "tm1"
     assert info.room_id == "room1"
     assert info.agent_id == "agent1"
+    assert info.ephemeral_session is False
 
 
 def test_row_to_session_info_extracts_team_metadata_ephemeral_suffix() -> None:
@@ -30,6 +31,7 @@ def test_row_to_session_info_extracts_team_metadata_ephemeral_suffix() -> None:
     assert info.team_id == "tm1"
     assert info.room_id == "room1"
     assert info.agent_id == "agent1"
+    assert info.ephemeral_session is False
 
 
 def test_row_to_session_info_non_team_session() -> None:
@@ -46,6 +48,31 @@ def test_row_to_session_info_non_team_session() -> None:
     assert info.is_subagent is False
     assert info.subagent_task_id is None
     assert info.parent_session_key is None
+    assert info.ephemeral_session is False
+
+
+def test_row_to_session_info_ephemeral_dream_and_cron_keys() -> None:
+    dream = {
+        "key": "system:dream",
+        "message_count": 2,
+        "created_at": None,
+        "updated_at": None,
+    }
+    assert _row_to_session_info(dream).ephemeral_session is True
+    cron_legacy = {
+        "key": "cron:remind_water",
+        "message_count": 1,
+        "created_at": None,
+        "updated_at": None,
+    }
+    assert _row_to_session_info(cron_legacy).ephemeral_session is True
+    temp_key = {
+        "key": "temp:8f2c1a9b-4f0e-4c3d-9a1b-abcdef123456",
+        "message_count": 0,
+        "created_at": None,
+        "updated_at": None,
+    }
+    assert _row_to_session_info(temp_key).ephemeral_session is True
 
 
 def test_row_to_session_info_detects_subagent_with_parent() -> None:

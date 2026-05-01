@@ -19,6 +19,8 @@ import type { TrackedToolCall } from "./types";
 import type { ToolCall } from "../../api/types";
 
 interface StreamingAssistantBubbleProps {
+  /** Persona line above streamed content (matches finished assistant rows). */
+  assistantLabel?: string | null;
   /** Channel-notice strings emitted by OpenPawlet before the first token. */
   streamingChannelNotices: string[];
   /** Reasoning text streamed before the final answer. */
@@ -55,6 +57,7 @@ function trackedToolTagColor(status: TrackedToolCall["status"]) {
  *   7. Tracked tool-call chips (rendered as a sibling row beneath the bubble).
  */
 export function StreamingAssistantBubble({
+  assistantLabel,
   streamingChannelNotices,
   streamingReasoningContent,
   streamingPayloadToolCalls,
@@ -77,6 +80,11 @@ export function StreamingAssistantBubble({
           <RobotOutlined style={{ fontSize: 18 }} />
         </div>
         <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-md px-5 py-4 shadow-sm min-w-0 flex-1 max-w-full mr-[calc(2.5rem+0.75rem)]">
+          {assistantLabel ? (
+            <div className="text-xs font-semibold text-gray-700 dark:text-gray-200 mb-2">
+              {assistantLabel}
+            </div>
+          ) : null}
           {streamingChannelNotices.length > 0 ? (
             <div className="space-y-2 mb-3 pb-3 border-b border-amber-200/70 dark:border-amber-700/50">
               <div className="flex items-center gap-2 pl-0.5">

@@ -10,6 +10,21 @@ from openpawlet.utils.helpers import ensure_dir, safe_filename, timestamp
 from openpawlet.utils.helpers import truncate_text as truncate_text_fn
 
 
+def stamp_transcript_agent_fields(
+    record: dict[str, Any],
+    *,
+    agent_id: str | None,
+    agent_name: str | None,
+) -> None:
+    """Tag *record* with the loop's identity (setdefault — never overwrites)."""
+    aid = (agent_id or "").strip()
+    if aid:
+        record.setdefault("agent_id", aid)
+    an = (agent_name or "").strip()
+    if an:
+        record.setdefault("agent_name", an)
+
+
 class SessionTranscriptWriter:
     """Writes JSONL lines to ``workspace/transcripts/{safe_key}.jsonl``."""
 
@@ -54,6 +69,8 @@ class SessionTranscriptWriter:
             "reply_group_id",
             "injected_event",
             "sender_agent_id",
+            "agent_id",
+            "agent_name",
         ):
             if key in m:
                 entry[key] = m[key]

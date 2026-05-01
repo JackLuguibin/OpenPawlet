@@ -36,6 +36,7 @@ from loguru import logger
 from openpawlet import __logo__, __version__
 from openpawlet.config.paths import is_default_workspace, workspace_console_subdir
 from openpawlet.config.schema import Config
+from openpawlet.utils.background_session import MAIN_AGENT_DREAM_SESSION_KEY
 
 
 class EmbeddedOpenPawlet:
@@ -338,6 +339,9 @@ class EmbeddedOpenPawlet:
         self._reconciler_task = asyncio.create_task(
             self._team_runtime_reconciler(), name="team-runtime-reconciler"
         )
+
+        ds = self.session_manager.get_or_create(MAIN_AGENT_DREAM_SESSION_KEY)
+        self.session_manager.save(ds)
 
         await self.cron.start()
         await self.heartbeat.start()
@@ -930,12 +934,47 @@ class EmbeddedOpenPawlet:
                 logger.debug("cron.fired event publish failed: {}", exc)
 
         if job.name == "dream":
+            fail_prompt = (
+                "Dream failed unexpectedly (see server logs).\n"
+                "Templates: `agent/dream_phase1.md`, `agent/dream_phase2.md`."
+            )
             try:
-                await self.agent.dream.run()
+                dr = await self.agent.dream.run()
                 logger.info("Dream cron job completed")
+                try:
+                    sess = self.agent.sessions.get_or_create(MAIN_AGENT_DREAM_SESSION_KEY)
+                    sess.add_message(
+                        "system",
+                        "[Dream] Scheduled consolidation",
+                    )
+                    sess.add_message(
+                        "assistant",
+                        dr.cron_history_prompt,
+                        source="main_agent",
+                    )
+                    self.agent.sessions.save(sess)
+                except Exception:  # pragma: no cover - best-effort transcript
+                    logger.exception(
+                        "Failed to persist Dream transcript to {}",
+                        MAIN_AGENT_DREAM_SESSION_KEY,
+                    )
+                return dr.cron_history_prompt
             except Exception:  # pragma: no cover
                 logger.exception("Dream cron job failed")
-            return None
+                try:
+                    sess = self.agent.sessions.get_or_create(MAIN_AGENT_DREAM_SESSION_KEY)
+                    sess.add_message(
+                        "system",
+                        "[Dream] Scheduled consolidation (failed)",
+                    )
+                    sess.add_message("assistant", fail_prompt, source="main_agent")
+                    self.agent.sessions.save(sess)
+                except Exception:
+                    logger.exception(
+                        "Failed to persist Dream failure transcript to {}",
+                        MAIN_AGENT_DREAM_SESSION_KEY,
+                    )
+                return fail_prompt
 
         reminder_note = (
             "[Scheduled Task] Timer finished.\n\n"
@@ -963,7 +1002,7 @@ class EmbeddedOpenPawlet:
                 cron_session_key = sk_raw.strip()
         except Exception:
             cron_session_key = ""
-        run_session_key = cron_session_key or f"cron:{job.id}"
+        run_session_key = cron_session_key or MAIN_AGENT_DREAM_SESSION_KEY
 
         channel_meta_raw = getattr(job.payload, "channel_meta", None) or {}
         delivery_meta = (

@@ -17,6 +17,11 @@ export interface Message {
    * so the UI can group multi-iteration replies into one bubble.
    */
   reply_group_id?: string;
+  /** Optional agent id on assistant rows (transcript / bus metadata). */
+  sender_agent_id?: string;
+  /** Loop id / display name stamped on each transcript line (source tracking). */
+  agent_id?: string;
+  agent_name?: string;
 }
 
 export interface ChatRequest {
@@ -64,10 +69,14 @@ export interface SessionInfo {
   team_id?: string | null;
   room_id?: string | null;
   agent_id?: string | null;
+  /** Display name for agent_id from workspace agents (team sessions, etc.). */
+  agent_name?: string | null;
   /** True when the session_key follows ``subagent:<parent>:<task_id>``. */
   is_subagent?: boolean;
   subagent_task_id?: string | null;
   parent_session_key?: string | null;
+  /** Dream / default cron / temp:* — sidebar temporary/background group. */
+  ephemeral_session?: boolean;
 }
 
 export interface ChannelStatus {
@@ -604,6 +613,9 @@ export interface StreamChunk {
   task?: string;
   result?: string;
   status?: 'ok' | 'error';
+  /** Same turn as ``reply_group_id`` — OpenPawlet loop identity on WS frames. */
+  agent_id?: string;
+  agent_name?: string;
   /**
    * UUID identifying the entire assistant reply for one user turn (server-issued).
    * Present on every OpenPawlet WebSocket frame for the turn so the chat UI can

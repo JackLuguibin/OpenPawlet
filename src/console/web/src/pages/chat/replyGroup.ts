@@ -361,6 +361,8 @@ export function groupAssistantReplies(messages: Message[]): Message[] {
       ),
       created_at: msg.created_at ?? activeGroup.created_at,
       timestamp: msg.timestamp ?? activeGroup.timestamp,
+      agent_id: activeGroup.agent_id ?? msg.agent_id,
+      agent_name: activeGroup.agent_name ?? msg.agent_name,
     };
   }
 

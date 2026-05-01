@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import re
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, status
@@ -27,6 +28,7 @@ from console.server.bot_workspace import (
     workspace_agents_dir,
     write_text,
 )
+from console.server.bots_registry import get_registry
 from console.server.http_errors import bad_request, internal_error, not_found
 from console.server.models import (
     AddCategoryBody,
@@ -51,6 +53,56 @@ from console.server.parsing import parse_model_list
 from console.server.state_hub import publish_agents_update
 
 router = APIRouter(prefix="/bots/{bot_id}/agents", tags=["Agents"])
+
+# Canonical id for the primary gateway agent in chat/agent-picker UIs.
+_MAIN_AGENT_LIST_ID = "main"
+
+def _synthetic_main_agent_row(bot_id: str) -> Agent | None:
+    """Return a non-persisted row describing the primary OpenPawlet gateway agent."""
+    reg = get_registry().get(bot_id)
+    if reg is None:
+        return None
+    display_name = str(reg.get("name") or bot_id).strip() or bot_id
+    cfg_path = Path(str(reg.get("config_path") or ""))
+    model: str | None = None
+    if cfg_path.is_file():
+        with contextlib.suppress(Exception):
+            from openpawlet.config.loader import load_config
+
+            cfg = load_config(cfg_path)
+            m = (cfg.agents.defaults.model or "").strip()
+            model = m or None
+    return Agent(
+        id=_MAIN_AGENT_LIST_ID,
+        name=display_name,
+        description=None,
+        model=model,
+        temperature=None,
+        system_prompt=None,
+        skills=[],
+        topics=[],
+        collaborators=[],
+        enabled=True,
+        created_at=iso_now(),
+        is_main=True,
+    )
+
+
+def _merge_workspace_agents_with_main(bot_id: str, agents: list[Agent]) -> list[Agent]:
+    """Prepend the gateway main row when no workspace agent already owns id ``main``."""
+    if any(a.id == _MAIN_AGENT_LIST_ID for a in agents):
+        out = []
+        for a in agents:
+            if a.id == _MAIN_AGENT_LIST_ID:
+                out.append(a.model_copy(update={"is_main": True}))
+            else:
+                out.append(a)
+        return out
+    main_row = _synthetic_main_agent_row(bot_id)
+    if main_row is None:
+        return agents
+    return [main_row, *agents]
+
 
 # UI built-in display categories (must accept overrides even with no custom rows).
 _BUILTIN_DISPLAY_CATEGORY_KEYS: frozenset[str] = frozenset(
@@ -141,7 +193,7 @@ def _migrate_legacy_agents_in_file(
     save_json_file(agents_state_path(bot_id), meta)
 
 
-def _load_raw_state(bot_id: str) -> dict[str, Any]:
+def _load_raw_state(bot_id: str | None) -> dict[str, Any]:
     """Load agent rows from ``workspace/agents/``; metadata from ``.openpawlet_console/agents.json``."""
     path = agents_state_path(bot_id)
     data = load_json_file(path, None)
@@ -246,7 +298,14 @@ def _save_full_state(
         migrate_agent_profile_layout(bot_id, a.id)
         p = agent_profile_json_path(bot_id, a.id)
         data = a.model_dump(mode="json")
-        for derived in ("has_soul", "has_user", "has_agents_md", "has_tools_md", "team_ids"):
+        for derived in (
+            "has_soul",
+            "has_user",
+            "has_agents_md",
+            "has_tools_md",
+            "team_ids",
+            "is_main",
+        ):
             data.pop(derived, None)
         save_json_file(p, data)
         # Drop the legacy single-file copy if it still exists.
@@ -386,7 +445,10 @@ async def remove_category(
 async def list_agents(bot_id: str) -> DataResponse[list[Agent]]:
     """List agents."""
     raw = _load_raw_state(bot_id)
-    return DataResponse(data=_attach_team_memberships(bot_id, _parse_agents(raw["agents"])))
+    merged = _merge_workspace_agents_with_main(
+        bot_id, _parse_agents(raw["agents"])
+    )
+    return DataResponse(data=_attach_team_memberships(bot_id, merged))
 
 
 _PROFILE_OVERRIDE_FIELDS: tuple[str, ...] = (

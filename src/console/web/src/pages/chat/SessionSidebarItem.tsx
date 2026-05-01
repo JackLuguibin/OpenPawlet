@@ -65,6 +65,10 @@ export function SessionSidebarItem({
   formatMessageTime,
 }: SessionSidebarItemProps) {
   const { t } = useTranslation();
+  const agentDisplay =
+    (session.agent_name && session.agent_name.trim()) ||
+    (session.agent_id && session.agent_id.trim()) ||
+    "";
   const rowPaddingY = compact ? "py-2.5" : "py-3";
   const rowActionClass = compact
     ? "self-center shrink-0 w-8 h-8 my-1.5"
@@ -113,6 +117,11 @@ export function SessionSidebarItem({
               <span className="text-sm font-medium truncate block leading-snug min-w-0">
                 {session.title || session.key}
               </span>
+              {agentDisplay ? (
+                <span className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 block leading-relaxed truncate">
+                  {t("chat.sessionAgentLabel", { name: agentDisplay })}
+                </span>
+              ) : null}
               {showSubagentTag && session.is_subagent ? (
                 <Tooltip
                   title={
@@ -146,10 +155,17 @@ export function SessionSidebarItem({
           </>
         ) : (
           <span className="flex items-center justify-between gap-2 w-full min-w-0">
-            <span className="text-sm font-medium truncate block leading-snug min-w-0">
-              {session.title || session.key}
+            <span className="flex flex-col gap-0.5 min-w-0 flex-1">
+              <span className="text-sm font-medium truncate block leading-snug min-w-0">
+                {session.title || session.key}
+              </span>
+              {agentDisplay ? (
+                <span className="text-[11px] text-gray-500 dark:text-gray-400 truncate leading-snug">
+                  {t("chat.sessionAgentLabel", { name: agentDisplay })}
+                </span>
+              ) : null}
             </span>
-            <span className="text-[11px] text-gray-400 dark:text-gray-500 tabular-nums shrink-0">
+            <span className="text-[11px] text-gray-400 dark:text-gray-500 tabular-nums shrink-0 self-start mt-0.5">
               {session.message_count}
             </span>
           </span>

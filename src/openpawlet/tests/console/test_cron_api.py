@@ -226,3 +226,31 @@ def test_remove_cron_job_returns_404_for_missing(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
     resp = client.delete("/api/v1/cron/missing-id")
     assert resp.status_code == 404
+
+
+def test_cron_history_prefers_per_run_prompt() -> None:
+    """Dream (and future hooks) store assembled prompts on each CronRunRecord."""
+
+    from types import SimpleNamespace
+
+    from console.server.cron_helpers import cron_history_for_job
+    from openpawlet.cron.types import CronRunRecord
+
+    job = SimpleNamespace(
+        id="dream",
+        name="dream",
+        payload=SimpleNamespace(message="", deliver=False, channel=None, to=None),
+        state=SimpleNamespace(
+            run_history=[
+                CronRunRecord(
+                    run_at_ms=1,
+                    status="ok",
+                    duration_ms=10,
+                    prompt="Phase 1+2 transcript…",
+                )
+            ]
+        ),
+    )
+    rows = cron_history_for_job(job)
+    assert len(rows) == 1
+    assert rows[0]["prompt"] == "Phase 1+2 transcript…"

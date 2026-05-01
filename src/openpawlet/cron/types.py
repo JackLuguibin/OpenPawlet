@@ -41,6 +41,9 @@ class CronRunRecord:
     status: Literal["ok", "error", "skipped"]
     duration_ms: int = 0
     error: str | None = None
+    # Per-run prompt / summary for console history (e.g. Dream's assembled prompts).
+    # When None, ``cron_history_for_job`` falls back to the job payload message.
+    prompt: str | None = None
 
 
 @dataclass

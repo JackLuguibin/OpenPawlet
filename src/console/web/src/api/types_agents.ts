@@ -42,6 +42,8 @@ export interface Agent {
   has_user?: boolean;
   has_agents_md?: boolean;
   has_tools_md?: boolean;
+  /** True for the synthetic primary gateway row from GET /agents (not on disk). */
+  is_main?: boolean;
 }
 
 export interface AgentCreateRequest {

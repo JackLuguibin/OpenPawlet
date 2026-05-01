@@ -196,6 +196,12 @@ def cron_history_for_job(job: Any) -> list[dict[str, Any]]:
     meta = decode_cron_message(getattr(job.payload, "message", "") or "")
     out: list[dict[str, Any]] = []
     for r in runs:
+        per_run = getattr(r, "prompt", None)
+        prompt = (
+            per_run.strip()
+            if isinstance(per_run, str) and per_run.strip()
+            else meta.prompt
+        )
         out.append(
             {
                 "run_at_ms": int(r.run_at_ms),
@@ -208,7 +214,7 @@ def cron_history_for_job(job: Any) -> list[dict[str, Any]]:
                 "skills": list(meta.skills),
                 "mcp_servers": list(meta.mcp_servers),
                 "tools": list(meta.tools),
-                "prompt": meta.prompt,
+                "prompt": prompt,
                 "deliver": job.payload.deliver,
                 "channel": job.payload.channel,
                 "to": job.payload.to,

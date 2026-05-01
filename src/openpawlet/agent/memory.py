@@ -7,6 +7,7 @@ import json
 import os
 import re
 import weakref
+from dataclasses import dataclass
 from collections.abc import Callable, Iterator
 from contextlib import suppress
 from datetime import UTC, datetime
@@ -722,6 +723,17 @@ class Consolidator:
 # updates automatically.
 _STALE_THRESHOLD_DAYS = 14
 
+# Cap cron/UI run history so jobs.json stays bounded.
+_DREAM_CRON_HISTORY_MAX_CHARS = 12_000
+
+
+@dataclass(frozen=True)
+class DreamRunResult:
+    """Outcome of :meth:`Dream.run` for `/dream`, cron hooks, and tests."""
+
+    did_work: bool
+    cron_history_prompt: str
+
 
 class Dream:
     """Two-phase memory processor: analyze history.jsonl, then edit files via AgentRunner.
@@ -868,14 +880,73 @@ class Dream:
             result += "\n"
         return result
 
-    async def run(self) -> bool:
-        """Process unprocessed history entries. Returns True if work was done."""
+    def _cron_history_blob(
+        self,
+        *,
+        phase1_system: str,
+        phase1_user: str,
+        phase2_system: str,
+        phase2_user: str,
+        analysis: str,
+        batch_size: int,
+        changelog: list[str],
+        outcome: str,
+    ) -> str:
+        """Assemble a bounded prompt transcript for cron / console run history."""
+        parts: list[str] = [
+            f"Dream memory consolidation — model `{self.model}` — {batch_size} history "
+            f"entr{'y' if batch_size == 1 else 'ies'} in this batch.",
+            "System templates: `agent/dream_phase1.md` (phase 1), "
+            "`agent/dream_phase2.md` (phase 2).",
+            "",
+            "=== Phase 1 · system ===",
+            truncate_text(phase1_system, 4_000),
+            "",
+            "=== Phase 1 · user ===",
+            truncate_text(phase1_user, 5_000),
+        ]
+        if phase2_system or phase2_user:
+            parts.extend(
+                [
+                    "",
+                    "=== Phase 2 · system ===",
+                    truncate_text(phase2_system, 4_000),
+                    "",
+                    "=== Phase 2 · user ===",
+                    truncate_text(phase2_user, 5_000),
+                ]
+            )
+        if analysis.strip():
+            parts.extend(
+                [
+                    "",
+                    "=== Phase 1 model output (analysis, truncated) ===",
+                    truncate_text(analysis.strip(), 2_500),
+                ]
+            )
+        if changelog:
+            parts.extend(["", "=== Successful tool events ===", "\n".join(changelog[:40])])
+        parts.extend(["", "=== Outcome ===", outcome])
+        text = "\n".join(parts)
+        if len(text) > _DREAM_CRON_HISTORY_MAX_CHARS:
+            text = truncate_text(text, _DREAM_CRON_HISTORY_MAX_CHARS - 16) + "\n… [truncated]"
+        return text
+
+    async def run(self) -> DreamRunResult:
+        """Process unprocessed history entries."""
         from openpawlet.agent.skills import BUILTIN_SKILLS_DIR
+
+        idle_prompt = (
+            "Dream: nothing to process (no unconsolidated history since the last run).\n\n"
+            "When work runs, phase 1 uses system template `agent/dream_phase1.md` and phase "
+            "2 uses `agent/dream_phase2.md`; user messages are built from history and "
+            "MEMORY/SOUL/USER excerpts (see source: Dream.run)."
+        )
 
         last_cursor = self.store.get_last_dream_cursor()
         entries = self.store.read_unprocessed_history(since_cursor=last_cursor)
         if not entries:
-            return False
+            return DreamRunResult(False, idle_prompt)
 
         batch = entries[: self.max_batch_size]
         logger.info(
@@ -922,18 +993,17 @@ class Dream:
         # Phase 1: Analyze (no skills list — dedup is Phase 2's job)
         phase1_prompt = f"## Conversation History\n{history_text}\n\n{file_context}"
 
+        phase1_system = render_template(
+            "agent/dream_phase1.md",
+            strip=True,
+            stale_threshold_days=_STALE_THRESHOLD_DAYS,
+        )
+
         try:
             phase1_response = await self.provider.chat_with_retry(
                 model=self.model,
                 messages=[
-                    {
-                        "role": "system",
-                        "content": render_template(
-                            "agent/dream_phase1.md",
-                            strip=True,
-                            stale_threshold_days=_STALE_THRESHOLD_DAYS,
-                        ),
-                    },
+                    {"role": "system", "content": phase1_system},
                     {"role": "user", "content": phase1_prompt},
                 ],
                 tools=None,
@@ -943,7 +1013,17 @@ class Dream:
             logger.debug("Dream Phase 1 analysis ({} chars): {}", len(analysis), analysis[:500])
         except Exception:
             logger.exception("Dream Phase 1 failed")
-            return False
+            blob = self._cron_history_blob(
+                phase1_system=phase1_system,
+                phase1_user=phase1_prompt,
+                phase2_system="",
+                phase2_user="",
+                analysis="",
+                batch_size=len(batch),
+                changelog=[],
+                outcome="Phase 1 failed (exception logged).",
+            )
+            return DreamRunResult(False, blob)
 
         # Phase 2: Delegate to AgentRunner with read_file / edit_file
         existing_skills = self._list_existing_skills()
@@ -956,15 +1036,13 @@ class Dream:
 
         tools = self._tools
         skill_creator_path = BUILTIN_SKILLS_DIR / "skill-creator" / "SKILL.md"
+        phase2_system = render_template(
+            "agent/dream_phase2.md",
+            strip=True,
+            skill_creator_path=str(skill_creator_path),
+        )
         messages: list[dict[str, Any]] = [
-            {
-                "role": "system",
-                "content": render_template(
-                    "agent/dream_phase2.md",
-                    strip=True,
-                    skill_creator_path=str(skill_creator_path),
-                ),
-            },
+            {"role": "system", "content": phase2_system},
             {"role": "user", "content": phase2_prompt},
         ]
 
@@ -1013,6 +1091,9 @@ class Dream:
                 len(changelog),
                 new_cursor,
             )
+            outcome = (
+                f"Completed ({len(changelog)} successful tool event(s)); cursor → {new_cursor}."
+            )
         else:
             reason = result.stop_reason if result else "exception"
             logger.warning(
@@ -1020,6 +1101,7 @@ class Dream:
                 reason,
                 new_cursor,
             )
+            outcome = f"Incomplete ({reason}); cursor advanced to {new_cursor}."
 
         # Git auto-commit (only when there are actual changes)
         if changelog and self.store.git.is_initialized():
@@ -1030,4 +1112,14 @@ class Dream:
             if sha:
                 logger.info("Dream commit: {}", sha)
 
-        return True
+        blob = self._cron_history_blob(
+            phase1_system=phase1_system,
+            phase1_user=phase1_prompt,
+            phase2_system=phase2_system,
+            phase2_user=phase2_prompt,
+            analysis=analysis,
+            batch_size=len(batch),
+            changelog=changelog,
+            outcome=outcome,
+        )
+        return DreamRunResult(True, blob)

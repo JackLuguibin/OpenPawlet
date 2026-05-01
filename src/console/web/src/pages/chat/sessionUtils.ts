@@ -39,10 +39,12 @@ export function pickLatestActiveSessionKey(
   if (rows.length === 0) {
     return null;
   }
-  let best = rows[0];
+  const preferred = rows.filter((r) => !r.ephemeral_session);
+  const pool = preferred.length > 0 ? preferred : rows;
+  let best = pool[0];
   let bestMs = sessionInfoLastActiveMs(best);
-  for (let i = 1; i < rows.length; i++) {
-    const row = rows[i];
+  for (let i = 1; i < pool.length; i++) {
+    const row = pool[i];
     const ms = sessionInfoLastActiveMs(row);
     if (ms >= bestMs) {
       bestMs = ms;

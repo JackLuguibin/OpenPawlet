@@ -64,8 +64,9 @@ from openpawlet.observability.telemetry import get_trace_id
 from openpawlet.providers.base import LLMProvider
 from openpawlet.session.context_snapshot import SessionContextWriter
 from openpawlet.session.manager import Session, SessionManager
-from openpawlet.session.transcript import SessionTranscriptWriter
+from openpawlet.session.transcript import SessionTranscriptWriter, stamp_transcript_agent_fields
 from openpawlet.utils.document import extract_documents
+from openpawlet.utils.console_agents import load_console_agent_row
 from openpawlet.utils.helpers import (
     image_placeholder_text,
     local_now,
@@ -250,6 +251,7 @@ class _LoopHook(AgentHook):
         if last.get("_transcript_written"):
             return
         self._stamp_reply_group_id(last)
+        self._loop._stamp_transcript_record(last)
         try:
             tr.append_raw_turn_message(key, last)
         except Exception:
@@ -269,6 +271,7 @@ class _LoopHook(AgentHook):
             if m.get("_transcript_written"):
                 continue
             self._stamp_reply_group_id(m)
+            self._loop._stamp_transcript_record(m)
             try:
                 tr.append_raw_turn_message(key, m)
             except Exception:
@@ -451,6 +454,7 @@ class AgentLoop:
         # When a session has an active task, new messages for that session
         # are routed here instead of creating a new task.
         self._pending_queues: dict[str, asyncio.Queue] = {}
+        self._transcript_identity_override: tuple[str, str | None] | None = None
         # OPENPAWLET_MAX_CONCURRENT_REQUESTS: <=0 means unlimited; default 3.
         _max = int(os.environ.get("OPENPAWLET_MAX_CONCURRENT_REQUESTS", "3"))
         self._concurrency_gate: asyncio.Semaphore | None = (
@@ -1370,6 +1374,7 @@ class AgentLoop:
                     inbound_meta["reply_group_id"] = reply_group_id
                 else:
                     reply_group_id = str(inbound_meta["reply_group_id"])
+                self._stamp_inbound_metadata_agent_identity(inbound_meta)
                 if inbound_meta != (msg.metadata or {}):
                     msg = dataclasses.replace(msg, metadata=inbound_meta)
                 t0 = time.perf_counter()
@@ -1465,6 +1470,7 @@ class AgentLoop:
                         if turn_lifecycle:
                             await self._publish_session_turn_lifecycle(msg, phase="end")
         finally:
+            self._transcript_identity_override = None
             # Drain any messages still in the pending queue and re-publish
             # them to the bus so they are processed as fresh inbound messages
             # rather than silently lost.
@@ -1734,6 +1740,7 @@ class AgentLoop:
             self._mark_pending_user_turn(session)
             _tr = getattr(self, "_session_transcript", None)
             if _tr and _tr.enabled:
+                self._stamp_transcript_record(session.messages[-1])
                 _tr.append_session_message_snapshot(session.key, session.messages[-1])
             self.sessions.save(session)
             user_persisted_early = True
@@ -1897,6 +1904,48 @@ class AgentLoop:
 
         return filtered
 
+    def _stamp_transcript_record(self, record: dict[str, Any]) -> None:
+        """Attach this loop's ``agent_id`` / ``agent_name`` to a persisted row."""
+        ovr = self._transcript_identity_override
+        if ovr is not None:
+            stamp_transcript_agent_fields(
+                record,
+                agent_id=ovr[0],
+                agent_name=ovr[1],
+            )
+            return
+        aid = getattr(self, "agent_id", None)
+        aname = getattr(self, "agent_name", None)
+        stamp_transcript_agent_fields(
+            record,
+            agent_id=str(aid).strip() if aid else None,
+            agent_name=str(aname).strip() if aname else None,
+        )
+
+    def _stamp_inbound_metadata_agent_identity(self, meta: dict[str, Any]) -> None:
+        """Ensure outbound/WebSocket metadata carries stable agent attribution."""
+        self._transcript_identity_override = None
+        pid = meta.get("console_chat_profile_id")
+        if isinstance(pid, str) and pid.strip():
+            p = pid.strip()
+            if p != "main":
+                row = load_console_agent_row(self.workspace, p)
+                if isinstance(row, dict):
+                    rid = str(row.get("id", p)).strip() or p
+                    meta.setdefault("agent_id", rid)
+                    n = row.get("name")
+                    aname = n.strip() if isinstance(n, str) else ""
+                    if aname:
+                        meta.setdefault("agent_name", aname)
+                    self._transcript_identity_override = (rid, aname or None)
+                    return
+        aid = getattr(self, "agent_id", None)
+        if aid and str(aid).strip():
+            meta.setdefault("agent_id", str(aid).strip())
+        aname = getattr(self, "agent_name", None)
+        if aname and str(aname).strip():
+            meta.setdefault("agent_name", str(aname).strip())
+
     def _save_turn(
         self,
         session: Session,
@@ -1968,6 +2017,7 @@ class AgentLoop:
                 elif isinstance(uc, str) and not uc.strip():
                     continue
             entry.setdefault("timestamp", timestamp(self.timezone))
+            self._stamp_transcript_record(entry)
             _tr = getattr(self, "_session_transcript", None)
             if _tr and _tr.enabled and not m.get("_transcript_written"):
                 # Carry over any reply_group_id / sender_agent_id added during processing
@@ -1976,6 +2026,7 @@ class AgentLoop:
                     if k in entry and k not in transcript_entry:
                         transcript_entry[k] = entry[k]
                 transcript_entry.pop("_transcript_written", None)
+                self._stamp_transcript_record(transcript_entry)
                 _tr.append_raw_turn_message(session.key, transcript_entry)
             session.messages.append(entry)
             session.updated_at = local_now(self.timezone)
