@@ -118,9 +118,8 @@ build-backend = "hatchling.build"
 allow-direct-references = true
 
 [project.scripts]
-console = "console.cli:main"
-open-pawlet = "console.cli:main"
-openpawlet = "openpawlet.cli.commands:app"
+# Single CLI: web console (start / web / init-config), agent, channels, onboard, …
+open-pawlet = "openpawlet.cli.commands:app"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/console", "src/openpawlet"]

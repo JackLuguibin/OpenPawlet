@@ -6,7 +6,7 @@ Build a custom OpenPawlet channel in three steps: subclass, package, install.
 
 ## How It Works
 
-OpenPawlet discovers channel plugins via Python [entry points](https://packaging.python.org/en/latest/specifications/entry-points/). When the runtime starts (for example via `console start` with an embedded gateway), it scans:
+OpenPawlet discovers channel plugins via Python [entry points](https://packaging.python.org/en/latest/specifications/entry-points/). When the runtime starts (for example via `open-pawlet start` with an embedded gateway), it scans:
 
 1. Built-in channels in `openpawlet/channels/`
 2. External packages registered under the `openpawlet.channels` entry point group
@@ -154,8 +154,8 @@ The key (`webhook`) becomes the config section name. The value points to your `B
 
 ```bash
 pip install -e .
-openpawlet plugins list      # verify "Webhook" shows as "plugin"
-openpawlet onboard           # auto-adds default config for detected plugins
+open-pawlet plugins list      # verify "Webhook" shows as "plugin"
+open-pawlet onboard           # auto-adds default config for detected plugins
 ```
 
 Edit `~/.openpawlet/config.json` (the config loader still accepts older default locations if this file is absent):
@@ -175,7 +175,7 @@ Edit `~/.openpawlet/config.json` (the config loader still accepts older default 
 ### 4. Run & Test
 
 ```bash
-console start
+open-pawlet start
 ```
 
 In another terminal:
@@ -223,8 +223,8 @@ Channels that don't need interactive login (e.g. Telegram with bot token, Discor
 
 Users trigger interactive login via:
 ```bash
-openpawlet channels login <channel_name>
-openpawlet channels login <channel_name> --force  # re-authenticate
+open-pawlet channels login <channel_name>
+open-pawlet channels login <channel_name> --force  # re-authenticate
 ```
 
 ### Provided by Base
@@ -233,7 +233,7 @@ openpawlet channels login <channel_name> --force  # re-authenticate
 |-------------------|-------------|
 | `_handle_message(sender_id, chat_id, content, media?, metadata?, session_key?)` | **Call this when you receive a message.** Checks `is_allowed()`, then publishes to the bus. Automatically sets `_wants_stream` if `supports_streaming` is true. |
 | `is_allowed(sender_id)` | Checks against `config.allow_from`; `"*"` allows all, `[]` denies all. |
-| `default_config()` (classmethod) | Returns default config dict for `openpawlet onboard`. Override to declare your fields. |
+| `default_config()` (classmethod) | Returns default config dict for `open-pawlet onboard`. Override to declare your fields. |
 | `transcribe_audio(file_path)` | Transcribes audio via Groq Whisper (if configured). |
 | `supports_streaming` (property) | `True` when config has `"streaming": true` **and** subclass overrides `send_delta()`. |
 | `is_running` | Returns `self._running`. |
@@ -398,7 +398,7 @@ async def start(self) -> None:
 
 `allowFrom` is handled automatically by `_handle_message()` — you don't need to check it yourself.
 
-Override `default_config()` so `openpawlet onboard` auto-populates `config.json`:
+Override `default_config()` so `open-pawlet onboard` auto-populates `config.json`:
 
 ```python
 @classmethod
@@ -425,14 +425,14 @@ If not overridden, the base class returns `{"enabled": false}`.
 git clone https://github.com/you/openpawlet-channel-webhook
 cd openpawlet-channel-webhook
 pip install -e .
-openpawlet plugins list    # should show "Webhook" as "plugin"
-console start                # test end-to-end
+open-pawlet plugins list    # should show "Webhook" as "plugin"
+open-pawlet start                # test end-to-end
 ```
 
 ## Verify
 
 ```bash
-$ openpawlet plugins list
+$ open-pawlet plugins list
 
   Name       Source    Enabled
   telegram   builtin  yes

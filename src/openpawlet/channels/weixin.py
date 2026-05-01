@@ -478,7 +478,7 @@ class WeixinChannel(BaseChannel):
         elif not self._load_state():
             if not await self._qr_login():
                 logger.error(
-                    "WeChat login failed. Run 'openpawlet channels login weixin' to authenticate."
+                    "WeChat login failed. Run 'open-pawlet channels login weixin' to authenticate."
                 )
                 self._running = False
                 return

@@ -8,11 +8,11 @@ echo "=== Building Docker image ==="
 docker build -t "$IMAGE_NAME" .
 
 echo ""
-echo "=== Running 'openpawlet onboard' ==="
+echo "=== Running 'open-pawlet onboard' ==="
 docker run --name openpawlet-test-run "$IMAGE_NAME" onboard
 
 echo ""
-echo "=== Running 'openpawlet status' ==="
+echo "=== Running 'open-pawlet status' ==="
 STATUS_OUTPUT=$(docker commit openpawlet-test-run openpawlet-test-onboarded > /dev/null && \
     docker run --rm openpawlet-test-onboarded status 2>&1) || true
 

@@ -8,7 +8,7 @@ variables; any field not present falls back to env / defaults (see
 
 ``get_settings()`` caches a single :class:`ServerSettings` instance per
 process. Reading config is **read-only**: we no longer auto-write a defaults
-file on first boot. Use :func:`write_default_config` (or the ``console
+file on first boot. Use :func:`write_default_config` (or the ``open-pawlet
 init-config`` CLI command) to materialize the JSON file explicitly.
 """
 
@@ -77,7 +77,7 @@ def write_default_config(config_path: Path | None = None) -> Path:
     The file always reflects the **schema defaults** regardless of the
     surrounding environment — i.e. env vars or a pre-existing JSON file do
     not leak into the newly written file. This matches the user intent of
-    "give me a clean starter file" for the ``console init-config`` command.
+    "give me a clean starter file" for the ``open-pawlet init-config`` command.
 
     ``get_settings`` never calls this function so reading configuration
     remains side-effect free.
@@ -120,7 +120,7 @@ def ensure_server_config(config_path: Path | None = None) -> bool:
 
     The file is **not** created when it doesn't already exist: that matches
     the broader "settings JSON is opt-in" policy (the user has to run
-    ``console init-config`` once to materialize it). When the file does
+    ``open-pawlet init-config`` once to materialize it). When the file does
     exist, schema defaults are merged in for any missing keys and the file
     is rewritten only if the merge would actually change its content.
 

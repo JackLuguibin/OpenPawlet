@@ -16,7 +16,7 @@ from openpawlet.cron.types import CronJob, CronPayload
 from openpawlet.providers.openai_codex_provider import _strip_model_prefix
 from openpawlet.providers.registry import find_by_name
 
-# Legacy gateway/serve CLI aliases were removed: both responsibilities now live inside the unified ``console start``
+# Legacy gateway/serve CLI aliases were removed: both responsibilities now live inside the unified ``open-pawlet start``
 # entrypoint via :class:`openpawlet.runtime.embedded.EmbeddedOpenPawlet`.  Tests that
 # specifically exercised those subcommands are skipped at the module level so
 # the rest of the suite (config, providers, onboarding, agent, cron) keeps
@@ -208,8 +208,8 @@ def test_onboard_wizard_preserves_explicit_config_in_next_steps(tmp_path, monkey
     stripped_output = _strip_ansi(result.stdout)
     compact_output = stripped_output.replace("\n", "")
     resolved_config = str(config_path.resolve())
-    assert f'openpawlet agent -m "Hello!" --config {resolved_config}' in compact_output
-    assert "console start" in compact_output
+    assert f'open-pawlet agent -m "Hello!" --config {resolved_config}' in compact_output
+    assert "open-pawlet start" in compact_output
 
 
 def test_config_matches_github_copilot_codex_with_hyphen_prefix():

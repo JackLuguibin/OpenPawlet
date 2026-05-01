@@ -8,7 +8,7 @@ OpenPawlet（PyPI 包名 `open-pawlet`）是围绕 **[OpenPawlet](https://github
 
 - **后端**：基于 FastAPI 的 OpenPawlet 控制台服务，统一错误响应与 OpenAPI 文档；默认在 `/docs`、`/redoc`、`/openapi.json` 暴露，将对应配置项置空即可隐藏。
 - **前端**：`src/console/web` 目录下的 Vite 应用，支持开发态热更新与生产构建。
-- **典型场景**：执行 `console start` 即可；内嵌的 OpenPawlet 运行时随同一个 FastAPI 进程启动，无需再额外维护 gateway 进程，可以直接在控制台观察状态、调试会话、管理 Bot 相关资源。
+- **典型场景**：执行 `open-pawlet start` 即可；内嵌的 OpenPawlet 运行时随同一个 FastAPI 进程启动，无需再额外维护 gateway 进程，可以直接在控制台观察状态、调试会话、管理 Bot 相关资源。
 
 ## 界面预览
 
@@ -40,7 +40,7 @@ OpenPawlet（PyPI 包名 `open-pawlet`）是围绕 **[OpenPawlet](https://github
 | 后端 | FastAPI、Uvicorn、Pydantic v2、Loguru |
 | 与 OpenPawlet 智能体框架集成 | 随本仓库提供（`src/openpawlet`），与 `open-pawlet` 一并安装 |
 | 前端 | Node.js + npm（见 `src/console/web`） |
-| 单进程入口 | `console start`（统一 FastAPI 服务） |
+| 单进程入口 | `open-pawlet start`（统一 FastAPI 服务） |
 
 ## 快速开始
 
@@ -65,8 +65,8 @@ cd src/console/web && npm install && cd ../../..
 
 ### 3. 运行方式
 
-> `console` 与 `open-pawlet` 是**同一个命令**（都映射到 `console.cli:main`），
-> 二者任选其一，以下示例使用更短的 `console` 作为别名。
+> **`open-pawlet`** 为唯一命令行入口（`openpawlet.cli.commands:app`），例如
+> `open-pawlet start`、`open-pawlet agent`、`open-pawlet onboard`。
 >
 > 自 0.3.x 起，**所有服务收紧到单一 FastAPI 进程**：REST API、SPA、OpenAI 兼容
 > `/v1/*`、队列管理 `/queues/*`、WebSocket `/openpawlet-ws/*` 与内嵌的 OpenPawlet 运行时
@@ -78,28 +78,28 @@ cd src/console/web && npm install && cd ../../..
 
 ```bash
 npm --prefix src/console/web run build
-console start   # 打开 http://localhost:8000
+open-pawlet start   # 打开 http://localhost:8000
 ```
 
-`console start` 会启动 FastAPI，并从 `src/console/web/dist` 挂载已构建的 SPA，
+`open-pawlet start` 会启动 FastAPI，并从 `src/console/web/dist` 挂载已构建的 SPA，
 使前端页面与 `/api/v1/*` 共用同一端口；**同时在同一事件循环里启动 OpenPawlet 运行时**
 （不再 fork 任何子进程，亦不再依赖 ZeroMQ broker），所有 WebSocket / 通道 / 定时任务
-都在 lifespan 中托管。首次运行若缺少 `~/.openpawlet/config.json` 请先执行 `openpawlet onboard`。
+都在 lifespan 中托管。首次运行若缺少 `~/.openpawlet/config.json` 请先执行 `open-pawlet onboard`。
 按 Ctrl+C 优雅停止整个进程。
 
 可选参数：
 
 - `--no-spa`：不挂载前端 SPA，仅暴露 API 与 WebSocket 路由（适合纯 API 部署）。
 
-前端有更新时先执行 `npm run build`（或 `console web build`）再启动即可。
+前端有更新时先执行 `npm run build`（或 `open-pawlet web build`）再启动即可。
 
 #### 前后端分离开发模式（热更新）
 
 在两个终端分别运行：
 
 ```bash
-console start         # 单进程：FastAPI + 内嵌 OpenPawlet，监听 http://localhost:8000
-console web dev       # Vite 前端开发服，监听 http://localhost:3000  （请打开该地址访问 UI）
+open-pawlet start         # 单进程：FastAPI + 内嵌 OpenPawlet，监听 http://localhost:8000
+open-pawlet web dev       # Vite 前端开发服，监听 http://localhost:3000  （请打开该地址访问 UI）
 ```
 
 请在浏览器中访问 **Vite 地址** `http://localhost:3000`；Vite 会把 `/api/*`、`/v1/*`、
@@ -125,7 +125,7 @@ queue-manager 进程。
 4. 内置默认值（见 `console.server.config.schema.ServerSettings`）
 
 JSON 文件已改为**可选**：首次启动不会再自动写入默认值。如需把自定义值持久化到磁盘，
-可执行 `console init-config` 生成一份起始文件。
+可执行 `open-pawlet init-config` 生成一份起始文件。
 
 ## 版本历史（时间线）
 

@@ -23,7 +23,7 @@ The console roughly covers the areas below (see the UI and OpenAPI for the exact
 | **Workspace** | Workspace browsing and management |
 | **Session transcripts** | Optional append-only JSONL logs (OpenPawlet) under workspace `transcripts/` when `agents.defaults.persistSessionTranscript` is true; `transcriptIncludeFullToolResults` controls full tool payloads in the log |
 
-**Typical use:** start `console start`; the embedded OpenPawlet runtime comes up in the same process so you can immediately inspect status, debug sessions, and manage these resources from the console without supervising a separate gateway.
+**Typical use:** run `open-pawlet start`; the embedded OpenPawlet runtime comes up in the same process so you can immediately inspect status, debug sessions, and manage these resources from the console without supervising a separate gateway.
 
 ## Screenshots
 
@@ -60,7 +60,7 @@ The chat view supports **multiple sessions** (list with message counts and last 
 | Backend | FastAPI, Uvicorn, Pydantic v2, Loguru |
 | OpenPawlet agent framework | Bundled in this repo (`src/openpawlet`); installed as part of `open-pawlet` |
 | Frontend | Node.js + npm (see `src/console/web`) |
-| Single-process entrypoint | `console start` (unified FastAPI service) |
+| Single-process entrypoint | `open-pawlet start` (unified FastAPI service) |
 
 ## Quick start
 
@@ -85,9 +85,8 @@ cd src/console/web && npm install && cd ../../..
 
 ### 3. Run
 
-> `console` and `open-pawlet` are the **same command** (both entry points map
-> to `console.cli:main`). Use whichever name you prefer; the examples below use
-> the shorter `console` alias.
+> All workflows use the **`open-pawlet`** command (`openpawlet.cli.commands:app`): e.g.
+> `open-pawlet start`, `open-pawlet agent`, `open-pawlet onboard`.
 >
 > Since 0.3.x **all services are collapsed into a single FastAPI process**:
 > REST API, SPA, OpenAI-compatible `/v1/*`, queues admin `/queues/*`,
@@ -101,14 +100,14 @@ cd src/console/web && npm install && cd ../../..
 
 ```bash
 npm --prefix src/console/web run build
-console start   # open http://localhost:8000
+open-pawlet start   # open http://localhost:8000
 ```
 
-`console start` runs the unified FastAPI server, mounts the prebuilt SPA
+`open-pawlet start` runs the unified FastAPI server, mounts the prebuilt SPA
 from `src/console/web/dist` (so the UI and `/api/v1/*` share a single origin
 and port) and **starts the OpenPawlet runtime in the same event loop** (no
 subprocess fork; no ZeroMQ broker). All WebSocket / channel / cron tasks
-live inside the FastAPI lifespan. On first launch run `openpawlet onboard` once
+live inside the FastAPI lifespan. On first launch run `open-pawlet onboard` once
 if `~/.openpawlet/config.json` is missing. Press Ctrl+C to gracefully stop the
 process.
 
@@ -117,15 +116,15 @@ Flags:
 - `--no-spa` — skip mounting the prebuilt SPA. Useful for headless API-only
   deployments where the UI is hosted elsewhere.
 
-Re-run `npm run build` (or `console web build`) after frontend changes.
+Re-run `npm run build` (or `open-pawlet web build`) after frontend changes.
 
 #### Frontend dev mode (hot reload)
 
 Run the unified server and the Vite dev server in two terminals:
 
 ```bash
-console start         # single process: FastAPI + embedded OpenPawlet, on http://localhost:8000
-console web dev       # Vite dev server on http://localhost:3000 (open this for the UI)
+open-pawlet start         # single process: FastAPI + embedded OpenPawlet, on http://localhost:8000
+open-pawlet web dev       # Vite dev server on http://localhost:3000 (open this for the UI)
 ```
 
 Open the **Vite URL** (`http://localhost:3000`); Vite proxies `/api/*`,
@@ -152,7 +151,7 @@ Settings are resolved with the following **priority (highest first)**:
 4. Built-in defaults (see `console.server.config.schema.ServerSettings`)
 
 The JSON file is **opt-in**: it is no longer written automatically on first
-boot. Create a starter file with `console init-config` when you want to
+boot. Create a starter file with `open-pawlet init-config` when you want to
 persist non-default values to disk.
 
 ## Version history (timeline)

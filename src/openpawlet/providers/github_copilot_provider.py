@@ -184,7 +184,7 @@ class GitHubCopilotProvider(OpenAICompatProvider):
         github_token = _load_github_token()
         if not github_token or not github_token.access:
             raise RuntimeError(
-                "GitHub Copilot is not logged in. Run: openpawlet provider login github-copilot"
+                "GitHub Copilot is not logged in. Run: open-pawlet provider login github-copilot"
             )
 
         timeout = httpx.Timeout(20.0, connect=20.0)

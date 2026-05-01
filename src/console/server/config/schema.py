@@ -53,7 +53,7 @@ class JsonServerFileSource(PydanticBaseSettingsSource):
     .find_config_file` so tests can override ``openpawlet.config.loader`` state
     without triggering an import cycle at class definition time.
 
-    ``server.version`` keys are deliberately ignored: ``console init-config``
+    ``server.version`` keys are deliberately ignored: ``open-pawlet init-config``
     snapshots the resolved version at creation time and would otherwise pin a
     stale string across ``pip install -U`` / editable reloads while the embedded
     OpenPawlet runtime already reflects the upgraded wheel (see lifespan logs).

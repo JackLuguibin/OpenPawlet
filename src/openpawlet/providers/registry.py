@@ -31,7 +31,7 @@ class ProviderSpec:
     name: str  # config field name, e.g. "dashscope"
     keywords: tuple[str, ...]  # model-name keywords for matching (lowercase)
     env_key: str  # env var for API key, e.g. "DASHSCOPE_API_KEY"
-    display_name: str = ""  # shown in `openpawlet status`
+    display_name: str = ""  # shown in `open-pawlet status`
 
     # which provider implementation to use
     # "openai_compat" | "anthropic" | "azure_openai" | "openai_codex" | "github_copilot"

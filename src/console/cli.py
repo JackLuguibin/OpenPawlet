@@ -4,17 +4,18 @@ The console is now a single-process FastAPI application: it hosts the
 REST surface, the OpenAI-compatible ``/v1/*`` endpoints, the queue
 admin routes, the SPA static assets and the embedded OpenPawlet runtime
 (agent loop, channels, cron, heartbeat) inside one event loop.  Hence
-this CLI exposes only three subcommands:
+this CLI implementation lives alongside the FastAPI app; end users invoke the
+same subcommands via the unified ``open-pawlet`` Typer entrypoint
+(see :mod:`openpawlet.cli.commands`).
 
-* ``console start``  - run the unified server (production-style; serves
-  the prebuilt SPA from ``src/console/web/dist``).
-* ``console init-config``  - write a default ``openpawlet_web.json``.
-* ``console web ...``  - run the Vite dev server / production build.
+* ``open-pawlet start`` / ``server`` — run the unified server (production-style;
+  serves the prebuilt SPA from ``src/console/web/dist``).
+* ``open-pawlet init-config`` — write a default ``openpawlet_web.json``.
+* ``open-pawlet web ...`` — run the Vite dev server / production build.
 """
 
 from __future__ import annotations
 
-import argparse
 import os
 import shutil
 import socket
@@ -33,10 +34,7 @@ from console.server.config import (
     write_default_config,
 )
 from console.server.runtime_log_setup import setup_console_runtime_file_logging
-from console.server.signals import (
-    configure_windows_event_loop_policy,
-    install_signal_handlers,
-)
+from console.server.signals import install_signal_handlers
 
 
 def _wait_forever_until_interrupted(reason: str) -> None:
@@ -222,78 +220,10 @@ def _run_init_config(force: bool = False) -> None:
 
 
 def main() -> None:
-    """Parse CLI arguments and dispatch to subcommands."""
-    configure_windows_event_loop_policy()
+    """Dispatch to the unified ``open-pawlet`` Typer CLI (``python -m console``)."""
+    from openpawlet.cli.commands import app
 
-    parser = argparse.ArgumentParser(
-        description=(
-            "OpenPawlet console: unified FastAPI server (REST + SPA + OpenAI "
-            "API + queues admin + embedded OpenPawlet)."
-        ),
-    )
-    subparsers = parser.add_subparsers(dest="command", required=True)
-
-    start_parent = argparse.ArgumentParser(add_help=False)
-    start_parent.add_argument(
-        "--no-spa",
-        action="store_true",
-        help=(
-            "Do not mount the prebuilt SPA. Useful in headless setups "
-            "where only the API surface is needed."
-        ),
-    )
-
-    subparsers.add_parser(
-        "start",
-        parents=[start_parent],
-        help=(
-            "Run the unified server. The embedded OpenPawlet runtime "
-            "(agent + channels + cron + heartbeat) starts in the same "
-            "event loop, so a single HTTP port serves everything."
-        ),
-    )
-
-    # Backwards-compatible alias used by older docs/scripts.
-    subparsers.add_parser(
-        "server",
-        parents=[start_parent],
-        help="Alias of 'start' kept for backwards compatibility.",
-    )
-
-    init_parser = subparsers.add_parser(
-        "init-config",
-        help="Write a default openpawlet_web.json next to the agent config.",
-    )
-    init_parser.add_argument(
-        "--force",
-        action="store_true",
-        help="Overwrite an existing file.",
-    )
-
-    web_parser = subparsers.add_parser(
-        "web",
-        help="Frontend: Vite dev server or production build.",
-    )
-    web_sub = web_parser.add_subparsers(dest="web_action", required=True)
-    web_sub.add_parser(
-        "dev",
-        help="Development: start Vite with HMR (npm run dev).",
-    )
-    web_sub.add_parser(
-        "build",
-        help="Production: typecheck and bundle assets (npm run build).",
-    )
-
-    args = parser.parse_args()
-    if args.command in ("start", "server"):
-        _run_start(mount_spa=not args.no_spa)
-    elif args.command == "init-config":
-        _run_init_config(force=bool(args.force))
-    elif args.command == "web":
-        _run_npm_web(args.web_action)
-    else:
-        parser.print_help()
-        sys.exit(1)
+    app()
 
 
 if __name__ == "__main__":

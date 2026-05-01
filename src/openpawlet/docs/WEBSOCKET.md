@@ -40,7 +40,7 @@ Add to `config.json` under `channels.websocket`:
 The standalone `gateway` CLI is gone; run the unified console (or your process that embeds `EmbeddedOpenPawlet`) so the WebSocket channel listens on the configured host/port:
 
 ```bash
-console start
+open-pawlet start
 ```
 
 > Use the `console` script from this repo (`pip install -e .`). It serves the REST API, SPA, and embedded OpenPawlet runtime on one port; the WebSocket channel typically binds to `8765` unless you changed `channels.websocket` in `config.json`.

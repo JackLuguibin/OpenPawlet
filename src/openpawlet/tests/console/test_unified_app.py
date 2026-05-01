@@ -356,7 +356,7 @@ def test_configure_windows_event_loop_policy_noop_on_posix() -> None:
 def test_npm_executable_prefers_cmd_on_windows(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``console web ...`` must call npm.cmd on Windows hosts."""
+    """``open-pawlet web ...`` must call npm.cmd on Windows hosts."""
     import console.cli as cli_mod
 
     # Pretend we're on Windows.

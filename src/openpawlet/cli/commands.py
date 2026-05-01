@@ -65,9 +65,9 @@ class SafeFileHistory(FileHistory):
         super().store_string(safe)
 
 app = typer.Typer(
-    name="openpawlet",
+    name="open-pawlet",
     context_settings={"help_option_names": ["-h", "--help"]},
-    help=f"{__logo__} OpenPawlet - Personal AI Assistant",
+    help=f"{__logo__} OpenPawlet — web console, agent CLI, and tooling (single command)",
     no_args_is_help=True,
 )
 
@@ -265,6 +265,85 @@ def main(
 
 
 # ============================================================================
+# Unified web console (FastAPI + SPA + embedded OpenPawlet)
+# ============================================================================
+
+
+def _invoke_console_server(*, mount_spa: bool) -> None:
+    from console.cli import _run_start
+    from console.server.signals import configure_windows_event_loop_policy
+
+    configure_windows_event_loop_policy()
+    _run_start(mount_spa=mount_spa)
+
+
+@app.command("start")
+def console_start(
+    no_spa: bool = typer.Option(
+        False,
+        "--no-spa",
+        help=(
+            "Do not mount the prebuilt SPA. Useful in headless setups "
+            "where only the API surface is needed."
+        ),
+    ),
+) -> None:
+    """Run the unified FastAPI server (REST + SPA + embedded OpenPawlet)."""
+    _invoke_console_server(mount_spa=not no_spa)
+
+
+@app.command("server")
+def console_server(
+    no_spa: bool = typer.Option(
+        False,
+        "--no-spa",
+        help=(
+            "Do not mount the prebuilt SPA. Useful in headless setups "
+            "where only the API surface is needed."
+        ),
+    ),
+) -> None:
+    """Alias of ``start`` (backwards compatibility)."""
+    _invoke_console_server(mount_spa=not no_spa)
+
+
+@app.command("init-config")
+def console_init_config(
+    force: bool = typer.Option(False, "--force", help="Overwrite an existing file."),
+) -> None:
+    """Write a default openpawlet_web.json next to the agent config."""
+    from console.cli import _run_init_config
+    from console.server.signals import configure_windows_event_loop_policy
+
+    configure_windows_event_loop_policy()
+    _run_init_config(force=force)
+
+
+web_cli = typer.Typer(help="Frontend: Vite dev server or production build.")
+app.add_typer(web_cli, name="web")
+
+
+@web_cli.command("dev")
+def web_dev() -> None:
+    """Development: start Vite with HMR (npm run dev)."""
+    from console.cli import _run_npm_web
+    from console.server.signals import configure_windows_event_loop_policy
+
+    configure_windows_event_loop_policy()
+    _run_npm_web("dev")
+
+
+@web_cli.command("build")
+def web_build() -> None:
+    """Production: typecheck and bundle assets (npm run build)."""
+    from console.cli import _run_npm_web
+    from console.server.signals import configure_windows_event_loop_policy
+
+    configure_windows_event_loop_policy()
+    _run_npm_web("build")
+
+
+# ============================================================================
 # Onboard / Setup
 # ============================================================================
 
@@ -335,7 +414,7 @@ def onboard(
             console.print(f"[green]✓[/green] Config saved at {config_path}")
         except Exception as e:
             console.print(f"[red]✗[/red] Error during configuration: {e}")
-            console.print("[yellow]Please run 'openpawlet onboard' again to complete setup.[/yellow]")
+            console.print("[yellow]Please run 'open-pawlet onboard' again to complete setup.[/yellow]")
             raise typer.Exit(1)
     _onboard_plugins(config_path)
 
@@ -347,8 +426,8 @@ def onboard(
 
     sync_workspace_templates(workspace_path)
 
-    agent_cmd = 'openpawlet agent -m "Hello!"'
-    server_cmd = "console start"
+    agent_cmd = 'open-pawlet agent -m "Hello!"'
+    server_cmd = "open-pawlet start"
     if config:
         agent_cmd += f" --config {config_path}"
 
@@ -484,7 +563,7 @@ def _migrate_cron_store(config: "Config") -> None:
 # ============================================================================
 # Note: The legacy ``serve`` (OpenAI-compatible API) and ``gateway`` commands
 # have been removed. Both responsibilities are now handled by the unified
-# ``console start`` entrypoint via ``EmbeddedOpenPawlet`` so external callers
+# ``open-pawlet start`` entrypoint via ``EmbeddedOpenPawlet`` so external callers
 # only need a single HTTP port.
 # ============================================================================
 
