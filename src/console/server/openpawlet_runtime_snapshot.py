@@ -1,9 +1,10 @@
 """OpenPawlet agent ``config.json`` snapshot attached to ``app.state``.
 
 Loaded during FastAPI lifespan *before* ``yield`` so HTTP/WebSocket handlers can
-read a single source of truth. Refreshed when :func:`console.server.lifespan.swap_runtime`
-(or equivalent reload helpers in :mod:`console.server.config_apply`) rebuilds the
-embedded runtime — durable edits flow disk → reload, not ad-hoc in-memory patching.
+read a single source of truth. Refreshed on process start and when :func:`console.server.lifespan.swap_runtime`
+rebuilds the embedded runtime (e.g. bot activation). Workspace saves that go through
+:mod:`console.server.config_apply` schedule a full console process restart instead
+of ad-hoc in-memory patching.
 
 HTTP observability and ``/openpawlet-ws`` routing read websocket listen host/port/path
 via :func:`websocket_gateway_listen_triple` so they stay aligned with this snapshot.

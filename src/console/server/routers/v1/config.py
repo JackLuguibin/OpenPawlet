@@ -57,8 +57,8 @@ async def put_config(
     via the dedicated ``/llm-providers`` API.
 
     After persisting, :func:`console.server.config_apply.apply_config_change`
-    reloads the embedded runtime from disk and pushes WebSocket snapshots for
-    the SPA (no in-memory ``AgentLoop`` patching from this endpoint).
+    schedules an in-place restart of the OpenPawlet console process so all
+    layers reload from disk (no in-memory ``AgentLoop`` patching from this endpoint).
     """
     if body.section == "providers":
         gone(

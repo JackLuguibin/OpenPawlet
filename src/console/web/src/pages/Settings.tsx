@@ -85,6 +85,10 @@ const SETTINGS_SCROLL_CARD_STYLES: {
   body: { flex: 1, minHeight: 0, overflowY: 'auto' },
 };
 
+/** Match server ``schedule_console_process_restart`` debounce (~0.35s) before expecting /health to drop. */
+const CONFIG_SAVE_RESTART_DEBOUNCE_MS = 400;
+const CONFIG_SAVE_RESTART_POLL_MS = 500;
+const CONFIG_SAVE_RESTART_SAFETY_MS = 120_000;
 
 type SettingsTab =
   | 'general'
@@ -698,6 +702,44 @@ export default function Settings() {
   const [envEntries, setEnvEntries] = useState<
     Array<{ key: string; value: string; execVisible: boolean }>
   >([]);
+  const [configRestartPending, setConfigRestartPending] = useState(false);
+
+  useEffect(() => {
+    if (!configRestartPending) return;
+
+    let cancelled = false;
+    const safetyId = window.setTimeout(() => {
+      cancelled = true;
+      setConfigRestartPending(false);
+    }, CONFIG_SAVE_RESTART_SAFETY_MS);
+
+    const run = async () => {
+      await new Promise<void>((r) => {
+        window.setTimeout(r, CONFIG_SAVE_RESTART_DEBOUNCE_MS);
+      });
+      while (!cancelled) {
+        try {
+          await api.healthCheck();
+          if (!cancelled) {
+            setConfigRestartPending(false);
+            return;
+          }
+        } catch {
+          await new Promise<void>((r) => {
+            window.setTimeout(r, CONFIG_SAVE_RESTART_POLL_MS);
+          });
+        }
+      }
+    };
+
+    void run();
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(safetyId);
+    };
+  }, [configRestartPending]);
+
   useEffect(() => {
     if (envData?.vars) {
       const allowSet = new Set(envData.exec_visible_keys || []);
@@ -767,7 +809,10 @@ export default function Settings() {
 
   const saveSettingsMutation = useMutation({
     mutationFn: async () => {
-      const values = await form.validateFields();
+      await form.validateFields();
+      // validateFields() only reflects mounted controls; inactive Tabs/ Collapse
+      // panes may omit registered paths. Merge full store (set by useEffect).
+      const values = form.getFieldsValue(true) as SettingsGeneralToolsFormValues;
       const {
         restrictToWorkspace,
         toolWeb,
@@ -778,16 +823,30 @@ export default function Settings() {
         ...rest
       } = values;
 
+      const defaultsSnap = config?.agents?.defaults;
+      const toolsSnap = config?.tools;
+      // Tabs may not mount inactive panes; unregistered fields are omitted from validateFields().
+      const dreamVals = rest.dream ?? readDreamNested(defaultsSnap);
+      const restrictResolved =
+        restrictToWorkspace ?? readToolsRestrictToWorkspace(toolsSnap);
+      const toolWebResolved = toolWeb ?? readToolWebNested(toolsSnap);
+      const toolExecResolved = toolExec ?? readToolExecNested(toolsSnap);
+      const toolMyResolved = toolMy ?? readToolMyNested(toolsSnap);
+      const toolSsrfResolved =
+        toolSsrfWhitelist ?? readToolSsrfWhitelist(toolsSnap);
+
       const disabledSkills = (rest.disabledSkills ?? [])
         .map((s) => String(s).trim())
         .filter(Boolean);
 
       const dreamPayload: DreamConfigJson = {
-        intervalH: rest.dream.intervalH,
-        maxBatchSize: rest.dream.maxBatchSize,
-        maxIterations: rest.dream.maxIterations,
-        annotateLineAges: rest.dream.annotateLineAges,
-        modelOverride: rest.dream.modelOverride.trim() ? rest.dream.modelOverride.trim() : null,
+        intervalH: dreamVals.intervalH,
+        maxBatchSize: dreamVals.maxBatchSize,
+        maxIterations: dreamVals.maxIterations,
+        annotateLineAges: dreamVals.annotateLineAges,
+        modelOverride: dreamVals.modelOverride.trim()
+          ? dreamVals.modelOverride.trim()
+          : null,
       };
 
       await api.updateConfig(
@@ -821,32 +880,32 @@ export default function Settings() {
       await api.updateConfig(
         'tools',
         {
-          restrictToWorkspace,
+          restrictToWorkspace: restrictResolved,
           web: {
-            enable: toolWeb.enable,
-            proxy: toolWeb.proxy?.trim() ? toolWeb.proxy.trim() : null,
+            enable: toolWebResolved.enable,
+            proxy: toolWebResolved.proxy?.trim() ? toolWebResolved.proxy.trim() : null,
             search: {
-              provider: (toolWeb.search.provider ?? '').trim() || 'duckduckgo',
-              apiKey: (toolWeb.search.apiKey ?? '').trim(),
-              baseUrl: (toolWeb.search.baseUrl ?? '').trim(),
-              maxResults: toolWeb.search.maxResults,
-              timeout: toolWeb.search.timeout,
+              provider: (toolWebResolved.search.provider ?? '').trim() || 'duckduckgo',
+              apiKey: (toolWebResolved.search.apiKey ?? '').trim(),
+              baseUrl: (toolWebResolved.search.baseUrl ?? '').trim(),
+              maxResults: toolWebResolved.search.maxResults,
+              timeout: toolWebResolved.search.timeout,
             },
           },
           exec: {
-            enable: toolExec.enable,
-            timeout: toolExec.timeout,
-            pathAppend: (toolExec.pathAppend ?? '').trim(),
-            sandbox: (toolExec.sandbox ?? '').trim(),
-            allowedEnvKeys: (toolExec.allowedEnvKeys ?? [])
+            enable: toolExecResolved.enable,
+            timeout: toolExecResolved.timeout,
+            pathAppend: (toolExecResolved.pathAppend ?? '').trim(),
+            sandbox: (toolExecResolved.sandbox ?? '').trim(),
+            allowedEnvKeys: (toolExecResolved.allowedEnvKeys ?? [])
               .map((s) => String(s).trim())
               .filter(Boolean),
           },
           my: {
-            enable: toolMy.enable,
-            allowSet: toolMy.allowSet,
+            enable: toolMyResolved.enable,
+            allowSet: toolMyResolved.allowSet,
           },
-          ssrfWhitelist: (toolSsrfWhitelist ?? []).map((s) => String(s).trim()).filter(Boolean),
+          ssrfWhitelist: (toolSsrfResolved ?? []).map((s) => String(s).trim()).filter(Boolean),
         },
         currentBotId
       );
@@ -882,6 +941,7 @@ export default function Settings() {
     onSuccess: () => {
       addToast({ type: 'success', message: t('settings.saved') });
       queryClient.invalidateQueries({ queryKey: ['config'] });
+      setConfigRestartPending(true);
     },
     onError: (error: unknown) => {
       addToast({ type: 'error', message: formatQueryError(error) });
@@ -2006,16 +2066,34 @@ export default function Settings() {
             >
               <span className="hidden sm:inline">{t('settings.export')}</span>
             </Button>
-            <Button
-              type="primary"
-              icon={<SaveOutlined />}
-              loading={saveSettingsMutation.isPending}
-              aria-label={t('settings.saveChanges')}
-              onClick={handleSave}
-              className="console-page-action-save"
+            <Tooltip
+              title={
+                configRestartPending ? t('settings.saveRestarting') : undefined
+              }
             >
-              <span className="hidden sm:inline">{t('settings.saveChanges')}</span>
-            </Button>
+              <span className="inline-flex">
+                <Button
+                  type="primary"
+                  icon={<SaveOutlined />}
+                  loading={
+                    saveSettingsMutation.isPending || configRestartPending
+                  }
+                  disabled={
+                    saveSettingsMutation.isPending || configRestartPending
+                  }
+                  aria-busy={
+                    saveSettingsMutation.isPending || configRestartPending
+                  }
+                  aria-label={t('settings.saveChanges')}
+                  onClick={handleSave}
+                  className="console-page-action-save"
+                >
+                  <span className="hidden sm:inline">
+                    {t('settings.saveChanges')}
+                  </span>
+                </Button>
+              </span>
+            </Tooltip>
           </Space>
         }
       />

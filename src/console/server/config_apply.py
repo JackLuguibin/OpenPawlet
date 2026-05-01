@@ -1,4 +1,4 @@
-"""Post-write embedded runtime reload for the console HTTP API.
+"""Post-write OpenPawlet activation for the console HTTP API.
 
 Responsibility split
 ====================
@@ -7,24 +7,74 @@ Responsibility split
   workspace files directly.
 * **Console HTTP routers** — validate payloads and persist authoritative state
   to disk (``config.json``, ``llm_providers.json``, ``.env``, …).
-* **OpenPawlet embedded runtime** — after persistence succeeds, reload by
-  rebuilding the in-process graph via :func:`reload_embedded_openpawlet_runtime`,
-  which re-reads configuration from disk (same mechanism as ``swap_runtime``).
-* **WebSocket state hub** — after a successful reload attempt, callers broadcast
-  fresh snapshots via :func:`console.server.state_hub_helpers.push_after_config_change`
-  so the SPA stays read-only over push channels (no client-side file writes).
+* **OpenPawlet process** — after persistence succeeds, the console server
+  process restarts in-place via :func:`schedule_console_process_restart`
+  (same ``os.execv`` argv contract as the ``/restart`` slash command) so every
+  layer—not only the embedded graph—re-reads workspace state from a cold boot.
+  Bot activation still uses :func:`reload_embedded_openpawlet_runtime` /
+  :func:`console.server.lifespan.swap_runtime` without a full process restart.
 
 Handlers intentionally avoid patching live :class:`~openpawlet.agent.loop.AgentLoop`
-internals (no ``apply_hot_config`` from REST): durable changes always flow
-**disk → reload** so persistence and runtime activation stay decoupled.
+internals (no ``apply_hot_config`` from REST): durable changes flow **disk →
+restart** so persistence and runtime activation stay decoupled.
 """
 
 from __future__ import annotations
 
+import asyncio
+import os
+import sys
 from typing import Any
 
 from fastapi import FastAPI
 from loguru import logger
+
+# Coalesce multiple restart requests (e.g. SPA saves agents + tools + channels in a row).
+_restart_task: asyncio.Task[None] | None = None
+_RESTART_DEBOUNCE_S = 0.35
+
+
+def schedule_console_process_restart(*, reason: str) -> None:
+    """Re-exec this process after a short delay so the HTTP handler can finish.
+
+    Preserves ``sys.argv[1:]`` like :func:`openpawlet.command.builtin.cmd_restart`
+    so ``open-pawlet start`` resumes correctly.
+
+    Repeated calls collapse into a single re-exec after :data:`_RESTART_DEBOUNCE_S`
+    from the latest request so batched PUTs only restart once.
+    """
+    global _restart_task
+    if os.environ.get("OPENPAWLET_SKIP_PROCESS_RESTART", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }:
+        logger.debug("[console] Skipping process restart (OPENPAWLET_SKIP_PROCESS_RESTART); {}", reason)
+        return
+    # When tests import this module under pytest, never exec the runner process.
+    if "pytest" in sys.modules:
+        logger.debug("[console] Skipping process restart (pytest session); {}", reason)
+        return
+
+    async def _exec_after_debounce(last_reason: str) -> None:
+        try:
+            await asyncio.sleep(_RESTART_DEBOUNCE_S)
+        except asyncio.CancelledError:
+            return
+        argv = [sys.executable, "-m", "openpawlet", *sys.argv[1:]]
+        logger.info("[console] Restarting OpenPawlet process ({})", last_reason)
+        os.execv(sys.executable, argv)
+
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        logger.warning("[console] Cannot schedule restart (no running loop); {}", reason)
+        return
+
+    if _restart_task is not None and not _restart_task.done():
+        _restart_task.cancel()
+    _restart_task = loop.create_task(_exec_after_debounce(reason))
 
 
 async def reload_embedded_openpawlet_runtime(app: FastAPI, bot_id: str | None) -> bool:
@@ -35,24 +85,17 @@ async def reload_embedded_openpawlet_runtime(app: FastAPI, bot_id: str | None) -
     return await swap_runtime(app, target_bot)
 
 
-def _broadcast_config_snapshots(bot_id: str | None) -> None:
-    """Notify subscribed SPA clients that status-derived aggregates may have changed."""
-    from console.server.state_hub_helpers import push_after_config_change
-
-    push_after_config_change(bot_id)
-
-
 async def reload_embedded_then_broadcast_snapshots(app: FastAPI, bot_id: str | None) -> bool:
-    """Reload runtime from disk, then publish state-hub snapshots (reload is best-effort)."""
+    """Schedule a full process restart after workspace writes (best-effort)."""
+    _ = app
     try:
-        ok = await reload_embedded_openpawlet_runtime(app, bot_id)
+        schedule_console_process_restart(reason=f"persist:{bot_id or 'default'}")
     except Exception:  # noqa: BLE001 - never break HTTP persist handlers
-        logger.opt(exception=True).debug(
-            "reload_embedded_openpawlet_runtime failed after workspace persist"
+        logger.opt(exception=True).warning(
+            "schedule_console_process_restart failed after workspace persist"
         )
-        ok = False
-    _broadcast_config_snapshots(bot_id)
-    return bool(ok)
+        return False
+    return True
 
 
 async def apply_config_change(
@@ -61,18 +104,26 @@ async def apply_config_change(
     old_data: dict[str, Any],
     new_data: dict[str, Any],
 ) -> dict[str, Any]:
-    """After ``config.json`` was saved, reload the embedded runtime from disk.
+    """After ``config.json`` was saved, schedule an in-place process restart.
 
-    Also broadcasts status/channel/MCP snapshots for WebSocket subscribers.
+    The SPA saves in several ``PUT`` batches; even when merged JSON matches the
+    pre-save snapshot (nothing new to persist), users still expect a cold boot after
+    clicking save, so we always schedule restart here.
 
-    Returns ``{"mode": "noop"|"reload", "ok": bool}``.
+    Returns ``{"mode": "reload", "ok": bool}``.
     """
-    if old_data == new_data:
-        return {"mode": "noop", "ok": True}
-
-    ok = await reload_embedded_openpawlet_runtime(app, bot_id)
-    _broadcast_config_snapshots(bot_id)
-    return {"mode": "reload", "ok": bool(ok)}
+    _ = app
+    _ = old_data, new_data
+    try:
+        schedule_console_process_restart(
+            reason=f"config.json:{bot_id or 'default'}",
+        )
+    except Exception:  # noqa: BLE001
+        logger.opt(exception=True).warning(
+            "[config-apply] schedule_console_process_restart after config save failed"
+        )
+        return {"mode": "reload", "ok": False}
+    return {"mode": "reload", "ok": True}
 
 
 def _sync_exec_allowed_env_keys(
@@ -132,12 +183,11 @@ async def apply_env_change(
     new_vars: dict[str, str],
     exec_visible_keys: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Sync ``.env`` edits into ``os.environ``, optionally mirror exec allowlist, then reload runtime.
+    """Sync ``.env`` edits into ``os.environ``, optionally mirror exec allowlist, then restart.
 
-    Always invokes :func:`reload_embedded_openpawlet_runtime` when anything
-    changed so initialization-time readers (providers, channels, exec tool)
-    pick up the new state from disk and environment, then broadcast the same
-    state-hub snapshots as :func:`apply_config_change`.
+    When anything changed, schedules :func:`schedule_console_process_restart`
+    so initialization-time readers (providers, channels, exec tool) pick up
+    the new state after a cold boot (same contract as :func:`apply_config_change`).
     """
     import os
 
@@ -170,13 +220,13 @@ async def apply_env_change(
             "swap_ok": True,
         }
 
+    _ = app
     try:
-        ok = await reload_embedded_openpawlet_runtime(app, bot_id)
+        schedule_console_process_restart(reason=f".env:{bot_id or 'default'}")
+        ok = True
     except Exception:  # noqa: BLE001 - never break the save path
-        logger.exception("[config-apply] reload after env change failed")
+        logger.exception("[config-apply] schedule restart after env change failed")
         ok = False
-
-    _broadcast_config_snapshots(bot_id)
 
     return {
         "added": added,
@@ -192,4 +242,5 @@ __all__ = [
     "apply_env_change",
     "reload_embedded_openpawlet_runtime",
     "reload_embedded_then_broadcast_snapshots",
+    "schedule_console_process_restart",
 ]

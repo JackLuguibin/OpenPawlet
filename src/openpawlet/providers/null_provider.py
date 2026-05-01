@@ -14,8 +14,8 @@ turns. The model name and generation defaults stay valid so the rest of the
 runtime (AgentLoop, channels, cron, heartbeat) boots normally.
 
 Once the user adds a provider via ``Settings → Providers``, the console
-persists ``llm_providers.json`` and reloads the embedded runtime from disk so
-the agent uses the new provider — no separate process restart.
+persists ``llm_providers.json`` and restarts in place so the agent picks up
+the new provider on the next boot.
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ _NOT_CONFIGURED_MESSAGE = (
     "No LLM provider is configured for this workspace. Open the OpenPawlet "
     "console (Settings → Providers) and add at least one provider with a "
     "valid API key. The agent will resume automatically once a provider is "
-    "available — no restart required."
+    "available (the console will restart briefly after saving)."
 )
 
 

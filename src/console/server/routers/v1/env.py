@@ -2,9 +2,8 @@
 
 Saves are forwarded through :func:`console.server.config_apply.apply_env_change`
 which mirrors values into ``os.environ``, persists derived ``config.json``
-(exec allowlist) when needed, reloads the embedded runtime from disk plus
-environment, and broadcasts SPA snapshots — without requiring a manual
-process restart.
+(exec allowlist) when needed, and schedules an in-place restart of the console
+process so the new environment and workspace are picked up from a cold boot.
 
 ``exec_visible_keys`` from the UI selects which loaded vars are mirrored into
 ``tools.exec.allowedEnvKeys`` so the exec subprocess environment matches toggles.
@@ -59,7 +58,7 @@ async def put_env(
     body: EnvPutBody,
     bot_id: str | None = Query(default=None, alias="bot_id"),
 ) -> DataResponse[EnvPutResponse]:
-    """Replace ``.env``, mirror ``os.environ``, persist exec allowlist, reload embedded runtime, broadcast SPA snapshots."""
+    """Replace ``.env``, mirror ``os.environ``, persist exec allowlist, schedule process restart."""
     path = env_file_path(bot_id)
     old_vars = parse_dotenv_file(path)
     write_dotenv_file(path, body.vars)

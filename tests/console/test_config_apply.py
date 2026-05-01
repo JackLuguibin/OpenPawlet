@@ -1,7 +1,7 @@
 """Tests for ``console.server.config_apply``.
 
-HTTP handlers persist workspace files; :func:`apply_config_change` only
-orchestrates an embedded runtime reload from disk (no ``AgentLoop.apply_hot_config``).
+HTTP handlers persist workspace files; :func:`apply_config_change` schedules
+an in-process restart (skipped under pytest via :func:`schedule_console_process_restart`).
 """
 
 from __future__ import annotations
@@ -9,6 +9,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -29,16 +30,14 @@ def _default_dict() -> dict:
 
 
 @pytest.mark.asyncio
-async def test_apply_config_change_triggers_reload(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_apply_config_change_triggers_restart_schedule(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     fake_app = SimpleNamespace(state=SimpleNamespace(embedded=None, active_bot_id="default"))
 
-    swap_called = {"n": 0}
+    mock = MagicMock()
 
-    async def _fake_swap(_app, _bot_id):
-        swap_called["n"] += 1
-        return True
-
-    monkeypatch.setattr("console.server.lifespan.swap_runtime", _fake_swap)
+    monkeypatch.setattr("console.server.config_apply.schedule_console_process_restart", mock)
 
     base = _default_dict()
     new = _default_dict()
@@ -47,19 +46,16 @@ async def test_apply_config_change_triggers_reload(monkeypatch: pytest.MonkeyPat
     result = await apply_config_change(fake_app, "default", base, new)
     assert result["mode"] == "reload"
     assert result["ok"] is True
-    assert swap_called["n"] == 1
+    mock.assert_called_once_with(reason="config.json:default")
 
 
 @pytest.mark.asyncio
-async def test_apply_config_change_reload_on_channels_patch(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_apply_config_change_restart_on_channels_patch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     fake_app = SimpleNamespace(state=SimpleNamespace(embedded=None, active_bot_id="default"))
-    swap_called = {"n": 0}
-
-    async def _fake_swap(_app, _bot_id):
-        swap_called["n"] += 1
-        return True
-
-    monkeypatch.setattr("console.server.lifespan.swap_runtime", _fake_swap)
+    mock = MagicMock()
+    monkeypatch.setattr("console.server.config_apply.schedule_console_process_restart", mock)
 
     base = _default_dict()
     new = _default_dict()
@@ -67,36 +63,35 @@ async def test_apply_config_change_reload_on_channels_patch(monkeypatch: pytest.
 
     result = await apply_config_change(fake_app, "default", base, new)
     assert result["mode"] == "reload"
-    assert swap_called["n"] == 1
+    assert result["ok"] is True
+    mock.assert_called_once_with(reason="config.json:default")
 
 
 @pytest.mark.asyncio
-async def test_apply_config_change_noop(monkeypatch: pytest.MonkeyPatch) -> None:
-    swap_called = {"n": 0}
-
-    async def _fake_swap(_app, _bot_id):
-        swap_called["n"] += 1
-        return True
-
-    monkeypatch.setattr("console.server.lifespan.swap_runtime", _fake_swap)
+async def test_apply_config_change_schedules_restart_when_config_unchanged(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Save still triggers a cold boot when merged JSON matches the pre-save snapshot."""
+    mock = MagicMock()
+    monkeypatch.setattr("console.server.config_apply.schedule_console_process_restart", mock)
 
     fake_app = SimpleNamespace(state=SimpleNamespace(embedded=None, active_bot_id="default"))
     base = _default_dict()
     result = await apply_config_change(fake_app, "default", base, base)
-    assert result["mode"] == "noop"
-    assert swap_called["n"] == 0
+    assert result["mode"] == "reload"
+    mock.assert_called_once_with(reason="config.json:default")
 
 
 @pytest.mark.asyncio
-async def test_apply_config_change_reload_when_embedded_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_apply_config_change_restart_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     fake_app = SimpleNamespace(state=SimpleNamespace(embedded=None, active_bot_id="default"))
-    swap_called = {"n": 0}
 
-    async def _fake_swap(_app, _bot_id):
-        swap_called["n"] += 1
-        return False
+    def _boom(**_: object) -> None:
+        raise RuntimeError("schedule failed")
 
-    monkeypatch.setattr("console.server.lifespan.swap_runtime", _fake_swap)
+    monkeypatch.setattr("console.server.config_apply.schedule_console_process_restart", _boom)
 
     base = _default_dict()
     new = _default_dict()
@@ -105,33 +100,31 @@ async def test_apply_config_change_reload_when_embedded_missing(monkeypatch: pyt
     result = await apply_config_change(fake_app, "default", base, new)
     assert result["mode"] == "reload"
     assert result["ok"] is False
-    assert swap_called["n"] == 1
 
 
 # ---------------------------------------------------------------------------
-# .env → reload
+# .env → restart schedule
 # ---------------------------------------------------------------------------
 
 
 @pytest.fixture
-def _fake_app_with_swap(monkeypatch: pytest.MonkeyPatch):
+def _fake_app_with_restart(monkeypatch: pytest.MonkeyPatch):
     fake_app = SimpleNamespace(state=SimpleNamespace(embedded=None, active_bot_id="default"))
-    swap_calls = {"n": 0, "bot_ids": []}
+    restart_calls = {"n": 0, "reasons": []}
 
-    async def _fake_swap(_app, bot_id):
-        swap_calls["n"] += 1
-        swap_calls["bot_ids"].append(bot_id)
-        return True
+    def _track(**kw: object) -> None:
+        restart_calls["n"] += 1
+        restart_calls["reasons"].append(kw.get("reason"))
 
-    monkeypatch.setattr("console.server.lifespan.swap_runtime", _fake_swap)
-    return fake_app, swap_calls
+    monkeypatch.setattr("console.server.config_apply.schedule_console_process_restart", _track)
+    return fake_app, restart_calls
 
 
 @pytest.mark.asyncio
 async def test_apply_env_change_adds_keys_to_environ(
-    monkeypatch: pytest.MonkeyPatch, _fake_app_with_swap
+    monkeypatch: pytest.MonkeyPatch, _fake_app_with_restart
 ) -> None:
-    fake_app, swap_calls = _fake_app_with_swap
+    fake_app, restart_calls = _fake_app_with_restart
     monkeypatch.delenv("OP_TEST_NEW_KEY", raising=False)
 
     result = await apply_env_change(
@@ -148,15 +141,16 @@ async def test_apply_env_change_adds_keys_to_environ(
         "exec_allowlist_changed": False,
         "swap_ok": True,
     }
-    assert swap_calls["n"] == 1
+    assert restart_calls["n"] == 1
+    assert restart_calls["reasons"] == [".env:default"]
     monkeypatch.delenv("OP_TEST_NEW_KEY", raising=False)
 
 
 @pytest.mark.asyncio
 async def test_apply_env_change_updates_keys_in_environ(
-    monkeypatch: pytest.MonkeyPatch, _fake_app_with_swap
+    monkeypatch: pytest.MonkeyPatch, _fake_app_with_restart
 ) -> None:
-    fake_app, _swap_calls = _fake_app_with_swap
+    fake_app, _restart_calls = _fake_app_with_restart
     monkeypatch.setenv("OP_TEST_UPDATE_KEY", "old")
 
     result = await apply_env_change(
@@ -177,9 +171,9 @@ async def test_apply_env_change_updates_keys_in_environ(
 
 @pytest.mark.asyncio
 async def test_apply_env_change_removes_keys_from_environ(
-    monkeypatch: pytest.MonkeyPatch, _fake_app_with_swap
+    monkeypatch: pytest.MonkeyPatch, _fake_app_with_restart
 ) -> None:
-    fake_app, _swap_calls = _fake_app_with_swap
+    fake_app, _restart_calls = _fake_app_with_restart
     monkeypatch.setenv("OP_TEST_REMOVE_KEY", "stale")
 
     result = await apply_env_change(
@@ -195,17 +189,17 @@ async def test_apply_env_change_removes_keys_from_environ(
 
 
 @pytest.mark.asyncio
-async def test_apply_env_change_noop_skips_swap(
-    monkeypatch: pytest.MonkeyPatch, _fake_app_with_swap
+async def test_apply_env_change_noop_skips_restart(
+    monkeypatch: pytest.MonkeyPatch, _fake_app_with_restart
 ) -> None:
-    fake_app, swap_calls = _fake_app_with_swap
+    fake_app, restart_calls = _fake_app_with_restart
 
     same = {"OP_TEST_NOOP_KEY": "v"}
     monkeypatch.setenv("OP_TEST_NOOP_KEY", "v")
 
     result = await apply_env_change(fake_app, "default", same, dict(same))
 
-    assert swap_calls["n"] == 0
+    assert restart_calls["n"] == 0
     assert result == {
         "added": [],
         "updated": [],
@@ -219,10 +213,10 @@ async def test_apply_env_change_noop_skips_swap(
 @pytest.mark.asyncio
 async def test_apply_env_change_syncs_exec_allowlist(
     monkeypatch: pytest.MonkeyPatch,
-    _fake_app_with_swap,
+    _fake_app_with_restart,
     tmp_path,
 ) -> None:
-    fake_app, swap_calls = _fake_app_with_swap
+    fake_app, restart_calls = _fake_app_with_restart
 
     config_path = tmp_path / "config.json"
     monkeypatch.setattr(
@@ -241,7 +235,7 @@ async def test_apply_env_change_syncs_exec_allowlist(
     )
 
     assert result["exec_allowlist_changed"] is True
-    assert swap_calls["n"] == 1
+    assert restart_calls["n"] == 1
 
     import json
 
@@ -253,10 +247,10 @@ async def test_apply_env_change_syncs_exec_allowlist(
 @pytest.mark.asyncio
 async def test_apply_env_change_skips_unknown_exec_keys(
     monkeypatch: pytest.MonkeyPatch,
-    _fake_app_with_swap,
+    _fake_app_with_restart,
     tmp_path,
 ) -> None:
-    fake_app, _swap_calls = _fake_app_with_swap
+    fake_app, _restart_calls = _fake_app_with_restart
 
     config_path = tmp_path / "config.json"
     monkeypatch.setattr(

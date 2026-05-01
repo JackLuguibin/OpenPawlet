@@ -48,8 +48,8 @@ async def update_channel(
 ) -> DataResponse[dict[str, Any]]:
     """Merge ``body.data`` into ``channels.<name>`` and save ``config.json``.
 
-    Then reload the embedded runtime from disk and broadcast SPA snapshots
-    (same contract as ``PUT /config`` / ``apply_config_change``).
+    Then schedule the same in-place process restart as ``PUT /config`` /
+    :func:`apply_config_change`.
     """
     try:
         saved = merge_channel_patch(bot_id, name, body.data)
@@ -65,7 +65,11 @@ async def delete_channel(
     name: str,
     bot_id: str | None = Query(default=None, alias="bot_id"),
 ) -> DataResponse[OkBody]:
-    """Disable a channel (sets ``enabled`` to false)."""
+    """Disable a channel (sets ``enabled`` to false).
+
+    Persists ``config.json`` and schedules the same in-place process restart as
+    ``PUT /config`` / :func:`apply_config_change`.
+    """
     try:
         disable_channel(bot_id, name)
     except ChannelNotFoundError as exc:
