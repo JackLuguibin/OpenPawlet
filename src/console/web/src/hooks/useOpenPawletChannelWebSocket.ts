@@ -34,6 +34,8 @@ export interface OpenPawletNativeWsFrame {
   event:
     | "ready"
     | "message"
+    /** Structured `/status-json` reply (empty `text`, JSON in `data`). */
+    | "status"
     | "delta"
     | "stream_end"
     | "chat_start"
@@ -55,6 +57,35 @@ export interface OpenPawletNativeWsFrame {
   reasoning_content?: string;
   /** OutboundMessage.data — may carry status/command JSON (see `outboundDataHasStatusContext`). */
   data?: unknown;
+}
+
+function wireFrameDataRecord(
+  data: Record<string, unknown>,
+): Record<string, unknown> | null {
+  const inner = data.data;
+  if (
+    inner !== undefined &&
+    inner !== null &&
+    typeof inner === "object" &&
+    !Array.isArray(inner)
+  ) {
+    return inner as Record<string, unknown>;
+  }
+  return null;
+}
+
+function openpawletStatusJsonChunk(
+  innerObj: Record<string, unknown>,
+  legacyStringContent: boolean,
+): StreamChunk {
+  const chunk: StreamChunk = {
+    type: "openpawlet_status_json",
+    openpawlet_status_payload: innerObj,
+  };
+  if (legacyStringContent) {
+    chunk.content = JSON.stringify(innerObj);
+  }
+  return chunk;
 }
 
 function optionalToolFrameFields(
@@ -129,24 +160,18 @@ function mapNativeFrameToStreamChunk(
       reasoning_append: true,
     };
   }
+  if (ev === "status") {
+    const innerObj = wireFrameDataRecord(data);
+    return innerObj ? openpawletStatusJsonChunk(innerObj, false) : null;
+  }
   if (ev === "message") {
     const text = typeof data.text === "string" ? data.text : "";
     const msgExtras = optionalToolFrameFields(data);
-    const inner = data.data;
-    const innerObj =
-      inner !== undefined &&
-      inner !== null &&
-      typeof inner === "object" &&
-      !Array.isArray(inner)
-        ? (inner as Record<string, unknown>)
-        : null;
+    const innerObj = wireFrameDataRecord(data);
 
     if (!text.trim()) {
       if (innerObj && outboundDataHasStatusContext(innerObj)) {
-        return {
-          type: "openpawlet_status_json",
-          content: JSON.stringify(innerObj),
-        };
+        return openpawletStatusJsonChunk(innerObj, true);
       }
       if (msgExtras.reasoning_content !== undefined) {
         return {

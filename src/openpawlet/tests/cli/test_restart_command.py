@@ -221,6 +221,7 @@ class TestRestartCommand:
 
         assert response is not None
         assert response.content == ""
+        assert response.metadata.get("_status_json_ws") is True
         payload = response.metadata.get("data")
         assert isinstance(payload, dict)
         context = payload.get("context")

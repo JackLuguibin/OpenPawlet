@@ -51,8 +51,10 @@ import { VirtualizedMessageList } from "./chat/VirtualizedMessageList";
 import { useVirtualListHandle } from "./chat/useVirtualListHandle";
 import type { Message, TrackedToolCall } from "./chat/types";
 import {
-  parseOpenPawletStatusJson,
+  parseOpenPawletStatusFromChunk,
+  parseOpenPawletStatusPlainText,
   resolveChatDonePrimaryText,
+  streamChunkText,
 } from "./chat/statusParse";
 import {
   groupAssistantReplies,
@@ -539,7 +541,6 @@ export default function Chat() {
     statusJsonLoading,
     scheduleOpenPawletStatusJson,
     silentStatusJsonRef,
-    silentStatusJsonBufferRef,
     expectStatusJsonTrailingChatDoneRef,
     completeSilentStatusJsonPoll,
   } = useOpenPawletContextUsage({
@@ -1495,28 +1496,21 @@ export default function Chat() {
         if (chunk.type === "chat_start") {
           return;
         }
-        if (
-          chunk.type === "chat_token" ||
-          chunk.type === "openpawlet_status_json" ||
-          chunk.type === "channel_notice"
-        ) {
-          const chunkText =
-            typeof chunk.content === "string" ? chunk.content : "";
-          silentStatusJsonBufferRef.current += chunkText;
-          const assembled = silentStatusJsonBufferRef.current;
-          if (parseOpenPawletStatusJson(assembled) !== null) {
-            completeSilentStatusJsonPoll(assembled, { fromEarlyParse: true });
-          }
+        if (chunk.type === "openpawlet_status_json") {
+          completeSilentStatusJsonPoll("", {
+            fromEarlyParse: true,
+            parsedUsage: parseOpenPawletStatusFromChunk(chunk),
+          });
+          return;
+        }
+        if (chunk.type === "chat_token" || chunk.type === "channel_notice") {
           return;
         }
         if (chunk.type === "stream_frame_end") {
           return;
         }
         if (chunk.type === "chat_done") {
-          const assembled =
-            silentStatusJsonBufferRef.current +
-            (typeof chunk.content === "string" ? chunk.content : "");
-          completeSilentStatusJsonPoll(assembled);
+          completeSilentStatusJsonPoll(streamChunkText(chunk));
           return;
         }
         if (chunk.type === "error" && chunk.error) {
@@ -1526,8 +1520,7 @@ export default function Chat() {
         return;
       }
       if (chunk.type === "openpawlet_status_json") {
-        const raw = typeof chunk.content === "string" ? chunk.content : "";
-        const parsed = parseOpenPawletStatusJson(raw);
+        const parsed = parseOpenPawletStatusFromChunk(chunk);
         if (parsed) {
           setOpenPawletContextUsage(parsed);
         }
@@ -1558,7 +1551,7 @@ export default function Chat() {
         setIsStreaming(true);
       } else if (chunk.type === "channel_notice" && chunk.content) {
         const noticeText = chunk.content as string;
-        const usageFromStatus = parseOpenPawletStatusJson(noticeText);
+        const usageFromStatus = parseOpenPawletStatusPlainText(noticeText);
         if (usageFromStatus) {
           setOpenPawletContextUsage(usageFromStatus);
         }
@@ -1924,7 +1917,6 @@ export default function Chat() {
       useOpenPawletChannel,
       expectStatusJsonTrailingChatDoneRef,
       setOpenPawletContextUsage,
-      silentStatusJsonBufferRef,
       silentStatusJsonRef,
     ],
   );

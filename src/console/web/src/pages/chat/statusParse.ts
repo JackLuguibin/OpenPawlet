@@ -1,30 +1,30 @@
 import type { StreamChunk } from "../../api/types";
-import { extractOpenPawletStatusContext } from "../../utils/openpawletStatusContext";
+import {
+  extractOpenPawletStatusContext,
+} from "../../utils/openpawletStatusContext";
 import type { OpenPawletContextUsage } from "./types";
 
-/**
- * Pull the first balanced `{ ... }` object out of an arbitrary text blob.
- *
- * Used to recover a status JSON that some providers wrap in chatter (e.g.
- * "Here is the status: {...}"). Returns the substring including the braces,
- * or `null` if no balanced object is found.
- */
-export function extractFirstJsonObject(text: string): string | null {
-  const start = text.indexOf("{");
-  if (start < 0) {
+/** Build usage from an already-parsed status JSON object (OpenPawlet `/status-json` `data`). */
+export function parseOpenPawletStatusPayload(
+  root: Record<string, unknown>,
+): OpenPawletContextUsage | null {
+  const ctx = extractOpenPawletStatusContext(root);
+  if (!ctx) {
     return null;
   }
-  let depth = 0;
-  for (let i = start; i < text.length; i++) {
-    const c = text[i];
-    if (c === "{") {
-      depth += 1;
-    } else if (c === "}") {
-      depth -= 1;
-      if (depth === 0) {
-        return text.slice(start, i + 1);
-      }
-    }
+  const te = ctx.tokens_estimate;
+  const wt = ctx.window_total;
+  const pu = ctx.percent_used;
+  if (
+    typeof te === "number" &&
+    typeof wt === "number" &&
+    typeof pu === "number"
+  ) {
+    return {
+      tokens_estimate: te,
+      window_total: wt,
+      percent_used: pu,
+    };
   }
   return null;
 }
@@ -80,9 +80,8 @@ export function parseOpenPawletStatusPlainText(
 }
 
 /**
- * Parse a `/status` JSON payload (with or without a fenced code block, with
- * or without surrounding chatter). Falls back to plain-text parsing when no
- * usable JSON object is recovered.
+ * Parse a single JSON text blob (e.g. trailing `chat_done` body). Expects the
+ * wire payload to already be JSON — no markdown fences or substring recovery.
  */
 export function parseOpenPawletStatusJson(
   raw: string,
@@ -91,40 +90,33 @@ export function parseOpenPawletStatusJson(
   if (!trimmed) {
     return null;
   }
-  let text = trimmed;
-  const fence = /^```(?:json)?\s*([\s\S]*?)```$/m.exec(trimmed);
-  if (fence) {
-    text = fence[1].trim();
+  try {
+    const data = JSON.parse(trimmed) as Record<string, unknown>;
+    return parseOpenPawletStatusPayload(data);
+  } catch {
+    return null;
   }
-  const candidates = [text, extractFirstJsonObject(trimmed) ?? ""].filter(
-    (s) => s.length > 0,
-  );
-  for (const candidate of candidates) {
-    try {
-      const data = JSON.parse(candidate) as Record<string, unknown>;
-      const ctx = extractOpenPawletStatusContext(data);
-      if (!ctx) {
-        continue;
-      }
-      const te = ctx.tokens_estimate;
-      const wt = ctx.window_total;
-      const pu = ctx.percent_used;
-      if (
-        typeof te === "number" &&
-        typeof wt === "number" &&
-        typeof pu === "number"
-      ) {
-        return {
-          tokens_estimate: te,
-          window_total: wt,
-          percent_used: pu,
-        };
-      }
-    } catch {
-      continue;
-    }
+}
+
+/** Primary text segment on chunks that expose string `content`. */
+export function streamChunkText(
+  chunk: Pick<StreamChunk, "content">,
+): string {
+  return typeof chunk.content === "string" ? chunk.content : "";
+}
+
+/**
+ * Prefer structured `openpawlet_status_payload`; otherwise one-shot `JSON.parse`
+ * on string `content` (legacy frames).
+ */
+export function parseOpenPawletStatusFromChunk(
+  chunk: Pick<StreamChunk, "openpawlet_status_payload" | "content">,
+): OpenPawletContextUsage | null {
+  const payload = chunk.openpawlet_status_payload;
+  if (payload !== undefined) {
+    return parseOpenPawletStatusPayload(payload);
   }
-  return parseOpenPawletStatusPlainText(trimmed);
+  return parseOpenPawletStatusJson(streamChunkText(chunk));
 }
 
 /**

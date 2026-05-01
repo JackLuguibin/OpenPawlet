@@ -78,8 +78,10 @@ async def cmd_status_json(ctx: CommandContext) -> OutboundMessage:
     # and leave text empty to avoid channel_notice parsing overhead.
     if ctx.msg.channel == "websocket":
         content = ""
+        meta_extra: dict[str, object] = {"_status_json_ws": True}
     else:
         content = json.dumps(payload, ensure_ascii=False, indent=2)
+        meta_extra = {}
     return OutboundMessage(
         channel=ctx.msg.channel,
         chat_id=ctx.msg.chat_id,
@@ -88,6 +90,7 @@ async def cmd_status_json(ctx: CommandContext) -> OutboundMessage:
             **dict(ctx.msg.metadata or {}),
             "render_as": "text",
             "data": payload,
+            **meta_extra,
         },
     )
 

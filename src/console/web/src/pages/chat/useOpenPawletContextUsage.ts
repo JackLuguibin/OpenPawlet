@@ -41,12 +41,10 @@ export interface UseOpenPawletContextUsageResult {
    */
   scheduleOpenPawletStatusJson: () => void;
   /**
-   * True while the WS reducer should swallow streamed frames into the
-   * `/status-json` buffer instead of rendering them.
+   * True while the WS reducer should swallow unrelated frames during an in-flight
+   * `/status-json` poll (tokens / notices are ignored; completion is payload or final JSON).
    */
   silentStatusJsonRef: MutableRefObject<boolean>;
-  /** Aggregated text seen so far for the in-flight silent `/status-json` poll. */
-  silentStatusJsonBufferRef: MutableRefObject<string>;
   /**
    * True after an early-parse (status payload was extracted before
    * `chat_done`); the WS reducer should drop the upcoming empty `chat_done`
@@ -54,23 +52,26 @@ export interface UseOpenPawletContextUsageResult {
    */
   expectStatusJsonTrailingChatDoneRef: MutableRefObject<boolean>;
   /**
-   * Conclude the in-flight silent poll: parse the assembled buffer (or `raw`
-   * passed by the caller) and reset the refs/state. When `fromEarlyParse` is
-   * set, the hook arms `expectStatusJsonTrailingChatDoneRef` so the upcoming
-   * empty `chat_done` is suppressed.
+   * Conclude the in-flight silent poll and reset state.
+   * - `parsedUsage`: structured result from `openpawlet_status_payload` / chunk parse.
+   * - `raw`: JSON text from `chat_done` when the body is the raw document (single `JSON.parse`).
+   * - `fromEarlyParse`: arm `expectStatusJsonTrailingChatDoneRef` to drop the trailing empty `chat_done`.
    */
   completeSilentStatusJsonPoll: (
     raw: string,
-    options?: { fromEarlyParse?: boolean },
+    options?: {
+      fromEarlyParse?: boolean;
+      parsedUsage?: OpenPawletContextUsage | null;
+    },
   ) => void;
 }
 
 /**
  * Hook for the silent `/status-json` poll machinery.
  *
- * Why a hook (and not a few `useState`s inline): the four refs and three
- * state slots are tightly coupled by a small state machine — any caller that
- * needs to mutate one of them in isolation will inevitably break the rest.
+ * Why a hook (and not a few `useState`s inline): multiple refs and state slots
+ * are tightly coupled by a small state machine — any caller that needs to
+ * mutate one of them in isolation will inevitably break the rest.
  * Bundling them lets us keep the contract in one place while leaving
  * `handleStreamChunk` (which has many other branches) untouched.
  */
@@ -86,7 +87,6 @@ export function useOpenPawletContextUsage({
   const [statusJsonLoading, setStatusJsonLoading] = useState(false);
 
   const silentStatusJsonRef = useRef(false);
-  const silentStatusJsonBufferRef = useRef("");
   const statusJsonInFlightRef = useRef(false);
   const queuedStatusJsonRef = useRef(false);
   /** Incremented when `activeSessionKey` changes so stale replies are ignored. */
@@ -98,7 +98,6 @@ export function useOpenPawletContextUsage({
     contextSessionEpochRef.current += 1;
     setOpenPawletContextUsage(null);
     silentStatusJsonRef.current = false;
-    silentStatusJsonBufferRef.current = "";
     statusJsonInFlightRef.current = false;
     queuedStatusJsonRef.current = false;
     setStatusJsonLoading(false);
@@ -115,7 +114,6 @@ export function useOpenPawletContextUsage({
     }
     statusJsonInFlightRef.current = true;
     silentStatusJsonRef.current = true;
-    silentStatusJsonBufferRef.current = "";
     statusJsonPollEpochRef.current = contextSessionEpochRef.current;
     setStatusJsonLoading(true);
     try {
@@ -135,10 +133,15 @@ export function useOpenPawletContextUsage({
   }, [useOpenPawletChannel, openpawletWsReady, currentBotId, sendOpenPawletMessage]);
 
   const completeSilentStatusJsonPoll = useCallback(
-    (raw: string, options?: { fromEarlyParse?: boolean }) => {
+    (
+      raw: string,
+      options?: {
+        fromEarlyParse?: boolean;
+        parsedUsage?: OpenPawletContextUsage | null;
+      },
+    ) => {
       const epochOk =
         statusJsonPollEpochRef.current === contextSessionEpochRef.current;
-      silentStatusJsonBufferRef.current = "";
       silentStatusJsonRef.current = false;
       statusJsonInFlightRef.current = false;
       setStatusJsonLoading(false);
@@ -146,7 +149,10 @@ export function useOpenPawletContextUsage({
         expectStatusJsonTrailingChatDoneRef.current = true;
       }
       if (epochOk) {
-        const parsed = parseOpenPawletStatusJson(raw);
+        const parsed =
+          options?.parsedUsage !== undefined
+            ? options.parsedUsage
+            : parseOpenPawletStatusJson(raw);
         if (parsed) {
           setOpenPawletContextUsage(parsed);
         }
@@ -173,7 +179,6 @@ export function useOpenPawletContextUsage({
     statusJsonLoading,
     scheduleOpenPawletStatusJson,
     silentStatusJsonRef,
-    silentStatusJsonBufferRef,
     expectStatusJsonTrailingChatDoneRef,
     completeSilentStatusJsonPoll,
   };

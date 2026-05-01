@@ -534,7 +534,7 @@ export type WSMessageType =
   | 'assistant_message'
   /** OpenPawlet `event: message` — status / retry lines until `chat_end` */
   | 'channel_notice'
-  /** OpenPawlet `event: message` with empty `text` and JSON status in `data` (`/status-json`) */
+  /** Native `event: status` (`openpawlet_status_payload`) or legacy `message`+`content` (`/status-json`) */
   | 'openpawlet_status_json'
   /** Welcome frame from `/ws/state` after the upgrade settles. */
   | 'welcome'
@@ -599,6 +599,11 @@ export interface StreamChunk {
    * group streamed deltas / tool events / final answer into one bubble.
    */
   reply_group_id?: string;
+  /**
+   * Native OpenPawlet `event: status` body (`data` field), when mapped without
+   * stringifying — avoids JSON parse for `/status-json` replies.
+   */
+  openpawlet_status_payload?: Record<string, unknown>;
 }
 
 // Batch operations

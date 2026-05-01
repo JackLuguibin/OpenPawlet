@@ -77,6 +77,8 @@ class WebSocketConfig(Base):
       streaming completes when applicable, or on ``event: "message"`` as field ``reasoning_content``,
       when global ``channels.sendReasoningContent`` / ``send_reasoning_content`` is true (default).
       The same global flag controls whether other channels receive reasoning on outbound messages.
+    - Slash command ``/status-json`` replies use ``event: "status"`` (empty ``text``, JSON body in ``data``)
+      so clients can distinguish silent status polls from ordinary ``event: "message"`` notifications.
     - ``max_delta_buffer_chars``: When ``delta_chunk_chars`` > 0, caps buffered stream text per stream;
       overflow is flushed as extra delta frames before ``stream_end``. ``0`` means no cap.
     - When the gateway passes a :class:`~openpawlet.session.manager.SessionManager` into
@@ -943,8 +945,9 @@ class WebSocketChannel(BaseChannel):
                 if key in metadata:
                     payload[key] = metadata[key]
         else:
+            ws_ev = "status" if metadata.get("_status_json_ws") else "message"
             payload = {
-                "event": "message",
+                "event": ws_ev,
                 "chat_id": msg.chat_id,
                 "text": msg.content,
             }
