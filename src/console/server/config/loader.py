@@ -86,9 +86,8 @@ def write_default_config(config_path: Path | None = None) -> Path:
 
     # Build the default snapshot from field metadata so it is independent of
     # any current env / .env / existing-file state.  Fields that use a
-    # ``default_factory`` (e.g. ``version`` resolved from package metadata)
-    # report ``PydanticUndefined`` for ``field.default``; call the factory so
-    # the resulting JSON is always serialisable.
+    # ``default_factory`` report ``PydanticUndefined`` for ``field.default``;
+    # call the factory so the resulting JSON is always serialisable.
     defaults: dict[str, Any] = {}
     for name, field in ServerSettings.model_fields.items():
         if field.default_factory is not None:
@@ -105,7 +104,7 @@ def write_default_config(config_path: Path | None = None) -> Path:
 
 
 def _server_defaults() -> dict[str, Any]:
-    """Return a fresh snapshot of :class:`ServerSettings` field defaults."""
+    """Return defaults merged into ``openpawlet_web.json`` during auto-fill."""
     defaults: dict[str, Any] = {}
     for name, field in ServerSettings.model_fields.items():
         if field.default_factory is not None:
@@ -153,6 +152,7 @@ def ensure_server_config(config_path: Path | None = None) -> bool:
     # Defaults first, then user overrides; unknown keys preserved so future
     # rollbacks don't lose data.
     merged_server = {**defaults, **server_section}
+    merged_server.pop("version", None)
 
     full = dict(raw)
     full[_SERVER_KEY] = merged_server

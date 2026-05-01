@@ -111,8 +111,22 @@ def test_ensure_server_config_fills_missing_fields(tmp_path: Path) -> None:
     # New defaults present (sample a few stable settings).
     assert data["server"]["host"] == "localhost"
     assert "log_level" in data["server"]
+    assert "version" not in data["server"]
     # Unknown top-level keys preserved.
     assert data["extra"] == {"foo": "bar"}
+
+
+def test_ensure_server_config_strips_legacy_version(tmp_path: Path) -> None:
+    target = tmp_path / "openpawlet_web.json"
+    target.write_text(
+        json.dumps({"server": {"port": 9100, "version": "0.0.0-stale"}}),
+        encoding="utf-8",
+    )
+
+    assert ensure_server_config(target) is True
+    data = json.loads(target.read_text(encoding="utf-8"))
+    assert data["server"]["port"] == 9100
+    assert "version" not in data["server"]
 
 
 def test_ensure_server_config_is_idempotent(tmp_path: Path) -> None:

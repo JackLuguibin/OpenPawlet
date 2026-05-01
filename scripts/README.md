@@ -22,7 +22,7 @@ The canonical version is `[project] version` in `pyproject.toml`. The script wri
 | File | Field |
 |------|--------|
 | `pyproject.toml` | `[project] version` |
-| `src/console/server/config/schema.py` | `ServerSettings.version` default |
+| `src/console/server/config/schema.py` | skipped — API version from `openpawlet_distribution_version()` after reinstall |
 | `src/console/web/package.json` | `"version"` |
 | `src/console/web/package-lock.json` | Root and `packages[""]` `version` |
 

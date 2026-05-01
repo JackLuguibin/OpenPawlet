@@ -62,14 +62,16 @@ def test_init_config_writes_default_file(tmp_path: Path, monkeypatch: pytest.Mon
 
     monkeypatch.setattr(openpawlet_loader, "_current_config_path", tmp_path / "config.json")
 
-    # Clean run returns without SystemExit.
-    _call_with_args(["init-config"])
+    with pytest.raises(SystemExit) as exc:
+        _call_with_args(["init-config"])
+    assert exc.value.code == 0
 
     written = tmp_path / "openpawlet_web.json"
     assert written.is_file()
     data = json.loads(written.read_text(encoding="utf-8"))
     assert "server" in data
     assert "port" in data["server"]
+    assert "version" not in data["server"]
 
 
 def test_init_config_refuses_to_overwrite(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -92,8 +94,11 @@ def test_init_config_force_overwrites(tmp_path: Path, monkeypatch: pytest.Monkey
     target = tmp_path / "openpawlet_web.json"
     target.write_text('{"server": {"port": 1234}}', encoding="utf-8")
 
-    _call_with_args(["init-config", "--force"])
+    with pytest.raises(SystemExit) as exc:
+        _call_with_args(["init-config", "--force"])
+    assert exc.value.code == 0
     data = json.loads(target.read_text(encoding="utf-8"))
     assert "server" in data
     # The default file uses the schema defaults, not the leftover port.
     assert data["server"].get("port") == 8000
+    assert "version" not in data["server"]

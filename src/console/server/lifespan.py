@@ -19,7 +19,7 @@ from typing import Any
 from fastapi import FastAPI
 from loguru import logger
 
-from console.server.config import ServerSettings
+from console.server.config import ServerSettings, openpawlet_distribution_version
 from console.server.state_hub import bind_state_hub_to_loop
 
 _TRUTHY_ENV_VALUES = frozenset({"1", "true", "yes", "on"})
@@ -356,7 +356,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     settings: ServerSettings = app.state.settings
     logger.info(
         "Starting OpenPawlet console server {version} - listening on {host}:{port}",
-        version=settings.version,
+        version=openpawlet_distribution_version(),
         host=settings.host,
         port=settings.port,
     )

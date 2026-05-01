@@ -1,7 +1,8 @@
 """Fail when pyproject and frontend package versions drift.
 
-Run as part of CI to keep the wheel version, the FastAPI ``info.version``
-default, and the SPA ``package.json`` in lock-step.  Prints both versions
+Run as part of CI to keep the wheel version and the SPA ``package.json`` in
+lock-step.  FastAPI ``info.version`` is resolved from installed metadata at
+runtime (see ``openpawlet_distribution_version``).
 and exits non-zero on mismatch so PRs surface the divergence early.
 """
 

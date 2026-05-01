@@ -5,9 +5,9 @@ Settings are resolved in this priority order (highest wins):
 1. Arguments passed to :class:`ServerSettings` directly (``__init__`` kwargs)
 2. ``OPENPAWLET_SERVER_*`` environment variables
 3. ``.env`` file in the current working directory (optional)
-4. ``~/.openpawlet/openpawlet_web.json`` under the ``server`` key (optional;
-   legacy ``server.version`` snapshots are ignored so the reported API version
-   always matches the installed ``open-pawlet`` wheel)
+4. ``~/.openpawlet/openpawlet_web.json`` under the ``server`` key (optional).
+   Legacy ``server.version`` keys are ignored — API ``info.version`` and health
+   payloads use :func:`openpawlet_distribution_version` (installed wheel metadata).
 5. Built-in defaults on each field
 
 The JSON file is **opt-in**: it is no longer written automatically on first
@@ -18,6 +18,7 @@ initialization helpers.
 from __future__ import annotations
 
 import json
+from functools import lru_cache
 from importlib import metadata as _importlib_metadata
 from pathlib import Path
 from typing import Any
@@ -31,14 +32,13 @@ from pydantic_settings import (
 )
 
 
-def _resolve_package_version() -> str:
-    """Read the installed ``open-pawlet`` version, falling back to a stub.
+@lru_cache(maxsize=1)
+def openpawlet_distribution_version() -> str:
+    """Installed ``open-pawlet`` version from package metadata, or a local stub.
 
-    Used as the default for :attr:`ServerSettings.version` so the server
-    surface, OpenAPI ``info.version`` and ``GET /api/v1/health`` always
-    report the wheel version that ``pyproject.toml`` declares.  The
-    fallback only kicks in for editable checkouts that have never been
-    ``pip install``-ed, which keeps the test suite working out of the box.
+    Used for OpenAPI ``info.version``, health payloads, and startup logs — not a
+    configurable server setting. The fallback keeps editable checkouts usable
+    without a prior ``pip install``.
     """
     try:
         return _importlib_metadata.version("open-pawlet")
@@ -53,10 +53,8 @@ class JsonServerFileSource(PydanticBaseSettingsSource):
     .find_config_file` so tests can override ``openpawlet.config.loader`` state
     without triggering an import cycle at class definition time.
 
-    ``server.version`` keys are deliberately ignored: ``open-pawlet init-config``
-    snapshots the resolved version at creation time and would otherwise pin a
-    stale string across ``pip install -U`` / editable reloads while the embedded
-    OpenPawlet runtime already reflects the upgraded wheel (see lifespan logs).
+    Unknown keys in the JSON ``server`` object are ignored by pydantic.
+    Legacy ``server.version`` is never applied to settings.
     """
 
     _SERVER_KEY = "server"
@@ -89,18 +87,13 @@ class JsonServerFileSource(PydanticBaseSettingsSource):
         return self._cached
 
     def get_field_value(self, field: FieldInfo, field_name: str) -> tuple[Any, str, bool]:
-        if field_name == "version":
-            return None, field_name, False
         value = self._load().get(field_name)
         return value, field_name, False
 
     def __call__(self) -> dict[str, Any]:
         data = self._load()
-        return {
-            name: data[name]
-            for name in self.settings_cls.model_fields
-            if name in data and name != "version"
-        }
+        field_names = self.settings_cls.model_fields
+        return {name: data[name] for name in field_names if name in data}
 
 
 class ServerSettings(BaseSettings):
@@ -150,10 +143,6 @@ class ServerSettings(BaseSettings):
     description: str = Field(
         default="HTTP API for OpenPawlet console management",
         description="API description",
-    )
-    version: str = Field(
-        default_factory=_resolve_package_version,
-        description="API version (auto-resolved from the installed open-pawlet wheel)",
     )
     api_prefix: str = Field(default="/api/v1", description="Root path for all routes")
     docs_url: str = Field(

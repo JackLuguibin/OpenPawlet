@@ -6,9 +6,8 @@ The console resolves settings in this order (highest priority first):
 2. ``OPENPAWLET_SERVER_*`` environment variables
 3. ``.env`` file in the working directory
 4. ``~/.openpawlet/openpawlet_web.json`` under the ``server`` key (optional).
-   Historical ``server.version`` keys in this file are ignored so the resolved
-   value always reflects the installed ``open-pawlet`` metadata (env / init may
-   still override).
+   Only declared :class:`ServerSettings` fields apply; a legacy ``server.version``
+   key is ignored (API version comes from :func:`openpawlet_distribution_version`).
 5. Built-in field defaults
 
 These tests pin that behaviour so future pydantic-settings upgrades or
@@ -26,6 +25,7 @@ from importlib.metadata import version as distro_version
 from console.server.config import (
     ServerSettings,
     get_settings,
+    openpawlet_distribution_version,
     reset_settings_cache,
 )
 
@@ -125,15 +125,19 @@ def test_get_settings_is_cached(isolated_config: Path) -> None:
     assert first is second
 
 
-def test_json_server_section_does_not_pin_stale_version(isolated_config: Path) -> None:
-    """``openpawlet_web.json`` may contain a pinned ``server.version`` from older init-config snapshots."""
+def test_openpawlet_distribution_version_matches_wheel() -> None:
+    assert openpawlet_distribution_version() == distro_version("open-pawlet")
+
+
+def test_json_server_section_ignores_legacy_version_key(isolated_config: Path) -> None:
+    """Legacy ``server.version`` in openpawlet_web.json is not a ServerSettings field."""
     _write_server_json(
         isolated_config,
         {"version": "0.3.0", "port": 9100},
     )
     settings = ServerSettings()
     assert settings.port == 9100
-    assert settings.version == distro_version("open-pawlet")
+    assert not hasattr(settings, "version")
 
 
 def test_reset_settings_cache_picks_up_new_env(

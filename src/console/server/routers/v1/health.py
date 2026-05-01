@@ -6,7 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, status
 
-from console.server.config import ServerSettings
+from console.server.config import ServerSettings, openpawlet_distribution_version
 from console.server.dependencies import get_settings_dep
 from console.server.models import (
     DataResponse,
@@ -25,14 +25,14 @@ router = APIRouter(tags=["Health"])
     summary="Liveness probe",
 )
 async def health_check(
-    settings: Annotated[ServerSettings, Depends(get_settings_dep)],
+    _settings: Annotated[ServerSettings, Depends(get_settings_dep)],
 ) -> DataResponse[HealthResponse]:
     """Return server health status.
 
     Ready for integration with orchestration systems (Kubernetes, etc.).
     """
     return DataResponse(
-        data=HealthResponse(version=settings.version),
+        data=HealthResponse(version=openpawlet_distribution_version()),
     )
 
 

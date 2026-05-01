@@ -164,8 +164,11 @@ def replace_schema_api_version(content: str, new_version: str) -> str:
     new_content, n = re.subn(pat, _repl, content, count=1)
     if n == 1:
         return new_content
-    # ServerSettings.version may use default_factory=_resolve_package_version(); then
-    # the reported API version follows pyproject.toml / the wheel and needs no edit here.
+    # Reported API version follows pyproject after reinstall via
+    # openpawlet_distribution_version(); schema needs no literal bump.
+    if re.search(r"def openpawlet_distribution_version\b", content):
+        return content
+    # Historical: default_factory=_resolve_package_version on ServerSettings.
     if re.search(
         r"version:\s*str\s*=\s*Field\(\s*\n\s*default_factory=_resolve_package_version",
         content,

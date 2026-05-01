@@ -19,7 +19,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
-from console.server.config import ServerSettings, get_settings
+from console.server.config import ServerSettings, get_settings, openpawlet_distribution_version
 from console.server.error_handlers import install_error_handlers
 from console.server.lifespan import lifespan, swap_runtime  # noqa: F401  (re-exported)
 from console.server.openai_api import install_openai_routes
@@ -88,7 +88,7 @@ def create_app(
     app = FastAPI(
         title=settings.title,
         description=settings.description,
-        version=settings.version,
+        version=openpawlet_distribution_version(),
         lifespan=lifespan,
         docs_url=settings.effective_docs_url,
         redoc_url=settings.effective_redoc_url,
@@ -137,6 +137,9 @@ def create_app(
 
         @app.get("/", include_in_schema=False)
         async def root() -> dict[str, str]:
-            return {"service": settings.title, "version": settings.version}
+            return {
+                "service": settings.title,
+                "version": openpawlet_distribution_version(),
+            }
 
     return app

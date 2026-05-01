@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from loguru import logger
 
 from console.server.bot_workspace import workspace_root
-from console.server.config import ServerSettings
+from console.server.config import ServerSettings, openpawlet_distribution_version
 from console.server.dependencies import get_settings_dep
 from console.server.models import DataResponse, ObservabilityResponse
 from console.server.models.observability import (
@@ -48,7 +48,7 @@ def _embedded_runtime_info(request: Request, settings: ServerSettings) -> OpenPa
         endpoint=endpoint,
         ok=True,
         status="ok",
-        version=settings.version,
+        version=openpawlet_distribution_version(),
         uptime_s=uptime,
         error=None,
     )
@@ -69,7 +69,7 @@ async def get_observability(
         data=ObservabilityResponse(
             console=ConsoleObservabilityInfo(
                 status="ok",
-                version=settings.version,
+                version=openpawlet_distribution_version(),
             ),
             openpawlet_gateway=_embedded_runtime_info(request, settings),
         )

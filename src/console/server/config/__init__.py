@@ -11,11 +11,12 @@ from console.server.config.loader import (
     reset_settings_cache,
     write_default_config,
 )
-from console.server.config.schema import ServerSettings
+from console.server.config.schema import ServerSettings, openpawlet_distribution_version
 
 __all__ = [
     "CONFIG_FILENAME",
     "ServerSettings",
+    "openpawlet_distribution_version",
     "ensure_server_config",
     "find_config_file",
     "get_settings",
