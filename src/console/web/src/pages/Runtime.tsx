@@ -30,8 +30,13 @@ import {
   StopOutlined,
 } from '@ant-design/icons';
 import { RobotOutlined, ApiOutlined } from '@ant-design/icons';
-import { PageLayout } from '../components/PageLayout';
-import { PAGE_PRIMARY_TITLE_CLASS } from '../utils/pageTitleClasses';
+
+
+import {
+  ConsolePageShell,
+  ConsolePageHeading,
+  ConsolePageTitleBlock,
+} from '../components/ConsolePageChrome';
 import { useAppStore } from '../store';
 import * as api from '../api/client';
 import type {
@@ -528,44 +533,54 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
     stopSubMutation,
   ]);
 
-  return (
-    <PageLayout embedded={embedded} className="min-h-0 flex-1 overflow-hidden">
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between pb-2">
-          <header className="min-w-0">
-            <h1 className={PAGE_PRIMARY_TITLE_CLASS}>{t('runtime.title')}</h1>
-            <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-gray-500 dark:text-gray-400">
-              {t('runtime.subtitle')}
-            </p>
-          </header>
-          <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto sm:shrink-0 sm:justify-start">
-            <div className="inline-flex items-center rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700 dark:border-blue-900/60 dark:bg-blue-900/20 dark:text-blue-300">
-              {t('runtime.summary', {
-                main: mainRow?.running ? t('runtime.running') : t('runtime.stopped'),
-                sub: runningSubCount,
-              })}
-            </div>
-            <Button
-              icon={<ReloadOutlined />}
-              aria-label={t('common.refresh')}
-              onClick={() => agentsQuery.refetch()}
-              loading={agentsQuery.isFetching && !agentsQuery.isLoading}
-            >
-              <span className="hidden sm:inline">{t('common.refresh')}</span>
-            </Button>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              aria-label={t('runtime.startSub')}
-              onClick={openStartModalBlank}
-              disabled={!mainRow}
-            >
-              <span className="hidden sm:inline">{t('runtime.startSub')}</span>
-            </Button>
-          </div>
-        </div>
+  const runtimeHeaderExtra = (
+    <>
+      <div className="inline-flex items-center rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700 dark:border-blue-900/60 dark:bg-blue-900/20 dark:text-blue-300">
+        {t('runtime.summary', {
+          main: mainRow?.running ? t('runtime.running') : t('runtime.stopped'),
+          sub: runningSubCount,
+        })}
+      </div>
+      <Button
+        icon={<ReloadOutlined />}
+        aria-label={t('common.refresh')}
+        onClick={() => agentsQuery.refetch()}
+        loading={agentsQuery.isFetching && !agentsQuery.isLoading}
+      >
+        <span className="hidden sm:inline">{t('common.refresh')}</span>
+      </Button>
+      <Button
+        type="primary"
+        icon={<PlusOutlined />}
+        aria-label={t('runtime.startSub')}
+        onClick={openStartModalBlank}
+        disabled={!mainRow}
+      >
+        <span className="hidden sm:inline">{t('runtime.startSub')}</span>
+      </Button>
+    </>
+  );
 
-        <div className="mt-4 flex min-h-0 min-w-0 flex-1 flex-col gap-4">
+  return (
+    <ConsolePageShell embedded={embedded}>
+      <ConsolePageHeading
+        surface={embedded ? 'plain' : 'hero'}
+        heading={
+          <ConsolePageTitleBlock
+            title={t('runtime.title')}
+            subtitle={t('runtime.subtitle')}
+            subtitleClassName={
+              embedded
+                ? 'mt-1 max-w-2xl text-[13px] leading-relaxed text-gray-500 dark:text-gray-400'
+                : undefined
+            }
+          />
+        }
+        extra={runtimeHeaderExtra}
+        extraClassName="sm:!justify-start sm:shrink-0"
+      />
+
+        <div className={`flex min-h-0 min-w-0 flex-1 flex-col gap-4${embedded ? '' : ' mt-4'}`}>
           {errorMessage && (
             <Alert
               type="error"
@@ -606,7 +621,6 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
             )}
           </Card>
         </div>
-      </div>
 
       <Modal
         title={
@@ -806,6 +820,6 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
           />
         ) : null}
       </Drawer>
-    </PageLayout>
+    </ConsolePageShell>
   );
 }

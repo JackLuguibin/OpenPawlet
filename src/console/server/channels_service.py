@@ -19,8 +19,29 @@ from console.server.openpawlet_user_config import (
     validate_core_config,
 )
 
-# Keys reserved for ``ChannelsConfig`` (not plugin channel names).
-_RESERVED_CHANNELS_ROOT_KEYS = frozenset({"sendProgress", "sendToolHints", "sendMaxRetries"})
+# Root keys of ``openpawlet.config.schema.ChannelsConfig`` (camelCase / snake_case
+# as in JSON). These are not plugin channel names.
+_CHANNELS_CONFIG_ROOT_KEYS = frozenset(
+    {
+        "sendProgress",
+        "sendToolHints",
+        "sendToolEvents",
+        "sendReasoningContent",
+        "sendMaxRetries",
+        "transcriptionProvider",
+        "transcriptionLanguage",
+        "sessionTurnLifecycleChannels",
+        "send_progress",
+        "send_tool_hints",
+        "send_tool_events",
+        "send_reasoning_content",
+        "send_max_retries",
+        "transcription_provider",
+        "transcription_language",
+        "session_turn_lifecycle_channels",
+    }
+)
+_RESERVED_CHANNELS_ROOT_KEYS = _CHANNELS_CONFIG_ROOT_KEYS
 
 
 class ChannelNotFoundError(Exception):

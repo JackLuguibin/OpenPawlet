@@ -31,8 +31,12 @@ import { useTranslation } from 'react-i18next';
 import * as api from '../api/client';
 import { useAppStore } from '../store';
 import { useBots } from '../hooks/useBots';
+import {
+  ConsolePageShell,
+  ConsolePageHeading,
+  ConsolePageTitleBlock,
+} from '../components/ConsolePageChrome';
 import { PageLayout } from '../components/PageLayout';
-import { PAGE_PRIMARY_TITLE_CLASS } from '../utils/pageTitleClasses';
 import type { CronAddRequest, CronJob } from '../api/types';
 import { formatQueryError } from '../utils/errors';
 import { useAgentTimeZone } from '../hooks/useAgentTimeZone';
@@ -299,34 +303,43 @@ export default function Cron({ embedded = false }: { embedded?: boolean } = {}) 
 
   const enabledCount = jobs.filter((j) => j.enabled).length;
 
+  const cronToolbar = (
+    <Space className="flex w-full justify-end sm:w-auto flex-wrap">
+      <Button icon={<ReloadOutlined />} onClick={() => refetch()} aria-label={t('common.refresh')}>
+        <span className="hidden sm:inline">{t('common.refresh')}</span>
+      </Button>
+      <Button
+        type="primary"
+        icon={<PlusOutlined />}
+        aria-label={t('cron.addTask')}
+        onClick={() => {
+          setEditingJob(null);
+          setFormOpen(true);
+        }}
+      >
+        <span className="hidden sm:inline">{t('cron.addTask')}</span>
+      </Button>
+    </Space>
+  );
+
   return (
-    <PageLayout embedded={embedded} className="min-h-0 flex-1 gap-6 overflow-hidden">
-      <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between pb-2">
-        <header className="min-w-0">
-          <h1 className={PAGE_PRIMARY_TITLE_CLASS}>
-            {t('cron.pageTitle')}
-          </h1>
-          <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-gray-500 dark:text-gray-400">
-            {t('cron.pageSubtitle')}
-          </p>
-        </header>
-        <Space className="w-full sm:w-auto justify-end flex-wrap">
-          <Button icon={<ReloadOutlined />} onClick={() => refetch()} aria-label={t('common.refresh')}>
-            <span className="hidden sm:inline">{t('common.refresh')}</span>
-          </Button>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            aria-label={t('cron.addTask')}
-            onClick={() => {
-              setEditingJob(null);
-              setFormOpen(true);
-            }}
-          >
-            <span className="hidden sm:inline">{t('cron.addTask')}</span>
-          </Button>
-        </Space>
-      </div>
+    <ConsolePageShell embedded={embedded} innerClassName="gap-6 overflow-hidden">
+      <ConsolePageHeading
+        surface={embedded ? 'plain' : 'hero'}
+        rowGapClass="gap-3"
+        heading={
+          <ConsolePageTitleBlock
+            title={t('cron.pageTitle')}
+            subtitle={t('cron.pageSubtitle')}
+            subtitleClassName={
+              embedded
+                ? 'mt-1 max-w-2xl text-[13px] leading-relaxed text-gray-500 dark:text-gray-400'
+                : undefined
+            }
+          />
+        }
+        extra={cronToolbar}
+      />
 
       <Card
         size="small"
@@ -533,6 +546,6 @@ export default function Cron({ embedded = false }: { embedded?: boolean } = {}) 
         agentNameById={agentNameById}
         onClose={() => setHistoryJob(null)}
       />
-    </PageLayout>
+    </ConsolePageShell>
   );
 }

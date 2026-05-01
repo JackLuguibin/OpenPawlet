@@ -26,6 +26,10 @@ import {
   DeleteOutlined,
   RollbackOutlined,
 } from '@ant-design/icons';
+import {
+  ConsolePageShell,
+  ConsolePageHeading,
+} from '../components/ConsolePageChrome';
 import { PageLayout } from '../components/PageLayout';
 import { PAGE_PRIMARY_TITLE_ANT_TITLE_CLASS } from '../utils/pageTitleClasses';
 import * as api from '../api/client';
@@ -221,47 +225,57 @@ export default function Queues({ embedded = false }: { embedded?: boolean } = {}
     connections: merged.connections.filter((c) => c.socket === name).length,
   }));
 
-  return (
-    <PageLayout embedded={embedded} className="min-h-0 flex-1 overflow-hidden">
-      <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-        <div className="flex min-w-0 items-start gap-3">
-          <div
-            className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-sky-100 dark:bg-sky-950/50"
-            aria-hidden
-          >
-            <DeploymentUnitOutlined className="text-sky-600 dark:text-sky-400" style={{ fontSize: 18 }} />
-          </div>
-          <div className="min-w-0">
-            <Title level={3} className={PAGE_PRIMARY_TITLE_ANT_TITLE_CLASS}>
-              {t('queues.title')}
-            </Title>
-            <Text type="secondary" className="text-sm">
-              {t('queues.subtitle')}
-            </Text>
-          </div>
-        </div>
-        <Space wrap size="small" className="w-full shrink-0 justify-end sm:w-auto sm:pt-0.5">
-          <Tag color={connected ? 'success' : 'default'}>
-            {connected ? t('queues.wsOn') : t('queues.wsOff')}
-          </Tag>
-          <Switch
-            checked={streamEnabled}
-            onChange={setStreamEnabled}
-            checkedChildren={t('queues.streamOn')}
-            unCheckedChildren={t('queues.streamOff')}
-          />
-          <Button
-            icon={<ReloadOutlined />}
-            aria-label={t('queues.refresh')}
-            onClick={() => {
-              refetch();
-              reconnect();
-            }}
-          >
-            <span className="hidden sm:inline">{t('queues.refresh')}</span>
-          </Button>
-        </Space>
+  const queuesHeading = (
+    <div className="flex min-w-0 items-start gap-3">
+      <div
+        className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-sky-100 dark:bg-sky-950/50"
+        aria-hidden
+      >
+        <DeploymentUnitOutlined className="text-sky-600 dark:text-sky-400" style={{ fontSize: 18 }} />
       </div>
+      <div className="min-w-0">
+        <Title level={3} className={PAGE_PRIMARY_TITLE_ANT_TITLE_CLASS}>
+          {t('queues.title')}
+        </Title>
+        <Text type="secondary" className="text-sm">
+          {t('queues.subtitle')}
+        </Text>
+      </div>
+    </div>
+  );
+
+  const queuesToolbar = (
+    <Space wrap size="small" className="w-full shrink-0 justify-end sm:w-auto sm:pt-0.5">
+      <Tag color={connected ? 'success' : 'default'}>
+        {connected ? t('queues.wsOn') : t('queues.wsOff')}
+      </Tag>
+      <Switch
+        checked={streamEnabled}
+        onChange={setStreamEnabled}
+        checkedChildren={t('queues.streamOn')}
+        unCheckedChildren={t('queues.streamOff')}
+      />
+      <Button
+        icon={<ReloadOutlined />}
+        aria-label={t('queues.refresh')}
+        onClick={() => {
+          refetch();
+          reconnect();
+        }}
+      >
+        <span className="hidden sm:inline">{t('queues.refresh')}</span>
+      </Button>
+    </Space>
+  );
+
+  return (
+    <ConsolePageShell embedded={embedded}>
+      <ConsolePageHeading
+        surface={embedded ? 'plain' : 'hero'}
+        rowGapClass="gap-3 sm:gap-4"
+        heading={queuesHeading}
+        extra={queuesToolbar}
+      />
 
       {wsError && (
         <Alert
@@ -663,7 +677,7 @@ export default function Queues({ embedded = false }: { embedded?: boolean } = {}
             </Card>
           </div>
       </div>
-    </PageLayout>
+    </ConsolePageShell>
   );
 }
 

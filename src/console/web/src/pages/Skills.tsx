@@ -35,8 +35,11 @@ import { Markdown } from '../components/Markdown';
 import { useTranslation } from 'react-i18next';
 import * as api from '../api/client';
 import { useAppStore } from '../store';
-import { PageLayout } from '../components/PageLayout';
-import { PAGE_PRIMARY_TITLE_CLASS } from '../utils/pageTitleClasses';
+import {
+  ConsolePageShell,
+  ConsolePageHeading,
+  ConsolePageTitleBlock,
+} from '../components/ConsolePageChrome';
 import { MARKDOWN_PROSE_CLASS_COMPACT } from '../utils/markdownProse';
 import { formatQueryError } from '../utils/errors';
 import {
@@ -1208,20 +1211,28 @@ export default function Skills({
     </Space>
   );
 
-  const headingRow = showCronHeadingRow ? (
-    <div className="flex shrink-0 flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-      <div className="min-w-0">
-        <h1 className={PAGE_PRIMARY_TITLE_CLASS}>{t('skills.title')}</h1>
-        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 max-w-xl leading-relaxed">
-          {t('skills.subtitle')}
-        </p>
-      </div>
-      {addSkillToolbar}
-    </div>
-  ) : (
+  const headingRow = !showCronHeadingRow ? (
     <div className="flex shrink-0 flex-col gap-4 sm:flex-row sm:items-center sm:justify-end">
       {addSkillToolbar}
     </div>
+  ) : (
+    <ConsolePageHeading
+      surface={embedded ? 'plain' : 'hero'}
+      rowGapClass="gap-4"
+      rowAlign="center"
+      heading={
+        <ConsolePageTitleBlock
+          title={t('skills.title')}
+          subtitle={t('skills.subtitle')}
+          subtitleClassName={
+            embedded
+              ? 'mt-1 max-w-xl text-sm leading-relaxed text-gray-500 dark:text-gray-400'
+              : 'mt-1.5 max-w-xl text-sm leading-relaxed text-slate-600 dark:text-slate-400'
+          }
+        />
+      }
+      extra={addSkillToolbar}
+    />
   );
 
   const mainColumn = (
@@ -1377,13 +1388,9 @@ export default function Skills({
   return (
     <>
       {embedded ? (
-        <PageLayout embedded className="min-h-0 flex-1 overflow-hidden">
-          {mainColumn}
-        </PageLayout>
+        <ConsolePageShell embedded>{mainColumn}</ConsolePageShell>
       ) : (
-        <PageLayout className="min-h-0 flex-1 overflow-hidden">
-          {mainColumn}
-        </PageLayout>
+        <ConsolePageShell>{mainColumn}</ConsolePageShell>
       )}
 
       <Modal

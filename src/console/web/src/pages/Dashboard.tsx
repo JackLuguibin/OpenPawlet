@@ -33,7 +33,11 @@ import {
 } from '../components/DashboardCharts';
 import { formatTokenCount, formatCost } from '../utils/format';
 import { PageLayout } from '../components/PageLayout';
-import { PAGE_PRIMARY_TITLE_CLASS } from '../utils/pageTitleClasses';
+import {
+  ConsolePageShell,
+  ConsolePageHeading,
+  ConsolePageTitleBlock,
+} from '../components/ConsolePageChrome';
 import { useBots } from '../hooks/useBots';
 import { useAgentTimeZone } from '../hooks/useAgentTimeZone';
 import { formatQueryError } from '../utils/errors';
@@ -253,48 +257,47 @@ export default function Dashboard() {
   }
 
   return (
-    <PageLayout className="min-h-0 flex-1 overflow-hidden">
-      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-hidden">
-      {/* Header: pinned above scroll; body scrolls independently */}
-      <div className="flex shrink-0 flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className={PAGE_PRIMARY_TITLE_CLASS}>
-            {t('dashboard.title')}
-          </h1>
-          <p className="mt-1 text-[13px] leading-relaxed text-gray-500 dark:text-gray-400">
-            {t('dashboard.subtitle')}
-          </p>
-        </div>
-        <Space className="w-full sm:w-auto justify-end flex-wrap">
-          {displayStatus?.running && (
+    <ConsolePageShell innerClassName="gap-6">
+      <ConsolePageHeading
+        surface="hero"
+        className="shrink-0"
+        rowGapClass="gap-4"
+        rowAlign="center"
+        heading={
+          <ConsolePageTitleBlock title={t('dashboard.title')} subtitle={t('dashboard.subtitle')} />
+        }
+        extra={
+          <Space className="w-full sm:w-auto justify-end flex-wrap">
+            {displayStatus?.running && (
+              <Button
+                danger
+                icon={<PoweroffOutlined />}
+                loading={stopMutation.isPending}
+                aria-label={t('dashboard.stop')}
+                onClick={() => stopMutation.mutate()}
+              >
+                <span className="hidden sm:inline">{t('dashboard.stop')}</span>
+              </Button>
+            )}
             <Button
-              danger
-              icon={<PoweroffOutlined />}
-              loading={stopMutation.isPending}
-              aria-label={t('dashboard.stop')}
-              onClick={() => stopMutation.mutate()}
+              icon={<SyncOutlined />}
+              loading={restartMutation.isPending}
+              aria-label={t('dashboard.restart')}
+              onClick={handleRestart}
             >
-              <span className="hidden sm:inline">{t('dashboard.stop')}</span>
+              <span className="hidden sm:inline">{t('dashboard.restart')}</span>
             </Button>
-          )}
-          <Button
-            icon={<SyncOutlined />}
-            loading={restartMutation.isPending}
-            aria-label={t('dashboard.restart')}
-            onClick={handleRestart}
-          >
-            <span className="hidden sm:inline">{t('dashboard.restart')}</span>
-          </Button>
-          <Button
-            icon={<ReloadOutlined />}
-            aria-label={t('common.refresh')}
-            onClick={() => {
-              refetch();
-              queryClient.invalidateQueries({ queryKey: ['usage-history', currentBotId] });
-            }}
-          />
-        </Space>
-      </div>
+            <Button
+              icon={<ReloadOutlined />}
+              aria-label={t('common.refresh')}
+              onClick={() => {
+                refetch();
+                queryClient.invalidateQueries({ queryKey: ['usage-history', currentBotId] });
+              }}
+            />
+          </Space>
+        }
+      />
 
       <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-x-hidden overflow-y-auto overscroll-y-contain pb-safe">
       <div className={DASHBOARD_STAT_GRID_CLASS}>
@@ -508,8 +511,7 @@ export default function Dashboard() {
       </div>
       </div>
       </div>
-      </div>
 
-    </PageLayout>
+    </ConsolePageShell>
   );
 }

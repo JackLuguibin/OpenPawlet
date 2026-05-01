@@ -26,7 +26,6 @@ import {
   Divider,
   Row,
   Col,
-  Flex,
   theme,
   Collapse,
 } from 'antd';
@@ -39,17 +38,23 @@ import {
   EnvironmentOutlined,
   PlusOutlined,
   DeleteOutlined,
+  MessageOutlined,
 } from '@ant-design/icons';
 import * as api from '../api/client';
 import { useAppStore } from '../store';
 import { formatQueryError } from '../utils/errors';
 import { getCommonTimeZoneSelectOptions } from '../utils/timezones';
 import { PageLayout } from '../components/PageLayout';
-import { PAGE_PRIMARY_TITLE_CLASS } from '../utils/pageTitleClasses';
+import {
+  ConsolePageShell,
+  ConsolePageHeading,
+  ConsolePageTitleBlock,
+} from '../components/ConsolePageChrome';
 import { useBots } from '../hooks/useBots';
 import LLMProvidersPanel from './settings/LLMProvidersPanel';
 import type {
   AgentDefaultsJson,
+  ChannelsConfigJson,
   DreamConfigJson,
   SettingsGeneralToolsFormValues,
   ToolsConfig,
@@ -63,6 +68,11 @@ const { Text } = Typography;
  */
 const SETTINGS_CARD_SURFACE =
   'settings-surface-card w-full overflow-hidden rounded-md border border-gray-200/90 shadow-sm dark:border-gray-700/80 dark:bg-gray-800/35';
+
+/** Subtle gradient panels for toggles and summaries (see `.settings-soft-panel` in index.css). */
+const SETTINGS_SOFT_PANEL = 'settings-soft-panel px-3 py-2';
+const SETTINGS_SOFT_PANEL_ROW = `flex flex-wrap items-center justify-between gap-3 ${SETTINGS_SOFT_PANEL}`;
+const SETTINGS_SOFT_PANEL_CHANNEL_ROW = `flex min-w-0 flex-wrap items-center justify-between gap-3 ${SETTINGS_SOFT_PANEL}`;
 
 /** Card grows to fill tab pane; header stays visible, body scrolls. */
 const SETTINGS_SCROLL_CARD_CLASS = `${SETTINGS_CARD_SURFACE} min-h-0 flex flex-1 flex-col`;
@@ -80,12 +90,14 @@ type SettingsTab =
   | 'general'
   | 'providers'
   | 'tools'
+  | 'channelDefaults'
   | 'environment';
 
 const VALID_SETTINGS_TABS: ReadonlyArray<SettingsTab> = [
   'general',
   'providers',
   'tools',
+  'channelDefaults',
   'environment',
 ];
 
@@ -330,6 +342,53 @@ function readToolSsrfWhitelist(tools: ToolsConfig | undefined): string[] {
     .map((s) => s.trim());
 }
 
+/** ``channels`` root scalars — matches ``ChannelsConfig`` (camelCase + snake_case from disk). */
+function readChannelsDefaults(
+  ch: ChannelsConfigJson | undefined,
+): SettingsGeneralToolsFormValues['channelsDefaults'] {
+  const c = (ch ?? {}) as Record<string, unknown>;
+  const pickBool = (cam: string, sn: string, fb: boolean) => {
+    const v = c[cam] ?? c[sn];
+    if (typeof v === 'boolean') return v;
+    return fb;
+  };
+  const pickNum = (cam: string, sn: string, fb: number) => {
+    const v = c[cam] ?? c[sn];
+    if (v === undefined || v === null) return fb;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : fb;
+  };
+  const pickStr = (cam: string, sn: string, fb: string) => {
+    const v = c[cam] ?? c[sn];
+    if (typeof v === 'string' && v.trim()) return v.trim();
+    return fb;
+  };
+  const rawLang = c.transcriptionLanguage ?? c.transcription_language;
+  const transcriptionLanguage =
+    typeof rawLang === 'string' && rawLang.trim() ? rawLang.trim().toLowerCase() : '';
+
+  const rawLifecycle = c.sessionTurnLifecycleChannels ?? c.session_turn_lifecycle_channels;
+  let sessionTurnLifecycleChannels: string[];
+  if (Array.isArray(rawLifecycle)) {
+    sessionTurnLifecycleChannels = rawLifecycle
+      .filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+      .map((x) => x.trim());
+  } else {
+    sessionTurnLifecycleChannels = ['websocket'];
+  }
+
+  return {
+    sendProgress: pickBool('sendProgress', 'send_progress', true),
+    sendToolHints: pickBool('sendToolHints', 'send_tool_hints', false),
+    sendToolEvents: pickBool('sendToolEvents', 'send_tool_events', false),
+    sendReasoningContent: pickBool('sendReasoningContent', 'send_reasoning_content', true),
+    sendMaxRetries: pickNum('sendMaxRetries', 'send_max_retries', 3),
+    transcriptionProvider: pickStr('transcriptionProvider', 'transcription_provider', 'groq'),
+    transcriptionLanguage,
+    sessionTurnLifecycleChannels,
+  };
+}
+
 /**
  * Ant Design AutoComplete filters options against the current input text. When the field still
  * holds a full known value (e.g. default ``auto``), substring matching would hide every other
@@ -365,8 +424,10 @@ function SettingsToolsCollapsePanelLabel({
     <div className="flex w-full min-w-0 items-center gap-3 pr-1">
       <span className="min-w-0 flex-1 truncate text-left font-medium">{title}</span>
       <span
-        className={`shrink-0 text-xs font-semibold tabular-nums ${
-          highlight ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400 dark:text-gray-500'
+        className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums ${
+          highlight
+            ? 'bg-emerald-500/15 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-300'
+            : 'bg-slate-500/10 text-slate-500 dark:bg-slate-400/10 dark:text-slate-400'
         }`}
       >
         {status}
@@ -406,6 +467,7 @@ export default function Settings() {
   const watchedToolMyEnable = Form.useWatch(['toolMy', 'enable'], form);
   const watchedToolMyAllowSet = Form.useWatch(['toolMy', 'allowSet'], form);
   const watchedToolSsrfWhitelist = Form.useWatch('toolSsrfWhitelist', form);
+  const watchedUnifiedSession = Form.useWatch('unifiedSession', form);
 
   const modelScopeTrimmed = useMemo(() => {
     const m = typeof watchedModelRaw === 'string' ? watchedModelRaw.trim() : '';
@@ -698,6 +760,7 @@ export default function Settings() {
         toolExec: readToolExecNested(tools),
         toolMy: readToolMyNested(tools),
         toolSsrfWhitelist: readToolSsrfWhitelist(tools),
+        channelsDefaults: readChannelsDefaults(config.channels),
       });
     }
   }, [config, form]);
@@ -711,6 +774,7 @@ export default function Settings() {
         toolExec,
         toolMy,
         toolSsrfWhitelist,
+        channelsDefaults,
         ...rest
       } = values;
 
@@ -783,6 +847,34 @@ export default function Settings() {
             allowSet: toolMy.allowSet,
           },
           ssrfWhitelist: (toolSsrfWhitelist ?? []).map((s) => String(s).trim()).filter(Boolean),
+        },
+        currentBotId
+      );
+      const channelsDefaultsResolved =
+        channelsDefaults ?? readChannelsDefaults(undefined);
+      const langRaw = (channelsDefaultsResolved.transcriptionLanguage ?? '')
+        .trim()
+        .toLowerCase();
+      const transcriptionLanguage =
+        langRaw && /^[a-z]{2,3}$/.test(langRaw) ? langRaw : null;
+      const sessionTurnChannels = (
+        channelsDefaultsResolved.sessionTurnLifecycleChannels ?? []
+      )
+        .map((s) => String(s).trim())
+        .filter(Boolean);
+      await api.updateConfig(
+        'channels',
+        {
+          sendProgress: channelsDefaultsResolved.sendProgress,
+          sendToolHints: channelsDefaultsResolved.sendToolHints,
+          sendToolEvents: channelsDefaultsResolved.sendToolEvents,
+          sendReasoningContent: channelsDefaultsResolved.sendReasoningContent,
+          sendMaxRetries: channelsDefaultsResolved.sendMaxRetries,
+          transcriptionProvider:
+            (channelsDefaultsResolved.transcriptionProvider ?? '').trim() || 'groq',
+          transcriptionLanguage,
+          sessionTurnLifecycleChannels:
+            sessionTurnChannels.length > 0 ? sessionTurnChannels : ['websocket'],
         },
         currentBotId
       );
@@ -1022,242 +1114,304 @@ export default function Settings() {
         </span>
       ),
       children: (
-        <Card
-          title={t('settings.agentDefaults')}
-          className={SETTINGS_SCROLL_CARD_CLASS}
-          styles={{
-            header: SETTINGS_SCROLL_CARD_STYLES.header,
-            body: {
-              ...SETTINGS_SCROLL_CARD_STYLES.body,
-              paddingTop: token.paddingLG,
-              paddingBottom: token.paddingLG,
-              paddingInline: token.paddingLG,
-            },
-          }}
-        >
-          <Text type="secondary" className="mb-6 block text-sm leading-relaxed">
-            {t('settings.agentDefaultsHint')}
-          </Text>
-          <Form
-            form={form}
-            layout="vertical"
-            colon={false}
-            requiredMark={false}
-            className="max-w-[680px]"
-            labelAlign="left"
-            onValuesChange={handleModelProviderLink}
+        <div className="flex min-h-0 min-w-0 w-full flex-1 flex-col gap-6 overflow-hidden">
+          <Card
+            title={t('settings.agentDefaults')}
+            size="small"
+            className={SETTINGS_SCROLL_CARD_CLASS}
+            styles={{
+              ...SETTINGS_SCROLL_CARD_STYLES,
+              body: {
+                ...SETTINGS_SCROLL_CARD_STYLES.body,
+                paddingTop: 10,
+                paddingBottom: 10,
+              },
+            }}
           >
-            <Typography.Title level={5} className="!mb-3 !mt-0 !text-base !font-semibold">
-              {t('settings.sectionModelEnvironment')}
-            </Typography.Title>
-            <Row gutter={[token.marginLG, token.marginSM]}>
-              <Col xs={24} lg={12}>
-                <Form.Item
-                  label={t('settings.model')}
-                  name="model"
-                  tooltip={{ title: t('settings.modelExtra') }}
-                >
-                  <AutoComplete
-                    className="w-full max-w-full"
-                    size="middle"
-                    placeholder={t('settings.modelPh')}
-                    options={modelAutocompleteOptions}
-                    filterOption={(input, option) =>
-                      autoCompleteFilterOption(input, option, modelAutocompleteOptions)
-                    }
-                  />
-                </Form.Item>
-              </Col>
-              <Col xs={24} lg={12}>
-                <Form.Item
-                  label={t('settings.provider')}
-                  name="provider"
-                  tooltip={{ title: t('settings.providerExtra') }}
-                >
-                  <AutoComplete
-                    className="w-full max-w-full"
-                    size="middle"
-                    placeholder={t('settings.providerPh')}
-                    options={providerAutocompleteOptions}
-                    filterOption={(input, option) =>
-                      autoCompleteFilterOption(input, option, providerAutocompleteOptions)
-                    }
-                  />
-                </Form.Item>
-              </Col>
-            </Row>
-
-            <Form.Item label={t('settings.reasoningEffort')} name="reasoningEffort" className="!mb-6">
-              <Segmented
-                block
-                size="middle"
-                options={[
-                  { label: t('settings.reasoningLow'), value: 'low' },
-                  { label: t('settings.reasoningMedium'), value: 'medium' },
-                  { label: t('settings.reasoningHigh'), value: 'high' },
-                  { label: t('settings.reasoningAdaptive'), value: 'adaptive' },
-                ]}
-              />
-            </Form.Item>
-
-            <Form.Item
-              label={t('settings.workspace')}
-              name="workspace"
-              tooltip={{ title: t('settings.workspaceExtra') }}
+            <Text type="secondary" className="mb-4 block text-sm leading-relaxed">
+              {t('settings.agentDefaultsHint')}
+            </Text>
+            <Form
+              form={form}
+              layout="vertical"
+              colon={false}
+              requiredMark={false}
+              className="w-full min-w-0 space-y-4 [&_.ant-form-item]:mb-3"
+              labelAlign="left"
+              onValuesChange={handleModelProviderLink}
             >
-              <Input
-                className="font-mono text-sm"
-                placeholder={t('settings.workspacePh')}
-                size="middle"
-              />
-            </Form.Item>
+              <Collapse
+                accordion
+                defaultActiveKey="defaults"
+                expandIconPlacement="end"
+                className="tools-settings-collapse settings-tools-collapse w-full min-w-0 bg-transparent [&_.ant-collapse-item]:border-gray-200 dark:[&_.ant-collapse-item]:border-gray-700"
+                items={[
+                  {
+                    key: 'defaults',
+                    label: (
+                      <SettingsToolsCollapsePanelLabel
+                        title={t('settings.sectionDefaultConfig')}
+                        status={
+                          modelScopeTrimmed
+                            ? modelScopeTrimmed.length > 40
+                              ? `${modelScopeTrimmed.slice(0, 37)}…`
+                              : modelScopeTrimmed
+                            : t('settings.defaultsCollapseStatusEmpty')
+                        }
+                        highlight={Boolean(modelScopeTrimmed)}
+                      />
+                    ),
+                    children: (
+                      <div className="space-y-3 pt-1">
+                      <Typography.Title level={5} className="!mb-2 !mt-0 !text-base !font-semibold">
+                        {t('settings.sectionModelEnvironment')}
+                      </Typography.Title>
+                      <Row gutter={[token.marginLG, token.marginSM]}>
+                        <Col xs={24} lg={12}>
+                          <Form.Item
+                            label={t('settings.model')}
+                            name="model"
+                            tooltip={{ title: t('settings.modelExtra') }}
+                          >
+                            <AutoComplete
+                              className="w-full max-w-full"
+                              size="middle"
+                              placeholder={t('settings.modelPh')}
+                              options={modelAutocompleteOptions}
+                              filterOption={(input, option) =>
+                                autoCompleteFilterOption(input, option, modelAutocompleteOptions)
+                              }
+                            />
+                          </Form.Item>
+                        </Col>
+                        <Col xs={24} lg={12}>
+                          <Form.Item
+                            label={t('settings.provider')}
+                            name="provider"
+                            tooltip={{ title: t('settings.providerExtra') }}
+                          >
+                            <AutoComplete
+                              className="w-full max-w-full"
+                              size="middle"
+                              placeholder={t('settings.providerPh')}
+                              options={providerAutocompleteOptions}
+                              filterOption={(input, option) =>
+                                autoCompleteFilterOption(input, option, providerAutocompleteOptions)
+                              }
+                            />
+                          </Form.Item>
+                        </Col>
+                      </Row>
 
-            <Form.Item
-              label={t('settings.timezone')}
-              name="timezone"
-              tooltip={{ title: t('settings.timezoneExtra') }}
-            >
-              <Select
-                allowClear
-                showSearch
-                className="w-full"
-                size="middle"
-                placeholder={t('settings.timezonePh')}
-                options={timeZoneOptions}
-                optionFilterProp="value"
-                popupMatchSelectWidth={false}
-                listHeight={360}
-              />
-            </Form.Item>
+                      <Form.Item label={t('settings.reasoningEffort')} name="reasoningEffort" className="!mb-0">
+                        <Segmented
+                          block
+                          size="middle"
+                          options={[
+                            { label: t('settings.reasoningLow'), value: 'low' },
+                            { label: t('settings.reasoningMedium'), value: 'medium' },
+                            { label: t('settings.reasoningHigh'), value: 'high' },
+                            { label: t('settings.reasoningAdaptive'), value: 'adaptive' },
+                          ]}
+                        />
+                      </Form.Item>
 
-            <Divider className="my-7" />
+                      <Row gutter={[token.marginLG, token.marginSM]}>
+                        <Col xs={24} md={12}>
+                          <Form.Item
+                            label={t('settings.workspace')}
+                            name="workspace"
+                            tooltip={{ title: t('settings.workspaceExtra') }}
+                          >
+                            <Input
+                              className="font-mono text-sm"
+                              placeholder={t('settings.workspacePh')}
+                              size="middle"
+                            />
+                          </Form.Item>
+                        </Col>
+                        <Col xs={24} md={12}>
+                          <Form.Item
+                            label={t('settings.timezone')}
+                            name="timezone"
+                            tooltip={{ title: t('settings.timezoneExtra') }}
+                          >
+                            <Select
+                              allowClear
+                              showSearch
+                              className="w-full"
+                              size="middle"
+                              placeholder={t('settings.timezonePh')}
+                              options={timeZoneOptions}
+                              optionFilterProp="value"
+                              popupMatchSelectWidth={false}
+                              listHeight={360}
+                            />
+                          </Form.Item>
+                        </Col>
+                      </Row>
 
-            <Typography.Title level={5} className="!mb-4 !mt-0 !text-base !font-semibold">
-              {t('settings.sectionSampling')}
-            </Typography.Title>
+                      <Divider plain className="!my-3">
+                        {t('settings.sectionSampling')}
+                      </Divider>
 
-            <Row gutter={[token.marginLG, token.marginSM]}>
-              <Col xs={24} sm={12}>
-                <Form.Item
-                  label={
-                    <span>
-                      {t('settings.maxTokens')}{' '}
-                      <Text type="secondary" className="text-xs font-normal">
-                        {t('settings.maxTokensRange')}
-                      </Text>
-                    </span>
-                  }
-                  name="maxTokens"
-                >
-                  <InputNumber
-                    min={1}
-                    max={200000}
-                    size="middle"
-                    className="w-full"
-                  />
-                </Form.Item>
-              </Col>
-              <Col xs={24} sm={12}>
-                <Form.Item
-                  label={
-                    <span>
-                      {t('settings.contextWindow')}{' '}
-                      <Text type="secondary" className="text-xs font-normal">
-                        {t('settings.contextWindowRange')}
-                      </Text>
-                    </span>
-                  }
-                  name="contextWindowTokens"
-                >
-                  <InputNumber
-                    min={1}
-                    max={1000000}
-                    size="middle"
-                    className="w-full"
-                  />
-                </Form.Item>
-              </Col>
-              <Col xs={24} sm={12}>
-                <Form.Item
-                  label={
-                    <span>
-                      {t('settings.maxHistoryMessages')}{' '}
-                      <Text type="secondary" className="text-xs font-normal">
-                        {t('settings.maxHistoryMessagesRange')}
-                      </Text>
-                    </span>
-                  }
-                  name="maxHistoryMessages"
-                  extra={<Text type="secondary">{t('settings.maxHistoryMessagesHint')}</Text>}
-                >
-                  <InputNumber min={0} max={100000} size="middle" className="w-full" />
-                </Form.Item>
-              </Col>
-            </Row>
+                      <Row gutter={[token.marginLG, token.marginSM]}>
+                        <Col xs={24} md={8}>
+                          <Form.Item
+                            label={
+                              <span>
+                                {t('settings.maxTokens')}{' '}
+                                <Text type="secondary" className="text-xs font-normal">
+                                  {t('settings.maxTokensRange')}
+                                </Text>
+                              </span>
+                            }
+                            name="maxTokens"
+                          >
+                            <InputNumber
+                              min={1}
+                              max={200000}
+                              size="middle"
+                              className="w-full"
+                            />
+                          </Form.Item>
+                        </Col>
+                        <Col xs={24} md={8}>
+                          <Form.Item
+                            label={
+                              <span>
+                                {t('settings.contextWindow')}{' '}
+                                <Text type="secondary" className="text-xs font-normal">
+                                  {t('settings.contextWindowRange')}
+                                </Text>
+                              </span>
+                            }
+                            name="contextWindowTokens"
+                          >
+                            <InputNumber
+                              min={1}
+                              max={1000000}
+                              size="middle"
+                              className="w-full"
+                            />
+                          </Form.Item>
+                        </Col>
+                        <Col xs={24} md={8}>
+                          <Form.Item
+                            label={
+                              <span>
+                                {t('settings.maxHistoryMessages')}{' '}
+                                <Text type="secondary" className="text-xs font-normal">
+                                  {t('settings.maxHistoryMessagesRange')}
+                                </Text>
+                              </span>
+                            }
+                            name="maxHistoryMessages"
+                            extra={<Text type="secondary">{t('settings.maxHistoryMessagesHint')}</Text>}
+                          >
+                            <InputNumber min={0} max={100000} size="middle" className="w-full" />
+                          </Form.Item>
+                        </Col>
+                      </Row>
 
-            <Row gutter={[token.marginLG, token.marginSM]}>
-              <Col xs={24}>
-                <Form.Item
-                  label={
-                    <span>
-                      {t('settings.maxIterations')}{' '}
-                      <Text type="secondary" className="text-xs font-normal">
-                        {t('settings.maxIterationsRange')}
-                      </Text>
-                    </span>
-                  }
-                  name="maxToolIterations"
-                >
-                  <Slider
-                    className="w-full pt-1"
-                    min={1}
-                    max={200}
-                    marks={{ 1: '1', 50: '50', 100: '100', 200: '200' }}
-                    tooltip={{ formatter: (v) => (v !== undefined ? String(v) : '') }}
-                  />
-                </Form.Item>
-
-                <Form.Item
-                  label={
-                    <span>
-                      {t('settings.temperature')}{' '}
-                      <Text type="secondary" className="text-xs font-normal">
-                        {t('settings.temperatureRange')}
-                      </Text>
-                    </span>
-                  }
-                  name="temperature"
-                  className="!mb-0"
-                >
-                  <Slider
-                    className="w-full pt-1"
-                    min={0}
-                    max={2}
-                    step={0.1}
-                    marks={{ 0: '0.0', 1: '1.0', 2: '2.0' }}
-                    tooltip={{ formatter: (v) => (v !== undefined ? v.toFixed(1) : '') }}
-                  />
-                </Form.Item>
-              </Col>
-            </Row>
-
-            <Divider style={{ marginTop: token.marginXXL, marginBottom: token.marginXXL }} />
-
-            <Collapse
-              ghost
-              bordered={false}
-              expandIconPlacement="end"
-              className="[&_.ant-collapse-header]:!px-0 [&_.ant-collapse-header]:!py-3 [&_.ant-collapse-content-box]:!px-0 [&_.ant-collapse-content-box]:!pt-0"
-              items={[
+                      <Row gutter={[token.marginLG, token.marginSM]}>
+                        <Col xs={24} md={12}>
+                          <Form.Item
+                            label={
+                              <span>
+                                {t('settings.maxIterations')}{' '}
+                                <Text type="secondary" className="text-xs font-normal">
+                                  {t('settings.maxIterationsRange')}
+                                </Text>
+                              </span>
+                            }
+                            name="maxToolIterations"
+                          >
+                            <Slider
+                              className="w-full pt-1"
+                              min={1}
+                              max={200}
+                              marks={{ 1: '1', 50: '50', 100: '100', 200: '200' }}
+                              tooltip={{ formatter: (v) => (v !== undefined ? String(v) : '') }}
+                            />
+                          </Form.Item>
+                        </Col>
+                        <Col xs={24} md={12}>
+                          <Form.Item
+                            label={
+                              <span>
+                                {t('settings.temperature')}{' '}
+                                <Text type="secondary" className="text-xs font-normal">
+                                  {t('settings.temperatureRange')}
+                                </Text>
+                              </span>
+                            }
+                            name="temperature"
+                            className="!mb-0"
+                          >
+                            <Slider
+                              className="w-full pt-1"
+                              min={0}
+                              max={2}
+                              step={0.1}
+                              marks={{ 0: '0.0', 1: '1.0', 2: '2.0' }}
+                              tooltip={{ formatter: (v) => (v !== undefined ? v.toFixed(1) : '') }}
+                            />
+                          </Form.Item>
+                        </Col>
+                      </Row>
+                    </div>
+                  ),
+                },
                 {
                   key: 'advanced',
                   label: (
-                    <Typography.Text strong style={{ fontSize: token.fontSizeLG }}>
-                      {t('settings.sectionAdvancedToggle')}
-                    </Typography.Text>
+                    <SettingsToolsCollapsePanelLabel
+                      title={t('settings.sectionAdvancedToggle')}
+                      status={
+                        watchedUnifiedSession
+                          ? t('settings.agentTransportStatusUnified')
+                          : t('settings.advancedCollapseStatusShort')
+                      }
+                      highlight={Boolean(watchedUnifiedSession)}
+                    />
                   ),
                   children: (
-                    <Flex vertical gap={token.marginLG}>
+                    <div className="space-y-3 pt-1">
+                      <div className={SETTINGS_SOFT_PANEL}>
+                        <Row gutter={[token.marginLG, token.marginMD]}>
+                          <Col xs={24} lg={8}>
+                            <Form.Item
+                              label={t('settings.unifiedSession')}
+                              name="unifiedSession"
+                              valuePropName="checked"
+                              className="!mb-0 max-lg:!mb-4"
+                            >
+                              <Switch />
+                            </Form.Item>
+                          </Col>
+                          <Col xs={24} lg={8}>
+                            <Form.Item
+                              label={t('settings.persistSessionTranscript')}
+                              name="persistSessionTranscript"
+                              valuePropName="checked"
+                              className="!mb-0 max-lg:!mb-4"
+                            >
+                              <Switch />
+                            </Form.Item>
+                          </Col>
+                          <Col xs={24} lg={8}>
+                            <Form.Item
+                              label={t('settings.transcriptIncludeFullToolResults')}
+                              name="transcriptIncludeFullToolResults"
+                              valuePropName="checked"
+                              className="!mb-0"
+                            >
+                              <Switch />
+                            </Form.Item>
+                          </Col>
+                        </Row>
+                      </div>
                       <Row gutter={[token.marginLG, token.marginSM]}>
                         <Col xs={24} sm={12}>
                           <Form.Item label={t('settings.providerRetryMode')} name="providerRetryMode">
@@ -1314,38 +1468,6 @@ export default function Settings() {
                           }}
                         />
                       </Form.Item>
-                      <Row gutter={[token.marginLG, token.marginMD]}>
-                        <Col xs={24} lg={8}>
-                          <Form.Item
-                            label={t('settings.unifiedSession')}
-                            name="unifiedSession"
-                            valuePropName="checked"
-                            className="!mb-0 max-lg:!mb-4"
-                          >
-                            <Switch />
-                          </Form.Item>
-                        </Col>
-                        <Col xs={24} lg={8}>
-                          <Form.Item
-                            label={t('settings.persistSessionTranscript')}
-                            name="persistSessionTranscript"
-                            valuePropName="checked"
-                            className="!mb-0 max-lg:!mb-4"
-                          >
-                            <Switch />
-                          </Form.Item>
-                        </Col>
-                        <Col xs={24} lg={8}>
-                          <Form.Item
-                            label={t('settings.transcriptIncludeFullToolResults')}
-                            name="transcriptIncludeFullToolResults"
-                            valuePropName="checked"
-                            className="!mb-0"
-                          >
-                            <Switch />
-                          </Form.Item>
-                        </Col>
-                      </Row>
                       <Form.Item label={t('settings.disabledSkillsText')} name="disabledSkills">
                         <Select
                           mode="multiple"
@@ -1362,7 +1484,7 @@ export default function Settings() {
                         />
                       </Form.Item>
 
-                      <Divider plain titlePlacement="start" style={{ marginBottom: token.marginMD }}>
+                      <Divider plain className="!my-2">
                         <Typography.Text strong>{t('settings.sectionDream')}</Typography.Text>
                       </Divider>
                       <Row gutter={[token.marginLG, token.marginSM]}>
@@ -1405,13 +1527,14 @@ export default function Settings() {
                           size="middle"
                         />
                       </Form.Item>
-                    </Flex>
+                    </div>
                   ),
                 },
               ]}
             />
           </Form>
         </Card>
+        </div>
       ),
     },
     {
@@ -1453,8 +1576,12 @@ export default function Settings() {
               },
             }}
           >
-            <Form form={form} layout="vertical" className="space-y-4 [&_.ant-form-item]:mb-3">
-              <div className="rounded-md border border-gray-100 bg-gray-50 px-3 py-2.5 dark:border-gray-700/50 dark:bg-gray-800/50">
+            <Form
+              form={form}
+              layout="vertical"
+              className="w-full min-w-0 space-y-4 [&_.ant-form-item]:mb-3"
+            >
+              <div className="settings-soft-panel px-3 py-2.5">
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     <p className="mb-0.5 text-sm font-medium leading-snug">
@@ -1473,7 +1600,7 @@ export default function Settings() {
               <Collapse
                 defaultActiveKey={[]}
                 expandIconPlacement="end"
-                className="tools-settings-collapse bg-transparent [&_.ant-collapse-item]:border-gray-200 dark:[&_.ant-collapse-item]:border-gray-700"
+                className="tools-settings-collapse settings-tools-collapse w-full min-w-0 bg-transparent [&_.ant-collapse-item]:border-gray-200 dark:[&_.ant-collapse-item]:border-gray-700"
                 items={[
                   {
                     key: 'web',
@@ -1490,7 +1617,7 @@ export default function Settings() {
                     ),
                     children: (
                       <div className="space-y-3 pt-1">
-                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-gray-100 bg-gray-50/80 px-3 py-2 dark:border-gray-700/50 dark:bg-gray-800/40">
+                        <div className={SETTINGS_SOFT_PANEL_ROW}>
                           <Text className="text-sm">{t('settings.toolsWebEnable')}</Text>
                           <Form.Item name={['toolWeb', 'enable']} valuePropName="checked" className="!mb-0">
                             <Switch />
@@ -1564,7 +1691,7 @@ export default function Settings() {
                     ),
                     children: (
                       <div className="space-y-3 pt-1">
-                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-gray-100 bg-gray-50/80 px-3 py-2 dark:border-gray-700/50 dark:bg-gray-800/40">
+                        <div className={SETTINGS_SOFT_PANEL_ROW}>
                           <Text className="text-sm">{t('settings.toolsExecEnable')}</Text>
                           <Form.Item name={['toolExec', 'enable']} valuePropName="checked" className="!mb-0">
                             <Switch />
@@ -1616,7 +1743,7 @@ export default function Settings() {
                     ),
                     children: (
                       <div className="space-y-3 pt-1">
-                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-gray-100 bg-gray-50/80 px-3 py-2 dark:border-gray-700/50 dark:bg-gray-800/40">
+                        <div className={SETTINGS_SOFT_PANEL_ROW}>
                           <div className="min-w-0">
                             <Text className="text-sm">{t('settings.toolsMyEnable')}</Text>
                             <div>
@@ -1629,7 +1756,7 @@ export default function Settings() {
                             <Switch />
                           </Form.Item>
                         </div>
-                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-gray-100 bg-gray-50/80 px-3 py-2 dark:border-gray-700/50 dark:bg-gray-800/40">
+                        <div className={SETTINGS_SOFT_PANEL_ROW}>
                           <div className="min-w-0">
                             <Text className="text-sm">{t('settings.toolsMyAllowSet')}</Text>
                             <div>
@@ -1680,6 +1807,177 @@ export default function Settings() {
       ),
     },
     {
+      key: 'channelDefaults',
+      label: (
+        <span className="flex items-center gap-1.5">
+          <MessageOutlined /> {t('settings.tabChannelDefaults')}
+        </span>
+      ),
+      children: (
+        <Card
+          title={t('settings.channelsCardTitle')}
+          className={SETTINGS_SCROLL_CARD_CLASS}
+          styles={{
+            header: SETTINGS_SCROLL_CARD_STYLES.header,
+            body: {
+              ...SETTINGS_SCROLL_CARD_STYLES.body,
+              paddingTop: token.paddingLG,
+              paddingBottom: token.paddingLG,
+              paddingInline: token.paddingLG,
+            },
+          }}
+        >
+          <Text type="secondary" className="mb-6 block text-sm leading-relaxed">
+            {t('settings.channelsCardHint')}
+          </Text>
+          <Form
+            form={form}
+            layout="vertical"
+            colon={false}
+            requiredMark={false}
+            className="w-full min-w-0"
+          >
+            <Typography.Title level={5} className="!mb-3 !mt-0 !text-base !font-semibold">
+              {t('settings.channelsSectionDelivery')}
+            </Typography.Title>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className={SETTINGS_SOFT_PANEL_CHANNEL_ROW}>
+                <div className="min-w-0">
+                  <Text className="text-sm">{t('settings.channelsSendProgress')}</Text>
+                  <div>
+                    <Text type="secondary" className="text-xs">
+                      {t('settings.channelsSendProgressExtra')}
+                    </Text>
+                  </div>
+                </div>
+                <Form.Item
+                  name={['channelsDefaults', 'sendProgress']}
+                  valuePropName="checked"
+                  className="!mb-0"
+                >
+                  <Switch />
+                </Form.Item>
+              </div>
+              <div className={SETTINGS_SOFT_PANEL_CHANNEL_ROW}>
+                <div className="min-w-0">
+                  <Text className="text-sm">{t('settings.channelsSendToolHints')}</Text>
+                  <div>
+                    <Text type="secondary" className="text-xs">
+                      {t('settings.channelsSendToolHintsExtra')}
+                    </Text>
+                  </div>
+                </div>
+                <Form.Item
+                  name={['channelsDefaults', 'sendToolHints']}
+                  valuePropName="checked"
+                  className="!mb-0"
+                >
+                  <Switch />
+                </Form.Item>
+              </div>
+              <div className={SETTINGS_SOFT_PANEL_CHANNEL_ROW}>
+                <div className="min-w-0">
+                  <Text className="text-sm">{t('settings.channelsSendToolEvents')}</Text>
+                  <div>
+                    <Text type="secondary" className="text-xs">
+                      {t('settings.channelsSendToolEventsExtra')}
+                    </Text>
+                  </div>
+                </div>
+                <Form.Item
+                  name={['channelsDefaults', 'sendToolEvents']}
+                  valuePropName="checked"
+                  className="!mb-0"
+                >
+                  <Switch />
+                </Form.Item>
+              </div>
+              <div className={SETTINGS_SOFT_PANEL_CHANNEL_ROW}>
+                <div className="min-w-0">
+                  <Text className="text-sm">{t('settings.channelsSendReasoningContent')}</Text>
+                  <div>
+                    <Text type="secondary" className="text-xs">
+                      {t('settings.channelsSendReasoningContentExtra')}
+                    </Text>
+                  </div>
+                </div>
+                <Form.Item
+                  name={['channelsDefaults', 'sendReasoningContent']}
+                  valuePropName="checked"
+                  className="!mb-0"
+                >
+                  <Switch />
+                </Form.Item>
+              </div>
+            </div>
+
+            <Divider className="my-7" />
+
+            <Typography.Title level={5} className="!mb-3 !mt-0 !text-base !font-semibold">
+              {t('settings.channelsSectionVoice')}
+            </Typography.Title>
+            <Row gutter={[token.marginLG, token.marginSM]}>
+              <Col xs={24} sm={12}>
+                <Form.Item
+                  label={t('settings.channelsTranscriptionProvider')}
+                  name={['channelsDefaults', 'transcriptionProvider']}
+                >
+                  <Select
+                    className="w-full"
+                    size="middle"
+                    options={[
+                      { value: 'groq', label: 'Groq' },
+                      { value: 'openai', label: 'OpenAI' },
+                    ]}
+                  />
+                </Form.Item>
+              </Col>
+              <Col xs={24} sm={12}>
+                <Form.Item
+                  label={t('settings.channelsTranscriptionLanguage')}
+                  name={['channelsDefaults', 'transcriptionLanguage']}
+                  extra={t('settings.channelsTranscriptionLanguageExtra')}
+                >
+                  <Input
+                    className="font-mono text-sm"
+                    placeholder={t('settings.channelsTranscriptionLanguagePh')}
+                    size="middle"
+                    allowClear
+                  />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            <Divider className="my-7" />
+
+            <Typography.Title level={5} className="!mb-3 !mt-0 !text-base !font-semibold">
+              {t('settings.channelsSectionAdvanced')}
+            </Typography.Title>
+            <Form.Item
+              label={t('settings.channelsSendMaxRetries')}
+              name={['channelsDefaults', 'sendMaxRetries']}
+              extra={t('settings.channelsSendMaxRetriesExtra')}
+            >
+              <InputNumber min={0} max={10} size="middle" className="w-full" />
+            </Form.Item>
+            <Form.Item
+              label={t('settings.channelsSessionTurnLifecycle')}
+              name={['channelsDefaults', 'sessionTurnLifecycleChannels']}
+              extra={t('settings.channelsSessionTurnLifecycleExtra')}
+            >
+              <Select
+                mode="tags"
+                className="w-full"
+                size="middle"
+                placeholder={t('settings.channelsSessionTurnLifecyclePh')}
+                tokenSeparators={[',']}
+              />
+            </Form.Item>
+          </Form>
+        </Card>
+      ),
+    },
+    {
       key: 'environment',
       label: (
         <span className="flex items-center gap-1.5">
@@ -1691,20 +1989,20 @@ export default function Settings() {
   ];
 
   return (
-    <PageLayout className="min-h-0 flex-1 overflow-hidden">
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between pb-2">
-          <header className="min-w-0">
-            <h1 className={PAGE_PRIMARY_TITLE_CLASS}>{t('settings.title')}</h1>
-            <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-gray-500 dark:text-gray-400">
-              {t('settings.subtitle')}
-            </p>
-          </header>
+    <ConsolePageShell>
+      <ConsolePageHeading
+        surface="hero"
+        rowGapClass="gap-4"
+        heading={
+          <ConsolePageTitleBlock title={t('settings.title')} subtitle={t('settings.subtitle')} />
+        }
+        extra={
           <Space wrap className="w-full shrink-0 justify-end sm:w-auto">
             <Button
               icon={<DownloadOutlined />}
               aria-label={t('settings.export')}
               onClick={handleExportConfig}
+              className="console-page-action-export"
             >
               <span className="hidden sm:inline">{t('settings.export')}</span>
             </Button>
@@ -1714,20 +2012,21 @@ export default function Settings() {
               loading={saveSettingsMutation.isPending}
               aria-label={t('settings.saveChanges')}
               onClick={handleSave}
+              className="console-page-action-save"
             >
               <span className="hidden sm:inline">{t('settings.saveChanges')}</span>
             </Button>
           </Space>
-        </div>
-        <Tabs
-          activeKey={activeTab}
-          onChange={(key) => setActiveTab(key as SettingsTab)}
-          items={tabItems}
-          className="hub-shell-tabs flex min-h-0 min-w-0 flex-1 flex-col"
-          size="large"
-          tabBarGutter={token.marginXL}
-        />
-      </div>
-    </PageLayout>
+        }
+      />
+      <Tabs
+        activeKey={activeTab}
+        onChange={(key) => setActiveTab(key as SettingsTab)}
+        items={tabItems}
+        className="hub-shell-tabs flex min-h-0 min-w-0 flex-1 flex-col"
+        size="large"
+        tabBarGutter={token.marginSM}
+      />
+    </ConsolePageShell>
   );
 }

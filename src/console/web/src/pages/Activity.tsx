@@ -32,7 +32,11 @@ import * as api from '../api/client';
 import { useAppStore } from '../store';
 import { getWSRef } from '../hooks/useWebSocket';
 import { PageLayout } from '../components/PageLayout';
-import { PAGE_PRIMARY_TITLE_GRADIENT_CLASS } from '../utils/pageTitleClasses';
+import {
+  ConsolePageShell,
+  ConsolePageHeading,
+  ConsolePageTitleBlock,
+} from '../components/ConsolePageChrome';
 import { formatQueryError } from '../utils/errors';
 import { useAgentTimeZone } from '../hooks/useAgentTimeZone';
 import { formatAgentLocaleDate } from '../utils/agentDatetime';
@@ -246,28 +250,34 @@ export default function Activity({ embedded = false }: { embedded?: boolean } = 
       ? detailItem.metadata.trace_id
       : '';
 
+  const activityToolbar = (
+    <div className="flex min-w-0 w-full shrink-0 flex-wrap items-center justify-end gap-2 sm:w-auto sm:justify-end">
+      <Badge status="processing" text={<span className="text-xs text-gray-400">{t('common.live')}</span>} />
+      <Button icon={<SyncOutlined />} aria-label={t('common.refresh')} onClick={() => refetch()}>
+        <span className="hidden sm:inline">{t('common.refresh')}</span>
+      </Button>
+    </div>
+  );
+
   return (
-    <PageLayout variant="bleed" embedded={embedded} className="min-h-0 flex-1 overflow-hidden">
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
-            <h1 className={PAGE_PRIMARY_TITLE_GRADIENT_CLASS}>{t('activity.title')}</h1>
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{t('activity.subtitle')}</p>
-          </div>
-          <div className="flex min-w-0 w-full shrink-0 flex-wrap items-center justify-end gap-2 sm:w-auto sm:justify-end">
-            <Badge
-              status="processing"
-              text={<span className="text-xs text-gray-400">{t('common.live')}</span>}
-            />
-            <Button
-              icon={<SyncOutlined />}
-              aria-label={t('common.refresh')}
-              onClick={() => refetch()}
-            >
-              <span className="hidden sm:inline">{t('common.refresh')}</span>
-            </Button>
-          </div>
-        </div>
+    <ConsolePageShell variant="bleed" embedded={embedded} innerClassName="min-h-0 flex-1 flex-col overflow-hidden">
+      <ConsolePageHeading
+        surface={embedded ? 'plain' : 'hero'}
+        rowGapClass="gap-3"
+        heading={
+          <ConsolePageTitleBlock
+            titleVariant="gradient"
+            title={t('activity.title')}
+            subtitle={t('activity.subtitle')}
+            subtitleClassName={
+              embedded
+                ? 'mt-1 text-sm text-gray-500 dark:text-gray-400'
+                : 'mt-1.5 text-sm text-slate-600 dark:text-slate-400'
+            }
+          />
+        }
+        extra={activityToolbar}
+      />
 
         <Card
           className="mt-4 flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-gray-200/90 shadow-sm dark:border-gray-700/80 dark:bg-gray-800/35"
@@ -456,7 +466,6 @@ export default function Activity({ embedded = false }: { embedded?: boolean } = 
             ) : null}
           </div>
         </Card>
-      </div>
 
       <Drawer
         title={t('activity.detailTitle')}
@@ -509,6 +518,6 @@ export default function Activity({ embedded = false }: { embedded?: boolean } = 
           </div>
         ) : null}
       </Drawer>
-    </PageLayout>
+    </ConsolePageShell>
   );
 }

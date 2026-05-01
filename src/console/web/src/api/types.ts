@@ -301,6 +301,17 @@ export interface SettingsGeneralToolsFormValues {
   };
   /** Mirrors ``config.tools.ssrfWhitelist``. */
   toolSsrfWhitelist: string[];
+  /** ``channels`` root defaults — mirrors ``ChannelsConfig`` scalar fields (not per-plugin blocks). */
+  channelsDefaults: {
+    sendProgress: boolean;
+    sendToolHints: boolean;
+    sendToolEvents: boolean;
+    sendReasoningContent: boolean;
+    sendMaxRetries: number;
+    transcriptionProvider: string;
+    transcriptionLanguage: string;
+    sessionTurnLifecycleChannels: string[];
+  };
 }
 
 /**

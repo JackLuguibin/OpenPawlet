@@ -1,8 +1,11 @@
 import type { ReactNode } from 'react';
 import { Tabs, theme } from 'antd';
 import type { TabsProps } from 'antd';
-import { PageLayout } from './PageLayout';
-import { PAGE_PRIMARY_TITLE_CLASS } from '../utils/pageTitleClasses';
+import {
+  ConsolePageShell,
+  ConsolePageHeading,
+  ConsolePageTitleBlock,
+} from './ConsolePageChrome';
 
 export interface HubTabItem<T extends string> {
   key: T;
@@ -58,30 +61,22 @@ export function HubShell<T extends string>({
   }));
 
   return (
-    <PageLayout className="min-h-0 flex-1 overflow-hidden">
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <header className="shrink-0 pb-2">
-          <h1 className={PAGE_PRIMARY_TITLE_CLASS}>
-            {title}
-          </h1>
-          {subtitle ? (
-            <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-gray-500 dark:text-gray-400">
-              {subtitle}
-            </p>
-          ) : null}
-        </header>
-        <Tabs
-          className="hub-shell-tabs flex min-h-0 min-w-0 flex-1 flex-col"
-          activeKey={activeKey}
-          onChange={(key) => onChange(key as T)}
-          items={items}
-          type={tabsType}
-          tabBarExtraContent={tabBarExtra}
-          tabBarGutter={token.marginXL}
-          size="small"
-          destroyOnHidden
-        />
-      </div>
-    </PageLayout>
+    <ConsolePageShell>
+      <ConsolePageHeading
+        surface="hero"
+        heading={<ConsolePageTitleBlock title={title} subtitle={subtitle} />}
+      />
+      <Tabs
+        className="hub-shell-tabs flex min-h-0 min-w-0 flex-1 flex-col"
+        activeKey={activeKey}
+        onChange={(key) => onChange(key as T)}
+        items={items}
+        type={tabsType}
+        tabBarExtraContent={tabBarExtra}
+        tabBarGutter={token.marginSM}
+        size="small"
+        destroyOnHidden
+      />
+    </ConsolePageShell>
   );
 }

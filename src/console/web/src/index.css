@@ -213,6 +213,140 @@ body {
   border-color: rgb(55 65 81 / 0.8) !important;
 }
 
+/* ------------------------------------------------------------------
+ * Console page shell: ambient background, hero strip, soft panels
+ * (used by Settings, HubShell, StandalonePage, Dashboard, …)
+ * ------------------------------------------------------------------ */
+.console-page-shell {
+  position: relative;
+  isolation: isolate;
+  background:
+    radial-gradient(110% 45% at 0% 0%, rgba(99, 102, 241, 0.07), transparent 55%),
+    radial-gradient(90% 40% at 100% 0%, rgba(14, 165, 233, 0.06), transparent 50%),
+    radial-gradient(120% 60% at 50% 100%, rgba(244, 114, 182, 0.04), transparent 45%);
+}
+
+.dark .console-page-shell {
+  background:
+    radial-gradient(110% 45% at 0% 0%, rgba(129, 140, 248, 0.11), transparent 50%),
+    radial-gradient(90% 40% at 100% 0%, rgba(56, 189, 248, 0.08), transparent 45%),
+    radial-gradient(120% 50% at 50% 100%, rgba(244, 114, 182, 0.06), transparent 45%);
+}
+
+.console-page-hero {
+  border-radius: 0.75rem;
+  border: 1px solid rgb(226 232 240 / 0.95);
+  background:
+    linear-gradient(135deg, rgb(255 255 255 / 0.92), rgb(248 250 252 / 0.85)),
+    linear-gradient(90deg, rgb(99 102 241 / 0.06), transparent 35%);
+  box-shadow:
+    0 1px 2px rgb(15 23 42 / 0.04),
+    0 8px 24px rgb(15 23 42 / 0.04);
+  padding: 1rem 1.25rem;
+}
+
+@media (min-width: 640px) {
+  .console-page-hero {
+    padding: 1.125rem 1.5rem;
+  }
+}
+
+.dark .console-page-hero {
+  border-color: rgb(51 65 85 / 0.85);
+  background:
+    linear-gradient(135deg, rgb(15 23 42 / 0.55), rgb(15 23 42 / 0.35)),
+    linear-gradient(90deg, rgb(129 140 248 / 0.12), transparent 40%);
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.25),
+    0 12px 32px rgb(0 0 0 / 0.2);
+}
+
+.console-page-hero-text h1 {
+  letter-spacing: -0.02em;
+}
+
+.console-page-action-export.ant-btn-default {
+  border-color: rgb(203 213 225 / 0.95);
+  background: rgb(255 255 255 / 0.75);
+}
+
+.console-page-action-export.ant-btn-default:hover {
+  border-color: rgb(99 102 241 / 0.45) !important;
+  color: rgb(79 70 229) !important;
+}
+
+.dark .console-page-action-export.ant-btn-default {
+  border-color: rgb(71 85 105 / 0.9);
+  background: rgb(30 41 59 / 0.45);
+}
+
+.console-page-action-save.ant-btn-primary {
+  box-shadow: 0 2px 8px rgb(99 102 241 / 0.25);
+}
+
+.dark .console-page-action-save.ant-btn-primary {
+  box-shadow: 0 2px 12px rgb(99 102 241 / 0.2);
+}
+
+.console-soft-panel,
+.settings-soft-panel {
+  border-width: 1px;
+  border-style: solid;
+  border-color: rgb(226 232 240 / 0.95);
+  border-radius: 0.375rem;
+  background: linear-gradient(
+    145deg,
+    rgb(248 250 252 / 0.98),
+    rgb(241 245 249 / 0.72)
+  );
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.035);
+}
+
+.dark .console-soft-panel,
+.dark .settings-soft-panel {
+  border-color: rgb(51 65 85 / 0.65);
+  background: linear-gradient(
+    145deg,
+    rgb(30 41 59 / 0.55),
+    rgb(15 23 42 / 0.38)
+  );
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.18);
+}
+
+.console-page-shell .settings-tools-collapse.ant-collapse {
+  border-radius: 0.5rem;
+}
+
+.console-page-shell .settings-tools-collapse > .ant-collapse-item {
+  margin-bottom: 8px;
+  border-radius: 0.5rem !important;
+  border: 1px solid rgb(226 232 240 / 0.9) !important;
+  overflow: hidden;
+  background: rgb(255 255 255 / 0.45);
+}
+
+.dark .console-page-shell .settings-tools-collapse > .ant-collapse-item {
+  border-color: rgb(51 65 85 / 0.7) !important;
+  background: rgb(15 23 42 / 0.25);
+}
+
+.console-page-shell .settings-tools-collapse > .ant-collapse-item > .ant-collapse-header {
+  padding: 10px 14px !important;
+  background: linear-gradient(180deg, rgb(248 250 252 / 0.65), transparent);
+}
+
+.dark .console-page-shell .settings-tools-collapse > .ant-collapse-item > .ant-collapse-header {
+  background: linear-gradient(180deg, rgb(30 41 59 / 0.35), transparent);
+}
+
+.console-page-shell .settings-surface-card.ant-card > .ant-card-head {
+  background: linear-gradient(180deg, rgb(249 250 251 / 0.95), rgb(255 255 255 / 0.5));
+}
+
+.dark .console-page-shell .settings-surface-card.ant-card > .ant-card-head {
+  background: linear-gradient(180deg, rgb(30 41 59 / 0.5), rgb(15 23 42 / 0.2));
+}
+
 /* Antd Modal/Drawer: flatten the heavy default shadow on light backgrounds. */
 .ant-modal .ant-modal-content,
 .ant-drawer .ant-drawer-content {
@@ -246,8 +380,7 @@ body {
 }
 
 /*
- * HubShell tabs: make the active pane fill the remaining vertical space so
- * embedded pages (Logs, Activity, …) can scroll inside.
+ * HubShell tabs: fill vertical space + pill-style tab bar (matches Settings).
  */
 .hub-shell-tabs.ant-tabs {
   display: flex;
@@ -257,8 +390,65 @@ body {
 }
 
 .hub-shell-tabs > .ant-tabs-nav {
-  margin-bottom: 12px;
+  margin-bottom: 14px;
   flex-shrink: 0;
+  padding: 4px;
+  border-radius: 0.65rem;
+  border: 1px solid rgb(226 232 240 / 0.9);
+  background: rgb(248 250 252 / 0.85);
+  backdrop-filter: blur(8px);
+}
+
+.dark .hub-shell-tabs > .ant-tabs-nav {
+  border-color: rgb(51 65 85 / 0.75);
+  background: rgb(15 23 42 / 0.4);
+}
+
+.hub-shell-tabs.ant-tabs-top > .ant-tabs-nav::before {
+  border-bottom: none;
+}
+
+.hub-shell-tabs .ant-tabs-tab {
+  margin: 0 2px !important;
+  padding: 0.5rem 0.85rem !important;
+  border-radius: 0.5rem !important;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.hub-shell-tabs .ant-tabs-tab-btn {
+  font-weight: 500;
+}
+
+.hub-shell-tabs .ant-tabs-tab:not(.ant-tabs-tab-active):hover {
+  background: rgb(15 23 42 / 0.04);
+}
+
+.dark .hub-shell-tabs .ant-tabs-tab:not(.ant-tabs-tab-active):hover {
+  background: rgb(255 255 255 / 0.06);
+}
+
+.hub-shell-tabs .ant-tabs-tab-active {
+  background: linear-gradient(
+    180deg,
+    rgb(255 255 255 / 0.98),
+    rgb(241 245 249 / 0.95)
+  ) !important;
+  box-shadow: 0 1px 3px rgb(15 23 42 / 0.06);
+}
+
+.dark .hub-shell-tabs .ant-tabs-tab-active {
+  background: linear-gradient(
+    180deg,
+    rgb(51 65 85 / 0.65),
+    rgb(30 41 59 / 0.5)
+  ) !important;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.25);
+}
+
+.hub-shell-tabs .ant-tabs-ink-bar {
+  display: none;
 }
 
 .hub-shell-tabs .ant-tabs-content-holder,
@@ -270,6 +460,7 @@ body {
   flex-direction: column;
   min-height: 0;
   min-width: 0;
+  width: 100%;
   overflow: hidden;
 }
 

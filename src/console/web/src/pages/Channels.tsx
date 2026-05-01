@@ -33,8 +33,12 @@ import type { ComponentType } from 'react';
 import { useTranslation } from 'react-i18next';
 import * as api from '../api/client';
 import { useAppStore } from '../store';
+import {
+  ConsolePageShell,
+  ConsolePageHeading,
+  ConsolePageTitleBlock,
+} from '../components/ConsolePageChrome';
 import { PageLayout } from '../components/PageLayout';
-import { PAGE_PRIMARY_TITLE_CLASS } from '../utils/pageTitleClasses';
 import { formatQueryError } from '../utils/errors';
 
 // Common config fields for token-based channels
@@ -277,35 +281,46 @@ export default function Channels({ embedded = false }: { embedded?: boolean } = 
   const totalChannels = channels?.length ?? 0;
   const enabledTotal = channels?.filter((c) => c.enabled).length ?? 0;
 
+  const channelsToolbar = (
+    <div className="flex w-full flex-wrap items-center justify-end gap-3 sm:w-auto sm:justify-start">
+      {totalChannels > 0 && (
+        <div className="rounded-full border border-slate-200/90 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm dark:border-slate-600 dark:bg-slate-800/80 dark:text-slate-200">
+          {t('channels.summary', { enabled: enabledTotal, total: totalChannels })}
+        </div>
+      )}
+      <Button
+        type="primary"
+        icon={<ReloadOutlined />}
+        aria-label={t('common.refresh')}
+        onClick={() => refetch()}
+        className="shadow-md shadow-primary-500/15"
+      >
+        <span className="hidden sm:inline">{t('common.refresh')}</span>
+      </Button>
+    </div>
+  );
+
   return (
-    <PageLayout embedded={embedded} className="min-h-0 flex-1 overflow-hidden !gap-0">
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-6 overflow-hidden">
-      <header className="flex shrink-0 flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div className="space-y-1">
-          <h1 className={PAGE_PRIMARY_TITLE_CLASS}>
-            {t('channels.pageTitle')}
-          </h1>
-          <p className="max-w-xl text-base text-slate-600 dark:text-slate-400">
-            {t('channels.pageSubtitle')}
-          </p>
-        </div>
-        <div className="flex w-full flex-wrap items-center justify-end gap-3 sm:w-auto sm:justify-start">
-          {totalChannels > 0 && (
-            <div className="rounded-full border border-slate-200/90 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm dark:border-slate-600 dark:bg-slate-800/80 dark:text-slate-200">
-              {t('channels.summary', { enabled: enabledTotal, total: totalChannels })}
-            </div>
-          )}
-          <Button
-            type="primary"
-            icon={<ReloadOutlined />}
-            aria-label={t('common.refresh')}
-            onClick={() => refetch()}
-            className="shadow-md shadow-primary-500/15"
-          >
-            <span className="hidden sm:inline">{t('common.refresh')}</span>
-          </Button>
-        </div>
-      </header>
+    <>
+    <ConsolePageShell
+      embedded={embedded}
+      className="!gap-0"
+      innerClassName="gap-6 overflow-hidden"
+    >
+      <ConsolePageHeading
+        surface={embedded ? 'plain' : 'hero'}
+        rowGapClass="gap-4"
+        rowAlign="end"
+        heading={
+          <ConsolePageTitleBlock
+            title={t('channels.pageTitle')}
+            subtitle={t('channels.pageSubtitle')}
+            subtitleClassName="mt-1 max-w-xl text-base text-slate-600 dark:text-slate-400"
+          />
+        }
+        extra={channelsToolbar}
+        extraClassName="sm:!justify-start"
+      />
 
       <Alert
         type="info"
@@ -430,7 +445,8 @@ export default function Channels({ embedded = false }: { embedded?: boolean } = 
         </div>
       )}
       </div>
-      </div>
+
+    </ConsolePageShell>
 
       <Modal
         title={
@@ -485,6 +501,6 @@ export default function Channels({ embedded = false }: { embedded?: boolean } = 
             })}
         </Form>
       </Modal>
-    </PageLayout>
+    </>
   );
 }

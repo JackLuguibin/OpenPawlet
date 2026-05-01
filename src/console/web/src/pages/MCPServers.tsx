@@ -37,8 +37,12 @@ import { useTranslation } from 'react-i18next';
 import * as api from '../api/client';
 import type { ConfigSection, MCPStatus, MCPServerConfig } from '../api/types';
 import { useAppStore } from '../store';
+import {
+  ConsolePageShell,
+  ConsolePageHeading,
+  ConsolePageTitleBlock,
+} from '../components/ConsolePageChrome';
 import { PageLayout } from '../components/PageLayout';
-import { PAGE_PRIMARY_TITLE_CLASS } from '../utils/pageTitleClasses';
 import { formatQueryError } from '../utils/errors';
 import { useAgentTimeZone } from '../hooks/useAgentTimeZone';
 import { formatAgentLocaleString } from '../utils/agentDatetime';
@@ -470,20 +474,27 @@ export function MCPServersPanel({
 
   const showCronHeadingRow = !embedded || standaloneSurface;
 
-  const headerRow = showCronHeadingRow ? (
-    <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between pb-2">
-      <header className="min-w-0">
-        <h1 className={PAGE_PRIMARY_TITLE_CLASS}>{t('mcp.pageTitle')}</h1>
-        <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-gray-500 dark:text-gray-400">
-          {t('mcp.subtitle')}
-        </p>
-      </header>
-      {refreshButtons}
-    </div>
-  ) : (
+  const headerRow = !showCronHeadingRow ? (
     <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-end pb-2">
       {refreshButtons}
     </div>
+  ) : (
+    <ConsolePageHeading
+      surface={embedded ? 'plain' : 'hero'}
+      rowGapClass="gap-3"
+      heading={
+        <ConsolePageTitleBlock
+          title={t('mcp.pageTitle')}
+          subtitle={t('mcp.subtitle')}
+          subtitleClassName={
+            embedded
+              ? 'mt-1 max-w-2xl text-[13px] leading-relaxed text-gray-500 dark:text-gray-400'
+              : undefined
+          }
+        />
+      }
+      extra={refreshButtons}
+    />
   );
 
   const main = (
@@ -829,15 +840,11 @@ export function MCPServersPanel({
 
   if (embedded) {
     return (
-      <PageLayout embedded className="min-h-0 flex-1 overflow-hidden">
+      <ConsolePageShell embedded>
         {main}
-      </PageLayout>
+      </ConsolePageShell>
     );
   }
 
-  return (
-    <PageLayout className="min-h-0 flex-1 overflow-hidden">
-      {main}
-    </PageLayout>
-  );
+  return <ConsolePageShell>{main}</ConsolePageShell>;
 }

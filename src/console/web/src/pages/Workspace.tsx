@@ -25,7 +25,11 @@ import * as api from '../api/client';
 import { useAppStore } from '../store';
 import { useBots } from '../hooks/useBots';
 import { PageLayout } from '../components/PageLayout';
-import { PAGE_PRIMARY_TITLE_CLASS } from '../utils/pageTitleClasses';
+import {
+  ConsolePageShell,
+  ConsolePageHeading,
+  ConsolePageTitleBlock,
+} from '../components/ConsolePageChrome';
 import { WorkspaceCodeEditor } from '../components/WorkspaceCodeEditor';
 import { MARKDOWN_PROSE_CLASS } from '../utils/markdownProse';
 import { formatQueryError } from '../utils/errors';
@@ -187,15 +191,14 @@ export default function Workspace() {
   }
 
   return (
-    <PageLayout className="min-h-0 flex-1 overflow-hidden">
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between pb-2">
-          <header className="min-w-0">
-            <h1 className={PAGE_PRIMARY_TITLE_CLASS}>{t('workspace.pageTitle')}</h1>
-            <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-gray-500 dark:text-gray-400">
-              {t('workspace.pageSubtitle')}
-            </p>
-          </header>
+    <ConsolePageShell>
+      <ConsolePageHeading
+        surface="hero"
+        rowGapClass="gap-3"
+        heading={
+          <ConsolePageTitleBlock title={t('workspace.pageTitle')} subtitle={t('workspace.pageSubtitle')} />
+        }
+        extra={
           <Space wrap className="w-full shrink-0 justify-end sm:w-auto">
             <Button
               type="default"
@@ -255,7 +258,8 @@ export default function Workspace() {
               />
             )}
           </Space>
-        </div>
+        }
+      />
 
         <div className="mt-4 flex min-h-0 min-w-0 flex-1 flex-col gap-4 lg:flex-row lg:gap-6">
           <Card
@@ -331,7 +335,6 @@ export default function Workspace() {
             </div>
           </Card>
         </div>
-      </div>
-    </PageLayout>
+    </ConsolePageShell>
   );
 }

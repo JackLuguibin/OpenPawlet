@@ -13,8 +13,11 @@ import {
 import { FileTextOutlined, CodeOutlined } from '@ant-design/icons';
 import { useAppStore } from '../store';
 import * as api from '../api/client';
-import { PageLayout } from '../components/PageLayout';
-import { PAGE_PRIMARY_TITLE_CLASS } from '../utils/pageTitleClasses';
+import {
+  ConsolePageShell,
+  ConsolePageHeading,
+  ConsolePageTitleBlock,
+} from '../components/ConsolePageChrome';
 import { RuntimeLogView } from '../components/RuntimeLogView';
 import { formatQueryError } from '../utils/errors';
 import type { RuntimeLogChunk } from '../api/types';
@@ -306,6 +309,42 @@ export default function Logs({ embedded = false }: { embedded?: boolean } = {}) 
     }
   }, [isFetching, isFetchingOlder]);
 
+  const logsToolbar = (
+    <div className="flex w-full min-w-0 flex-col gap-2.5 sm:flex-row sm:items-center sm:gap-3 lg:max-w-[min(100%,32rem)] lg:shrink-0 xl:max-w-[36rem]">
+      <div className="flex shrink-0 items-center justify-end gap-3 sm:ms-auto">
+        <label className="mb-0 flex cursor-pointer items-center gap-2 text-sm leading-none text-slate-600 dark:text-slate-300">
+          <Switch checked={autoRefresh} onChange={setAutoRefresh} size="small" />
+          <span className="whitespace-nowrap">{t('logs.autoRefresh')}</span>
+        </label>
+        <Button
+          danger
+          icon={<DeleteOutlined />}
+          loading={isClearing}
+          aria-label={t('logs.clear')}
+          onClick={clearLogs}
+          disabled={isLoading}
+        >
+          <span className="hidden sm:inline">{t('logs.clear')}</span>
+        </Button>
+        <Button
+          type="primary"
+          icon={<ReloadOutlined />}
+          loading={isFetching}
+          aria-label={t('common.refresh')}
+          onClick={() => {
+            setMergedChunk(null);
+            setNextCursor(null);
+            void refetch();
+          }}
+          disabled={isLoading}
+          className="shadow-sm"
+        >
+          <span className="hidden sm:inline">{t('common.refresh')}</span>
+        </Button>
+      </div>
+    </div>
+  );
+
   const handleLogBodyScroll = (e: UIEvent<HTMLDivElement>) => {
     if (!canLoadMore || isFetching || isFetchingOlder || autoLoadLockedRef.current) return;
     const el = e.currentTarget;
@@ -324,120 +363,94 @@ export default function Logs({ embedded = false }: { embedded?: boolean } = {}) 
   };
 
   return (
-    <PageLayout embedded={embedded} className="min-h-0 flex-1 overflow-hidden">
-      <div className="flex min-h-0 flex-1 flex-col gap-5 [&_.ant-input-affix-wrapper]:!rounded-md [&_.ant-btn]:!rounded-md [&_.ant-alert]:!rounded-md">
-        <div className="flex shrink-0 flex-col gap-4">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between lg:gap-6">
-            <div className="max-w-2xl min-w-0">
-              <h1 className={PAGE_PRIMARY_TITLE_CLASS}>
-                {t('logs.title')}
-              </h1>
-              <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-gray-500 dark:text-gray-400">
-                {t('logs.subtitle')}
-              </p>
-            </div>
-            <div className="flex w-full min-w-0 flex-col gap-2.5 sm:flex-row sm:items-center sm:gap-3 lg:max-w-[min(100%,32rem)] lg:shrink-0 xl:max-w-[36rem]">
-              <div className="flex shrink-0 items-center justify-end gap-3 sm:ms-auto">
-                <label className="mb-0 flex cursor-pointer items-center gap-2 text-sm leading-none text-slate-600 dark:text-slate-300">
-                  <Switch checked={autoRefresh} onChange={setAutoRefresh} size="small" />
-                  <span className="whitespace-nowrap">{t('logs.autoRefresh')}</span>
-                </label>
-                <Button
-                  danger
-                  icon={<DeleteOutlined />}
-                  loading={isClearing}
-                  aria-label={t('logs.clear')}
-                  onClick={clearLogs}
-                  disabled={isLoading}
-                >
-                  <span className="hidden sm:inline">{t('logs.clear')}</span>
-                </Button>
-                <Button
-                  type="primary"
-                  icon={<ReloadOutlined />}
-                  loading={isFetching}
-                  aria-label={t('common.refresh')}
-                  onClick={() => {
-                    setMergedChunk(null);
-                    setNextCursor(null);
-                    void refetch();
-                  }}
-                  disabled={isLoading}
-                  className="shadow-sm"
-                >
-                  <span className="hidden sm:inline">{t('common.refresh')}</span>
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
+    <ConsolePageShell
+      embedded={embedded}
+      innerClassName="gap-5 [&_.ant-input-affix-wrapper]:!rounded-md [&_.ant-btn]:!rounded-md [&_.ant-alert]:!rounded-md"
+    >
+      <ConsolePageHeading
+        surface={embedded ? 'plain' : 'hero'}
+        rowBreakAt="lg"
+        rowGapClass="gap-4 lg:gap-6"
+        headingColClassName="max-w-2xl"
+        heading={
+          <ConsolePageTitleBlock
+            title={t('logs.title')}
+            subtitle={t('logs.subtitle')}
+            subtitleClassName={
+              embedded
+                ? 'mt-1 max-w-2xl text-[13px] leading-relaxed text-gray-500 dark:text-gray-400'
+                : undefined
+            }
+          />
+        }
+        extra={logsToolbar}
+      />
 
-        {error && (
-          <Alert
-            type="error"
-            showIcon
-            className="shrink-0"
-            title={t('logs.loadError', { error: formatQueryError(error) })}
+      {error && (
+        <Alert
+          type="error"
+          showIcon
+          className="shrink-0"
+          title={t('logs.loadError', { error: formatQueryError(error) })}
+        />
+      )}
+
+      <div className="flex min-h-0 flex-1 flex-col">
+        {isLoading && !data && (
+          <div className="flex flex-col items-center justify-center rounded-md border border-dashed border-slate-200 py-20 text-slate-500 dark:border-slate-600">
+            <FileTextOutlined className="mb-2 opacity-40" style={{ fontSize: 36 }} />
+            {t('common.loading')}
+          </div>
+        )}
+
+        {!isLoading && displayChunks.length === 0 && !error && (
+          <div className="flex flex-col items-center justify-center rounded-md border border-dashed border-slate-200 py-20 text-slate-500 dark:border-slate-600">
+            <FileTextOutlined className="mb-2 opacity-40" style={{ fontSize: 36 }} />
+            {t('logs.empty')}
+          </div>
+        )}
+
+        {displayChunks.length === 1 && (
+          <LogPanel
+            label={t('logs.sourceConsole')}
+            chunk={displayChunks[0]!}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            copied={copied === chunkKey(displayChunks[0]!)}
+            onCopy={() => copyText(chunkKey(displayChunks[0]!), displayChunks[0]!.text || '')}
+            onBodyScroll={handleLogBodyScroll}
+            t={t}
+            variant="stacked"
           />
         )}
 
-        <div className="min-h-0 flex-1 flex flex-col">
-          {isLoading && !data && (
-            <div className="flex flex-col items-center justify-center rounded-md border border-dashed border-slate-200 py-20 text-slate-500 dark:border-slate-600">
-              <FileTextOutlined className="mb-2 opacity-40" style={{ fontSize: 36 }} />
-              {t('common.loading')}
-            </div>
-          )}
-
-          {!isLoading && displayChunks.length === 0 && !error && (
-            <div className="flex flex-col items-center justify-center rounded-md border border-dashed border-slate-200 py-20 text-slate-500 dark:border-slate-600">
-              <FileTextOutlined className="mb-2 opacity-40" style={{ fontSize: 36 }} />
-              {t('logs.empty')}
-            </div>
-          )}
-
-          {displayChunks.length === 1 && (
-            <LogPanel
-              label={t('logs.sourceConsole')}
-              chunk={displayChunks[0]!}
-              searchQuery={searchQuery}
-              onSearchChange={setSearchQuery}
-              copied={copied === chunkKey(displayChunks[0]!)}
-              onCopy={() => copyText(chunkKey(displayChunks[0]!), displayChunks[0]!.text || '')}
-              onBodyScroll={handleLogBodyScroll}
-              t={t}
-              variant="stacked"
-            />
-          )}
-
-          {displayChunks.length > 1 && (
-            <div className="flex min-h-0 flex-1 flex-col gap-3">
-              {displayChunks.map((chunk) => {
-                const k = chunkKey(chunk);
-                return (
-                  <LogPanel
-                    key={k}
-                    label={t('logs.sourceConsole')}
-                    chunk={chunk}
-                    searchQuery={searchQuery}
-                    onSearchChange={setSearchQuery}
-                    copied={copied === k}
-                    onCopy={() => copyText(k, chunk.text || '')}
-                    onBodyScroll={handleLogBodyScroll}
-                    t={t}
-                    variant="stacked"
-                  />
-                );
-              })}
-            </div>
-          )}
-          {isFetchingOlder && canLoadMore && (
-            <div className="mt-3 text-center text-xs text-slate-500 dark:text-slate-400">
-              {t('logs.loadingMore')}
-            </div>
-          )}
-        </div>
+        {displayChunks.length > 1 && (
+          <div className="flex min-h-0 flex-1 flex-col gap-3">
+            {displayChunks.map((chunk) => {
+              const k = chunkKey(chunk);
+              return (
+                <LogPanel
+                  key={k}
+                  label={t('logs.sourceConsole')}
+                  chunk={chunk}
+                  searchQuery={searchQuery}
+                  onSearchChange={setSearchQuery}
+                  copied={copied === k}
+                  onCopy={() => copyText(k, chunk.text || '')}
+                  onBodyScroll={handleLogBodyScroll}
+                  t={t}
+                  variant="stacked"
+                />
+              );
+            })}
+          </div>
+        )}
+        {isFetchingOlder && canLoadMore && (
+          <div className="mt-3 text-center text-xs text-slate-500 dark:text-slate-400">
+            {t('logs.loadingMore')}
+          </div>
+        )}
       </div>
-    </PageLayout>
+    </ConsolePageShell>
   );
 }

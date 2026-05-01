@@ -6,8 +6,9 @@ import { useTranslation } from 'react-i18next';
 import { Empty, Spin } from 'antd';
 import { useAppStore } from '../../store';
 import { useBots } from '../../hooks/useBots';
-import { PageLayout } from '../../components/PageLayout';
 import { PageHeader } from '../../components/PageHeader';
+import { ConsolePageShell } from '../../components/ConsolePageChrome';
+import { PageLayout } from '../../components/PageLayout';
 
 type StandalonePageProps =
   | { showHeader?: true; title: string; subtitle?: string; children: React.ReactNode }
@@ -17,14 +18,12 @@ type StandalonePageProps =
 export function StandalonePage(props: StandalonePageProps) {
   const showHeader = props.showHeader !== false;
   return (
-    <PageLayout className="min-h-0 flex-1 overflow-hidden">
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        {showHeader && 'title' in props ? (
-          <PageHeader title={props.title} subtitle={props.subtitle} />
-        ) : null}
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">{props.children}</div>
-      </div>
-    </PageLayout>
+    <ConsolePageShell>
+      {showHeader && 'title' in props ? (
+        <PageHeader title={props.title} subtitle={props.subtitle} />
+      ) : null}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">{props.children}</div>
+    </ConsolePageShell>
   );
 }
 
