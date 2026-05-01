@@ -5,8 +5,6 @@ import path from 'path'
 
 const host = process.env.VITE_API_HOST || 'localhost'
 const port = process.env.VITE_API_PORT || '8000'
-const openpawletWsHost = process.env.VITE_OPENPAWLET_WS_HOST || 'localhost'
-const openpawletWsPort = process.env.VITE_OPENPAWLET_WS_PORT || '8765'
 
 /**
  * Vite logs many proxied WebSocket errors at error level. Suppress only common,
@@ -165,18 +163,17 @@ export default defineConfig({
         target: `http://${host}:${port}`,
         changeOrigin: true,
       },
-      // 控制台 FastAPI 若实现 /ws，开发时可用 VITE_CONSOLE_WS_URL=ws://localhost:3000/ws
+      // Console `/ws/state` (state hub). Target must be HTTP(S): http-proxy upgrades to WS.
       '/ws': {
-        target: `ws://${host}:${port}`,
+        target: `http://${host}:${port}`,
         ws: true,
         changeOrigin: true,
       },
-      // OpenPawlet built-in `openpawlet.channels.websocket`; strips prefix so `/?client_id=...` hits WS path
+      // Same-origin WS as production: FastAPI `/openpawlet-ws/*` proxies to embedded gateway (see README).
       '/openpawlet-ws': {
-        target: `ws://${openpawletWsHost}:${openpawletWsPort}`,
+        target: `http://${host}:${port}`,
         ws: true,
         changeOrigin: true,
-        rewrite: (p) => p.replace(/^\/openpawlet-ws/, '') || '/',
       },
       // Queue admin stream (FastAPI WS route registered by queues_router).
       // ``/queues/stream`` is the canonical path; ``/queues-ws`` is kept as a
@@ -188,7 +185,7 @@ export default defineConfig({
         ws: true,
       },
       '/queues-ws': {
-        target: `ws://${host}:${port}`,
+        target: `http://${host}:${port}`,
         ws: true,
         changeOrigin: true,
         rewrite: () => '/queues/stream',

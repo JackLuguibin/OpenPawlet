@@ -4,6 +4,10 @@ The console server is the single process that hosts the SPA, the REST API,
 the OpenAI-compatible surface and the embedded OpenPawlet runtime.  This module
 owns the runtime side of that lifecycle so ``app.py`` only has to wire it
 into FastAPI's ``lifespan`` hook.
+
+Before serving begins (lifespan pre-``yield``), agent ``config.json`` is loaded
+into ``app.state.openpawlet_runtime_snapshot`` so proxies and routers share one
+validated view; console HTTP settings remain on ``app.state.settings``.
 """
 
 from __future__ import annotations
@@ -20,6 +24,7 @@ from fastapi import FastAPI
 from loguru import logger
 
 from console.server.config import ServerSettings, openpawlet_distribution_version
+from console.server.openpawlet_runtime_snapshot import OpenPawletRuntimeSnapshot
 from console.server.state_hub import bind_state_hub_to_loop
 
 _TRUTHY_ENV_VALUES = frozenset({"1", "true", "yes", "on"})
@@ -138,9 +143,9 @@ def _console_provider_factory(config: Any) -> Any:
     a :class:`NullProvider` placeholder whenever the real factory cannot
     pick a usable provider — every chat call against it returns a
     friendly "configure a provider" error, while AgentLoop / channels /
-    cron / heartbeat all start normally. As soon as the user adds a
-    provider via Settings → Providers, ``apply_providers_change`` swaps
-    the placeholder out via :meth:`AgentLoop.replace_provider`.
+    cron / heartbeat all start normally. After the user saves providers in
+    Settings → Providers, the embedded runtime is rebuilt from disk and picks
+    up the real LLM configuration from ``llm_providers.json``.
     """
     from openpawlet.providers.factory import build_default_provider
     from openpawlet.providers.null_provider import NullProvider
@@ -173,24 +178,22 @@ class _ProviderUnavailable(Exception):
     """
 
 
-async def _build_embedded_runtime(app: FastAPI) -> Any | None:
-    """Construct (but do not start) the embedded ``EmbeddedOpenPawlet`` instance.
+def _prepare_openpawlet_runtime_snapshot(app: FastAPI) -> OpenPawletRuntimeSnapshot | None:
+    """Load ``config.json`` for ``app.state.active_bot_id`` and attach :class:`OpenPawletRuntimeSnapshot`.
 
-    Returns ``None`` and logs the failure when construction fails.
+    Runs migrations and bootstrap helpers used by the embedded runtime so HTTP
+    handlers and ``WebSocket`` proxies share the same validated view before the
+    ASGI server begins serving (lifespan pre-``yield``).
     """
     try:
         from console.server.openpawlet_user_config import (
             ensure_full_config,
             resolve_config_path,
         )
+        from openpawlet.channels.websocket import WebSocketConfig
+        from openpawlet.cli.commands import _load_runtime_config
         from openpawlet.config.loader import set_config_path as _set_openpawlet_config_path
-        from openpawlet.runtime.embedded import EmbeddedOpenPawlet
 
-        settings: ServerSettings = app.state.settings
-
-        # When the console has an "active" non-default bot, retarget the
-        # OpenPawlet config loader at its per-bot config.json before
-        # constructing the runtime.
         active_bot_id = getattr(app.state, "active_bot_id", None)
         if active_bot_id:
             from console.server.bots_registry import DEFAULT_BOT_ID, get_registry
@@ -226,31 +229,53 @@ async def _build_embedded_runtime(app: FastAPI) -> Any | None:
 
             cfg = load_config()
             migrate_legacy_providers(cfg.workspace_path, cfg)
-            # Workspaces that ran an earlier build of the migrator may
-            # still hold empty ``legacy-custom`` / ``legacy-azure`` rows
-            # that the default-instance picker can route real traffic
-            # to; trim them on every boot so the bug never re-surfaces.
             heal_unusable_legacy_instances(cfg.workspace_path)
         except Exception:  # noqa: BLE001 - migration must never block startup
             logger.exception("[migrate] legacy provider migration failed; continuing")
 
-        # Build the runtime via the same recipe as ``from_environment`` but
-        # with a console-friendly provider factory that raises
-        # ``ProviderNotConfiguredError`` instead of calling ``typer.Exit``.
-        from openpawlet.cli.commands import _load_runtime_config
-
         cfg = _load_runtime_config(None, None)
         ws_cfg_raw = getattr(cfg.channels, "websocket", None)
-        ws_cfg: dict[str, Any] = dict(ws_cfg_raw) if isinstance(ws_cfg_raw, dict) else {}
-        ws_cfg["enabled"] = True
-        ws_cfg["host"] = settings.openpawlet_gateway_host
-        ws_cfg["port"] = settings.openpawlet_gateway_port
-        ws_cfg["path"] = "/"
-        ws_cfg["websocket_requires_token"] = False
-        setattr(cfg.channels, "websocket", ws_cfg)
+        ws_dict = ws_cfg_raw if isinstance(ws_cfg_raw, dict) else {}
+        ws_resolved = WebSocketConfig.model_validate(ws_dict)
+
+        snapshot = OpenPawletRuntimeSnapshot(config=cfg, websocket=ws_resolved)
+        app.state.openpawlet_runtime_snapshot = snapshot
+        app.state.openpawlet_runtime_snapshot_bot_id = active_bot_id
+        return snapshot
+    except Exception:  # noqa: BLE001 - degraded mode keeps the UI usable
+        logger.exception(
+            "Failed to load OpenPawlet runtime snapshot; console may run in degraded mode"
+        )
+        for attr in ("openpawlet_runtime_snapshot", "openpawlet_runtime_snapshot_bot_id"):
+            if hasattr(app.state, attr):
+                delattr(app.state, attr)
+        return None
+
+
+def _ensure_openpawlet_runtime_snapshot(app: FastAPI) -> OpenPawletRuntimeSnapshot | None:
+    """Return a cached snapshot when ``active_bot_id`` matches; otherwise reload from disk."""
+    active_bot_id = getattr(app.state, "active_bot_id", None)
+    snap = getattr(app.state, "openpawlet_runtime_snapshot", None)
+    cached_bot = getattr(app.state, "openpawlet_runtime_snapshot_bot_id", None)
+    if snap is not None and cached_bot == active_bot_id:
+        return snap
+    return _prepare_openpawlet_runtime_snapshot(app)
+
+
+async def _build_embedded_runtime(app: FastAPI) -> Any | None:
+    """Construct (but do not start) the embedded ``EmbeddedOpenPawlet`` instance.
+
+    Returns ``None`` and logs the failure when construction fails.
+    """
+    try:
+        from openpawlet.runtime.embedded import EmbeddedOpenPawlet
+
+        snapshot = _ensure_openpawlet_runtime_snapshot(app)
+        if snapshot is None:
+            return None
 
         return EmbeddedOpenPawlet(
-            config=cfg,
+            config=snapshot.config,
             verbose=False,
             provider_factory=_console_provider_factory,
         )
@@ -366,6 +391,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     bind_state_hub_to_loop(asyncio.get_running_loop())
     _ensure_active_bot_id(app)
     _ensure_server_config()
+
+    # Load agent config.json before serving so proxies and routers share ``app.state``.
+    _ensure_openpawlet_runtime_snapshot(app)
 
     if not embedded_disabled():
         await start_embedded_runtime(app)

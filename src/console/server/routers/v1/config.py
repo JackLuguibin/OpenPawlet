@@ -23,7 +23,6 @@ from console.server.openpawlet_user_config import (
     save_full_config,
     validate_core_config,
 )
-from console.server.state_hub_helpers import push_after_config_change
 from openpawlet.config.schema import Config
 
 router = APIRouter(tags=["Config"])
@@ -57,9 +56,9 @@ async def put_config(
     credentials now live in ``llm_providers.json`` and must be edited
     via the dedicated ``/llm-providers`` API.
 
-    After persisting, the change is forwarded to the live runtime through
-    :func:`console.server.config_apply.apply_config_change` so users no
-    longer need to restart the server for most edits to take effect.
+    After persisting, :func:`console.server.config_apply.apply_config_change`
+    reloads the embedded runtime from disk and pushes WebSocket snapshots for
+    the SPA (no in-memory ``AgentLoop`` patching from this endpoint).
     """
     if body.section == "providers":
         gone(
@@ -81,7 +80,6 @@ async def put_config(
     except ValidationError as exc:
         internal_error(str(exc), cause=exc)
     await apply_config_change(request.app, bot_id, old_raw, merged)
-    push_after_config_change(bot_id)
     return DataResponse(data=ConfigSection.model_validate(data))
 
 

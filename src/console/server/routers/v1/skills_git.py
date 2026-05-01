@@ -1,8 +1,8 @@
 """HTTP surface for ``skillsGit`` repositories.
 
-Exposes CRUD over the ``skillsGit.repos`` array stored at the top of
-``config.json`` plus a manual-sync endpoint that reuses the same engine
-as the background scheduler.
+CRUD persists ``skillsGit.repos`` in ``config.json`` then reloads the embedded
+runtime and broadcasts SPA snapshots (sync-only paths only persist telemetry and
+broadcast, without a full reload).
 """
 
 from __future__ import annotations
@@ -12,10 +12,11 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Query
+from fastapi import APIRouter, BackgroundTasks, Query, Request
 from pydantic import ValidationError
 
 from console.server.bot_workspace import workspace_root
+from console.server.config_apply import reload_embedded_then_broadcast_snapshots
 from console.server.http_errors import bad_request, not_found
 from console.server.models import (
     DataResponse,
@@ -29,6 +30,7 @@ from console.server.openpawlet_user_config import (
     resolve_config_path,
     save_full_config,
 )
+from console.server.state_hub_helpers import push_after_config_change
 from console.server.skills_git_sync import GitSyncError, sync_repo
 
 router = APIRouter(tags=["SkillsGit"])
@@ -119,6 +121,7 @@ async def list_git_repos(
 
 @router.post("/skills/git", response_model=DataResponse[SkillsGitRepo])
 async def create_git_repo(
+    request: Request,
     body: SkillsGitRepoUpsertBody,
     bot_id: str | None = Query(default=None, alias="bot_id"),
 ) -> DataResponse[SkillsGitRepo]:
@@ -138,11 +141,13 @@ async def create_git_repo(
     )
     repos.append(new_repo)
     _save_repos(bot_id, repos)
+    await reload_embedded_then_broadcast_snapshots(request.app, bot_id)
     return DataResponse(data=new_repo)
 
 
 @router.put("/skills/git/{repo_id}", response_model=DataResponse[SkillsGitRepo])
 async def update_git_repo(
+    request: Request,
     repo_id: str,
     body: SkillsGitRepoUpsertBody,
     bot_id: str | None = Query(default=None, alias="bot_id"),
@@ -165,11 +170,13 @@ async def update_git_repo(
     )
     repos = [updated if r.id == repo_id else r for r in repos]
     _save_repos(bot_id, repos)
+    await reload_embedded_then_broadcast_snapshots(request.app, bot_id)
     return DataResponse(data=updated)
 
 
 @router.delete("/skills/git/{repo_id}", response_model=DataResponse[OkWithName])
 async def delete_git_repo(
+    request: Request,
     repo_id: str,
     bot_id: str | None = Query(default=None, alias="bot_id"),
 ) -> DataResponse[OkWithName]:
@@ -177,6 +184,7 @@ async def delete_git_repo(
     repos = _load_repos(bot_id)
     target = _find_repo(repos, repo_id)
     _save_repos(bot_id, [r for r in repos if r.id != repo_id])
+    await reload_embedded_then_broadcast_snapshots(request.app, bot_id)
     return DataResponse(data=OkWithName(name=target.name))
 
 
@@ -240,6 +248,7 @@ async def sync_git_repo(
     _ = workspace_root(bot_id)
     result = await _run_sync(repo, bot_id)
     _persist_sync_result(bot_id, repo_id, result)
+    push_after_config_change(bot_id)
     # Always 200: errors are carried in result.status for inline UI (same as /skills).
     return DataResponse(data=result)
 
@@ -266,4 +275,5 @@ async def sync_all_git_repos(
             return res
 
     results = await asyncio.gather(*(one(r) for r in repos))
+    push_after_config_change(bot_id)
     return DataResponse(data=list(results))

@@ -18,8 +18,7 @@ from console.server.models.observability import (
     OpenPawletGatewayInfo,
 )
 from console.server.observability_jsonl import read_recent_observability_dicts
-from console.server.openpawlet_user_config import resolve_config_path
-from openpawlet.config.loader import load_config
+from console.server.openpawlet_runtime_snapshot import websocket_gateway_endpoint_uri
 
 router = APIRouter(tags=["Observability"])
 
@@ -33,8 +32,10 @@ def _embedded_runtime_info(request: Request, settings: ServerSettings) -> OpenPa
     report the actual EmbeddedOpenPawlet state here instead.
     """
     embedded = getattr(request.app.state, "embedded", None)
-    endpoint = (
-        f"in-process://{settings.openpawlet_gateway_host}:{settings.openpawlet_gateway_port}"
+    endpoint = websocket_gateway_endpoint_uri(
+        request.app.state,
+        fallback_host=settings.openpawlet_gateway_host,
+        fallback_port=settings.openpawlet_gateway_port,
     )
     if embedded is None:
         return OpenPawletGatewayInfo(
@@ -61,10 +62,7 @@ async def get_observability(
     bot_id: str | None = Query(default=None, alias="bot_id"),
 ) -> DataResponse[ObservabilityResponse]:
     """Return console + embedded-runtime status (no self-HTTP probe)."""
-    # Touch the config so a misconfigured workspace still surfaces as a
-    # 5xx the same way it did before; the value itself is no longer
-    # needed once we report runtime state directly.
-    _ = load_config(resolve_config_path(bot_id))
+    del bot_id  # Query parity with other routes; gateway/status reflect the active embedded runtime.
     return DataResponse(
         data=ObservabilityResponse(
             console=ConsoleObservabilityInfo(
@@ -83,8 +81,6 @@ async def get_observability_timeline(
     trace_id: str | None = Query(default=None, alias="trace_id"),
 ) -> DataResponse[AgentObservabilityTimeline]:
     """Agent trace from JSONL under the bot workspace (LLM / tool / run; same paths OpenPawlet appends to)."""
-    path = resolve_config_path(bot_id)
-    _ = load_config(path)
     raw_list, source, err = read_recent_observability_dicts(
         workspace_root(bot_id),
         limit=limit,

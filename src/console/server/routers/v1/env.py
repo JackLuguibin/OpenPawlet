@@ -1,17 +1,13 @@
 """Environment variables: read/write ``.env`` beside ``config.json``.
 
 Saves are forwarded through :func:`console.server.config_apply.apply_env_change`
-so users no longer need to restart the bot after editing a variable —
-the new value is mirrored into ``os.environ`` immediately and the
-embedded runtime is rebuilt so initialisation-time consumers
-(providers, channels, agent identity) re-read the latest state.
+which mirrors values into ``os.environ``, persists derived ``config.json``
+(exec allowlist) when needed, reloads the embedded runtime from disk plus
+environment, and broadcasts SPA snapshots — without requiring a manual
+process restart.
 
-The ``exec_visible_keys`` payload mirrors the user's per-row "allow exec"
-toggles into ``tools.exec.allowedEnvKeys``, which controls whether the
-exec tool's sandboxed subprocess receives each variable.  Without that
-toggle, env vars added through the UI would never be visible to ``exec``
-calls because the exec tool deliberately starts subprocesses with a
-strict allowlisted environment.
+``exec_visible_keys`` from the UI selects which loaded vars are mirrored into
+``tools.exec.allowedEnvKeys`` so the exec subprocess environment matches toggles.
 """
 
 from __future__ import annotations
@@ -63,14 +59,7 @@ async def put_env(
     body: EnvPutBody,
     bot_id: str | None = Query(default=None, alias="bot_id"),
 ) -> DataResponse[EnvPutResponse]:
-    """Replace ``.env`` with the given key/value map and apply hot.
-
-    On-disk ``.env`` is overwritten first (the source of truth for
-    subsequent restarts), then the diff against the previous file is
-    mirrored into ``os.environ``, ``tools.exec.allowedEnvKeys`` is
-    updated to match ``exec_visible_keys``, and the embedded runtime is
-    rebuilt so the change is observable without a manual bot restart.
-    """
+    """Replace ``.env``, mirror ``os.environ``, persist exec allowlist, reload embedded runtime, broadcast SPA snapshots."""
     path = env_file_path(bot_id)
     old_vars = parse_dotenv_file(path)
     write_dotenv_file(path, body.vars)

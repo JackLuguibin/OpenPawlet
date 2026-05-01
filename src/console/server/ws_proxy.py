@@ -19,6 +19,7 @@ import websockets.exceptions
 from fastapi import FastAPI, WebSocket
 from loguru import logger
 
+from console.server.openpawlet_runtime_snapshot import websocket_gateway_listen_triple
 from console.server.queue_envelope import tag_inbound_text_frame
 
 # WebSocket reverse-proxy hardening knobs.  The values are intentionally
@@ -164,6 +165,32 @@ async def _pump_remote_to_client(
         await _safe_ws_close(websocket)
 
 
+def _resolve_loopback_gateway(
+    websocket: WebSocket,
+    default_host: str,
+    default_port: int,
+) -> tuple[str, int]:
+    """Prefer host/port from :func:`~console.server.openpawlet_runtime_snapshot.websocket_gateway_listen_triple`.
+
+    Falls back to *default_* from :func:`mount_openpawlet_ws_proxy` when no snapshot exists.
+    """
+    tup = websocket_gateway_listen_triple(websocket.app.state)
+    if tup is not None:
+        host, port, _ = tup
+        return host, port
+    return default_host, default_port
+
+
+def _upstream_ws_path(websocket: WebSocket, rest_path: str) -> str:
+    """Map public ``/openpawlet-ws/{rest_path}`` to the loopback channel path."""
+    if rest_path:
+        return f"/{rest_path}" if not rest_path.startswith("/") else rest_path
+    tup = websocket_gateway_listen_triple(websocket.app.state)
+    if tup is not None:
+        return tup[2]
+    return "/"
+
+
 async def proxy_websocket(
     websocket: WebSocket,
     rest_path: str,
@@ -182,16 +209,17 @@ async def proxy_websocket(
     await websocket.accept()
 
     query_string = _filter_query_string(websocket.scope.get("query_string", b""))
-    target_path = f"/{rest_path}" if rest_path else "/"
-    target_url = f"ws://{gateway_host}:{gateway_port}{target_path}"
+    target_path = _upstream_ws_path(websocket, rest_path)
+    gw_host, gw_port = _resolve_loopback_gateway(websocket, gateway_host, gateway_port)
+    target_url = f"ws://{gw_host}:{gw_port}{target_path}"
     if query_string:
         target_url = f"{target_url}?{query_string}"
 
     logger.debug(
         "[openpawlet-ws-proxy] open client={} -> {}:{}{}",
         websocket.client,
-        gateway_host,
-        gateway_port,
+        gw_host,
+        gw_port,
         target_path,
     )
 
@@ -214,8 +242,8 @@ async def proxy_websocket(
     except OSError as exc:
         logger.warning(
             "[openpawlet-ws-proxy] cannot reach embedded gateway at ws://{}:{}{}: {}",
-            gateway_host,
-            gateway_port,
+            gw_host,
+            gw_port,
             target_path,
             exc,
         )
@@ -244,7 +272,7 @@ def mount_openpawlet_ws_proxy(
         )
 
     logger.info(
-        "[openpawlet-ws-proxy] Proxying /openpawlet-ws/* -> ws://{}:{} (in-process loopback)",
+        "[openpawlet-ws-proxy] Proxying /openpawlet-ws/* -> ws://{}:{} (fallback until channel config is loaded)",
         gateway_host,
         gateway_port,
     )

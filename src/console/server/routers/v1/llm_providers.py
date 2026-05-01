@@ -41,9 +41,8 @@ from pydantic.alias_generators import to_camel
 
 from console.server.bot_workspace import workspace_root
 from console.server.http_errors import bad_request, not_found, not_found_detail
-from console.server.config_apply import apply_providers_change
+from console.server.config_apply import reload_embedded_then_broadcast_snapshots
 from console.server.models import DataResponse, OkBody
-from console.server.state_hub_helpers import push_after_config_change
 from openpawlet.providers.instances import (
     ALL_FAILOVER_TRIGGERS,
     DEFAULT_FAILOVER_TRIGGERS,
@@ -57,15 +56,9 @@ from openpawlet.providers.instances import (
 from openpawlet.providers.registry import PROVIDERS
 
 
-def _after_provider_change(request: Request, bot_id: str | None) -> None:
-    """Refresh state-hub snapshots and hot-swap the live LLM provider.
-
-    Centralised so every mutating ``/llm-providers`` endpoint applies the
-    same post-write hooks (state push + provider rebuild) without
-    drifting over time.
-    """
-    push_after_config_change(bot_id)
-    apply_providers_change(request.app)
+async def _after_provider_change(request: Request, bot_id: str | None) -> None:
+    """Reload embedded runtime from disk after ``llm_providers.json`` writes, then broadcast SPA snapshots."""
+    await reload_embedded_then_broadcast_snapshots(request.app, bot_id)
 
 
 router = APIRouter(prefix="/bots/{bot_id}/llm-providers", tags=["LLM Providers"])
@@ -312,7 +305,7 @@ async def create_instance(
             instance = instance.model_copy(update={"is_default": True})
 
     store.upsert(instance)
-    _after_provider_change(request, bot_id)
+    await _after_provider_change(request, bot_id)
     return DataResponse(data=_safe_payload(instance))
 
 
@@ -363,7 +356,7 @@ async def update_instance(
         bad_request(str(exc), cause=exc)
 
     store.upsert(updated)
-    _after_provider_change(request, bot_id)
+    await _after_provider_change(request, bot_id)
     return DataResponse(data=_safe_payload(updated))
 
 
@@ -382,7 +375,7 @@ async def set_default_instance(
     inst = store.set_default(instance_id)
     if inst is None:
         not_found("Instance")
-    _after_provider_change(request, bot_id)
+    await _after_provider_change(request, bot_id)
     return DataResponse(data=_safe_payload(inst))
 
 
@@ -393,7 +386,7 @@ async def delete_instance(
     """Delete an instance and clean up references on others."""
     if not _store(bot_id).delete(instance_id):
         not_found("Instance")
-    _after_provider_change(request, bot_id)
+    await _after_provider_change(request, bot_id)
     return DataResponse(data=OkBody())
 
 
@@ -484,7 +477,7 @@ async def add_key(
     new_entry = ApiKeyEntry(id=new_id, label=(body.label or "").strip(), value=value)
     inst.api_keys.append(new_entry)
     store.upsert(inst)
-    _after_provider_change(request, bot_id)
+    await _after_provider_change(request, bot_id)
     masked_row = {
         "id": new_entry.id,
         "label": new_entry.label,
@@ -523,7 +516,7 @@ async def reorder_keys(
             new_order.append(entry)
     inst.api_keys = new_order
     store.upsert(inst)
-    _after_provider_change(request, bot_id)
+    await _after_provider_change(request, bot_id)
     return DataResponse(data=_safe_keys(inst))
 
 
@@ -548,7 +541,7 @@ async def patch_key(
         entry.value = body.value.strip()
     inst.api_keys[idx] = entry
     store.upsert(inst)
-    _after_provider_change(request, bot_id)
+    await _after_provider_change(request, bot_id)
     return DataResponse(
         data={
             "id": entry.id,
@@ -572,7 +565,7 @@ async def delete_key(
     idx = _find_key_index(inst, key_id)
     inst.api_keys.pop(idx)
     store.upsert(inst)
-    _after_provider_change(request, bot_id)
+    await _after_provider_change(request, bot_id)
     return DataResponse(data=OkBody())
 
 

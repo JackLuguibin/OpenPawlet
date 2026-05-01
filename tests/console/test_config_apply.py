@@ -1,9 +1,7 @@
 """Tests for ``console.server.config_apply``.
 
-These pin the routing decision (hot vs swap) and the AgentLoop hot-apply
-field-by-field semantics.  The hot-apply plumbing is what lets users edit
-``config.json`` from the SPA and observe the change without restarting
-the server, so it is worth a focused safety net.
+HTTP handlers persist workspace files; :func:`apply_config_change` only
+orchestrates an embedded runtime reload from disk (no ``AgentLoop.apply_hot_config``).
 """
 
 from __future__ import annotations
@@ -11,7 +9,6 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -23,7 +20,6 @@ if str(SRC) not in sys.path:
 from console.server.config_apply import (  # noqa: E402
     apply_config_change,
     apply_env_change,
-    needs_runtime_swap,
 )
 from openpawlet.config.schema import Config  # noqa: E402
 
@@ -32,57 +28,9 @@ def _default_dict() -> dict:
     return Config().model_dump(mode="json", by_alias=True)
 
 
-def test_needs_swap_false_for_identical_config() -> None:
-    base = _default_dict()
-    assert needs_runtime_swap(base, base) is False
-
-
-def test_needs_swap_false_for_hot_only_field_changes() -> None:
-    """Only changing model/timezone should not require a runtime rebuild."""
-    base = _default_dict()
-    new = _default_dict()
-    new["agents"]["defaults"]["model"] = "openai/gpt-test"
-    new["agents"]["defaults"]["timezone"] = "Asia/Shanghai"
-    assert needs_runtime_swap(base, new) is False
-
-
-def test_needs_swap_true_for_channels_change() -> None:
-    base = _default_dict()
-    new = _default_dict()
-    new.setdefault("channels", {})["telegram"] = {"enabled": True, "token": "x"}
-    assert needs_runtime_swap(base, new) is True
-
-
-def test_needs_swap_true_for_mcp_servers_change() -> None:
-    base = _default_dict()
-    new = _default_dict()
-    tools = new.setdefault("tools", {})
-    tools["mcpServers"] = {"my-mcp": {"command": "echo"}}
-    assert needs_runtime_swap(base, new) is True
-
-
-def test_needs_swap_true_for_exec_change() -> None:
-    base = _default_dict()
-    new = _default_dict()
-    tools = new.setdefault("tools", {})
-    tools["exec"] = {"enable": False}
-    assert needs_runtime_swap(base, new) is True
-
-
-def test_needs_swap_false_when_only_ssrf_whitelist_changes() -> None:
-    """SSRF whitelist is hot-applied via the global helper, not a swap."""
-    base = _default_dict()
-    new = _default_dict()
-    new.setdefault("tools", {}).setdefault("ssrfWhitelist", []).append("example.com")
-    assert needs_runtime_swap(base, new) is False
-
-
 @pytest.mark.asyncio
-async def test_apply_config_change_routes_hot_apply(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A model-only change must route to hot-apply (no swap_runtime call)."""
-    fake_agent = SimpleNamespace(apply_hot_config=MagicMock(return_value={"model": ("a", "b")}))
-    fake_embedded = SimpleNamespace(agent=fake_agent)
-    fake_app = SimpleNamespace(state=SimpleNamespace(embedded=fake_embedded, active_bot_id="default"))
+async def test_apply_config_change_triggers_reload(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_app = SimpleNamespace(state=SimpleNamespace(embedded=None, active_bot_id="default"))
 
     swap_called = {"n": 0}
 
@@ -97,67 +45,76 @@ async def test_apply_config_change_routes_hot_apply(monkeypatch: pytest.MonkeyPa
     new["agents"]["defaults"]["model"] = "openai/gpt-test"
 
     result = await apply_config_change(fake_app, "default", base, new)
-    assert result["mode"] == "hot"
-    assert swap_called["n"] == 0
-    fake_agent.apply_hot_config.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_apply_config_change_routes_swap(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A channels change must trigger swap_runtime instead of hot apply."""
-    fake_agent = SimpleNamespace(apply_hot_config=MagicMock(return_value={}))
-    fake_embedded = SimpleNamespace(agent=fake_agent)
-    fake_app = SimpleNamespace(state=SimpleNamespace(embedded=fake_embedded, active_bot_id="default"))
-
-    swap_called = {"n": 0}
-
-    async def _fake_swap(_app, _bot_id):
-        swap_called["n"] += 1
-        return True
-
-    monkeypatch.setattr("console.server.lifespan.swap_runtime", _fake_swap)
-
-    base = _default_dict()
-    new = _default_dict()
-    new.setdefault("channels", {})["telegram"] = {"enabled": True, "token": "x"}
-
-    result = await apply_config_change(fake_app, "default", base, new)
-    assert result["mode"] == "swap"
+    assert result["mode"] == "reload"
+    assert result["ok"] is True
     assert swap_called["n"] == 1
-    fake_agent.apply_hot_config.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_apply_config_change_reload_on_channels_patch(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_app = SimpleNamespace(state=SimpleNamespace(embedded=None, active_bot_id="default"))
+    swap_called = {"n": 0}
+
+    async def _fake_swap(_app, _bot_id):
+        swap_called["n"] += 1
+        return True
+
+    monkeypatch.setattr("console.server.lifespan.swap_runtime", _fake_swap)
+
+    base = _default_dict()
+    new = _default_dict()
+    new.setdefault("channels", {})["telegram"] = {"enabled": True, "token": "x"}
+
+    result = await apply_config_change(fake_app, "default", base, new)
+    assert result["mode"] == "reload"
+    assert swap_called["n"] == 1
 
 
 @pytest.mark.asyncio
 async def test_apply_config_change_noop(monkeypatch: pytest.MonkeyPatch) -> None:
+    swap_called = {"n": 0}
+
+    async def _fake_swap(_app, _bot_id):
+        swap_called["n"] += 1
+        return True
+
+    monkeypatch.setattr("console.server.lifespan.swap_runtime", _fake_swap)
+
     fake_app = SimpleNamespace(state=SimpleNamespace(embedded=None, active_bot_id="default"))
     base = _default_dict()
     result = await apply_config_change(fake_app, "default", base, base)
     assert result["mode"] == "noop"
+    assert swap_called["n"] == 0
 
 
 @pytest.mark.asyncio
-async def test_apply_config_change_handles_missing_runtime(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Hot-apply with no embedded runtime is a graceful no-op."""
+async def test_apply_config_change_reload_when_embedded_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_app = SimpleNamespace(state=SimpleNamespace(embedded=None, active_bot_id="default"))
+    swap_called = {"n": 0}
+
+    async def _fake_swap(_app, _bot_id):
+        swap_called["n"] += 1
+        return False
+
+    monkeypatch.setattr("console.server.lifespan.swap_runtime", _fake_swap)
+
     base = _default_dict()
     new = _default_dict()
     new["agents"]["defaults"]["model"] = "openai/gpt-test"
 
     result = await apply_config_change(fake_app, "default", base, new)
-    assert result["mode"] == "hot"
-    assert result["changed"] == {}
+    assert result["mode"] == "reload"
+    assert result["ok"] is False
+    assert swap_called["n"] == 1
 
 
 # ---------------------------------------------------------------------------
-# .env hot-apply
+# .env → reload
 # ---------------------------------------------------------------------------
 
 
 @pytest.fixture
 def _fake_app_with_swap(monkeypatch: pytest.MonkeyPatch):
-    """Provide a FastAPI-like app + a counted ``swap_runtime`` stub."""
     fake_app = SimpleNamespace(state=SimpleNamespace(embedded=None, active_bot_id="default"))
     swap_calls = {"n": 0, "bot_ids": []}
 
@@ -241,7 +198,6 @@ async def test_apply_env_change_removes_keys_from_environ(
 async def test_apply_env_change_noop_skips_swap(
     monkeypatch: pytest.MonkeyPatch, _fake_app_with_swap
 ) -> None:
-    """Saving the same vars twice should not trigger a runtime rebuild."""
     fake_app, swap_calls = _fake_app_with_swap
 
     same = {"OP_TEST_NOOP_KEY": "v"}
@@ -266,7 +222,6 @@ async def test_apply_env_change_syncs_exec_allowlist(
     _fake_app_with_swap,
     tmp_path,
 ) -> None:
-    """User-toggled exec visibility writes through to tools.exec.allowedEnvKeys."""
     fake_app, swap_calls = _fake_app_with_swap
 
     config_path = tmp_path / "config.json"
@@ -301,7 +256,6 @@ async def test_apply_env_change_skips_unknown_exec_keys(
     _fake_app_with_swap,
     tmp_path,
 ) -> None:
-    """Keys requested for exec but absent from .env are filtered out."""
     fake_app, _swap_calls = _fake_app_with_swap
 
     config_path = tmp_path / "config.json"

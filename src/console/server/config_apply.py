@@ -1,106 +1,58 @@
-"""Apply ``config.json`` changes to the live runtime without restarts.
+"""Post-write embedded runtime reload for the console HTTP API.
 
-Save endpoints (``PUT /api/v1/config`` and the LLM-providers routes)
-forward each save through :func:`apply_config_change`. The helper inspects
-the diff between the previous and the new on-disk config and decides per
-field whether a hot-apply is sufficient or whether the embedded OpenPawlet
-runtime must be rebuilt via :func:`console.server.lifespan.swap_runtime`.
+Responsibility split
+====================
 
-Hot-apply contract
-==================
+* **UI (SPA)** — collect edits and call JSON APIs only; it does not write
+  workspace files directly.
+* **Console HTTP routers** — validate payloads and persist authoritative state
+  to disk (``config.json``, ``llm_providers.json``, ``.env``, …).
+* **OpenPawlet embedded runtime** — after persistence succeeds, reload by
+  rebuilding the in-process graph via :func:`reload_embedded_openpawlet_runtime`,
+  which re-reads configuration from disk (same mechanism as ``swap_runtime``).
+* **WebSocket state hub** — after a successful reload attempt, callers broadcast
+  fresh snapshots via :func:`console.server.state_hub_helpers.push_after_config_change`
+  so the SPA stays read-only over push channels (no client-side file writes).
 
-* In-flight requests/sessions keep using the values they captured when
-  they started; only **new** turns / new sessions started after the call
-  observe the new configuration.
-* Anything that requires re-instantiating tools, channels, MCP clients
-  or the LLM provider falls into the "needs swap" bucket.
+Handlers intentionally avoid patching live :class:`~openpawlet.agent.loop.AgentLoop`
+internals (no ``apply_hot_config`` from REST): durable changes always flow
+**disk → reload** so persistence and runtime activation stay decoupled.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
+from fastapi import FastAPI
 from loguru import logger
 
-from openpawlet.config.schema import Config
 
-if TYPE_CHECKING:
-    from fastapi import FastAPI
+async def reload_embedded_openpawlet_runtime(app: FastAPI, bot_id: str | None) -> bool:
+    """Rebuild the embedded OpenPawlet runtime so it re-reads workspace files from disk."""
+    from console.server.lifespan import swap_runtime
 
-
-# Top-level config sections whose changes we currently cannot apply
-# without rebuilding the embedded runtime (channels rewire bus + outbound,
-# tools.web/exec/mcp are baked into ToolRegistry, restrict_to_workspace
-# drives sandbox decisions captured at tool-construction time).
-_SWAP_REQUIRED_TOP_LEVEL = ("channels", "gateway", "api")
-_SWAP_REQUIRED_TOOLS_KEYS = ("web", "exec", "mcp_servers", "mcpServers", "restrictToWorkspace", "restrict_to_workspace", "my")
+    target_bot = bot_id or getattr(app.state, "active_bot_id", None) or "default"
+    return await swap_runtime(app, target_bot)
 
 
-def _normalize(data: dict[str, Any] | None) -> dict[str, Any]:
-    """Return a Config-validated, alias-normalised copy of ``data``.
+def _broadcast_config_snapshots(bot_id: str | None) -> None:
+    """Notify subscribed SPA clients that status-derived aggregates may have changed."""
+    from console.server.state_hub_helpers import push_after_config_change
 
-    Falls back to defaults on validation errors so a save endpoint can
-    still apply the safe subset (the endpoint validates the user input
-    before this function is reached, so failures here are not expected).
-    """
-    if not data:
-        return Config().model_dump(mode="json", by_alias=True)
+    push_after_config_change(bot_id)
+
+
+async def reload_embedded_then_broadcast_snapshots(app: FastAPI, bot_id: str | None) -> bool:
+    """Reload runtime from disk, then publish state-hub snapshots (reload is best-effort)."""
     try:
-        cfg = Config.model_validate(
-            {k: data[k] for k in ("agents", "channels", "tools", "api", "gateway") if k in data}
+        ok = await reload_embedded_openpawlet_runtime(app, bot_id)
+    except Exception:  # noqa: BLE001 - never break HTTP persist handlers
+        logger.opt(exception=True).debug(
+            "reload_embedded_openpawlet_runtime failed after workspace persist"
         )
-    except Exception:  # noqa: BLE001 - normalise into defaults on bad input
-        return Config().model_dump(mode="json", by_alias=True)
-    return cfg.model_dump(mode="json", by_alias=True)
-
-
-def needs_runtime_swap(old: dict[str, Any], new: dict[str, Any]) -> bool:
-    """Return True when *new* differs from *old* in a non-hot-swappable way."""
-    old_n = _normalize(old)
-    new_n = _normalize(new)
-
-    for key in _SWAP_REQUIRED_TOP_LEVEL:
-        if old_n.get(key) != new_n.get(key):
-            return True
-
-    old_tools = old_n.get("tools") or {}
-    new_tools = new_n.get("tools") or {}
-    for key in _SWAP_REQUIRED_TOOLS_KEYS:
-        if old_tools.get(key) != new_tools.get(key):
-            return True
-
-    return False
-
-
-def _apply_ssrf_whitelist(new_cfg: Config) -> None:
-    """Re-publish the SSRF whitelist; safe to call repeatedly."""
-    from openpawlet.security.network import configure_ssrf_whitelist
-
-    configure_ssrf_whitelist(new_cfg.tools.ssrf_whitelist)
-
-
-def hot_apply(app: FastAPI, new_cfg: Config) -> dict[str, Any]:
-    """Apply hot-swappable fields of ``new_cfg`` to the running runtime.
-
-    Returns a mapping describing what was changed (mostly for logs and
-    tests). Missing/inactive runtimes return an empty dict so callers can
-    treat "degraded mode" as a no-op without special-casing.
-    """
-    _apply_ssrf_whitelist(new_cfg)
-
-    embedded = getattr(app.state, "embedded", None)
-    if embedded is None:
-        return {}
-
-    agent = getattr(embedded, "agent", None)
-    if agent is None or not hasattr(agent, "apply_hot_config"):
-        return {}
-
-    try:
-        return agent.apply_hot_config(new_cfg)
-    except Exception:  # noqa: BLE001 - never break the save path on hot-apply
-        logger.exception("[config-apply] hot-apply failed; runtime kept previous values")
-        return {}
+        ok = False
+    _broadcast_config_snapshots(bot_id)
+    return bool(ok)
 
 
 async def apply_config_change(
@@ -109,31 +61,18 @@ async def apply_config_change(
     old_data: dict[str, Any],
     new_data: dict[str, Any],
 ) -> dict[str, Any]:
-    """Decide between hot-apply and runtime-swap for a config save.
+    """After ``config.json`` was saved, reload the embedded runtime from disk.
 
-    Returns a small dict with ``{"mode": "hot"|"swap"|"noop", "changed": ...}``
-    so the API layer can include it in its log line if it wants to.
+    Also broadcasts status/channel/MCP snapshots for WebSocket subscribers.
+
+    Returns ``{"mode": "noop"|"reload", "ok": bool}``.
     """
     if old_data == new_data:
-        return {"mode": "noop", "changed": {}}
+        return {"mode": "noop", "ok": True}
 
-    if needs_runtime_swap(old_data, new_data):
-        from console.server.lifespan import swap_runtime
-
-        target_bot = bot_id or getattr(app.state, "active_bot_id", None) or "default"
-        ok = await swap_runtime(app, target_bot)
-        return {"mode": "swap", "ok": bool(ok)}
-
-    try:
-        new_cfg = Config.model_validate(
-            {k: new_data[k] for k in ("agents", "channels", "tools", "api", "gateway") if k in new_data}
-        )
-    except Exception:  # noqa: BLE001
-        logger.exception("[config-apply] new config failed validation; skipping hot-apply")
-        return {"mode": "noop", "changed": {}}
-
-    changed = hot_apply(app, new_cfg)
-    return {"mode": "hot", "changed": changed}
+    ok = await reload_embedded_openpawlet_runtime(app, bot_id)
+    _broadcast_config_snapshots(bot_id)
+    return {"mode": "reload", "ok": bool(ok)}
 
 
 def _sync_exec_allowed_env_keys(
@@ -175,8 +114,6 @@ def _sync_exec_allowed_env_keys(
     if current_sorted == desired:
         return False
 
-    # Drop both spellings to avoid duplicate keys after merge; the schema
-    # serialises as ``allowedEnvKeys`` (camelCase) consistently.
     exec_cfg.pop("allowedEnvKeys", None)
     exec_cfg.pop("allowed_env_keys", None)
     exec_cfg["allowedEnvKeys"] = desired
@@ -195,25 +132,12 @@ async def apply_env_change(
     new_vars: dict[str, str],
     exec_visible_keys: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Sync ``.env`` edits into ``os.environ`` and rebuild the runtime.
+    """Sync ``.env`` edits into ``os.environ``, optionally mirror exec allowlist, then reload runtime.
 
-    Three effects:
-    * Keys present in *new_vars* (added or updated) are written into
-      ``os.environ`` so any subsequent code path that reads via
-      ``os.environ.get(...)`` immediately observes the new value.
-    * Keys removed from *new_vars* are deleted from ``os.environ`` so the
-      "I removed it from the UI" intent is honoured.
-    * When *exec_visible_keys* is not ``None``, the matching subset is
-      written to ``tools.exec.allowedEnvKeys`` so the exec tool's
-      sandboxed subprocess env honours the user's toggles.
-
-    A ``swap_runtime`` is then invoked so initialisation-time consumers
-    (provider factories, channel bootstrap, agent ID resolution, exec
-    tool with the new allowlist, etc.) re-read environment variables
-    under the new state.
-
-    Returns ``{"added": [...], "updated": [...], "removed": [...],
-    "exec_allowlist_changed": bool, "swap_ok": bool}`` for tests/logs.
+    Always invokes :func:`reload_embedded_openpawlet_runtime` when anything
+    changed so initialization-time readers (providers, channels, exec tool)
+    pick up the new state from disk and environment, then broadcast the same
+    state-hub snapshots as :func:`apply_config_change`.
     """
     import os
 
@@ -246,18 +170,13 @@ async def apply_env_change(
             "swap_ok": True,
         }
 
-    # Always rebuild the embedded runtime so initialisation-time consumers
-    # (channels, providers, agent identity, exec tool's frozen allowlist)
-    # pick up the new state. The exec allowlist in particular is captured
-    # by ``ExecTool.__init__`` so a hot field assignment would not help.
-    from console.server.lifespan import swap_runtime
-
-    target_bot = bot_id or getattr(app.state, "active_bot_id", None) or "default"
     try:
-        ok = await swap_runtime(app, target_bot)
+        ok = await reload_embedded_openpawlet_runtime(app, bot_id)
     except Exception:  # noqa: BLE001 - never break the save path
-        logger.exception("[config-apply] swap_runtime after env change failed")
+        logger.exception("[config-apply] reload after env change failed")
         ok = False
+
+    _broadcast_config_snapshots(bot_id)
 
     return {
         "added": added,
@@ -268,93 +187,9 @@ async def apply_env_change(
     }
 
 
-def apply_providers_change(app: FastAPI) -> bool:
-    """Rebuild and hot-swap the LLM provider used by the live runtime.
-
-    Called by the ``/llm-providers`` endpoints so changes to default
-    instance / API keys / failover settings take effect on the next LLM
-    call without a restart.
-
-    Two recovery paths beyond plain hot-swap:
-
-    * When the embedded runtime is missing entirely (e.g. it failed to
-      construct on boot for a non-provider reason), we fall back to a
-      full ``swap_runtime`` so the user can still recover by adding a
-      provider in the UI without a manual restart.
-    * When the live provider is the placeholder :class:`NullProvider`
-      (the default at boot when no credentials were configured), the
-      hot-swap path also re-syncs ``agent.model`` to the freshly built
-      provider's default so the very first turn after configuration
-      uses the real model name instead of the placeholder.
-
-    Returns ``True`` when a new provider was installed, ``False`` when
-    the rebuild failed.
-    """
-    from openpawlet.providers.null_provider import is_null_provider
-
-    embedded = getattr(app.state, "embedded", None)
-    if embedded is None:
-        # Runtime never came up — try a full rebuild now that the user
-        # has likely fixed whatever blocked it (typically: provider
-        # credentials).  Done in a fire-and-forget task so the HTTP
-        # caller is not blocked on the start-up sequence; ``swap_runtime``
-        # holds the runtime lock so concurrent saves are serialised.
-        import asyncio
-
-        from console.server.lifespan import swap_runtime
-
-        active_bot = getattr(app.state, "active_bot_id", None) or "default"
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = None
-        if loop is not None and loop.is_running():
-            loop.create_task(swap_runtime(app, active_bot))
-        return False
-
-    agent = getattr(embedded, "agent", None)
-    if agent is None or not hasattr(agent, "replace_provider"):
-        return False
-
-    try:
-        from openpawlet.config.loader import load_config, resolve_config_env_vars
-        from openpawlet.providers.factory import build_default_provider
-
-        cfg = resolve_config_env_vars(load_config())
-        new_provider = build_default_provider(cfg)
-    except Exception:  # noqa: BLE001 - never break the save path
-        logger.exception("[config-apply] failed to rebuild LLM provider")
-        return False
-
-    was_null = is_null_provider(getattr(agent, "provider", None))
-    new_model = cfg.agents.defaults.model if was_null else None
-    try:
-        agent.replace_provider(new_provider, new_model=new_model)
-    except TypeError:
-        # Backwards-compat for AgentLoop forks that have not picked up
-        # the ``new_model`` keyword yet.
-        try:
-            agent.replace_provider(new_provider)
-        except Exception:  # noqa: BLE001
-            logger.exception("[config-apply] replace_provider failed")
-            return False
-    except Exception:  # noqa: BLE001
-        logger.exception("[config-apply] replace_provider failed")
-        return False
-
-    if was_null:
-        logger.info(
-            "[config-apply] swapped placeholder NullProvider for real provider; "
-            "agent is now serving real turns (model={})",
-            getattr(agent, "model", "?"),
-        )
-    return True
-
-
 __all__ = [
     "apply_config_change",
     "apply_env_change",
-    "apply_providers_change",
-    "hot_apply",
-    "needs_runtime_swap",
+    "reload_embedded_openpawlet_runtime",
+    "reload_embedded_then_broadcast_snapshots",
 ]

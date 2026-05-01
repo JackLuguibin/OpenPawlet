@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any, NoReturn
 
 from fastapi import APIRouter, Query, Request
-from loguru import logger
 
 from console.server.channels_service import (
     ChannelNotFoundError,
@@ -16,6 +15,7 @@ from console.server.channels_service import (
     plugin_channel_names,
     refresh_channel_results,
 )
+from console.server.config_apply import reload_embedded_then_broadcast_snapshots
 from console.server.http_errors import bad_request, not_found_detail
 from console.server.models import DataResponse, OkBody
 from console.server.models.channels import (
@@ -23,35 +23,12 @@ from console.server.models.channels import (
     ChannelUpdateBody,
 )
 from console.server.models.status import ChannelStatus
-from console.server.state_hub_helpers import (
-    push_channels_snapshot,
-    push_status_snapshot,
-)
 
 router = APIRouter(tags=["Channels"])
 
 
 def _unknown_channel(name: str) -> NoReturn:
     not_found_detail(f"Unknown channel: {name}")
-
-
-async def _hot_reload_runtime_for_bot(request: Request, bot_id: str | None) -> None:
-    """Rebuild the embedded runtime so channel config changes take effect.
-
-    Channels are wired into the bus and outbound pipeline at construction
-    time, so they cannot be hot-swapped in place. This helper centralises
-    the swap so every channel-mutating endpoint goes through the same
-    "save -> rebuild -> snapshot" flow.
-    """
-    from console.server.lifespan import swap_runtime
-
-    target_bot = bot_id or getattr(request.app.state, "active_bot_id", None) or "default"
-    try:
-        await swap_runtime(request.app, target_bot)
-    except Exception:  # noqa: BLE001 - never break the save path
-        logger.opt(exception=True).debug(
-            "swap_runtime after channel mutation failed (restart may be needed for wiring)"
-        )
 
 
 @router.get("/channels", response_model=DataResponse[list[ChannelStatus]])
@@ -71,17 +48,14 @@ async def update_channel(
 ) -> DataResponse[dict[str, Any]]:
     """Merge ``body.data`` into ``channels.<name>`` and save ``config.json``.
 
-    The save triggers a runtime rebuild via :func:`swap_runtime` so the
-    user does not need to restart the console for the new channel
-    settings to take effect.
+    Then reload the embedded runtime from disk and broadcast SPA snapshots
+    (same contract as ``PUT /config`` / ``apply_config_change``).
     """
     try:
         saved = merge_channel_patch(bot_id, name, body.data)
     except ValueError as exc:
         bad_request(str(exc), cause=exc)
-    await _hot_reload_runtime_for_bot(request, bot_id)
-    push_channels_snapshot(bot_id)
-    push_status_snapshot(bot_id)
+    await reload_embedded_then_broadcast_snapshots(request.app, bot_id)
     return DataResponse(data=saved)
 
 
@@ -98,9 +72,7 @@ async def delete_channel(
         not_found_detail(str(exc), cause=exc)
     except ValueError as exc:
         bad_request(str(exc), cause=exc)
-    await _hot_reload_runtime_for_bot(request, bot_id)
-    push_channels_snapshot(bot_id)
-    push_status_snapshot(bot_id)
+    await reload_embedded_then_broadcast_snapshots(request.app, bot_id)
     return DataResponse(data=OkBody())
 
 

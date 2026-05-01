@@ -160,8 +160,9 @@ class ServerSettings(BaseSettings):
     openpawlet_gateway_host: str = Field(
         default="127.0.0.1",
         description=(
-            "Loopback host on which the in-process WebSocketChannel listens; "
-            "the FastAPI app reverse-proxies /openpawlet-ws/* to it."
+            "Fallback loopback host for /openpawlet-ws reverse-proxy when embedded "
+            "runtime has not published channels.websocket host (e.g. validation error "
+            "or OPENPAWLET_DISABLE_EMBEDDED)."
         ),
     )
     openpawlet_gateway_port: int = Field(
@@ -169,8 +170,9 @@ class ServerSettings(BaseSettings):
         ge=1,
         le=65535,
         description=(
-            "Loopback port on which the in-process WebSocketChannel listens. "
-            "Only the console FastAPI server needs to reach it."
+            "Fallback port for /openpawlet-ws proxy; primary source is "
+            "``channels.websocket.port`` in OpenPawlet config.json once the "
+            "embedded channel starts."
         ),
     )
 

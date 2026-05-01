@@ -14,9 +14,8 @@ turns. The model name and generation defaults stay valid so the rest of the
 runtime (AgentLoop, channels, cron, heartbeat) boots normally.
 
 Once the user adds a provider via ``Settings → Providers``, the console
-calls :func:`console.server.config_apply.apply_providers_change` which
-swaps this placeholder out for the freshly built real provider via
-:meth:`AgentLoop.replace_provider` — no restart required.
+persists ``llm_providers.json`` and reloads the embedded runtime from disk so
+the agent uses the new provider — no separate process restart.
 """
 
 from __future__ import annotations

@@ -124,7 +124,11 @@ def push_mcp_snapshot(bot_id: str | None) -> None:
 
 
 def push_after_config_change(bot_id: str | None) -> None:
-    """Convenience: a generic config save touches multiple snapshots."""
+    """Broadcast status/channel/MCP snapshots after disk state relevant to them changed.
+
+    Typically invoked by :mod:`console.server.config_apply` after persistence;
+    routers should not duplicate ad-hoc ``push_*`` pairs when that helper already ran.
+    """
     push_status_snapshot(bot_id)
     push_channels_snapshot(bot_id)
     push_mcp_snapshot(bot_id)

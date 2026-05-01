@@ -9,8 +9,6 @@ from console.server.activity_feed import observability_rows_to_activity_items
 from console.server.bot_workspace import workspace_root
 from console.server.models import ActivityFeedPage, ActivityItem, DataResponse
 from console.server.observability_jsonl import read_recent_observability_dicts
-from console.server.openpawlet_user_config import resolve_config_path
-from openpawlet.config.loader import load_config
 
 router = APIRouter(tags=["Activity"])
 
@@ -26,8 +24,6 @@ async def recent_activity(
     activity_type: str | None = Query(default=None, alias="activity_type"),
 ) -> DataResponse[ActivityFeedPage]:
     """Recent agent activity with offset pagination over newest-first items."""
-    path = resolve_config_path(bot_id)
-    _ = load_config(path)
     filt = (
         activity_type.strip() if isinstance(activity_type, str) and activity_type.strip() else None
     )

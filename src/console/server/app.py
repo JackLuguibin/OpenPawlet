@@ -116,7 +116,8 @@ def create_app(
     # Register WS proxy before the SPA catch-all so the path isn't swallowed.
     # The "gateway" now lives in the same process via EmbeddedOpenPawlet, but the
     # underlying WebSocketChannel still binds a loopback port for protocol
-    # fidelity, so we proxy same-origin to it.
+    # fidelity, so we proxy same-origin to it. Host/port here are fallbacks only;
+    # lifespan publishes ``app.state.openpawlet_runtime_snapshot`` before serving.
     mount_openpawlet_ws_proxy(
         app,
         settings.openpawlet_gateway_host,

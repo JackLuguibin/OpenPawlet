@@ -22,6 +22,7 @@ from console.server.models import (
 )
 from console.server.models.bots import BotInfo
 from console.server.openpawlet_user_config import read_default_timezone, resolve_config_path
+from console.server.state_hub_helpers import push_after_config_change
 from console.server.state_hub import publish_bots_update
 from openpawlet.utils.helpers import local_now
 
@@ -161,10 +162,11 @@ async def activate_bot(bot_id: str, request: Request) -> DataResponse[BotInfo]:
     targeting the requested bot's config + workspace.  This is a brief
     restart - WS clients reconnect automatically.
     """
-    from console.server.app import swap_runtime
+    from console.server.config_apply import reload_embedded_openpawlet_runtime
 
     _require_registered_bot(bot_id)
-    ok = await swap_runtime(request.app, bot_id)
+    ok = await reload_embedded_openpawlet_runtime(request.app, bot_id)
     if not ok:
         service_unavailable("Runtime swap failed; console is in degraded mode")
+    push_after_config_change(bot_id)
     return DataResponse(data=_bot_info(bot_id))
