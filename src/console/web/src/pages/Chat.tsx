@@ -2902,19 +2902,21 @@ export default function Chat() {
       <div className="flex-1 flex min-w-0 min-h-0">
         <div className="flex-1 flex flex-col min-w-0 min-h-0">
           {/* Header */}
-          <div className="h-12 px-6 flex items-center justify-between border-b border-gray-200 dark:border-gray-800">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-md bg-blue-500 text-white">
+          <div className="chat-page-header min-h-12 py-2 px-3 sm:px-6 flex items-center justify-between gap-2 border-b border-gray-200 dark:border-gray-800">
+            <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+              <div className="shrink-0 p-2 rounded-md bg-blue-500 text-white">
                 <RobotOutlined style={{ fontSize: 18 }} />
               </div>
-              <div>
-                <h2 className="text-lg font-semibold">{t("chat.title")}</h2>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
+              <div className="min-w-0">
+                <h2 className="truncate text-lg font-semibold leading-tight">
+                  {t("chat.title")}
+                </h2>
+                <p className="chat-page-header-subtitle">
                   {t("chat.subtitle")}
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2 shrink-0 min-w-0">
+            <div className="flex shrink-0 items-center gap-2">
               {useOpenPawletChannel && currentBotId && consoleAgents?.length ? (
                 <Select
                   size="small"

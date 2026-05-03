@@ -580,3 +580,34 @@ body {
   flex-direction: column;
   min-height: 0;
 }
+
+/*
+ * Chat header: subtitle follows the main column width (sidebar squeezes content).
+ * Tailwind viewport breakpoints (sm:) stay "wide" while the chat strip is narrow.
+ */
+.chat-page-header {
+  container-type: inline-size;
+  container-name: chat-page-header;
+}
+
+.chat-page-header-subtitle {
+  display: none;
+}
+
+@container chat-page-header (min-width: 40rem) {
+  .chat-page-header-subtitle {
+    margin-top: 0.125rem;
+    display: -webkit-box;
+    overflow: hidden;
+    word-break: break-word;
+    font-size: 0.75rem;
+    line-height: 1.375;
+    color: #6b7280;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .dark .chat-page-header-subtitle {
+    color: #9ca3af;
+  }
+}
