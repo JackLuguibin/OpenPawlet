@@ -15,8 +15,7 @@ import { markdownGfmTableComponents } from "../../components/markdownGfmTableCom
 import { MessageThinkingBlock } from "./MessageThinkingBlock";
 import { MessageToolCallsBlock } from "./MessageToolCalls";
 import { formatToolHintMultiline } from "./replyGroup";
-import type { TrackedToolCall } from "./types";
-import type { ToolCall } from "../../api/types";
+import type { TrackedToolCall, AssistantRenderSegment } from "./types";
 
 interface StreamingAssistantBubbleProps {
   /** Persona line above streamed content (matches finished assistant rows). */
@@ -25,10 +24,11 @@ interface StreamingAssistantBubbleProps {
   streamingChannelNotices: string[];
   /** Reasoning text streamed before the final answer. */
   streamingReasoningContent: string;
-  /** In-progress tool_calls payload (richer than `toolCalls` chips). */
-  streamingPayloadToolCalls: ToolCall[];
-  /** Visible streaming text body. */
-  streamingContent: string;
+  /**
+   * Ordered ``text`` / ``tools`` segments as tokens arrive — keeps post-tool prose
+   * below the collapsible tool cards (matches persisted transcript ordering).
+   */
+  streamingBodySegments: AssistantRenderSegment[];
   /** One-liner tool call hints emitted as `chat_token`s. */
   streamingToolProgress: string[];
   /** WS-level tracked tool calls (status chips at the bottom). */
@@ -47,22 +47,19 @@ function trackedToolTagColor(status: TrackedToolCall["status"]) {
  * is provided by the parent so the same component can be exercised in
  * Storybook/unit tests with deterministic input.
  *
- * Layout mirrors how ``chat_token`` frames arrive: streamed text deltas are
- *   applied before embedded tool payloads in the websocket handler.
+ * Layout mirrors finalized assistant bubbles via ordered segments:
  *   1. Channel notices (amber, top divider).
  *   2. Reasoning ("thinking") block.
- *   3. Streamed text body (Streamdown: streaming-safe incomplete Markdown + GFM tables).
- *   4. Tool-calls payload block (rich UI from `MessageToolCallsBlock`).
- *   5. Tool progress hints (lightweight one-liners).
- *   6. A 3-dot pulse shown during the entire streaming phase.
- *   7. Tracked tool-call chips (rendered as a sibling row beneath the bubble).
+ *   3. Alternating streamed prose (Streamdown) and ``MessageToolCallsBlock`` slices.
+ *   4. Tool progress hints (lightweight one-liners).
+ *   5. A 3-dot pulse shown during the entire streaming phase.
+ *   6. Tracked tool-call chips (sibling row beneath the bubble).
  */
 export function StreamingAssistantBubble({
   assistantLabel,
   streamingChannelNotices,
   streamingReasoningContent,
-  streamingPayloadToolCalls,
-  streamingContent,
+  streamingBodySegments,
   streamingToolProgress,
   toolCalls,
 }: StreamingAssistantBubbleProps) {
@@ -73,6 +70,19 @@ export function StreamingAssistantBubble({
     if (status === "success") return t("subagent.completed");
     return t("subagent.failed");
   };
+
+  const streamedBodyHasContent = streamingBodySegments.some(
+    (s) =>
+      (s.type === "text" && s.content.trim().length > 0) ||
+      (s.type === "tools" && s.tool_calls.length > 0),
+  );
+
+  const visibleStreamSegments = streamingBodySegments.filter(
+    (
+      seg,
+    ): seg is Extract<AssistantRenderSegment, { type: "text" | "tools" }> =>
+      seg.type === "text" || seg.type === "tools",
+  );
 
   return (
     <>
@@ -110,49 +120,55 @@ export function StreamingAssistantBubble({
           {streamingReasoningContent.length > 0 ? (
             <MessageThinkingBlock text={streamingReasoningContent} />
           ) : null}
-          {streamingContent ? (
-            <div
-              className={`max-w-none min-w-0 w-full break-anywhere text-[15px] leading-relaxed text-gray-900 dark:text-gray-100 ${
-                streamingReasoningContent.length > 0 ||
-                streamingChannelNotices.length > 0
-                  ? "mt-3 pt-3 border-t border-gray-100 dark:border-gray-700"
-                  : ""
-              }`}
-            >
-              <Streamdown
-                mode="streaming"
-                parseIncompleteMarkdown
-                animated={false}
-                components={
-                  markdownGfmTableComponents as Partial<StreamdownComponents>
-                }
-                className="max-w-none min-w-0"
-              >
-                {streamingContent}
-              </Streamdown>
-            </div>
-          ) : null}
-          {streamingPayloadToolCalls.length > 0 ? (
-            <div
-              className={
-                streamingReasoningContent.length > 0 ||
-                streamingChannelNotices.length > 0 ||
-                streamingContent.length > 0
-                  ? "mt-3 pt-3 border-t border-gray-100 dark:border-gray-700"
-                  : ""
+          {visibleStreamSegments.map((seg, idx) => {
+            const sectionTop =
+              idx > 0 ||
+              streamingReasoningContent.length > 0 ||
+              streamingChannelNotices.length > 0;
+            const topCls = sectionTop
+              ? "mt-3 pt-3 border-t border-gray-100 dark:border-gray-700"
+              : "";
+
+            if (seg.type === "text") {
+              if (!seg.content) {
+                return null;
               }
-            >
-              <MessageToolCallsBlock
-                noTopMargin
-                tool_calls={streamingPayloadToolCalls}
-              />
-            </div>
-          ) : null}
+              return (
+                <div
+                  key={`seg-${idx}`}
+                  className={`max-w-none min-w-0 w-full break-anywhere text-[15px] leading-relaxed text-gray-900 dark:text-gray-100 ${topCls}`}
+                >
+                  <Streamdown
+                    mode="streaming"
+                    parseIncompleteMarkdown
+                    animated={false}
+                    components={
+                      markdownGfmTableComponents as Partial<StreamdownComponents>
+                    }
+                    className="max-w-none min-w-0"
+                  >
+                    {seg.content}
+                  </Streamdown>
+                </div>
+              );
+            }
+
+            if (seg.tool_calls.length === 0) {
+              return null;
+            }
+            return (
+              <div key={`seg-${idx}`} className={topCls}>
+                <MessageToolCallsBlock
+                  noTopMargin
+                  tool_calls={seg.tool_calls}
+                />
+              </div>
+            );
+          })}
           {streamingToolProgress.length > 0 ? (
             <div
               className={
-                streamingContent.length > 0 ||
-                streamingPayloadToolCalls.length > 0 ||
+                streamedBodyHasContent ||
                 streamingReasoningContent.length > 0 ||
                 streamingChannelNotices.length > 0
                   ? "mt-3 pt-3 border-t border-gray-100 dark:border-gray-700 space-y-2"

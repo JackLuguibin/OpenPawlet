@@ -77,6 +77,93 @@ export function mergeStreamingToolCalls(
 }
 
 /**
+ * OpenPawlet may send prose, then structured tool_calls in later frames — keep
+ * that order during streaming instead of pinning all prose above all tools.
+ */
+export function appendStreamTextMutable(
+  segments: AssistantRenderSegment[],
+  delta: string,
+): void {
+  if (!delta) {
+    return;
+  }
+  const hasTools = segments.some((s) => s.type === "tools");
+  const last = segments[segments.length - 1];
+  if (!hasTools) {
+    if (last?.type === "text") {
+      last.content += delta;
+    } else {
+      segments.push({ type: "text", content: delta });
+    }
+    return;
+  }
+  if (last?.type === "text") {
+    last.content += delta;
+    return;
+  }
+  segments.push({ type: "text", content: delta });
+}
+
+export function mergeStreamToolsMutable(
+  segments: AssistantRenderSegment[],
+  incoming: ToolCall[],
+): void {
+  if (incoming.length === 0) {
+    return;
+  }
+  const last = segments[segments.length - 1];
+  if (last?.type === "tools") {
+    last.tool_calls = mergeStreamingToolCalls(last.tool_calls, incoming);
+    return;
+  }
+  segments.push({
+    type: "tools",
+    tool_calls: mergeStreamingToolCalls([], incoming),
+  });
+}
+
+export function cloneAssistantBodySegmentsForState(
+  segments: AssistantRenderSegment[],
+): AssistantRenderSegment[] {
+  return segments.map((s) =>
+    s.type === "tools"
+      ? {
+          type: "tools",
+          tool_calls: s.tool_calls.map((tc) => ({ ...tc })),
+        }
+      : s.type === "text"
+        ? { type: "text", content: s.content }
+        : { type: "reasoning", text: s.text },
+  );
+}
+
+export function flattenStreamSegmentsToAssistantText(
+  segments: AssistantRenderSegment[],
+): string {
+  let acc = "";
+  for (const s of segments) {
+    if (s.type !== "text") {
+      continue;
+    }
+    acc = appendReplySection(acc, s.content);
+  }
+  return acc;
+}
+
+export function flattenStreamSegmentsToToolCalls(
+  segments: AssistantRenderSegment[],
+): ToolCall[] {
+  let acc: ToolCall[] = [];
+  for (const s of segments) {
+    if (s.type !== "tools") {
+      continue;
+    }
+    acc = mergeStreamingToolCalls(acc, s.tool_calls);
+  }
+  return acc;
+}
+
+/**
  * Walk messages in order: for each `role === "tool"` with `tool_call_id`, set
  * `result` on the matching entry in the nearest preceding assistant
  * `tool_calls`. Those tool messages are omitted from the output; unmatched
@@ -232,6 +319,66 @@ function segmentsFromNormalizedAssistantFragment(msg: Message): AssistantRenderS
   return segs;
 }
 
+/** Tool call ids already present in timeline tool segments built so far. */
+function toolIdsInSegments(soFar: AssistantRenderSegment[]): Set<string> {
+  const ids = new Set<string>();
+  for (const s of soFar) {
+    if (s.type !== "tools") {
+      continue;
+    }
+    for (const tc of s.tool_calls) {
+      if (typeof tc.id === "string" && tc.id.length > 0) {
+        ids.add(tc.id);
+      }
+    }
+  }
+  return ids;
+}
+
+/** First tools segment whose list already declares this tool id */
+function owningToolsSegmentIndex(
+  segments: AssistantRenderSegment[],
+  toolId: string,
+): number {
+  if (!toolId) {
+    return -1;
+  }
+  for (let i = 0; i < segments.length; i++) {
+    const s = segments[i];
+    if (s.type !== "tools") {
+      continue;
+    }
+    if (s.tool_calls.some((c) => c.id === toolId)) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+/**
+ * Merge ``tool_calls`` updates for ids already shown so we do not render a second
+ * tool block after intervening prose (duplicate ``tool_event`` / transcript rows).
+ */
+function absorbDuplicateToolCallsIntoEarlierSegments(
+  out: AssistantRenderSegment[],
+  overlapping: ToolCall[],
+): void {
+  for (const tc of overlapping) {
+    const idx = owningToolsSegmentIndex(out, tc.id);
+    if (idx === -1) {
+      continue;
+    }
+    const owner = out[idx];
+    if (owner.type !== "tools") {
+      continue;
+    }
+    out[idx] = {
+      type: "tools",
+      tool_calls: mergeStreamingToolCalls(owner.tool_calls, [tc]),
+    };
+  }
+}
+
 /**
  * Concatenate timelines from successive assistant fragments while collapsing
  * same-kind neighbours (matches how ``groupAssistantReplies`` merges a turn).
@@ -269,13 +416,37 @@ export function mergeAssistantTimelineSegments(
       };
       continue;
     }
-    if (last && last.type === "tools" && seg.type === "tools") {
-      out[out.length - 1] = {
+
+    // Tool segments: WS / transcript sometimes repeat the same tool_call ids after
+    // more prose — fold those updates back into the existing block instead of
+    // rendering a duplicate "工具调用" section.
+    if (seg.type === "tools") {
+      const priorIds = toolIdsInSegments(out);
+      const overlap = seg.tool_calls.filter((tc) => priorIds.has(tc.id));
+      const novel = seg.tool_calls.filter((tc) => !priorIds.has(tc.id));
+
+      absorbDuplicateToolCallsIntoEarlierSegments(out, overlap);
+
+      if (novel.length === 0) {
+        continue;
+      }
+
+      const lastAfter = out[out.length - 1];
+      const novelSeg: AssistantRenderSegment = {
         type: "tools",
-        tool_calls: mergeStreamingToolCalls(last.tool_calls, seg.tool_calls),
+        tool_calls: cloneToolCallsForSegment(novel),
       };
+      if (lastAfter && lastAfter.type === "tools") {
+        out[out.length - 1] = {
+          type: "tools",
+          tool_calls: mergeStreamingToolCalls(lastAfter.tool_calls, novel),
+        };
+      } else {
+        out.push(cloneSeg(novelSeg));
+      }
       continue;
     }
+
     out.push(cloneSeg(seg));
   }
   return out;

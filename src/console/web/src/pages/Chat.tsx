@@ -50,7 +50,7 @@ import { SubagentPanel, type SubagentTask } from "../components/SubagentPanel";
 import { MessageRow } from "./chat/MessageRow";
 import { VirtualizedMessageList } from "./chat/VirtualizedMessageList";
 import { useVirtualListHandle } from "./chat/useVirtualListHandle";
-import type { Message, TrackedToolCall } from "./chat/types";
+import type { Message, TrackedToolCall, AssistantRenderSegment } from "./chat/types";
 import {
   parseOpenPawletStatusFromChunk,
   parseOpenPawletStatusPlainText,
@@ -58,7 +58,12 @@ import {
   streamChunkText,
 } from "./chat/statusParse";
 import {
+  appendStreamTextMutable,
+  cloneAssistantBodySegmentsForState,
+  flattenStreamSegmentsToAssistantText,
+  flattenStreamSegmentsToToolCalls,
   groupAssistantReplies,
+  mergeStreamToolsMutable,
   mergeStreamingToolCalls,
   mergeToolResultsIntoAssistantMessages,
   normalizeMessageForChatRender,
@@ -124,7 +129,10 @@ export default function Chat() {
   }, [isStreaming]);
   /** One assistant reply per user turn; drop duplicate chat_done (e.g. stream_end + chat_end). */
   const assistantReplyFinalizedRef = useRef(false);
-  const [streamingContent, setStreamingContent] = useState("");
+  /** Text + tools in arrival order inside the footer streaming bubble. */
+  const [streamingBodySegments, setStreamingBodySegments] = useState<
+    AssistantRenderSegment[]
+  >([]);
   const [sessionsSidebarOpen, setSessionsSidebarOpen] = useState(false);
   const [sessionsSidebarCollapsed, setSessionsSidebarCollapsed] =
     useState(false);
@@ -146,10 +154,7 @@ export default function Chat() {
     () => new Set(),
   );
   const [toolCalls, setToolCalls] = useState<TrackedToolCall[]>([]);
-  /** OpenPawlet WebSocket 帧中的 tool_calls / reasoning_content（与正文并行展示） */
-  const [streamingPayloadToolCalls, setStreamingPayloadToolCalls] = useState<
-    ToolCall[]
-  >([]);
+  /** OpenPawlet WebSocket 帧 reasoning_content（与正文并行展示） */
   const [streamingReasoningContent, setStreamingReasoningContent] =
     useState<string>("");
   const streamingPayloadToolCallsRef = useRef<ToolCall[]>([]);
@@ -265,26 +270,41 @@ export default function Chat() {
   /** Drives the "jump to bottom" button visibility; updated from scroll events. */
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const inputRef = useRef<TextAreaRef>(null);
-  const streamingContentRef = useRef("");
-  /** Coalesce high-frequency chat_token updates to one setState per animation frame */
-  const streamTokenFlushRafRef = useRef<number | null>(null);
-  const pendingStreamTokenDeltaRef = useRef("");
+  const streamingBodySegmentsRef = useRef<AssistantRenderSegment[]>([]);
+  /** Batch streaming bubble reconcile (ordered text/tool segments) */
+  const streamingBodyFlushRafRef = useRef<number | null>(null);
   /** Throttle transcript refetch triggered by in-flight tool events. */
   const transcriptSyncTimerRef = useRef<number | null>(null);
   /** 新会话首条消息：等待 OpenPawlet 内置 websocket 通道连接后再发送 */
   const pendingOpenPawletOutboundRef = useRef<string | null>(null);
 
-  /** Cancel scheduled rAF and apply any buffered tokens so state matches streamingContentRef */
+  const scheduleStreamingBodyFlush = useCallback(() => {
+    if (streamingBodyFlushRafRef.current !== null) {
+      return;
+    }
+    streamingBodyFlushRafRef.current = requestAnimationFrame(() => {
+      streamingBodyFlushRafRef.current = null;
+      streamingPayloadToolCallsRef.current = flattenStreamSegmentsToToolCalls(
+        streamingBodySegmentsRef.current,
+      );
+      setStreamingBodySegments(
+        cloneAssistantBodySegmentsForState(streamingBodySegmentsRef.current),
+      );
+    });
+  }, []);
+
+  /** Cancel scheduled body flush and force React snapshot to match the ref timeline. */
   const cancelStreamTokenFlush = useCallback(() => {
-    if (streamTokenFlushRafRef.current !== null) {
-      cancelAnimationFrame(streamTokenFlushRafRef.current);
-      streamTokenFlushRafRef.current = null;
+    if (streamingBodyFlushRafRef.current !== null) {
+      cancelAnimationFrame(streamingBodyFlushRafRef.current);
+      streamingBodyFlushRafRef.current = null;
     }
-    const delta = pendingStreamTokenDeltaRef.current;
-    pendingStreamTokenDeltaRef.current = "";
-    if (delta) {
-      setStreamingContent((prev) => prev + delta);
-    }
+    streamingPayloadToolCallsRef.current = flattenStreamSegmentsToToolCalls(
+      streamingBodySegmentsRef.current,
+    );
+    setStreamingBodySegments(
+      cloneAssistantBodySegmentsForState(streamingBodySegmentsRef.current),
+    );
   }, []);
 
   const cancelTranscriptSync = useCallback(() => {
@@ -1576,7 +1596,7 @@ export default function Chat() {
    * During streaming we only want to follow the tail; we intentionally do
    * NOT bump the unread counter on every token, and we skip the scroll when
    * the user is away from the bottom. Split out from the length effect so
-   * the high-frequency `streamingContent` / tool progress updates don't
+   * the high-frequency streaming body segments / tool progress updates don't
    * trigger the length-based "unread" bump.
    */
   useEffect(() => {
@@ -1587,10 +1607,9 @@ export default function Chat() {
   }, [
     virtualListHandleRef,
     virtualListHandleEpoch,
-    streamingContent,
+    streamingBodySegments,
     streamingToolProgress.length,
     streamingChannelNotices.length,
-    streamingPayloadToolCalls.length,
     streamingReasoningContent,
     isStreaming,
   ]);
@@ -1764,34 +1783,26 @@ export default function Chat() {
         if (!hasText && !hasEmbeddedTools && !hasReasoning) {
           return;
         }
+        // Within one frame prose is applied before structured tool deltas so same-chunk
+        // `{ content, tool_calls }` renders as textual lead-in then cards.
         if (hasText && chunk.content) {
-          streamingContentRef.current += chunk.content;
-          pendingStreamTokenDeltaRef.current += chunk.content;
-          if (streamTokenFlushRafRef.current === null) {
-            streamTokenFlushRafRef.current = requestAnimationFrame(() => {
-              streamTokenFlushRafRef.current = null;
-              const delta = pendingStreamTokenDeltaRef.current;
-              pendingStreamTokenDeltaRef.current = "";
-              if (delta) {
-                setStreamingContent((prev) => prev + delta);
-              }
-            });
-          }
+          appendStreamTextMutable(streamingBodySegmentsRef.current, chunk.content);
+          scheduleStreamingBodyFlush();
         }
         if (hasEmbeddedTools) {
           const incoming = chunk.tool_calls ?? [];
           scheduleTranscriptSync();
           if (isStreamingRef.current) {
-            const merged = mergeStreamingToolCalls(
-              streamingPayloadToolCallsRef.current,
-              incoming,
+            mergeStreamToolsMutable(streamingBodySegmentsRef.current, incoming);
+            streamingPayloadToolCallsRef.current = flattenStreamSegmentsToToolCalls(
+              streamingBodySegmentsRef.current,
             );
-            streamingPayloadToolCallsRef.current = merged;
-            setStreamingPayloadToolCalls(merged);
+            scheduleStreamingBodyFlush();
           } else {
             /* OpenPawlet may send tool_event after chat_end; merge into last assistant bubble. */
             streamingPayloadToolCallsRef.current = [];
-            setStreamingPayloadToolCalls([]);
+            streamingBodySegmentsRef.current = [];
+            setStreamingBodySegments([]);
             setMessages((prev) => {
               if (prev.length === 0) {
                 return prev;
@@ -1845,13 +1856,13 @@ export default function Chat() {
       } else if (chunk.type === "stream_end") {
         cancelStreamTokenFlush();
         if (chunk.tool_calls?.length) {
-          const incoming = chunk.tool_calls;
-          const merged = mergeStreamingToolCalls(
-            streamingPayloadToolCallsRef.current,
-            incoming,
+          mergeStreamToolsMutable(
+            streamingBodySegmentsRef.current,
+            chunk.tool_calls,
           );
-          streamingPayloadToolCallsRef.current = merged;
-          setStreamingPayloadToolCalls(merged);
+          streamingPayloadToolCallsRef.current =
+            flattenStreamSegmentsToToolCalls(streamingBodySegmentsRef.current);
+          scheduleStreamingBodyFlush();
           scheduleTranscriptSync();
         }
         if (chunk.reasoning_content !== undefined) {
@@ -1948,7 +1959,10 @@ export default function Chat() {
         );
       } else if (chunk.type === "chat_done") {
         if (expectStatusJsonTrailingChatDoneRef.current) {
-          const streamedText = streamingContentRef.current;
+          cancelStreamTokenFlush();
+          const streamedText = flattenStreamSegmentsToAssistantText(
+            streamingBodySegmentsRef.current,
+          );
           const fromChunk = resolveChatDonePrimaryText(chunk);
           const hasReal =
             fromChunk.trim().length > 0 ||
@@ -1963,13 +1977,12 @@ export default function Chat() {
             // box flips back to "send" mode (#stop button bug).
             cancelStreamTokenFlush();
             setIsStreaming(false);
-            setStreamingContent("");
-            streamingContentRef.current = "";
+            streamingBodySegmentsRef.current = [];
+            streamingPayloadToolCallsRef.current = [];
+            setStreamingBodySegments([]);
             setStreamingToolProgress([]);
             setStreamingChannelNotices([]);
-            setStreamingPayloadToolCalls([]);
             setStreamingReasoningContent("");
-            streamingPayloadToolCallsRef.current = [];
             streamingReasoningContentRef.current = "";
             return;
           }
@@ -1980,13 +1993,12 @@ export default function Chat() {
           // an earlier finalize path forgot to flip the flag.
           cancelStreamTokenFlush();
           setIsStreaming(false);
-          setStreamingContent("");
-          streamingContentRef.current = "";
+          streamingBodySegmentsRef.current = [];
+          streamingPayloadToolCallsRef.current = [];
+          setStreamingBodySegments([]);
           setStreamingToolProgress([]);
           setStreamingChannelNotices([]);
-          setStreamingPayloadToolCalls([]);
           setStreamingReasoningContent("");
-          streamingPayloadToolCallsRef.current = [];
           streamingReasoningContentRef.current = "";
           return;
         }
@@ -2003,16 +2015,17 @@ export default function Chat() {
           chunk.reasoning_content !== undefined
             ? chunk.reasoning_content
             : refReason || undefined;
-        const streamedText = streamingContentRef.current;
+        const streamedText = flattenStreamSegmentsToAssistantText(
+          streamingBodySegmentsRef.current,
+        );
         const primary = resolveChatDonePrimaryText(chunk);
         const fromChunk = primary !== "" ? primary : streamedText;
-        streamingContentRef.current = "";
+        streamingBodySegmentsRef.current = [];
         streamingPayloadToolCallsRef.current = [];
         streamingReasoningContentRef.current = "";
-        setStreamingPayloadToolCalls([]);
+        setStreamingBodySegments([]);
         setStreamingReasoningContent("");
         setIsStreaming(false);
-        setStreamingContent("");
         setStreamingToolProgress([]);
         setStreamingChannelNotices([]);
         // Any throttled mid-turn transcript refresh is superseded by chat_done.
@@ -2107,6 +2120,7 @@ export default function Chat() {
       expectStatusJsonTrailingChatDoneRef,
       setOpenPawletContextUsage,
       silentStatusJsonRef,
+      scheduleStreamingBodyFlush,
     ],
   );
 
@@ -2140,8 +2154,9 @@ export default function Chat() {
       pendingOpenPawletOutboundRef.current = null;
       cancelStreamTokenFlush();
       setIsStreaming(false);
-      setStreamingContent("");
-      streamingContentRef.current = "";
+      streamingBodySegmentsRef.current = [];
+      streamingPayloadToolCallsRef.current = [];
+      setStreamingBodySegments([]);
       addToast({
         type: "error",
         message: t("chat.toastWsSendFailed"),
@@ -2192,14 +2207,13 @@ export default function Chat() {
     cancelStreamTokenFlush();
     assistantReplyFinalizedRef.current = false;
     setIsStreaming(true);
-    setStreamingContent("");
-    streamingContentRef.current = "";
+    streamingBodySegmentsRef.current = [];
+    streamingPayloadToolCallsRef.current = [];
+    setStreamingBodySegments([]);
     setToolCalls([]);
     setStreamingToolProgress([]);
     setStreamingChannelNotices([]);
-    setStreamingPayloadToolCalls([]);
     setStreamingReasoningContent("");
-    streamingPayloadToolCallsRef.current = [];
     streamingReasoningContentRef.current = "";
     streamingReplyGroupIdRef.current = null;
     streamingAgentIdRef.current = undefined;
@@ -2233,8 +2247,9 @@ export default function Chat() {
           } catch {
             cancelStreamTokenFlush();
             setIsStreaming(false);
-            setStreamingContent("");
-            streamingContentRef.current = "";
+            streamingBodySegmentsRef.current = [];
+            streamingPayloadToolCallsRef.current = [];
+            setStreamingBodySegments([]);
             pendingOpenPawletOutboundRef.current = null;
             addToast({
               type: "error",
@@ -2256,8 +2271,9 @@ export default function Chat() {
       } catch {
         cancelStreamTokenFlush();
         setIsStreaming(false);
-        setStreamingContent("");
-        streamingContentRef.current = "";
+        streamingBodySegmentsRef.current = [];
+        streamingPayloadToolCallsRef.current = [];
+        setStreamingBodySegments([]);
         addToast({
           type: "error",
           message: t("chat.toastWsNotReady"),
@@ -2270,8 +2286,9 @@ export default function Chat() {
     if (!ws || ws.readyState !== WebSocket.OPEN) {
       cancelStreamTokenFlush();
       setIsStreaming(false);
-      setStreamingContent("");
-      streamingContentRef.current = "";
+      streamingBodySegmentsRef.current = [];
+      streamingPayloadToolCallsRef.current = [];
+      setStreamingBodySegments([]);
       addToast({ type: "error", message: t("chat.toastWsNotConnected") });
       return;
     }
@@ -2330,7 +2347,9 @@ export default function Chat() {
     cancelTranscriptSync();
     // If the cancelled turn already produced visible content, persist it as
     // an interrupted assistant bubble so users keep the partial reply.
-    const partialText = streamingContentRef.current;
+    const partialText = flattenStreamSegmentsToAssistantText(
+      streamingBodySegmentsRef.current,
+    );
     const partialTools = streamingPayloadToolCallsRef.current;
     const partialReasoning = streamingReasoningContentRef.current;
     const hasPartialContent =
@@ -2360,14 +2379,13 @@ export default function Chat() {
     }
     assistantReplyFinalizedRef.current = true;
     setIsStreaming(false);
-    setStreamingContent("");
-    streamingContentRef.current = "";
+    streamingBodySegmentsRef.current = [];
+    streamingPayloadToolCallsRef.current = [];
+    setStreamingBodySegments([]);
     setToolCalls([]);
     setStreamingToolProgress([]);
     setStreamingChannelNotices([]);
-    setStreamingPayloadToolCalls([]);
     setStreamingReasoningContent("");
-    streamingPayloadToolCallsRef.current = [];
     streamingReasoningContentRef.current = "";
     streamingReplyGroupIdRef.current = null;
     streamingAgentIdRef.current = undefined;
@@ -3068,8 +3086,7 @@ export default function Chat() {
                         assistantLabel={streamingBubbleAssistantLabel}
                         streamingChannelNotices={streamingChannelNotices}
                         streamingReasoningContent={streamingReasoningContent}
-                        streamingPayloadToolCalls={streamingPayloadToolCalls}
-                        streamingContent={streamingContent}
+                        streamingBodySegments={streamingBodySegments}
                         streamingToolProgress={streamingToolProgress}
                         toolCalls={toolCalls}
                       />
