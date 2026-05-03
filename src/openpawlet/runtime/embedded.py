@@ -302,6 +302,7 @@ class EmbeddedOpenPawlet:
         websocket_port: int | None = None,
         websocket_path: str = "/",
         websocket_requires_token: bool = False,
+        provider_factory: Callable[[Config], Any] | None = None,
     ) -> EmbeddedOpenPawlet:
         """Build an instance from on-disk config (matches legacy embedded gateway startup)."""
         cfg = cls._load_runtime_config(config_path, workspace)
@@ -317,7 +318,7 @@ class EmbeddedOpenPawlet:
         ws_cfg["path"] = websocket_path
         ws_cfg["websocket_requires_token"] = websocket_requires_token
         setattr(cfg.channels, "websocket", ws_cfg)
-        return cls(config=cfg, verbose=verbose)
+        return cls(config=cfg, verbose=verbose, provider_factory=provider_factory)
 
     async def start(self) -> None:
         """Start agent loop, cron, heartbeat, channels and team workers."""

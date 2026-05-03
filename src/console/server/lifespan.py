@@ -274,9 +274,17 @@ async def _build_embedded_runtime(app: FastAPI) -> Any | None:
         if snapshot is None:
             return None
 
-        return EmbeddedOpenPawlet(
-            config=snapshot.config,
+        # Match ``EmbeddedOpenPawlet.from_environment`` (unified console contract):
+        # enable the loopback WebSocket gateway and align host/port/path with the
+        # FastAPI ``/openpawlet-ws`` proxy so the SPA does not hit ``ECONNREFUSED``.
+        ws = snapshot.websocket
+        path = (ws.path or "").strip() or "/"
+        return EmbeddedOpenPawlet.from_environment(
             verbose=False,
+            websocket_host=str(ws.host),
+            websocket_port=int(ws.port),
+            websocket_path=path,
+            websocket_requires_token=False,
             provider_factory=_console_provider_factory,
         )
     except Exception:  # noqa: BLE001 - degraded mode keeps the UI usable
