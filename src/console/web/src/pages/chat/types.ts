@@ -1,6 +1,16 @@
 import type { ToolCall } from "../../api/types";
 
 /**
+ * Ordered fragments for rendering one assistant bubble in transcript order:
+ * successive transcript / WS fragments are folded into adjacent segments of the
+ * same kind (see ``groupAssistantReplies``).
+ */
+export type AssistantRenderSegment =
+  | { type: "reasoning"; text: string }
+  | { type: "text"; content: string }
+  | { type: "tools"; tool_calls: ToolCall[] };
+
+/**
  * Per-message UI shape used inside the Chat page (sidebar list, transcript
  * replay, streaming tail). Wider than the wire shape because it carries
  * UI-only fields (`isStreaming`, fallback `id`) and synthesized fields
@@ -26,6 +36,11 @@ export interface Message {
   tool_calls?: ToolCall[];
   /** Reasoning shown above tool-call blocks. */
   reasoning_content?: string;
+  /**
+   * When set (filled by ``groupAssistantReplies``), the bubble body is rendered
+   * from these fragments in order instead of dumping all tools above all text.
+   */
+  assistant_render_segments?: AssistantRenderSegment[];
   /** Anthropic extended thinking blocks persisted in transcript JSONL. */
   thinking_blocks?: Array<Record<string, unknown>>;
   /**

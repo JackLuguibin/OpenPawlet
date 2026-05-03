@@ -34,7 +34,7 @@ export function ChatHeroSuggestions({
   return (
     <div
       ref={containerRef}
-      className="flex-1 min-h-0 overflow-y-auto no-scrollbar px-4 md:px-6 py-2 md:py-3"
+      className="flex-1 min-h-0 overflow-y-auto chat-message-scroll px-4 md:px-6 py-2 md:py-3"
     >
       <div className="min-h-full flex flex-col items-center justify-start pt-2 md:pt-4 text-center text-gray-600 dark:text-gray-300">
         <div className="w-20 h-20 rounded-md bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center mb-6 text-blue-600 dark:text-blue-400">

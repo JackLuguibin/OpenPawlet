@@ -47,11 +47,12 @@ function trackedToolTagColor(status: TrackedToolCall["status"]) {
  * is provided by the parent so the same component can be exercised in
  * Storybook/unit tests with deterministic input.
  *
- * Layout follows the historical inline structure:
+ * Layout mirrors how ``chat_token`` frames arrive: streamed text deltas are
+ *   applied before embedded tool payloads in the websocket handler.
  *   1. Channel notices (amber, top divider).
  *   2. Reasoning ("thinking") block.
- *   3. Tool-calls payload block (rich UI from `MessageToolCallsBlock`).
- *   4. Streamed text body (Streamdown: streaming-safe incomplete Markdown + GFM tables).
+ *   3. Streamed text body (Streamdown: streaming-safe incomplete Markdown + GFM tables).
+ *   4. Tool-calls payload block (rich UI from `MessageToolCallsBlock`).
  *   5. Tool progress hints (lightweight one-liners).
  *   6. A 3-dot pulse shown during the entire streaming phase.
  *   7. Tracked tool-call chips (rendered as a sibling row beneath the bubble).
@@ -109,26 +110,10 @@ export function StreamingAssistantBubble({
           {streamingReasoningContent.length > 0 ? (
             <MessageThinkingBlock text={streamingReasoningContent} />
           ) : null}
-          {streamingPayloadToolCalls.length > 0 ? (
-            <div
-              className={
-                streamingReasoningContent.length > 0 ||
-                streamingChannelNotices.length > 0
-                  ? "mt-3 pt-3 border-t border-gray-100 dark:border-gray-700"
-                  : ""
-              }
-            >
-              <MessageToolCallsBlock
-                noTopMargin
-                tool_calls={streamingPayloadToolCalls}
-              />
-            </div>
-          ) : null}
           {streamingContent ? (
             <div
               className={`max-w-none min-w-0 w-full break-anywhere text-[15px] leading-relaxed text-gray-900 dark:text-gray-100 ${
                 streamingReasoningContent.length > 0 ||
-                streamingPayloadToolCalls.length > 0 ||
                 streamingChannelNotices.length > 0
                   ? "mt-3 pt-3 border-t border-gray-100 dark:border-gray-700"
                   : ""
@@ -147,10 +132,26 @@ export function StreamingAssistantBubble({
               </Streamdown>
             </div>
           ) : null}
+          {streamingPayloadToolCalls.length > 0 ? (
+            <div
+              className={
+                streamingReasoningContent.length > 0 ||
+                streamingChannelNotices.length > 0 ||
+                streamingContent.length > 0
+                  ? "mt-3 pt-3 border-t border-gray-100 dark:border-gray-700"
+                  : ""
+              }
+            >
+              <MessageToolCallsBlock
+                noTopMargin
+                tool_calls={streamingPayloadToolCalls}
+              />
+            </div>
+          ) : null}
           {streamingToolProgress.length > 0 ? (
             <div
               className={
-                streamingContent ||
+                streamingContent.length > 0 ||
                 streamingPayloadToolCalls.length > 0 ||
                 streamingReasoningContent.length > 0 ||
                 streamingChannelNotices.length > 0

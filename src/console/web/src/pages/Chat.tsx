@@ -71,6 +71,7 @@ import {
   pickLatestActiveSessionKey,
   readOpenPawletChatNewIntent,
 } from "./chat/sessionUtils";
+import { AssistantOrderedSegmentsBody } from "./chat/AssistantOrderedSegmentsBody";
 import { MessageToolCallsBlock } from "./chat/MessageToolCalls";
 import { MessageThinkingBlock } from "./chat/MessageThinkingBlock";
 import { ChatInput } from "./chat/ChatInput";
@@ -3011,8 +3012,28 @@ export default function Chat() {
                           agentNameById,
                         )
                       : undefined;
+                  const assistTimeline =
+                    msg.role === "assistant"
+                      ? msg.assistant_render_segments
+                      : undefined;
+                  const useAssistTimeline =
+                    Array.isArray(assistTimeline) && assistTimeline.length > 0;
+                  const assistantSegmentedBody =
+                    msg.role === "assistant" &&
+                    assistTimeline !== undefined &&
+                    useAssistTimeline ? (
+                      <AssistantOrderedSegmentsBody
+                        segments={assistTimeline}
+                        onAskUserAnswer={
+                          isLatestPendingAskUser
+                            ? handleAskUserAnswer
+                            : undefined
+                        }
+                        askUserDisabled={isStreaming}
+                      />
+                    ) : undefined;
                   const extraAbove =
-                    msg.role === "assistant" ? (
+                    msg.role === "assistant" && !useAssistTimeline ? (
                       <>
                         {msg.reasoning_content ? (
                           <MessageThinkingBlock text={msg.reasoning_content} />
@@ -3028,12 +3049,13 @@ export default function Chat() {
                           askUserDisabled={isStreaming}
                         />
                       </>
-                    ) : null;
+                    ) : undefined;
                   const ts = msg.created_at ?? msg.timestamp;
                   return (
                     <MessageRow
                       msg={msg}
                       assistantLabel={assistantLabelForRow}
+                      assistantSegmentedBody={assistantSegmentedBody}
                       extraAbove={extraAbove}
                       formattedTime={ts ? formatMessageTime(ts) : null}
                     />

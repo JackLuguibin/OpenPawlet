@@ -831,6 +831,7 @@
   },
   "cron": {
     "added": "定时任务已添加",
+    "updated": "定时任务已更新",
     "deleted": "任务已删除",
     "triggered": "任务已触发执行",
     "toastError": "操作失败",

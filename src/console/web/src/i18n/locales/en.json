@@ -832,6 +832,7 @@
   },
   "cron": {
     "added": "Scheduled task added",
+    "updated": "Scheduled task updated",
     "deleted": "Task deleted",
     "triggered": "Task triggered",
     "toastError": "Operation failed",

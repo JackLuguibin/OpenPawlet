@@ -280,7 +280,7 @@ export function VirtualizedMessageList<T>({
       ref={scrollParentRef}
       onScroll={handleScroll}
       data-testid="chat-virtual-scroll"
-      className="flex-1 min-h-0 overflow-y-auto no-scrollbar px-4 md:px-6 py-2 md:py-3"
+      className="flex-1 min-h-0 overflow-y-auto chat-message-scroll px-4 md:px-6 py-2 md:py-3"
     >
       <div
         ref={listRef}

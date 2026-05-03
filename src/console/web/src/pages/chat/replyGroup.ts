@@ -1,6 +1,6 @@
 import type { ToolCall } from "../../api/types";
 import { normalizeToolCallsArray } from "../../utils/toolCalls";
-import type { Message } from "./types";
+import type { AssistantRenderSegment, Message } from "./types";
 import { tryUnwrapPeerAgentInboundText } from "./agentEventDisplay";
 
 /**
@@ -205,6 +205,93 @@ export function appendReplySection(base: string, incoming: string): string {
   return `${base}\n\n${incoming}`;
 }
 
+function cloneToolCallsForSegment(calls: ToolCall[]): ToolCall[] {
+  return calls.map((tc) => ({ ...tc }));
+}
+
+/**
+ * Fragments from one persisted / WS-normalized assistant frame, in arrival order:
+ * optional reasoning snippet, textual content, then tool_calls carried on that row.
+ */
+function segmentsFromNormalizedAssistantFragment(msg: Message): AssistantRenderSegment[] {
+  const segs: AssistantRenderSegment[] = [];
+  const reasonRaw =
+    typeof msg.reasoning_content === "string" ? msg.reasoning_content : "";
+  if (reasonRaw.trim()) {
+    segs.push({ type: "reasoning", text: reasonRaw });
+  }
+  const rawContent =
+    typeof msg.content === "string" ? msg.content : String(msg.content ?? "");
+  if (rawContent.trim()) {
+    segs.push({ type: "text", content: rawContent });
+  }
+  const tools = msg.tool_calls ?? [];
+  if (tools.length > 0) {
+    segs.push({ type: "tools", tool_calls: tools.map((row) => ({ ...row })) });
+  }
+  return segs;
+}
+
+/**
+ * Concatenate timelines from successive assistant fragments while collapsing
+ * same-kind neighbours (matches how ``groupAssistantReplies`` merges a turn).
+ */
+export function mergeAssistantTimelineSegments(
+  prior: AssistantRenderSegment[],
+  incoming: AssistantRenderSegment[],
+): AssistantRenderSegment[] {
+  const out = [...prior];
+  const cloneSeg = (seg: AssistantRenderSegment): AssistantRenderSegment =>
+    seg.type === "tools"
+      ? {
+          type: "tools",
+          tool_calls: cloneToolCallsForSegment(seg.tool_calls),
+        }
+      : { ...seg };
+
+  for (const seg of incoming) {
+    const last = out[out.length - 1];
+    if (
+      last &&
+      last.type === "reasoning" &&
+      seg.type === "reasoning"
+    ) {
+      out[out.length - 1] = {
+        type: "reasoning",
+        text: appendReplySection(last.text, seg.text),
+      };
+      continue;
+    }
+    if (last && last.type === "text" && seg.type === "text") {
+      out[out.length - 1] = {
+        type: "text",
+        content: appendReplySection(last.content, seg.content),
+      };
+      continue;
+    }
+    if (last && last.type === "tools" && seg.type === "tools") {
+      out[out.length - 1] = {
+        type: "tools",
+        tool_calls: mergeStreamingToolCalls(last.tool_calls, seg.tool_calls),
+      };
+      continue;
+    }
+    out.push(cloneSeg(seg));
+  }
+  return out;
+}
+
+function finalizeAssistantRenderTimeline(
+  grouped: Message,
+  timeline: AssistantRenderSegment[],
+): AssistantRenderSegment[] | undefined {
+  if (timeline.length > 0) {
+    return timeline;
+  }
+  const fallback = segmentsFromNormalizedAssistantFragment(grouped);
+  return fallback.length > 0 ? fallback : undefined;
+}
+
 /**
  * Hash a string into a deterministic UUID-shaped identifier (8-4-4-4-12 hex).
  *
@@ -263,6 +350,8 @@ export function buildReplyGroupUuid(anchor: Message): string {
  * visual group so transcript replay matches WS live rendering.
  *
  * Each group carries:
+ * - ``assistant_render_segments``: ordered reasoning / prose / tools slices
+ *   reconstructed from successive assistant transcript rows within the reply.
  * - `reply_group_id`: stable UUID derived from the first chunk in the group;
  *   used for analytics, observability cross-links, and as the React key prefix
  *   so re-renders during streaming do not remount the bubble.
@@ -296,6 +385,7 @@ export function buildAssistantGroupRowId(msg: Message, groupId: string): string 
 export function groupAssistantReplies(messages: Message[]): Message[] {
   const out: Message[] = [];
   let activeGroup: Message | null = null;
+  let activeTimeline: AssistantRenderSegment[] = [];
   const usedGroupRowIds = new Set<string>();
 
   const claimUniqueGroupRowId = (msg: Message, groupId: string): string => {
@@ -318,8 +408,13 @@ export function groupAssistantReplies(messages: Message[]): Message[] {
     if (!activeGroup) {
       return;
     }
-    out.push(activeGroup);
+    const segments = finalizeAssistantRenderTimeline(activeGroup, activeTimeline);
+    out.push({
+      ...activeGroup,
+      ...(segments ? { assistant_render_segments: segments } : {}),
+    });
     activeGroup = null;
+    activeTimeline = [];
   };
 
   for (const raw of messages) {
@@ -346,6 +441,7 @@ export function groupAssistantReplies(messages: Message[]): Message[] {
         id: claimUniqueGroupRowId(msg, incomingGroupId),
         reply_group_id: incomingGroupId,
       };
+      activeTimeline = segmentsFromNormalizedAssistantFragment(msg);
       continue;
     }
     activeGroup = {
@@ -364,6 +460,10 @@ export function groupAssistantReplies(messages: Message[]): Message[] {
       agent_id: activeGroup.agent_id ?? msg.agent_id,
       agent_name: activeGroup.agent_name ?? msg.agent_name,
     };
+    activeTimeline = mergeAssistantTimelineSegments(
+      activeTimeline,
+      segmentsFromNormalizedAssistantFragment(msg),
+    );
   }
 
   flushGroup();

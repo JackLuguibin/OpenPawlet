@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo } from 'react';
 import {
   Modal,
   Form,
@@ -33,7 +33,7 @@ const { TextArea } = Input;
 export interface CronTaskFormModalProps {
   open: boolean;
   botId: string | null;
-  /** When provided, the modal is in edit mode (display only — backend stub). */
+  /** When provided, the modal is in edit mode (save calls PUT /cron/{id}). */
   job?: CronJob | null;
   loading?: boolean;
   onCancel: () => void;
@@ -42,7 +42,7 @@ export interface CronTaskFormModalProps {
 
 interface FormValues {
   name: string;
-  agentId?: string | null;
+  agentId?: string;
   skills?: string[];
   mcpServers?: string[];
   tools?: string[];
@@ -58,7 +58,7 @@ interface FormValues {
 
 const DEFAULT_VALUES: FormValues = {
   name: '',
-  agentId: null,
+  agentId: '',
   skills: [],
   mcpServers: [],
   tools: [],
@@ -71,6 +71,36 @@ const DEFAULT_VALUES: FormValues = {
   startAt: null,
   endAt: null,
 };
+
+function formValuesFromJob(job: CronJob | null | undefined): FormValues {
+  const initial: FormValues = { ...DEFAULT_VALUES };
+  if (!job) return initial;
+
+  const decoded = decodeCronMessage(job.payload?.message ?? '');
+  initial.name = job.name;
+  const aid = decoded.meta.agentId?.trim();
+  initial.agentId = aid || '';
+  initial.skills = decoded.meta.skills ?? [];
+  initial.mcpServers = decoded.meta.mcpServers ?? [];
+  initial.tools = decoded.meta.tools ?? [];
+  initial.prompt = decoded.prompt;
+  initial.windowEnabled = Boolean(decoded.meta.startAtMs || decoded.meta.endAtMs);
+  initial.startAt = decoded.meta.startAtMs ? dayjs(decoded.meta.startAtMs) : null;
+  initial.endAt = decoded.meta.endAtMs ? dayjs(decoded.meta.endAtMs) : null;
+  const sched = job.schedule;
+  if (sched.kind === 'every' && sched.every_ms) {
+    initial.scheduleKind = 'every';
+    initial.every_seconds = Math.max(1, Math.round(sched.every_ms / 1000));
+  } else if (sched.kind === 'cron' && sched.expr) {
+    initial.scheduleKind = 'cron';
+    initial.cron_expr = sched.expr;
+    initial.cron_tz = sched.tz ?? '';
+  } else if (sched.kind === 'at' && sched.at_ms) {
+    initial.scheduleKind = 'at';
+    initial.startAt = dayjs(sched.at_ms);
+  }
+  return initial;
+}
 
 export function CronTaskFormModal(props: CronTaskFormModalProps) {
   const { open, botId, job, loading, onCancel, onSubmit } = props;
@@ -95,41 +125,22 @@ export function CronTaskFormModal(props: CronTaskFormModalProps) {
     enabled: open && Boolean(botId),
   });
 
-  const [toolNames, setToolNames] = useState<string[]>([]);
-
-  useEffect(() => {
-    if (!open) return;
-    const initial: FormValues = { ...DEFAULT_VALUES };
-    if (job) {
-      const decoded = decodeCronMessage(job.payload?.message ?? '');
-      initial.name = job.name;
-      initial.agentId = decoded.meta.agentId ?? null;
-      initial.skills = decoded.meta.skills ?? [];
-      initial.mcpServers = decoded.meta.mcpServers ?? [];
-      initial.tools = decoded.meta.tools ?? [];
-      initial.prompt = decoded.prompt;
-      initial.windowEnabled = Boolean(decoded.meta.startAtMs || decoded.meta.endAtMs);
-      initial.startAt = decoded.meta.startAtMs ? dayjs(decoded.meta.startAtMs) : null;
-      initial.endAt = decoded.meta.endAtMs ? dayjs(decoded.meta.endAtMs) : null;
-      const sched = job.schedule;
-      if (sched.kind === 'every' && sched.every_ms) {
-        initial.scheduleKind = 'every';
-        initial.every_seconds = Math.max(1, Math.round(sched.every_ms / 1000));
-      } else if (sched.kind === 'cron' && sched.expr) {
-        initial.scheduleKind = 'cron';
-        initial.cron_expr = sched.expr;
-        initial.cron_tz = sched.tz ?? '';
-      } else if (sched.kind === 'at' && sched.at_ms) {
-        initial.scheduleKind = 'at';
-        initial.startAt = dayjs(sched.at_ms);
-      }
-      setToolNames(decoded.meta.tools ?? []);
-    } else {
-      setToolNames([]);
-    }
+  /** Modal + destroyOnHidden mounts Form after `open`; fill fields once the portal has mounted. */
+  const applyInitialValuesAfterOpen = useCallback(() => {
+    const initial = formValuesFromJob(job ?? null);
     form.resetFields();
     form.setFieldsValue(initial);
-  }, [open, job, form]);
+  }, [job, form]);
+
+  const handleAfterOpenChange = useCallback(
+    (opened: boolean) => {
+      if (!opened) return;
+      requestAnimationFrame(() => {
+        applyInitialValuesAfterOpen();
+      });
+    },
+    [applyInitialValuesAfterOpen],
+  );
 
   const handleOk = async () => {
     try {
@@ -157,7 +168,7 @@ export function CronTaskFormModal(props: CronTaskFormModalProps) {
       }
 
       const meta: CronTaskMetadata = {
-        agentId: values.agentId || null,
+        agentId: values.agentId?.trim() || null,
         skills: values.skills ?? [],
         mcpServers: values.mcpServers ?? [],
         tools: values.tools ?? [],
@@ -213,6 +224,7 @@ export function CronTaskFormModal(props: CronTaskFormModalProps) {
     <Modal
       title={isEdit ? t('cron.modalEditTitle') : t('cron.modalAddTitle')}
       open={open}
+      afterOpenChange={handleAfterOpenChange}
       onOk={handleOk}
       onCancel={onCancel}
       confirmLoading={loading}
@@ -292,8 +304,6 @@ export function CronTaskFormModal(props: CronTaskFormModalProps) {
                       allowClear
                       placeholder={t('cron.fieldToolsPh')}
                       tokenSeparators={[',', ' ']}
-                      value={toolNames}
-                      onChange={(v) => setToolNames(v as string[])}
                       maxTagCount="responsive"
                     />
                   </Form.Item>

@@ -13,9 +13,9 @@ import { formatPeerAgentLabel } from "./agentEventDisplay";
  * - React.memo can short-circuit re-renders when neither the message object
  *   nor the rendered timestamp changed (historical rows no longer participate
  *   in the input / streaming state's reconciliation).
- * - Thinking / tool-call blocks stay owned by the parent: they are passed in
- *   as `extraAbove` children so MessageRow has zero additional dependencies
- *   on translation / tool utilities.
+ * - ``assistantSegmentedBody`` or ``extraAbove`` (thinking / tools) stay
+ *   owned by the parent so MessageRow does not pull in extra translation /
+ *   tool helpers.
  */
 export interface MessageRowMsg {
   id: string;
@@ -40,6 +40,11 @@ interface MessageRowProps {
   msg: MessageRowMsg;
   /** Display name above assistant bubbles (session persona / sender id). */
   assistantLabel?: string | null;
+  /**
+   * When set on an assistant bubble, renders this instead of `extraAbove` +
+   * `msg.content` (used for transcript-ordered reasoning / prose / tools).
+   */
+  assistantSegmentedBody?: ReactNode | null;
   /** Pre-rendered blocks that live above the markdown body (thinking / tool calls). */
   extraAbove?: ReactNode;
   /** Formatted "HH:mm" style timestamp; omitted when empty. */
@@ -49,6 +54,7 @@ interface MessageRowProps {
 function MessageRowComponent({
   msg,
   assistantLabel,
+  assistantSegmentedBody,
   extraAbove,
   formattedTime,
 }: MessageRowProps) {
@@ -120,21 +126,28 @@ function MessageRowComponent({
             {assistantLabel}
           </div>
         ) : null}
-        {extraAbove}
-        <div
-          className={`prose prose-sm max-w-none min-w-0 w-full break-anywhere ${
-            isUser && !isPeerInbound
-              ? "prose-slate dark:prose-invert"
-              : "dark:prose-invert"
-          } ${
-            isAssistant &&
-            (msg.reasoning_content || (msg.tool_calls?.length ?? 0) > 0)
-              ? "mt-3 pt-3 border-t border-gray-100 dark:border-gray-700"
-              : ""
-          }`}
-        >
-          <Markdown>{msg.content}</Markdown>
-        </div>
+        {assistantSegmentedBody != null &&
+        assistantSegmentedBody !== false ? (
+          assistantSegmentedBody
+        ) : (
+          <>
+            {extraAbove}
+            <div
+              className={`prose prose-sm max-w-none min-w-0 w-full break-anywhere ${
+                isUser && !isPeerInbound
+                  ? "prose-slate dark:prose-invert"
+                  : "dark:prose-invert"
+              } ${
+                isAssistant &&
+                (msg.reasoning_content || (msg.tool_calls?.length ?? 0) > 0)
+                  ? "mt-3 pt-3 border-t border-gray-100 dark:border-gray-700"
+                  : ""
+              }`}
+            >
+              <Markdown>{msg.content}</Markdown>
+            </div>
+          </>
+        )}
         {formattedTime ? (
           <div
             className={`mt-2 text-xs ${

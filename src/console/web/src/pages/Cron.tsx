@@ -260,8 +260,37 @@ export default function Cron({ embedded = false }: { embedded?: boolean } = {}) 
     onError: (e) => addToast({ type: 'error', message: formatQueryError(e) }),
   });
 
+  const updateMutation = useMutation({
+    mutationFn: ({ jobId, payload }: { jobId: string; payload: CronAddRequest }) =>
+      api.updateCronJob(
+        jobId,
+        {
+          name: payload.name,
+          schedule: payload.schedule,
+          message: payload.message,
+          deliver: payload.deliver,
+          channel: payload.channel,
+          to: payload.to,
+          delete_after_run: payload.delete_after_run,
+        },
+        currentBotId,
+      ),
+    onSuccess: () => {
+      addToast({ type: 'success', message: t('cron.updated') });
+      setFormOpen(false);
+      setEditingJob(null);
+      queryClient.invalidateQueries({ queryKey: ['cron', currentBotId] });
+      queryClient.invalidateQueries({ queryKey: ['cron-status', currentBotId] });
+    },
+    onError: (e) => addToast({ type: 'error', message: formatQueryError(e) }),
+  });
+
   const handleSubmit = (payload: CronAddRequest) => {
-    addMutation.mutate(payload);
+    if (editingJob) {
+      updateMutation.mutate({ jobId: editingJob.id, payload });
+    } else {
+      addMutation.mutate(payload);
+    }
   };
 
   if (botsLoading || waitingBot) {
@@ -529,7 +558,7 @@ export default function Cron({ embedded = false }: { embedded?: boolean } = {}) 
         open={formOpen}
         botId={currentBotId}
         job={editingJob}
-        loading={addMutation.isPending}
+        loading={addMutation.isPending || updateMutation.isPending}
         onCancel={() => {
           setFormOpen(false);
           setEditingJob(null);
