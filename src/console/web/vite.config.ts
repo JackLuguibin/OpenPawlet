@@ -3,7 +3,9 @@ import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 
-const host = process.env.VITE_API_HOST || 'localhost'
+// Default to IPv4 loopback so the dev proxy matches a typical uvicorn bind on
+// Windows (Node often resolves "localhost" to ::1 first; target may be IPv4-only).
+const host = process.env.VITE_API_HOST || '127.0.0.1'
 const port = process.env.VITE_API_PORT || '8000'
 
 /**
