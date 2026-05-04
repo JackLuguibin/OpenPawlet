@@ -272,6 +272,17 @@ def test_exec_guard_allows_media_path_outside_workspace(tmp_path, monkeypatch) -
     tool._guard_command(f'cat "{media_file}"', str(tmp_path / "workspace"))
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX /dev device paths")
+def test_exec_guard_allows_benign_device_paths_under_workspace_policy(tmp_path) -> None:
+    """Redirects to /dev/null, /dev/stderr, and /dev/fd/* must not false-trigger workspace guard."""
+    ws = tmp_path / "workspace"
+    ws.mkdir()
+    tool = ExecTool(restrict_to_workspace=True)
+    tool._guard_command("echo ok > /dev/null", str(ws))
+    tool._guard_command("echo err 1>/dev/stderr", str(ws))
+    tool._guard_command("echo x > /dev/fd/1", str(ws))
+
+
 def test_exec_guard_blocks_windows_drive_root_outside_workspace(monkeypatch) -> None:
     import openpawlet.agent.tools.shell as shell_mod
 

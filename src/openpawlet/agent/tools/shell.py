@@ -86,6 +86,19 @@ class ExecTool(Tool):
     _MAX_TIMEOUT = 600
     _MAX_OUTPUT = 10_000
 
+    # Kernel device files safe as stdio redirect targets (#3599).
+    _BENIGN_DEVICE_PATHS: frozenset[str] = frozenset({
+        "/dev/null",
+        "/dev/zero",
+        "/dev/full",
+        "/dev/random",
+        "/dev/urandom",
+        "/dev/stdin",
+        "/dev/stdout",
+        "/dev/stderr",
+        "/dev/tty",
+    })
+
     @property
     def description(self) -> str:
         return (
@@ -328,8 +341,16 @@ class ExecTool(Tool):
             for raw in self._extract_absolute_paths(cmd):
                 try:
                     expanded = os.path.expandvars(raw.strip())
+                    # Match against the un-resolved path first. On Linux,
+                    # /dev/stderr is a symlink to /proc/self/fd/2 and
+                    # Path.resolve() would mask the device-file intent.
+                    if self._is_benign_device_path(expanded):
+                        continue
                     p = Path(expanded).expanduser().resolve()
                 except Exception:
+                    continue
+
+                if self._is_benign_device_path(str(p)):
                     continue
 
                 media_path = get_media_dir().resolve()
@@ -345,6 +366,13 @@ class ExecTool(Tool):
                     )
 
         return None
+
+    @classmethod
+    def _is_benign_device_path(cls, path: str) -> bool:
+        """Return True for kernel device files that should never be workspace-blocked."""
+        if path in cls._BENIGN_DEVICE_PATHS:
+            return True
+        return path.startswith("/dev/fd/")
 
     @staticmethod
     def _extract_absolute_paths(command: str) -> list[str]:
