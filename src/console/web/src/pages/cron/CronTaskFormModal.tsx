@@ -416,9 +416,6 @@ export function CronTaskFormModal(props: CronTaskFormModalProps) {
                     name="prompt"
                     label={t('cron.fieldPrompt')}
                     tooltip={t('cron.fieldPromptTip')}
-                    rules={[
-                      { required: true, message: t('cron.fieldPromptRequired') },
-                    ]}
                   >
                     <TextArea rows={5} placeholder={t('cron.fieldPromptPh')} />
                   </Form.Item>
