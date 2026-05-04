@@ -335,6 +335,39 @@ def test_config_auto_detects_xiaomi_mimo_from_model_keyword():
     assert config.get_api_base() == "https://api.xiaomimimo.com/v1"
 
 
+def test_config_explicit_longcat_provider_uses_default_api_base():
+    config = Config.model_validate(
+        {
+            "agents": {
+                "defaults": {
+                    "provider": "longcat",
+                    "model": "longcat-chat",
+                }
+            },
+            "providers": {
+                "longcat": {
+                    "apiKey": "test-key",
+                }
+            },
+        }
+    )
+
+    assert config.get_provider_name() == "longcat"
+    assert config.get_api_base() == "https://api.longcat.chat/openai/v1"
+
+
+def test_config_auto_detects_longcat_from_model_keyword():
+    config = Config.model_validate(
+        {
+            "agents": {"defaults": {"provider": "auto", "model": "longcat/some-model"}},
+            "providers": {"longcat": {"apiKey": "test-key"}},
+        }
+    )
+
+    assert config.get_provider_name() == "longcat"
+    assert config.get_api_base() == "https://api.longcat.chat/openai/v1"
+
+
 def test_config_auto_detects_ollama_from_local_api_base():
     config = Config.model_validate(
         {
