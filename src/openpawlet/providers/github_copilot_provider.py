@@ -37,6 +37,11 @@ def _storage() -> FileTokenStorage:
     )
 
 
+def get_storage() -> FileTokenStorage:
+    """Return token storage for GitHub Copilot OAuth (e.g. CLI logout)."""
+    return _storage()
+
+
 def _copilot_headers(token: str) -> dict[str, str]:
     return {
         "Authorization": f"token {token}",
