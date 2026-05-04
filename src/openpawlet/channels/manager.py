@@ -13,6 +13,7 @@ from openpawlet.bus.events import AgentEvent, OutboundMessage
 from openpawlet.bus.queue import MessageBus
 from openpawlet.channels.base import BaseChannel
 from openpawlet.config.schema import Config
+from openpawlet.utils.background_session import is_internal_routing_only_channel
 from openpawlet.utils.restart import (
     consume_restart_notice_from_env,
     format_restart_completed_message,
@@ -296,6 +297,11 @@ class ChannelManager:
                 channel = self.channels.get(msg.channel)
                 if channel:
                     await self._send_with_retry(channel, msg)
+                elif is_internal_routing_only_channel(msg.channel):
+                    logger.trace(
+                        "Outbound skipped (internal routing channel): {}",
+                        msg.channel,
+                    )
                 else:
                     logger.warning("Unknown channel: {}", msg.channel)
 
