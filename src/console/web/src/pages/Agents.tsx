@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Button,
@@ -22,7 +22,7 @@ import {
   Row,
   Col,
 } from 'antd';
-import { AgentProfilePanel } from '../components/AgentProfilePanel';
+import { AgentProfilePanel, type AgentProfilePanelHandle } from '../components/AgentProfilePanel';
 import {
   applyExtrasToUpdate,
   extractExtrasFromAgent,
@@ -98,6 +98,7 @@ export default function Agents({ embedded = false }: { embedded?: boolean } = {}
   const [createExtras, setCreateExtras] = useState<AgentProfileExtras>(() =>
     extractExtrasFromAgent(null),
   );
+  const agentProfilePanelRef = useRef<AgentProfilePanelHandle>(null);
 
   const llmProvidersQuery = useQuery({
     queryKey: ['llm-providers', currentBotId],
@@ -413,16 +414,24 @@ export default function Agents({ embedded = false }: { embedded?: boolean } = {}
     setEditModalOpen(true);
   };
 
-  const handleUpdate = () => {
-    if (selectedAgent && formData.name.trim()) {
-      const topics = validateTopicsBeforeSubmit();
-      if (!topics) return;
-      updateMutation.mutate({
-        agentId: selectedAgent.id,
-        data: applyExtrasToUpdate({ ...formData, topics }, editExtras),
-        displayCategory: editFormCategory,
+  const handleUpdate = async () => {
+    if (!(selectedAgent && formData.name.trim())) return;
+    const topics = validateTopicsBeforeSubmit();
+    if (!topics) return;
+    try {
+      await agentProfilePanelRef.current?.flushBootstrapDrafts?.();
+    } catch (err) {
+      addToast({
+        type: 'error',
+        message: err instanceof Error ? err.message : String(err),
       });
+      throw err;
     }
+    await updateMutation.mutateAsync({
+      agentId: selectedAgent.id,
+      data: applyExtrasToUpdate({ ...formData, topics }, editExtras),
+      displayCategory: editFormCategory,
+    });
   };
 
   const handleExport = () => {
@@ -669,7 +678,7 @@ export default function Agents({ embedded = false }: { embedded?: boolean } = {}
                         ID: {agent.id.slice(0, 8)}
                       </span>
                     </div>
-                    <div className="flex items-center justify-end gap-0.5 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
+                    <div className="flex items-center justify-end gap-0.5 opacity-100 transition-opacity">
                       <Tooltip title={t('agents.tooltipEdit')}>
                         <Button
                           type="text"
@@ -1128,6 +1137,7 @@ export default function Agents({ embedded = false }: { embedded?: boolean } = {}
                 ),
                 children: (
                   <AgentProfilePanel
+                    ref={agentProfilePanelRef}
                     agent={selectedAgent}
                     extras={editExtras}
                     onChange={setEditExtras}

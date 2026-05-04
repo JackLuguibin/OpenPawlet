@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useImperativeHandle, useMemo, useRef, useState, forwardRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Form, Input, Select, Switch, InputNumber, Tabs, Empty, Spin, Tag, Space, Button, Segmented } from 'antd';
@@ -43,14 +43,27 @@ interface Props {
   onChange: (next: AgentProfileExtras) => void;
 }
 
+export type AgentProfilePanelHandle = {
+  /** Persist SOUL/USER/AGENTS/TOOLS drafts when the parent modal saves. */
+  flushBootstrapDrafts: () => Promise<void>;
+};
+
 /**
  * Tabbed editor for the independent persona / tool / model overrides
  * attached to one agent.
  */
-export function AgentProfilePanel({ agent, extras, onChange }: Props) {
+export const AgentProfilePanel = forwardRef<AgentProfilePanelHandle, Props>(function AgentProfilePanel(
+  { agent, extras, onChange },
+  ref,
+) {
   const { t } = useTranslation();
   const { currentBotId } = useAppStore();
   const agentId = agent?.id ?? null;
+  const bootstrapRef = useRef<BootstrapEditorHandle>(null);
+
+  useImperativeHandle(ref, () => ({
+    flushBootstrapDrafts: () => bootstrapRef.current?.flushDrafts() ?? Promise.resolve(),
+  }));
 
   const setField = <K extends keyof AgentProfileExtras>(field: K, value: AgentProfileExtras[K]) => {
     onChange({ ...extras, [field]: value });
@@ -62,7 +75,13 @@ export function AgentProfilePanel({ agent, extras, onChange }: Props) {
         key: 'persona',
         label: t('agentProfile.tabPersona', 'Persona'),
         children: agentId ? (
-          <BootstrapEditor agentId={agentId} botId={currentBotId} extras={extras} onChange={onChange} />
+          <BootstrapEditor
+            ref={bootstrapRef}
+            agentId={agentId}
+            botId={currentBotId}
+            extras={extras}
+            onChange={onChange}
+          />
         ) : (
           <Empty description={t('agentProfile.saveFirstHint', 'Save the agent first to edit its persona.')} />
         ),
@@ -83,24 +102,35 @@ export function AgentProfilePanel({ agent, extras, onChange }: Props) {
     [agentId, extras, currentBotId, t, onChange],
   );
 
-  return <Tabs defaultActiveKey="persona" items={items} className="agent-profile-tabs" />;
-}
+  return (
+    <Tabs
+      defaultActiveKey="persona"
+      items={items}
+      className="agent-profile-tabs"
+      destroyOnHidden={false}
+    />
+  );
+});
 
 // ---------------------------------------------------------------------------
 // Bootstrap editor (SOUL/USER/AGENTS/TOOLS markdown)
 // ---------------------------------------------------------------------------
 
-function BootstrapEditor({
-  agentId,
-  botId,
-  extras,
-  onChange,
-}: {
+export type BootstrapEditorHandle = {
+  flushDrafts: () => Promise<void>;
+};
+
+type BootstrapEditorProps = {
   agentId: string;
   botId: string | null;
   extras: AgentProfileExtras;
   onChange: (next: AgentProfileExtras) => void;
-}) {
+};
+
+const BootstrapEditor = forwardRef<BootstrapEditorHandle, BootstrapEditorProps>(function BootstrapEditor(
+  { agentId, botId, extras, onChange },
+  ref,
+) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [active, setActive] = useState<AgentBootstrapKey>('soul');
@@ -127,6 +157,33 @@ function BootstrapEditor({
       });
     }
   }, [data]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      flushDrafts: async () => {
+        if (!botId || !agentId || !data) return;
+        let changed = false;
+        for (const key of BOOTSTRAP_KEYS) {
+          const draft = drafts[key] ?? '';
+          const orig = data[key] ?? '';
+          if (draft === orig) continue;
+          changed = true;
+          if (!draft.trim() && orig.trim()) {
+            await api.deleteAgentBootstrap(botId, agentId, key);
+          } else {
+            await api.updateAgentBootstrap(botId, agentId, key, draft);
+          }
+        }
+        if (changed) {
+          await queryClient.invalidateQueries({ queryKey: ['agent-bootstrap', botId, agentId] });
+          await queryClient.invalidateQueries({ queryKey: ['agents', botId] });
+          await refetch();
+        }
+      },
+    }),
+    [agentId, botId, data, drafts, queryClient, refetch],
+  );
 
   const saveMutation = useMutation({
     mutationFn: (input: { key: AgentBootstrapKey; content: string }) =>
@@ -248,7 +305,7 @@ function BootstrapEditor({
       </div>
     </div>
   );
-}
+});
 
 // ---------------------------------------------------------------------------
 // Model & params tab

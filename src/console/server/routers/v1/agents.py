@@ -104,6 +104,30 @@ def _merge_workspace_agents_with_main(bot_id: str, agents: list[Agent]) -> list[
     return [main_row, *agents]
 
 
+def _materialize_main_if_missing(bot_id: str) -> None:
+    """Persist a ``main`` workspace row when the UI only had a synthetic gateway row.
+
+    Without this, PUT /agents/main would 404 because the synthetic row is not on disk.
+    """
+    raw = _load_raw_state(bot_id)
+    agents = _parse_agents(raw["agents"])
+    if any(a.id == _MAIN_AGENT_LIST_ID for a in agents):
+        return
+    main_row = _synthetic_main_agent_row(bot_id)
+    if main_row is None:
+        return
+    categories = _parse_categories(raw["categories"])
+    overrides: dict[str, str] = dict(raw["category_overrides"])
+    agents.append(main_row)
+    _save_full_state(
+        bot_id,
+        agents=agents,
+        categories=categories,
+        category_overrides=overrides,
+    )
+    publish_agents_update(bot_id)
+
+
 # UI built-in display categories (must accept overrides even with no custom rows).
 _BUILTIN_DISPLAY_CATEGORY_KEYS: frozenset[str] = frozenset(
     {"general", "content", "office"},
@@ -475,9 +499,9 @@ def _apply_profile_overrides(
 ) -> None:
     """Copy independent-persona override fields from *body* into *data* in place."""
     for field in _PROFILE_OVERRIDE_FIELDS:
-        value = getattr(body, field, None)
-        if value is not None:
-            data[field] = value
+        if field not in body.model_fields_set:
+            continue
+        data[field] = getattr(body, field)
 
 
 @router.post("", response_model=DataResponse[Agent], status_code=status.HTTP_200_OK)
@@ -528,6 +552,11 @@ async def get_agent(bot_id: str, agent_id: str) -> DataResponse[Agent]:
         if agent.id == agent_id:
             team_ids = _load_team_memberships(bot_id).get(agent.id, [])
             return DataResponse(data=agent.model_copy(update={"team_ids": team_ids}))
+    if agent_id == _MAIN_AGENT_LIST_ID:
+        syn = _synthetic_main_agent_row(bot_id)
+        if syn is not None:
+            team_ids = _load_team_memberships(bot_id).get(_MAIN_AGENT_LIST_ID, [])
+            return DataResponse(data=syn.model_copy(update={"team_ids": team_ids}))
     not_found("Agent")
 
 
@@ -538,6 +567,8 @@ async def update_agent(
     body: AgentUpdateRequest,
 ) -> DataResponse[Agent]:
     """Update fields on an agent."""
+    if agent_id == _MAIN_AGENT_LIST_ID:
+        _materialize_main_if_missing(bot_id)
     raw = _load_raw_state(bot_id)
     agents = _parse_agents(raw["agents"])
     categories = _parse_categories(raw["categories"])
@@ -549,23 +580,30 @@ async def update_agent(
             new_list.append(agent)
             continue
         data = agent.model_dump()
-        if body.name is not None:
+        fs = body.model_fields_set
+        if "name" in fs:
+            if body.name is None:
+                bad_request("Agent name cannot be null")
             data["name"] = body.name
-        if body.description is not None:
+        if "description" in fs:
             data["description"] = body.description
-        if body.model is not None:
+        if "model" in fs:
             data["model"] = body.model
-        if body.temperature is not None:
+        if "temperature" in fs:
             data["temperature"] = body.temperature
-        if body.system_prompt is not None:
+        if "system_prompt" in fs:
             data["system_prompt"] = body.system_prompt
-        if body.skills is not None:
-            data["skills"] = body.skills
-        if body.topics is not None:
-            data["topics"] = body.topics
-        if body.collaborators is not None:
-            data["collaborators"] = body.collaborators
-        if body.enabled is not None:
+        if "skills" in fs:
+            data["skills"] = list(body.skills) if body.skills is not None else []
+        if "topics" in fs:
+            data["topics"] = list(body.topics) if body.topics is not None else []
+        if "collaborators" in fs:
+            data["collaborators"] = (
+                list(body.collaborators) if body.collaborators is not None else []
+            )
+        if "enabled" in fs:
+            if body.enabled is None:
+                bad_request("enabled cannot be null")
             data["enabled"] = body.enabled
         _apply_profile_overrides(data, body)
         updated = Agent.model_validate(data)
@@ -679,6 +717,8 @@ async def broadcast_event(
 
 def _ensure_agent_exists(bot_id: str, agent_id: str) -> None:
     """Raise 404 when *agent_id* has no record under ``<workspace>/agents/``."""
+    if agent_id == _MAIN_AGENT_LIST_ID:
+        _materialize_main_if_missing(bot_id)
     raw = _load_raw_state(bot_id)
     if not any(
         isinstance(row, dict) and str(row.get("id", "")).strip() == agent_id
