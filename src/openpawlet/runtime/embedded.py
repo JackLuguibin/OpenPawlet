@@ -28,6 +28,7 @@ import time
 from collections import defaultdict
 from collections.abc import Callable
 from contextlib import suppress
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
 
@@ -36,8 +37,19 @@ from loguru import logger
 from openpawlet import __logo__, __version__
 from openpawlet.config.paths import is_default_workspace, workspace_console_subdir
 from openpawlet.config.schema import Config
+from openpawlet.cron.message_decode import decode_cron_payload
 from openpawlet.cron.session_policy import resolve_cron_run_targets
-from openpawlet.utils.background_session import MAIN_AGENT_DREAM_SESSION_KEY
+from openpawlet.utils.background_session import (
+    MAIN_AGENT_DREAM_SESSION_KEY,
+    is_background_ephemeral_session_key,
+)
+
+# Set during each cron target iteration so MessageTool proactive mirrors land in
+# the same session as :meth:`AgentLoop.process_direct` (session policy), not a
+# second session derived from outbound routing (e.g. ``console:agent-<id>``).
+_CRON_MIRROR_SESSION_KEY: ContextVar[str | None] = ContextVar(
+    "embedded_cron_mirror_session_key", default=None
+)
 
 
 class EmbeddedOpenPawlet:
@@ -478,7 +490,7 @@ class EmbeddedOpenPawlet:
             cfg, cfg.workspace_path, logical_agent_id=mid, team_id=team_id_hint
         )
         mem_provider = self._provider_factory(cfg)
-        return AgentLoop(
+        loop = AgentLoop(
             bus=self.message_bus,
             provider=mem_provider,
             workspace=cfg.workspace_path,
@@ -510,6 +522,38 @@ class EmbeddedOpenPawlet:
             agent_id=mid,
             runtime_config=cfg,
         )
+        from openpawlet.agent.tools.message import MessageTool as _MessageTool
+
+        mtc = loop.tools.get("message")
+        if isinstance(mtc, _MessageTool):
+            mtc.set_send_callback(self._deliver_to_channel)
+        return loop
+
+    def _resolve_cron_agent_loop(self, job: Any) -> Any:
+        """Pick the :class:`AgentLoop` for this job (metadata ``agentId``)."""
+        meta_obj = decode_cron_payload(
+            getattr(job.payload, "message", "") or ""
+        ).meta
+        meta = meta_obj if isinstance(meta_obj, dict) else {}
+        raw = meta.get("agentId")
+        aid = str(raw).strip() if isinstance(raw, str) and str(raw).strip() else ""
+        if not aid:
+            return self.agent
+        primary = (self._primary_aid or "").strip()
+        if primary and aid == primary:
+            return self.agent
+        member = self._team_loops_by_agent.get(aid)
+        if member is not None:
+            return member
+        standalone = self._standalone_loops_by_agent.get(aid)
+        if standalone is not None:
+            return standalone
+        logger.warning(
+            "Cron job {!r} metadata agentId={!r} has no running agent loop; using gateway",
+            getattr(job, "id", ""),
+            aid,
+        )
+        return self.agent
 
     def _rebuild_dispatch(self) -> None:
         dispatch: dict[str, Any] = {}
@@ -887,7 +931,14 @@ class EmbeddedOpenPawlet:
             and msg.content.strip()
         ):
             try:
-                target_key = self._channel_session_key(msg.channel, msg.chat_id)
+                cron_mirror = _CRON_MIRROR_SESSION_KEY.get()
+                if (
+                    isinstance(cron_mirror, str)
+                    and cron_mirror.strip()
+                ):
+                    target_key = cron_mirror.strip()
+                else:
+                    target_key = self._channel_session_key(msg.channel, msg.chat_id)
                 target_session = self.session_manager.get_or_create(target_key)
                 target_session.add_message(
                     "assistant", msg.content, _channel_delivery=True
@@ -904,21 +955,43 @@ class EmbeddedOpenPawlet:
 
     # ---- callbacks ------------------------------------------------------
     async def _on_cron_job(self, job: Any) -> str | None:
-        """Execute a cron job through the agent (broadcast + dream + reminder)."""
+        """Execute a cron job through the agent (events + dream + reminder)."""
         from openpawlet.agent.tools.cron import CronTool
         from openpawlet.agent.tools.message import MessageTool
-        from openpawlet.bus.envelope import TARGET_BROADCAST
+        from openpawlet.bus.envelope import TARGET_BROADCAST, target_for_agent
         from openpawlet.bus.events import AgentEvent, OutboundMessage
         from openpawlet.utils.evaluator import evaluate_response
 
+        # Resolve before publishing cron.fired: broadcast delivery caused every
+        # subscribe_event tap (main + standalone agents) to run a full turn on
+        # console:* sessions. Route the event only to the loop that executes
+        # this job (metadata agentId / gateway).
+        run_loop = self._resolve_cron_agent_loop(job)
+        executor_aid = (getattr(run_loop, "agent_id", None) or "").strip()
+        cron_fired_target = (
+            target_for_agent(executor_aid) if executor_aid else TARGET_BROADCAST
+        )
+
+        _cron_meta = decode_cron_payload(
+            getattr(job.payload, "message", "") or ""
+        ).meta
+        _sess_pol = (
+            str(_cron_meta.get("sessionPolicy", "")).strip().lower()
+            if isinstance(_cron_meta, dict)
+            else ""
+        )
+        # sessionPolicy=new runs only under cron:* — publishing cron.fired still
+        # triggers subscribe_event injections into console:* for the executor.
+        suppress_cron_fired_event = _sess_pol == "new"
+
         publisher = getattr(self.message_bus, "publish_event", None)
-        if publisher is not None:
+        if publisher is not None and not suppress_cron_fired_event:
             try:
                 await publisher(
                     AgentEvent(
                         topic="cron.fired",
                         source_agent="system:cron",
-                        target=TARGET_BROADCAST,
+                        target=cron_fired_target,
                         payload={
                             "job_id": job.id,
                             "name": job.name,
@@ -984,7 +1057,7 @@ class EmbeddedOpenPawlet:
             f"Scheduled instruction: {job.payload.message}"
         )
 
-        cron_tool = self.agent.tools.get("cron")
+        cron_tool = run_loop.tools.get("cron")
         cron_token = None
         if isinstance(cron_tool, CronTool):
             cron_token = cron_tool.set_cron_context(True)
@@ -992,7 +1065,7 @@ class EmbeddedOpenPawlet:
         # Mark MessageTool sends from this cron run as proactive deliveries
         # so they get mirrored into the target channel session.  Normal
         # user-turn sends are unaffected.
-        message_tool = self.agent.tools.get("message")
+        message_tool = run_loop.tools.get("message")
         message_record_token = None
         if isinstance(message_tool, MessageTool):
             message_record_token = message_tool.set_record_channel_delivery(True)
@@ -1004,6 +1077,12 @@ class EmbeddedOpenPawlet:
             payload_to=getattr(job.payload, "to", None),
             job_id=job.id,
             session_manager=self.session_manager,
+        )
+        # Isolated policy runs (new → cron:*, default dream, temp) already persist the
+        # turn under those keys. Never mirror the post-run notification into unrelated
+        # console:* sessions (would look like the job ran in those chats).
+        cron_ephemeral_targets = bool(targets) and all(
+            is_background_ephemeral_session_key((t[0] or "").strip()) for t in targets
         )
 
         channel_meta_raw = getattr(job.payload, "channel_meta", None) or {}
@@ -1018,20 +1097,24 @@ class EmbeddedOpenPawlet:
         sent_via_tool_any = False
         try:
             for run_session_key, run_channel, run_chat_id in targets:
-                if isinstance(message_tool, MessageTool):
-                    message_tool.start_turn()
-                resp = await self.agent.process_direct(
-                    reminder_note,
-                    session_key=run_session_key,
-                    channel=run_channel or (job.payload.channel or "cli"),
-                    chat_id=run_chat_id or (job.payload.to or "direct"),
-                    on_progress=_silent,
-                )
-                part = resp.content if resp else ""
-                if isinstance(part, str) and part.strip():
-                    response_parts.append(part.strip())
-                if isinstance(message_tool, MessageTool) and message_tool._sent_in_turn:
-                    sent_via_tool_any = True
+                cron_mirror_tok = _CRON_MIRROR_SESSION_KEY.set(run_session_key)
+                try:
+                    if isinstance(message_tool, MessageTool):
+                        message_tool.start_turn()
+                    resp = await run_loop.process_direct(
+                        reminder_note,
+                        session_key=run_session_key,
+                        channel=run_channel or (job.payload.channel or "cli"),
+                        chat_id=run_chat_id or (job.payload.to or "direct"),
+                        on_progress=_silent,
+                    )
+                    part = resp.content if resp else ""
+                    if isinstance(part, str) and part.strip():
+                        response_parts.append(part.strip())
+                    if isinstance(message_tool, MessageTool) and message_tool._sent_in_turn:
+                        sent_via_tool_any = True
+                finally:
+                    _CRON_MIRROR_SESSION_KEY.reset(cron_mirror_tok)
             response = "\n\n---\n\n".join(response_parts) if response_parts else ""
         finally:
             if isinstance(cron_tool, CronTool) and cron_token is not None:
@@ -1048,7 +1131,7 @@ class EmbeddedOpenPawlet:
 
         if job.payload.deliver and job.payload.to and response:
             should_notify = await evaluate_response(
-                response, reminder_note, self.provider, self.agent.model
+                response, reminder_note, self.provider, run_loop.model
             )
             if should_notify:
                 await self._deliver_to_channel(
@@ -1058,7 +1141,7 @@ class EmbeddedOpenPawlet:
                         content=response,
                         metadata=delivery_meta,
                     ),
-                    record=True,
+                    record=not cron_ephemeral_targets,
                 )
         return response
 
