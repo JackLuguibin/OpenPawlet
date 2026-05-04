@@ -85,19 +85,46 @@ def _workspace_agent_display_names(bot_id: str | None) -> dict[str, str]:
 def attach_session_agent_names(
     bot_id: str | None, infos: list[SessionInfo]
 ) -> list[SessionInfo]:
-    """Fill ``agent_name`` when ``agent_id`` is present and exists in workspace agents."""
+    """Fill ``agent_name`` when ``agent_id`` matches a workspace agent or gateway alias."""
     if not infos or not any(info.agent_id for info in infos):
         return infos
     name_by_id = _workspace_agent_display_names(bot_id)
     if not name_by_id:
         return infos
+
+    logical_gateway: str | None = None
+    try:
+        from console.server.bot_workspace import workspace_root
+        from openpawlet.utils.team_gateway_runtime import (
+            resolve_effective_gateway_agent_id,
+        )
+
+        ws = workspace_root(bot_id)
+        logical_gateway = resolve_effective_gateway_agent_id(ws)
+    except Exception:  # noqa: BLE001 - enrichment must not break session listing
+        logical_gateway = None
+
     out: list[SessionInfo] = []
     for info in infos:
         aid = info.agent_id
-        if aid and aid in name_by_id:
+        if not aid:
+            out.append(info)
+            continue
+        if aid in name_by_id:
             out.append(info.model_copy(update={"agent_name": name_by_id[aid]}))
+            continue
+
+        mapped: str | None = None
+        if logical_gateway and logical_gateway in name_by_id:
+            if aid.startswith(f"{logical_gateway}:"):
+                mapped = name_by_id[logical_gateway]
+        if mapped is None and aid.startswith("main:") and "main" in name_by_id:
+            mapped = name_by_id["main"]
+        if mapped is not None:
+            out.append(info.model_copy(update={"agent_name": mapped}))
         else:
             out.append(info)
+
     return out
 
 

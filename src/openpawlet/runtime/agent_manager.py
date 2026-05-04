@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -36,6 +37,10 @@ class ManagedAgentStatus:
     # Profile id when the sub-agent ran with an independent persona profile
     # (see :class:`openpawlet.config.profile.AgentProfile`).
     profile_id: str | None = None
+    # True when this ``role="agent"`` row duplicates the gateway loop listing:
+    # the supervisor exposes ``agent:<profile_id>`` while ``OPENPAWLET_AGENT_ID``
+    # may use a distinct synthetic id (e.g. ``main:<host>:<pid>``).
+    represents_gateway: bool = False
 
 
 _STOP_TIMEOUT_S = 10.0
@@ -50,6 +55,49 @@ class UnifiedAgentManager:
         # callers cannot race two agent loops on the same bus or tear down
         # while another caller is still spawning.
         self._lifecycle_lock = asyncio.Lock()
+
+    def _workspace_path(self) -> Path | None:
+        cfg = getattr(self._embedded, "_config", None)
+        wp = getattr(cfg, "workspace_path", None)
+        if isinstance(wp, Path):
+            return wp
+        subs = getattr(getattr(self._embedded, "agent", None), "subagents", None)
+        wp2 = getattr(subs, "workspace", None)
+        return wp2 if isinstance(wp2, Path) else None
+
+    def _logical_gateway_profile_id(self) -> str | None:
+        wp = self._workspace_path()
+        if wp is None:
+            return None
+        from openpawlet.utils.team_gateway_runtime import resolve_effective_gateway_agent_id
+
+        return resolve_effective_gateway_agent_id(wp)
+
+    def _gateway_surrogate_agent_row(
+        self,
+        standalone_rows: list[ManagedAgentStatus],
+        team_rows: list[ManagedAgentStatus],
+    ) -> ManagedAgentStatus | None:
+        """Return standalone/team agent row that duplicates an active gateway loop."""
+
+        if not self._is_main_running():
+            return None
+        logical = self._logical_gateway_profile_id()
+        primary = self.main_agent_id
+
+        def _duplicate_persona(pid: str) -> bool:
+            if logical:
+                return pid == logical
+            # Fallback when workspace identity inference fails (e.g. nested
+            # ``agents/<id>/profile.json`` vs flat *.json discovery mismatch).
+            return pid == "main" and primary not in ("", "main")
+
+        for coll in (standalone_rows, team_rows):
+            for row in coll:
+                pid = (row.profile_id or "").strip()
+                if pid and row.running and _duplicate_persona(pid):
+                    return row
+        return None
 
     @property
     def main_agent_id(self) -> str:
@@ -191,7 +239,8 @@ class UnifiedAgentManager:
     def list_statuses(self) -> list[ManagedAgentStatus]:
         """List runtime statuses for main + tracked subagents + standalone agents.
 
-        - ``role="main"``: the gateway / primary agent.
+        - ``role="main"``: the gateway / primary agent (may be omitted when an
+          ``agent:<resolved_workspace_identity>`` row duplicates its lifecycle).
         - ``role="sub"``: one-shot tracked sub-agent task (past or live).
         - ``role="agent"``: an *enabled* persisted profile with its own
           standalone event loop (the "enable = running" semantics).
@@ -199,7 +248,18 @@ class UnifiedAgentManager:
           running (disabled, or no standalone loop spawned yet) — kept so
           the user can still see and trigger it from the runtime UI.
         """
-        rows = [self._main_status()]
+        standalone_rows = self._standalone_agent_rows()
+        team_rows = self._team_member_agent_rows()
+        surrogate = self._gateway_surrogate_agent_row(standalone_rows, team_rows)
+        surrogate_pid: str | None = None
+        if surrogate is not None:
+            sp = (surrogate.profile_id or "").strip()
+            if sp:
+                surrogate_pid = sp
+
+        rows: list[ManagedAgentStatus] = []
+        if surrogate_pid is None:
+            rows.append(self._main_status())
         # Track profile ids that are already represented by a live
         # sub-agent task, a team member loop, or a standalone loop so we
         # don't duplicate the idle row for them.
@@ -210,13 +270,23 @@ class UnifiedAgentManager:
             if sub_row.profile_id:
                 profile_ids_seen.add(sub_row.profile_id)
 
-        for team_row in self._team_member_agent_rows():
-            rows.append(team_row)
+        for team_row in team_rows:
+            out_row = (
+                replace(team_row, represents_gateway=True)
+                if surrogate_pid and team_row.profile_id == surrogate_pid
+                else team_row
+            )
+            rows.append(out_row)
             if team_row.profile_id:
                 profile_ids_seen.add(team_row.profile_id)
 
-        for standalone in self._standalone_agent_rows():
-            rows.append(standalone)
+        for standalone in standalone_rows:
+            out_row = (
+                replace(standalone, represents_gateway=True)
+                if surrogate_pid and standalone.profile_id == surrogate_pid
+                else standalone
+            )
+            rows.append(out_row)
             if standalone.profile_id:
                 profile_ids_seen.add(standalone.profile_id)
 

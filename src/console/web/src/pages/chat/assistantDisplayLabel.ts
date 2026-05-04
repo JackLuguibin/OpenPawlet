@@ -16,6 +16,43 @@ export function buildAgentNameById(agents: Agent[] | undefined): Map<string, str
   return m;
 }
 
+/**
+ * Map raw runtime/bus ``agent_id`` (e.g. ``main:<host>:<pid>``) to the Console
+ * workspace persona display name when possible.
+ */
+export function resolveWorkspaceAgentDisplayName(
+  rawId: string | undefined | null,
+  agentNameById: Map<string, string>,
+  runtimeAgents: RuntimeAgentStatus[] | undefined,
+): string | undefined {
+  const raw = rawId?.trim();
+  if (!raw) {
+    return undefined;
+  }
+  const direct = agentNameById.get(raw);
+  if (direct) {
+    return direct;
+  }
+  const surrogate =
+    runtimeAgents?.find((r) => r.represents_gateway) ??
+    runtimeAgents?.find((r) => r.role === "main");
+  const pid = surrogate?.profile_id?.trim();
+  if (pid) {
+    const byPid = agentNameById.get(pid);
+    if (byPid) {
+      return byPid;
+    }
+  }
+  // Fallback when runtime snapshot lacks persona linkage but env uses ``main:*``.
+  if (/^main:/.test(raw)) {
+    const legacy = agentNameById.get("main");
+    if (legacy) {
+      return legacy;
+    }
+  }
+  return undefined;
+}
+
 /** Default persona line for assistant bubbles in the active session. */
 export function resolveDefaultAssistantLabel(params: {
   sessions: SessionInfo[] | undefined;
@@ -35,12 +72,21 @@ export function resolveDefaultAssistantLabel(params: {
       }
       const aid = (row.agent_id ?? "").trim();
       if (aid) {
-        return params.agentNameById.get(aid) ?? aid;
+        const mapped = resolveWorkspaceAgentDisplayName(
+          aid,
+          params.agentNameById,
+          params.runtimeAgents,
+        );
+        if (mapped) {
+          return mapped;
+        }
       }
     }
   }
 
-  const mainRt = params.runtimeAgents?.find((r) => r.role === "main");
+  const mainRt =
+    params.runtimeAgents?.find((r) => r.role === "main") ??
+    params.runtimeAgents?.find((r) => r.represents_gateway);
   if (mainRt?.profile_id) {
     const pid = mainRt.profile_id.trim();
     const n = params.agentNameById.get(pid);
@@ -72,6 +118,7 @@ export function resolveAssistantBubbleLabel(
   },
   defaultLabel: string,
   agentNameById: Map<string, string>,
+  runtimeAgents?: RuntimeAgentStatus[],
 ): string {
   if (msg.role !== "assistant") {
     return defaultLabel;
@@ -82,11 +129,17 @@ export function resolveAssistantBubbleLabel(
   }
   const stampedId = (msg.agent_id ?? "").trim();
   if (stampedId) {
-    return agentNameById.get(stampedId) ?? formatPeerAgentLabel(stampedId);
+    return (
+      resolveWorkspaceAgentDisplayName(stampedId, agentNameById, runtimeAgents) ??
+      formatPeerAgentLabel(stampedId)
+    );
   }
   const sid = msg.sender_agent_id?.trim();
   if (!sid) {
     return defaultLabel;
   }
-  return agentNameById.get(sid) ?? formatPeerAgentLabel(sid);
+  return (
+    resolveWorkspaceAgentDisplayName(sid, agentNameById, runtimeAgents) ??
+    formatPeerAgentLabel(sid)
+  );
 }

@@ -30,6 +30,7 @@ class RuntimeAgentStatus(BaseModel):
     session_key: str | None = None
     parent_session_key: str | None = None
     profile_id: str | None = None
+    represents_gateway: bool = False
 
 
 class RuntimeControlResult(BaseModel):

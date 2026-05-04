@@ -23,8 +23,10 @@ Console can wire HTTP and WebSocket routes directly to the live objects.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import time
+import uuid
 from collections import defaultdict
 from collections.abc import Callable
 from contextlib import suppress
@@ -39,10 +41,16 @@ from openpawlet.config.paths import is_default_workspace, workspace_console_subd
 from openpawlet.config.schema import Config
 from openpawlet.cron.message_decode import decode_cron_payload
 from openpawlet.cron.session_policy import resolve_cron_run_targets
-from openpawlet.utils.background_session import (
-    MAIN_AGENT_DREAM_SESSION_KEY,
-    is_background_ephemeral_session_key,
-)
+from openpawlet.utils.background_session import is_background_ephemeral_session_key
+
+
+def _dream_system_job_cron_message(*, executor_agent_id: str) -> str:
+    """Metadata for the built-in Dream cron job: ephemeral session + main gateway loop."""
+    meta: dict[str, str] = {"sessionPolicy": "new"}
+    aid = (executor_agent_id or "").strip()
+    if aid:
+        meta["agentId"] = aid
+    return f'<!--cron-meta:{json.dumps(meta, separators=(",", ":"), ensure_ascii=False)}-->\n'
 
 # Set during each cron target iteration so MessageTool proactive mirrors land in
 # the same session as :meth:`AgentLoop.process_direct` (session policy), not a
@@ -275,7 +283,12 @@ class EmbeddedOpenPawlet:
                 id="dream",
                 name="dream",
                 schedule=dream_cfg.build_schedule(config.agents.defaults.timezone),
-                payload=CronPayload(kind="system_event"),
+                payload=CronPayload(
+                    kind="system_event",
+                    message=_dream_system_job_cron_message(
+                        executor_agent_id=str(self.agent.agent_id),
+                    ),
+                ),
             )
         )
 
@@ -353,9 +366,6 @@ class EmbeddedOpenPawlet:
         self._reconciler_task = asyncio.create_task(
             self._team_runtime_reconciler(), name="team-runtime-reconciler"
         )
-
-        ds = self.session_manager.get_or_create(MAIN_AGENT_DREAM_SESSION_KEY)
-        self.session_manager.save(ds)
 
         await self.cron.start()
         await self.heartbeat.start()
@@ -538,6 +548,9 @@ class EmbeddedOpenPawlet:
         raw = meta.get("agentId")
         aid = str(raw).strip() if isinstance(raw, str) and str(raw).strip() else ""
         if not aid:
+            return self.agent
+        loop_aid = (getattr(self.agent, "agent_id", None) or "").strip()
+        if aid == loop_aid:
             return self.agent
         primary = (self._primary_aid or "").strip()
         if primary and aid == primary:
@@ -1013,11 +1026,19 @@ class EmbeddedOpenPawlet:
                 "Dream failed unexpectedly (see server logs).\n"
                 "Templates: `agent/dream_phase1.md`, `agent/dream_phase2.md`."
             )
+            dream_session_key = f"cron:dream-{uuid.uuid4().hex[:10]}"
+            try:
+                self.session_manager.set_sidebar_title(dream_session_key, "dream")
+            except Exception:
+                logger.exception(
+                    "Failed to set sidebar title for Dream session {}",
+                    dream_session_key,
+                )
             try:
                 dr = await self.agent.dream.run()
                 logger.info("Dream cron job completed")
                 try:
-                    sess = self.agent.sessions.get_or_create(MAIN_AGENT_DREAM_SESSION_KEY)
+                    sess = self.agent.sessions.get_or_create(dream_session_key)
                     sess.add_message(
                         "system",
                         "[Dream] Scheduled consolidation",
@@ -1031,13 +1052,13 @@ class EmbeddedOpenPawlet:
                 except Exception:  # pragma: no cover - best-effort transcript
                     logger.exception(
                         "Failed to persist Dream transcript to {}",
-                        MAIN_AGENT_DREAM_SESSION_KEY,
+                        dream_session_key,
                     )
                 return dr.cron_history_prompt
             except Exception:  # pragma: no cover
                 logger.exception("Dream cron job failed")
                 try:
-                    sess = self.agent.sessions.get_or_create(MAIN_AGENT_DREAM_SESSION_KEY)
+                    sess = self.agent.sessions.get_or_create(dream_session_key)
                     sess.add_message(
                         "system",
                         "[Dream] Scheduled consolidation (failed)",
@@ -1047,7 +1068,7 @@ class EmbeddedOpenPawlet:
                 except Exception:
                     logger.exception(
                         "Failed to persist Dream failure transcript to {}",
-                        MAIN_AGENT_DREAM_SESSION_KEY,
+                        dream_session_key,
                     )
                 return fail_prompt
 

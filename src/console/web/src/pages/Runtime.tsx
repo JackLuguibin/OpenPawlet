@@ -203,7 +203,13 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
   });
 
   const rows = useMemo(() => agentsQuery.data ?? [], [agentsQuery.data]);
-  const mainRow = useMemo(() => rows.find((r) => r.role === 'main') ?? null, [rows]);
+  const mainRow = useMemo(
+    () =>
+      rows.find((r) => r.role === 'main') ??
+      rows.find((r) => r.represents_gateway) ??
+      null,
+    [rows],
+  );
   const subRows = useMemo(() => rows.filter((r) => r.role === 'sub'), [rows]);
   const agentRows = useMemo(() => rows.filter((r) => r.role === 'agent'), [rows]);
   // Subagent counter shown in the summary chip blends ad-hoc sub-agent
@@ -434,7 +440,7 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
           );
         }
 
-        if (row.role === 'agent') {
+        if (row.role === 'agent' && !row.represents_gateway) {
           return (
             <Space size={4} wrap>
               <Tooltip title={t('runtime.disableHint')}>
@@ -446,7 +452,7 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
           );
         }
 
-        if (row.role === 'main') {
+        if (row.role === 'main' || row.represents_gateway) {
           return (
             <Space size={4} wrap>
               {detailButton}

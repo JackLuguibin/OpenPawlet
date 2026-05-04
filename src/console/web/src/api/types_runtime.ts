@@ -27,6 +27,8 @@ export interface RuntimeAgentStatus {
   /** Original parent session key the sub-agent was spawned from. */
   parent_session_key?: string | null;
   profile_id?: string | null;
+  /** When true and ``role === 'agent'``, this row duplicates the gateway loop listing (omit redundant ``main`` row). */
+  represents_gateway?: boolean;
 }
 
 export interface RuntimeControlResult {

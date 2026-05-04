@@ -453,12 +453,14 @@ export default function Chat() {
         },
         defaultAssistantLabel,
         agentNameById,
+        runtimeAgents,
       ),
     [
       streamingAgentId,
       streamingAgentName,
       defaultAssistantLabel,
       agentNameById,
+      runtimeAgents,
     ],
   );
 
@@ -3030,6 +3032,7 @@ export default function Chat() {
                           msg,
                           defaultAssistantLabel,
                           agentNameById,
+                          runtimeAgents,
                         )
                       : undefined;
                   const assistTimeline =

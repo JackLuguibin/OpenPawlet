@@ -378,3 +378,41 @@ def test_disabled_profile_idle_row_phase_is_disabled(tmp_path: Path) -> None:
     assert profile_rows[0].profile_id == "off-1"
     assert profile_rows[0].running is False
     assert profile_rows[0].phase == "disabled"
+
+
+def test_list_statuses_suppresses_duplicate_main_when_standalone_profile_matches_gateway(
+    tmp_path: Path,
+) -> None:
+    """``main:<host>`` plus ``agent:main`` should collapse to one gateway surrogate row."""
+
+    ProfileStore(tmp_path).save(AgentProfile(id="main", name="Default"))
+    subagents = _build_subagent_manager(tmp_path)
+    task = SimpleNamespace(done=lambda: False)
+    emb = _fake_embedded(subagents, standalone_tasks={"main": task})
+    emb.agent.agent_id = "main:jk-pc:145324"
+    emb.agent._running = True
+
+    manager = UnifiedAgentManager(emb)  # type: ignore[arg-type]
+    rows = manager.list_statuses()
+
+    assert all(r.role != "main" for r in rows)
+    gate = next(r for r in rows if r.agent_id == "agent:main")
+    assert gate.represents_gateway is True
+
+
+def test_list_statuses_keeps_main_when_standalone_main_idle(tmp_path: Path) -> None:
+    """Stopped standalone loop must not hide the running gateway row."""
+
+    ProfileStore(tmp_path).save(AgentProfile(id="main", name="Default"))
+    subagents = _build_subagent_manager(tmp_path)
+    idle_task = SimpleNamespace(done=lambda: True)
+    emb = _fake_embedded(subagents, standalone_tasks={"main": idle_task})
+    emb.agent.agent_id = "main:jk-pc:145324"
+    emb.agent._running = True
+
+    manager = UnifiedAgentManager(emb)  # type: ignore[arg-type]
+    rows = manager.list_statuses()
+
+    assert any(r.role == "main" for r in rows)
+    dup = next(r for r in rows if r.agent_id == "agent:main")
+    assert dup.represents_gateway is False
