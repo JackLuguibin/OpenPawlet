@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from console.server.models.agents import Agent
+from pathlib import Path
+
+import pytest
+from fastapi import HTTPException
+
+from console.server.models.agents import Agent, AgentBootstrapUpdateBody, AgentUpdateRequest
 from console.server.routers.v1 import agents as agents_mod
 
 
@@ -43,49 +48,58 @@ def test_merge_marks_existing_main_id() -> None:
     assert out[1].is_main is False
 
 
-def test_materialize_main_if_missing_persists_synthetic(monkeypatch) -> None:
-    """Synthetic gateway row must become a workspace profile so PUT /agents/main succeeds."""
-    saved_ids: list[list[str]] = []
-
-    def load_state(_bot_id: str) -> dict:
-        return {"agents": [], "categories": [], "category_overrides": {}}
-
-    def record_save(_bot_id: str, *, agents: list, categories, category_overrides) -> None:
-        saved_ids.append([a.id for a in agents])
-
-    monkeypatch.setattr(agents_mod, "_load_raw_state", load_state)
-    monkeypatch.setattr(agents_mod, "_save_full_state", record_save)
-    monkeypatch.setattr(
-        agents_mod,
-        "_synthetic_main_agent_row",
-        lambda _bid: _minimal_agent(id="main", name="Gateway", is_main=True),
-    )
-    monkeypatch.setattr(agents_mod, "publish_agents_update", lambda _bid: None)
-
-    agents_mod._materialize_main_if_missing("bot-a")
-    assert saved_ids == [["main"]]
-
-
-def test_materialize_main_if_missing_is_idempotent(monkeypatch) -> None:
-    main_row = _minimal_agent(id="main", name="Gateway", is_main=True)
-    raw: dict = {
-        "agents": [main_row.model_dump(mode="json")],
-        "categories": [],
-        "category_overrides": {},
+@pytest.mark.asyncio
+async def test_get_agent_bootstrap_main_reads_workspace_profile(
+    monkeypatch, tmp_path: Path
+) -> None:
+    (tmp_path / "SOUL.md").write_text("soul-root", encoding="utf-8")
+    paths = {
+        "soul": tmp_path / "SOUL.md",
+        "user": tmp_path / "USER.md",
+        "agents": tmp_path / "AGENTS.md",
+        "tools": tmp_path / "TOOLS.md",
     }
 
-    def load_state(_bot_id: str) -> dict:
-        return raw
+    def fake_profile_path(bot_id: str | None, key: str) -> Path:
+        return paths[key]
 
-    calls: list[int] = []
+    monkeypatch.setattr(agents_mod, "profile_file_path", fake_profile_path)
 
-    def record_save(_bot_id: str, *, agents: list, categories, category_overrides) -> None:
-        calls.append(len(agents))
+    resp = await agents_mod.get_agent_bootstrap("any-bot", agents_mod._MAIN_AGENT_LIST_ID)
+    assert resp.data.soul == "soul-root"
+    assert resp.data.user == ""
 
-    monkeypatch.setattr(agents_mod, "_load_raw_state", load_state)
-    monkeypatch.setattr(agents_mod, "_save_full_state", record_save)
-    monkeypatch.setattr(agents_mod, "_synthetic_main_agent_row", lambda _bid: main_row)
-    monkeypatch.setattr(agents_mod, "publish_agents_update", lambda _bid: None)
 
-    agents_mod._materialize_main_if_missing("bot-b")
-    assert calls == []
+@pytest.mark.asyncio
+async def test_put_main_gateway_rejected() -> None:
+    with pytest.raises(HTTPException) as ei:
+        await agents_mod.update_agent("bid", agents_mod._MAIN_AGENT_LIST_ID, AgentUpdateRequest())
+    assert ei.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_delete_main_gateway_rejected() -> None:
+    with pytest.raises(HTTPException) as ei:
+        await agents_mod.delete_agent("bid", agents_mod._MAIN_AGENT_LIST_ID)
+    assert ei.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_bootstrap_put_main_gateway_rejected(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        agents_mod,
+        "_ensure_agent_exists",
+        lambda _bid, _aid: None,
+    )
+    body = AgentBootstrapUpdateBody(content="x")
+    with pytest.raises(HTTPException) as ei:
+        await agents_mod.update_agent_bootstrap(
+            "bid",
+            agents_mod._MAIN_AGENT_LIST_ID,
+            "soul",
+            body,
+        )
+    assert ei.value.status_code == 400
+

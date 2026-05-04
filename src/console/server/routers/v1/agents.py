@@ -21,6 +21,7 @@ from console.server.bot_workspace import (
     load_json_file,
     migrate_agent_profile_layout,
     new_id,
+    profile_file_path,
     read_text,
     save_json_file,
     set_bot_running,
@@ -56,6 +57,21 @@ router = APIRouter(prefix="/bots/{bot_id}/agents", tags=["Agents"])
 
 # Canonical id for the primary gateway agent in chat/agent-picker UIs.
 _MAIN_AGENT_LIST_ID = "main"
+
+_MAIN_AGENT_CONSOLE_CONFIG_MSG = (
+    "The primary gateway agent is configured from the Profile tab "
+    "under Agent Profile and from Settings (agent defaults), not from Agent Teams."
+)
+
+_MAIN_AGENT_DELETE_MSG = (
+    "The primary gateway agent cannot be removed from the Agents list."
+)
+
+
+def _reject_main_gateway_agent_write(agent_id: str, detail: str) -> None:
+    if agent_id == _MAIN_AGENT_LIST_ID:
+        bad_request(detail)
+
 
 def _synthetic_main_agent_row(bot_id: str) -> Agent | None:
     """Return a non-persisted row describing the primary OpenPawlet gateway agent."""
@@ -102,30 +118,6 @@ def _merge_workspace_agents_with_main(bot_id: str, agents: list[Agent]) -> list[
     if main_row is None:
         return agents
     return [main_row, *agents]
-
-
-def _materialize_main_if_missing(bot_id: str) -> None:
-    """Persist a ``main`` workspace row when the UI only had a synthetic gateway row.
-
-    Without this, PUT /agents/main would 404 because the synthetic row is not on disk.
-    """
-    raw = _load_raw_state(bot_id)
-    agents = _parse_agents(raw["agents"])
-    if any(a.id == _MAIN_AGENT_LIST_ID for a in agents):
-        return
-    main_row = _synthetic_main_agent_row(bot_id)
-    if main_row is None:
-        return
-    categories = _parse_categories(raw["categories"])
-    overrides: dict[str, str] = dict(raw["category_overrides"])
-    agents.append(main_row)
-    _save_full_state(
-        bot_id,
-        agents=agents,
-        categories=categories,
-        category_overrides=overrides,
-    )
-    publish_agents_update(bot_id)
 
 
 # UI built-in display categories (must accept overrides even with no custom rows).
@@ -567,8 +559,7 @@ async def update_agent(
     body: AgentUpdateRequest,
 ) -> DataResponse[Agent]:
     """Update fields on an agent."""
-    if agent_id == _MAIN_AGENT_LIST_ID:
-        _materialize_main_if_missing(bot_id)
+    _reject_main_gateway_agent_write(agent_id, _MAIN_AGENT_CONSOLE_CONFIG_MSG)
     raw = _load_raw_state(bot_id)
     agents = _parse_agents(raw["agents"])
     categories = _parse_categories(raw["categories"])
@@ -624,6 +615,7 @@ async def update_agent(
 @router.delete("/{agent_id}", response_model=DataResponse[OkBody])
 async def delete_agent(bot_id: str, agent_id: str) -> DataResponse[OkBody]:
     """Delete an agent."""
+    _reject_main_gateway_agent_write(agent_id, _MAIN_AGENT_DELETE_MSG)
     raw = _load_raw_state(bot_id)
     agents = [a for a in _parse_agents(raw["agents"]) if a.id != agent_id]
     if len(agents) == len(_parse_agents(raw["agents"])):
@@ -716,9 +708,7 @@ async def broadcast_event(
 
 
 def _ensure_agent_exists(bot_id: str, agent_id: str) -> None:
-    """Raise 404 when *agent_id* has no record under ``<workspace>/agents/``."""
-    if agent_id == _MAIN_AGENT_LIST_ID:
-        _materialize_main_if_missing(bot_id)
+    """Raise 404 when *agent_id* has no JSON record under console agent state."""
     raw = _load_raw_state(bot_id)
     if not any(
         isinstance(row, dict) and str(row.get("id", "")).strip() == agent_id
@@ -735,12 +725,21 @@ async def get_agent_bootstrap(
     bot_id: str, agent_id: str
 ) -> DataResponse[AgentBootstrapFiles]:
     """Return SOUL/USER/AGENTS/TOOLS markdown for one agent."""
+    # Primary gateway bootstrap always lives at the workspace root Profile files,
+    # not under ``agents/<id>/`` — mirror that here so Agent Teams previews match runtime.
+    if agent_id == _MAIN_AGENT_LIST_ID:
+        parts: dict[str, str] = {}
+        for key in agent_bootstrap_keys():
+            path = profile_file_path(bot_id, key)
+            parts[key] = read_text(path) if path.is_file() else ""
+        return DataResponse(data=AgentBootstrapFiles(**parts))
+
     _ensure_agent_exists(bot_id, agent_id)
-    parts: dict[str, str] = {}
+    parts_disk: dict[str, str] = {}
     for key in agent_bootstrap_keys():
         path = agent_bootstrap_path(bot_id, agent_id, key)
-        parts[key] = read_text(path) if path.is_file() else ""
-    return DataResponse(data=AgentBootstrapFiles(**parts))
+        parts_disk[key] = read_text(path) if path.is_file() else ""
+    return DataResponse(data=AgentBootstrapFiles(**parts_disk))
 
 
 @router.put(
@@ -754,6 +753,7 @@ async def update_agent_bootstrap(
     body: AgentBootstrapUpdateBody,
 ) -> DataResponse[OkWithKey]:
     """Write one bootstrap file under ``<workspace>/agents/<id>/``."""
+    _reject_main_gateway_agent_write(agent_id, _MAIN_AGENT_CONSOLE_CONFIG_MSG)
     _ensure_agent_exists(bot_id, agent_id)
     if key not in agent_bootstrap_keys():
         bad_request("Unknown profile key")
@@ -775,6 +775,7 @@ async def delete_agent_bootstrap(
     key: str,
 ) -> DataResponse[OkWithKey]:
     """Remove one bootstrap file (so the agent inherits from main)."""
+    _reject_main_gateway_agent_write(agent_id, _MAIN_AGENT_CONSOLE_CONFIG_MSG)
     _ensure_agent_exists(bot_id, agent_id)
     if key not in agent_bootstrap_keys():
         bad_request("Unknown profile key")

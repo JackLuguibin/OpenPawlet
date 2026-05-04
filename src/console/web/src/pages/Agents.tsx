@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, type ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Button,
@@ -21,6 +21,7 @@ import {
   Collapse,
   Row,
   Col,
+  Tag,
 } from 'antd';
 import { AgentProfilePanel, type AgentProfilePanelHandle } from '../components/AgentProfilePanel';
 import {
@@ -36,8 +37,10 @@ import {
   UploadOutlined,
   DownloadOutlined,
   EyeInvisibleOutlined,
+  InfoCircleOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { PageLayout } from '../components/PageLayout';
 import { PAGE_PRIMARY_TITLE_GRADIENT_CLASS } from '../utils/pageTitleClasses';
@@ -52,6 +55,12 @@ import {
   normalizeTopics,
   resolveAgentCategory,
 } from './agents/agentsUtils';
+
+const MAIN_GATEWAY_AGENT_ID = 'main' as const;
+
+function isMainGatewayAgent(agent: Pick<Agent, 'id'>): boolean {
+  return agent.id === MAIN_GATEWAY_AGENT_ID;
+}
 
 const { TextArea } = Input;
 
@@ -186,6 +195,11 @@ export default function Agents({ embedded = false }: { embedded?: boolean } = {}
       (agent) => resolveAgentCategory(agent, categoryOverrides) === selectedCategory,
     );
   }, [agents, selectedCategory, categoryOverrides]);
+
+  const batchSelectableAgents = useMemo(
+    () => filteredAgents.filter((a) => !isMainGatewayAgent(a)),
+    [filteredAgents],
+  );
 
   const addCategoryMutation = useMutation({
     mutationFn: (label: string) => api.addCategory(currentBotId!, label),
@@ -514,10 +528,12 @@ export default function Agents({ embedded = false }: { embedded?: boolean } = {}
   };
 
   const handleSelectAll = () => {
-    if (selectedAgents.size === filteredAgents.length) {
+    const ids = batchSelectableAgents.map((a) => a.id);
+    const allSelected = ids.length > 0 && ids.every((id) => selectedAgents.has(id));
+    if (allSelected) {
       setSelectedAgents(new Set());
     } else {
-      setSelectedAgents(new Set(filteredAgents.map((a) => a.id)));
+      setSelectedAgents(new Set(ids));
     }
   };
 
@@ -531,11 +547,11 @@ export default function Agents({ embedded = false }: { embedded?: boolean } = {}
 
   return (
     <PageLayout variant="bleed" embedded={embedded} className="min-h-0 flex-1 overflow-hidden">
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-hidden">
+        <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
           <div className="min-w-0">
             <h1 className={PAGE_PRIMARY_TITLE_GRADIENT_CLASS}>{t('agents.title')}</h1>
-            <p className="mt-1 hidden text-sm text-gray-500 sm:block dark:text-gray-400">
+            <p className="mt-1.5 hidden text-sm leading-relaxed text-gray-500 sm:block dark:text-gray-400">
               {t('agents.subtitle')}
             </p>
           </div>
@@ -552,13 +568,13 @@ export default function Agents({ embedded = false }: { embedded?: boolean } = {}
         </div>
 
         <Card
-          className="mt-4 flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-gray-200/90 shadow-sm dark:border-gray-700/80 dark:bg-gray-800/35"
+          className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-gray-200/90 shadow-sm dark:border-gray-700/80 dark:bg-gray-800/35"
           styles={{
             body: { padding: 0, display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 },
           }}
         >
           <div
-            className="shrink-0 border-b border-gray-100 bg-gray-50/40 px-4 py-3 dark:border-gray-700 dark:bg-gray-800/20"
+            className="shrink-0 border-b border-gray-100 bg-gray-50/50 px-4 py-3.5 dark:border-gray-700 dark:bg-gray-800/25 sm:px-5"
             role="search"
             aria-label={t('agents.subtitle')}
           >
@@ -624,7 +640,7 @@ export default function Agents({ embedded = false }: { embedded?: boolean } = {}
             </div>
           </div>
 
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto px-4 pb-5 pt-4 sm:px-5">
       {isLoading ? (
         <div className="flex justify-center py-12">
           <Spin size="large" />
@@ -642,55 +658,148 @@ export default function Agents({ embedded = false }: { embedded?: boolean } = {}
           />
         </div>
       ) : (
-        <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+        <div className="mx-auto grid w-full max-w-[1920px] grid-cols-1 items-stretch gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
           {filteredAgents.map((agent) => {
             const isSelected = selectedAgents.has(agent.id);
-            
+            const mainGateway = isMainGatewayAgent(agent);
+
+            const descRaw = (agent.description ?? '').trim();
+            const modelRaw = (agent.model ?? '').trim();
+            let summaryPrimary: ReactNode | null = null;
+            if (!mainGateway) {
+              if (descRaw) {
+                summaryPrimary = (
+                  <div className="space-y-1.5">
+                    <p className="line-clamp-3 whitespace-pre-wrap break-words text-[12px] leading-snug text-gray-600 dark:text-gray-300">
+                      {descRaw}
+                    </p>
+                    {modelRaw ? (
+                      <Tag className="m-0 inline-block max-w-full truncate border-transparent bg-blue-50/90 font-mono text-[11px] leading-tight text-blue-800 dark:bg-blue-950/55 dark:text-blue-200">
+                        {modelRaw}
+                      </Tag>
+                    ) : null}
+                  </div>
+                );
+              } else if (modelRaw) {
+                summaryPrimary = (
+                  <Tag className="m-0 max-w-full truncate border-gray-200/90 bg-gray-50 font-mono text-[11px] leading-tight dark:border-gray-600 dark:bg-gray-900/55">
+                    {modelRaw}
+                  </Tag>
+                );
+              } else {
+                summaryPrimary = (
+                  <span className="text-[12px] italic text-gray-400 dark:text-gray-500">
+                    {t('agents.cardSummaryEmpty')}
+                  </span>
+                );
+              }
+            }
+
+            const actionGhost =
+              '!h-8 !w-min !border-0 !p-1 text-gray-500 hover:bg-gray-100 hover:!text-blue-600 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:!text-blue-400';
+
             return (
               <Card
                 key={agent.id}
-                className="group relative overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-gray-300 hover:shadow-md dark:border-gray-700 dark:bg-gray-800"
-                styles={{ body: { padding: 0 } }}
+                className="group flex h-full min-h-[156px] flex-col overflow-hidden rounded-xl border border-gray-200/95 bg-white shadow-sm transition-[transform,box-shadow,border-color] duration-200 hover:-translate-y-0.5 hover:border-gray-300 hover:shadow-md dark:border-gray-700 dark:bg-gray-800"
+                styles={{
+                  body: {
+                    padding: 0,
+                    flex: 1,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    minHeight: 0,
+                  },
+                }}
                 hoverable
               >
-                <div className="relative flex flex-col gap-1 p-2.5">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <h3 className="line-clamp-1 break-words text-sm font-medium text-gray-900 dark:text-gray-100">
-                        {agent.name}
-                      </h3>
+                <div className="flex min-h-0 flex-1 flex-col">
+                  <div className="flex flex-1 flex-col gap-2.5 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1 pr-1">
+                        <h3 className="line-clamp-2 break-words text-sm font-semibold leading-snug tracking-tight text-gray-900 dark:text-gray-100">
+                          {agent.name}
+                        </h3>
+                        {mainGateway && (
+                          <div className="mt-2">
+                            <Tag color="blue" bordered={false} className="m-0 px-2 py-0 text-[11px] leading-5">
+                              {t('agents.mainGatewayBadge')}
+                            </Tag>
+                          </div>
+                        )}
+                      </div>
+                      <Checkbox
+                        checked={isSelected}
+                        disabled={mainGateway}
+                        onChange={() => handleToggleSelect(agent.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        className="relative top-[1px] shrink-0"
+                      />
                     </div>
-                    <Checkbox
-                      checked={isSelected}
-                      onChange={() => handleToggleSelect(agent.id)}
-                      onClick={(e) => e.stopPropagation()}
-                      className="shrink-0"
-                    />
+
+                    <div className="min-h-[2.75rem] flex-1">
+                      {mainGateway ? (
+                        <div className="flex items-start gap-2 text-[12px] leading-snug text-gray-500 dark:text-gray-400">
+                          <Tooltip title={t('agents.mainGatewayHint')} placement="topLeft">
+                            <button
+                              type="button"
+                              aria-label={t('agents.mainGatewayHint')}
+                              onClick={(e) => e.stopPropagation()}
+                              className="mt-px shrink-0 cursor-default rounded p-px text-gray-400 outline-none hover:text-gray-500 focus-visible:ring-2 focus-visible:ring-blue-400 dark:text-gray-500 dark:hover:text-gray-400"
+                            >
+                              <InfoCircleOutlined className="text-[15px]" />
+                            </button>
+                          </Tooltip>
+                          <span className="min-w-0">
+                            <span className="text-gray-600 dark:text-gray-300">{t('agents.mainGatewayCardLine')}</span>{' '}
+                            <Link
+                              to="/memory?section=profile"
+                              onClick={(e) => e.stopPropagation()}
+                              className="font-medium whitespace-nowrap text-blue-600 underline-offset-4 hover:underline dark:text-blue-400"
+                            >
+                              {t('agents.openBotProfilePage')}
+                            </Link>
+                          </span>
+                        </div>
+                      ) : (
+                        summaryPrimary
+                      )}
+                    </div>
                   </div>
 
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex min-w-0 items-center gap-2 text-[11px] text-gray-500 dark:text-gray-400">
+                  <div className="flex items-center gap-3 border-t border-gray-100 bg-gray-50/50 px-4 py-3 dark:border-gray-700/90 dark:bg-gray-900/25">
+                    <div className="flex min-w-0 flex-1 items-center gap-2">
                       <span
-                        className={`h-1.5 w-1.5 shrink-0 rounded-full ${agent.enabled ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'}`}
+                        aria-hidden
+                        className={`h-2 w-2 shrink-0 rounded-full ${agent.enabled ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'}`}
                       />
-                      <span className="shrink-0">{agent.enabled ? t('common.enabled') : t('agents.hide')}</span>
-                      <span className="truncate text-[10px] text-gray-400 dark:text-gray-500">
-                        ID: {agent.id.slice(0, 8)}
+                      <span className="shrink-0 text-[11px] font-medium text-gray-600 dark:text-gray-300">
+                        {agent.enabled ? t('common.enabled') : t('agents.hide')}
+                      </span>
+                      <span
+                        className="min-w-0 truncate font-mono text-[10px] text-gray-400 dark:text-gray-500"
+                        title={agent.id}
+                      >
+                        {agent.id}
                       </span>
                     </div>
-                    <div className="flex items-center justify-end gap-0.5 opacity-100 transition-opacity">
-                      <Tooltip title={t('agents.tooltipEdit')}>
-                        <Button
-                          type="text"
-                          size="small"
-                          icon={<EditOutlined />}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleEdit(agent);
-                          }}
-                          className="rounded-md text-gray-500 hover:bg-blue-50 hover:text-blue-500 dark:text-gray-400 dark:hover:bg-blue-900/20 dark:hover:text-blue-400 !px-1"
-                        />
-                      </Tooltip>
+                    <div className="grid w-[90px] shrink-0 grid-cols-3 items-center justify-items-center gap-0">
+                      {!mainGateway ? (
+                        <Tooltip title={t('agents.tooltipEdit')}>
+                          <Button
+                            type="text"
+                            size="small"
+                            icon={<EditOutlined />}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEdit(agent);
+                            }}
+                            className={`${actionGhost} justify-self-center`}
+                          />
+                        </Tooltip>
+                      ) : (
+                        <span className="inline-block h-8 w-8 shrink-0" aria-hidden />
+                      )}
                       <Tooltip title={t('common.export')}>
                         <Button
                           type="text"
@@ -699,7 +808,9 @@ export default function Agents({ embedded = false }: { embedded?: boolean } = {}
                           onClick={(e) => {
                             e.stopPropagation();
                             const dataStr = JSON.stringify(agent, null, 2);
-                            const dataBlob = new Blob([dataStr], { type: 'application/json' });
+                            const dataBlob = new Blob([dataStr], {
+                              type: 'application/json',
+                            });
                             const url = URL.createObjectURL(dataBlob);
                             const link = document.createElement('a');
                             link.href = url;
@@ -708,32 +819,39 @@ export default function Agents({ embedded = false }: { embedded?: boolean } = {}
                             link.click();
                             document.body.removeChild(link);
                             URL.revokeObjectURL(url);
-                            addToast({ type: 'success', message: t('agents.exportOk') });
+                            addToast({
+                              type: 'success',
+                              message: t('agents.exportOk'),
+                            });
                           }}
-                          className="rounded-md text-gray-500 hover:bg-emerald-50 hover:text-emerald-500 dark:text-gray-400 dark:hover:bg-emerald-900/20 dark:hover:text-emerald-400 !px-1"
+                          className={`${actionGhost} justify-self-center`}
                         />
                       </Tooltip>
-                      <Popconfirm
-                        title={t('agents.hideConfirmTitle')}
-                        description={t('agents.hideConfirmDescription')}
-                        onConfirm={(e) => {
-                          e?.stopPropagation();
-                          disableMutation.mutate(agent.id);
-                        }}
-                        okText={t('agents.hide')}
-                        cancelText={t('common.cancel')}
-                        okButtonProps={{ danger: true }}
-                      >
-                        <Tooltip title={t('agents.hide')}>
-                          <Button
-                            type="text"
-                            size="small"
-                            icon={<EyeInvisibleOutlined />}
-                            onClick={(e) => e.stopPropagation()}
-                            className="rounded-md text-gray-500 hover:bg-orange-50 hover:text-orange-500 dark:text-gray-400 dark:hover:bg-orange-900/20 dark:hover:text-orange-400 !px-1"
-                          />
-                        </Tooltip>
-                      </Popconfirm>
+                      {!mainGateway ? (
+                        <Popconfirm
+                          title={t('agents.hideConfirmTitle')}
+                          description={t('agents.hideConfirmDescription')}
+                          onConfirm={(e) => {
+                            e?.stopPropagation();
+                            disableMutation.mutate(agent.id);
+                          }}
+                          okText={t('agents.hide')}
+                          cancelText={t('common.cancel')}
+                          okButtonProps={{ danger: true }}
+                        >
+                          <Tooltip title={t('agents.hide')}>
+                            <Button
+                              type="text"
+                              size="small"
+                              icon={<EyeInvisibleOutlined />}
+                              onClick={(e) => e.stopPropagation()}
+                              className={`${actionGhost} justify-self-center`}
+                            />
+                          </Tooltip>
+                        </Popconfirm>
+                      ) : (
+                        <span className="inline-block h-8 w-8 shrink-0" aria-hidden />
+                      )}
                     </div>
                   </div>
                 </div>
@@ -756,7 +874,10 @@ export default function Agents({ embedded = false }: { embedded?: boolean } = {}
                 </span>
               <Divider type="vertical" className="!my-0" />
               <Button size="small" onClick={handleSelectAll}>
-                {selectedAgents.size === filteredAgents.length ? t('agents.deselectAll') : t('agents.selectAll')}
+                {batchSelectableAgents.length > 0 &&
+                batchSelectableAgents.every((a) => selectedAgents.has(a.id))
+                  ? t('agents.deselectAll')
+                  : t('agents.selectAll')}
               </Button>
               <Button size="small" icon={<DownloadOutlined />} onClick={handleExport}>
                 {t('agents.batchExport')}
@@ -774,6 +895,7 @@ export default function Agents({ embedded = false }: { embedded?: boolean } = {}
                     cancelText: t('common.cancel'),
                     onOk: () => {
                       selectedAgents.forEach((id) => {
+                        if (id === MAIN_GATEWAY_AGENT_ID) return;
                         deleteMutation.mutate(id);
                       });
                       setSelectedAgents(new Set());
