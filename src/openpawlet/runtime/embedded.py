@@ -1078,6 +1078,14 @@ class EmbeddedOpenPawlet:
             job_id=job.id,
             session_manager=self.session_manager,
         )
+        _jid = (getattr(job, "id", None) or "").strip()
+        _jname = (getattr(job, "name", None) or "").strip()
+        _cron_label = _jname or _jid
+        if _jid and _cron_label:
+            for _sk, _, __ in targets:
+                _run_key = (_sk or "").strip()
+                if _run_key.startswith(f"cron:{_jid}-"):
+                    self.session_manager.set_sidebar_title(_run_key, _cron_label)
         # Isolated policy runs (new → cron:*, default dream, temp) already persist the
         # turn under those keys. Never mirror the post-run notification into unrelated
         # console:* sessions (would look like the job ran in those chats).

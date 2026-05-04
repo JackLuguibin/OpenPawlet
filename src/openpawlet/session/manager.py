@@ -191,6 +191,8 @@ class SessionManager:
     Sessions are stored as JSONL files in the sessions directory.
     """
 
+    _SIDEBAR_TITLE_MAX_LEN = 120
+
     def __init__(self, workspace: Path, timezone: str | None = None):
         self.workspace = workspace
         self._timezone = timezone
@@ -529,6 +531,38 @@ class SessionManager:
         except OSError as e:
             logger.warning("Failed to delete session file {}: {}", path, e)
             return False
+
+    def set_sidebar_title(self, session_key: str, title: str | None) -> None:
+        """Persist a display title in ``sessions/.meta.json`` for the console session list."""
+        meta_path = self.sessions_dir / ".meta.json"
+        raw_key = (session_key or "").strip()
+        if not raw_key:
+            return
+        meta: dict[str, Any] = {}
+        if meta_path.is_file():
+            try:
+                with open(meta_path, encoding="utf-8") as f:
+                    data = json.load(f)
+                if isinstance(data, dict):
+                    meta = data
+            except (json.JSONDecodeError, OSError):
+                meta = {}
+        normalized = (title or "").strip()
+        if len(normalized) > self._SIDEBAR_TITLE_MAX_LEN:
+            normalized = normalized[: self._SIDEBAR_TITLE_MAX_LEN]
+        if normalized:
+            row = meta.get(raw_key)
+            if not isinstance(row, dict):
+                row = {}
+            row["title"] = normalized
+            meta[raw_key] = row
+        else:
+            meta.pop(raw_key, None)
+        self.sessions_dir.mkdir(parents=True, exist_ok=True)
+        meta_path.write_text(
+            json.dumps(meta, ensure_ascii=False, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
 
     def read_session_file(self, key: str) -> dict[str, Any] | None:
         """Load a session from disk without caching; intended for read-only HTTP endpoints.
