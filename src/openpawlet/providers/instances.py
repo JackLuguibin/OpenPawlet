@@ -301,6 +301,9 @@ class LLMProviderInstance(BaseModel):
         has_key = bool(self.first_key())
         if backend == "azure_openai":
             return has_key and bool((self.api_base or "").strip())
+        if backend == "bedrock":
+            # IAM / instance metadata / env-based auth — no API key required.
+            return True
         if is_oauth:
             return True  # OAuth providers manage their own credentials
         if is_local:

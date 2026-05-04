@@ -160,6 +160,13 @@ class ProviderConfig(Base):
     extra_body: dict[str, Any] | None = None  # Merged into every OpenAI-compat request body
 
 
+class BedrockProviderConfig(ProviderConfig):
+    """AWS Bedrock Runtime (Converse API) configuration."""
+
+    region: str | None = None  # Falls back to AWS_REGION / AWS_DEFAULT_REGION
+    profile: str | None = None  # Optional shared-credentials profile name
+
+
 class ProvidersConfig(Base):
     """Configuration for LLM providers."""
 
@@ -167,6 +174,7 @@ class ProvidersConfig(Base):
     azure_openai: ProviderConfig = Field(
         default_factory=ProviderConfig
     )  # Azure OpenAI (model = deployment name)
+    bedrock: BedrockProviderConfig = Field(default_factory=BedrockProviderConfig)
     anthropic: ProviderConfig = Field(default_factory=ProviderConfig)
     openai: ProviderConfig = Field(default_factory=ProviderConfig)
     openrouter: ProviderConfig = Field(default_factory=ProviderConfig)
@@ -361,14 +369,14 @@ class Config(BaseSettings):
         for spec in PROVIDERS:
             p = getattr(self.providers, spec.name, None)
             if p and model_prefix and normalized_prefix == spec.name:
-                if spec.is_oauth or spec.is_local or p.api_key:
+                if spec.is_oauth or spec.is_local or p.api_key or spec.backend == "bedrock":
                     return p, spec.name
 
         # Match by keyword (order follows PROVIDERS registry)
         for spec in PROVIDERS:
             p = getattr(self.providers, spec.name, None)
             if p and any(_kw_matches(kw) for kw in spec.keywords):
-                if spec.is_oauth or spec.is_local or p.api_key:
+                if spec.is_oauth or spec.is_local or p.api_key or spec.backend == "bedrock":
                     return p, spec.name
 
         # Fallback: configured local providers can route models without

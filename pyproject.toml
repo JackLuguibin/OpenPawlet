@@ -66,6 +66,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+bedrock = [
+    "boto3>=1.34.0,<2.0.0",
+]
 api = [
     "aiohttp>=3.9.0,<4.0.0",
 ]

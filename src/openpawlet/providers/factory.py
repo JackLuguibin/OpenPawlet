@@ -48,6 +48,8 @@ def _validate_provider_credentials(
     if backend == "azure_openai":
         if not provider_cfg or not provider_cfg.api_key or not provider_cfg.api_base:
             error("Azure OpenAI requires api_key and api_base in config.")
+    elif backend == "bedrock":
+        return
     elif backend == "openai_compat" and not model.startswith("bedrock/"):
         needs_key = not (provider_cfg and provider_cfg.api_key)
         exempt = spec and (spec.is_oauth or spec.is_local or spec.is_direct)
@@ -96,6 +98,20 @@ def _instantiate_provider(
             api_base=config.get_api_base(model),
             default_model=model,
             extra_headers=extra_headers,
+        )
+
+    if backend == "bedrock":
+        from openpawlet.providers.bedrock_provider import BedrockProvider
+
+        region = getattr(provider_cfg, "region", None) if provider_cfg else None
+        profile = getattr(provider_cfg, "profile", None) if provider_cfg else None
+        return BedrockProvider(
+            api_key=api_key,
+            api_base=provider_cfg.api_base if provider_cfg else None,
+            default_model=model,
+            region=region,
+            profile=profile,
+            extra_body=extra_body,
         )
 
     from openpawlet.providers.openai_compat_provider import OpenAICompatProvider
@@ -220,6 +236,18 @@ def _instance_to_inner_provider(
             api_base=effective_base,
             default_model=model,
             extra_headers=extra_headers,
+        )
+
+    if backend == "bedrock":
+        from openpawlet.providers.bedrock_provider import BedrockProvider
+
+        return BedrockProvider(
+            api_key=api_key,
+            api_base=api_base,
+            default_model=model,
+            region=None,
+            profile=None,
+            extra_body=getattr(instance, "extra_body", None),
         )
 
     needs_key = not (spec and (spec.is_oauth or spec.is_local or spec.is_direct))
