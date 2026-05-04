@@ -731,6 +731,10 @@ def agent(
                             turn_done.set()
                             continue
 
+                        if msg.metadata.get("_retry_wait"):
+                            await _print_interactive_progress_line(msg.content, _thinking)
+                            continue
+
                         if msg.metadata.get("_progress"):
                             is_tool_hint = msg.metadata.get("_tool_hint", False)
                             ch = agent_loop.channels_config
