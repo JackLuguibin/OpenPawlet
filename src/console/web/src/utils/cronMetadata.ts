@@ -12,6 +12,9 @@
  * Old jobs without the marker are treated as plain prompts.
  */
 
+/** Where cron execution records agent turns (conversation context). */
+export type CronSessionPolicy = 'default' | 'new' | 'fixed' | 'latest' | 'all';
+
 export interface CronTaskMetadata {
   /** Target agent id (optional; empty = use main agent). */
   agentId?: string | null;
@@ -25,6 +28,25 @@ export interface CronTaskMetadata {
   startAtMs?: number | null;
   /** Active window end (epoch ms). Job auto-disables after this. */
   endAtMs?: number | null;
+  /** Session routing when the task runs (stored in cron-meta JSON). */
+  sessionPolicy?: CronSessionPolicy | null;
+  /** When sessionPolicy is `fixed`, persisted `channel:chat_id` session key. */
+  fixedSessionKey?: string | null;
+}
+
+export const CRON_SESSION_POLICIES: CronSessionPolicy[] = [
+  'default',
+  'new',
+  'fixed',
+  'latest',
+  'all',
+];
+
+/** Normalize ``sessionPolicy`` from stored JSON metadata. */
+export function normalizeCronSessionPolicy(value: unknown): CronSessionPolicy {
+  return typeof value === 'string' && CRON_SESSION_POLICIES.includes(value as CronSessionPolicy)
+    ? (value as CronSessionPolicy)
+    : 'default';
 }
 
 const META_MARKER_RE = /^<!--cron-meta:(\{[\s\S]*?\})-->\r?\n?/;
@@ -38,6 +60,11 @@ export function encodeCronMessage(prompt: string, meta: CronTaskMetadata): strin
   if (meta.tools && meta.tools.length) cleaned.tools = [...meta.tools];
   if (typeof meta.startAtMs === 'number') cleaned.startAtMs = meta.startAtMs;
   if (typeof meta.endAtMs === 'number') cleaned.endAtMs = meta.endAtMs;
+  if (meta.sessionPolicy && meta.sessionPolicy !== 'default') cleaned.sessionPolicy = meta.sessionPolicy;
+  if (meta.sessionPolicy === 'fixed') {
+    const fk = meta.fixedSessionKey?.trim();
+    if (fk) cleaned.fixedSessionKey = fk;
+  }
 
   const hasAny = Object.keys(cleaned).length > 0;
   if (!hasAny) return prompt;

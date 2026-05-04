@@ -16,8 +16,6 @@ records without forcing the client to re-parse.
 
 from __future__ import annotations
 
-import json
-import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -26,9 +24,8 @@ from fastapi import Request
 from loguru import logger
 
 from console.server.http_errors import service_unavailable
+from openpawlet.cron.message_decode import decode_cron_payload
 from openpawlet.cron.service import CronService
-
-_META_RE = re.compile(r"^<!--cron-meta:(\{.*?\})-->\r?\n?", re.DOTALL)
 
 
 @dataclass(frozen=True)
@@ -48,16 +45,10 @@ def decode_cron_message(raw: str | None) -> CronMessageMeta:
     """Parse the optional ``<!--cron-meta:{...}-->`` prefix from a message."""
     if not raw:
         return CronMessageMeta()
-    match = _META_RE.match(raw)
-    if not match:
-        return CronMessageMeta(prompt=raw)
-    body = raw[match.end() :]
-    try:
-        meta_obj = json.loads(match.group(1))
-    except (TypeError, ValueError):
-        return CronMessageMeta(prompt=raw)
-    if not isinstance(meta_obj, dict):
-        return CronMessageMeta(prompt=raw)
+    dec = decode_cron_payload(raw)
+    meta_obj = dec.meta
+    if not meta_obj:
+        return CronMessageMeta(prompt=dec.prompt)
 
     def _list(name: str) -> tuple[str, ...]:
         v = meta_obj.get(name)
@@ -82,7 +73,7 @@ def decode_cron_message(raw: str | None) -> CronMessageMeta:
         tools=_list("tools"),
         start_at_ms=_opt_int("startAtMs"),
         end_at_ms=_opt_int("endAtMs"),
-        prompt=body,
+        prompt=dec.prompt,
     )
 
 

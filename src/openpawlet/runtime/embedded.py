@@ -36,6 +36,7 @@ from loguru import logger
 from openpawlet import __logo__, __version__
 from openpawlet.config.paths import is_default_workspace, workspace_console_subdir
 from openpawlet.config.schema import Config
+from openpawlet.cron.session_policy import resolve_cron_run_targets
 from openpawlet.utils.background_session import MAIN_AGENT_DREAM_SESSION_KEY
 
 
@@ -996,14 +997,14 @@ class EmbeddedOpenPawlet:
         if isinstance(message_tool, MessageTool):
             message_record_token = message_tool.set_record_channel_delivery(True)
 
-        cron_session_key = ""
-        try:
-            sk_raw = getattr(job.payload, "session_key", None)
-            if isinstance(sk_raw, str) and sk_raw.strip():
-                cron_session_key = sk_raw.strip()
-        except Exception:
-            cron_session_key = ""
-        run_session_key = cron_session_key or MAIN_AGENT_DREAM_SESSION_KEY
+        targets = resolve_cron_run_targets(
+            message=getattr(job.payload, "message", "") or "",
+            payload_session_key=getattr(job.payload, "session_key", None),
+            payload_channel=getattr(job.payload, "channel", None),
+            payload_to=getattr(job.payload, "to", None),
+            job_id=job.id,
+            session_manager=self.session_manager,
+        )
 
         channel_meta_raw = getattr(job.payload, "channel_meta", None) or {}
         delivery_meta = (
@@ -1013,26 +1014,35 @@ class EmbeddedOpenPawlet:
         async def _silent(*_args: Any, **_kwargs: Any) -> None:
             return None
 
+        response_parts: list[str] = []
+        sent_via_tool_any = False
         try:
-            resp = await self.agent.process_direct(
-                reminder_note,
-                session_key=run_session_key,
-                channel=job.payload.channel or "cli",
-                chat_id=job.payload.to or "direct",
-                on_progress=_silent,
-            )
+            for run_session_key, run_channel, run_chat_id in targets:
+                if isinstance(message_tool, MessageTool):
+                    message_tool.start_turn()
+                resp = await self.agent.process_direct(
+                    reminder_note,
+                    session_key=run_session_key,
+                    channel=run_channel or (job.payload.channel or "cli"),
+                    chat_id=run_chat_id or (job.payload.to or "direct"),
+                    on_progress=_silent,
+                )
+                part = resp.content if resp else ""
+                if isinstance(part, str) and part.strip():
+                    response_parts.append(part.strip())
+                if isinstance(message_tool, MessageTool) and message_tool._sent_in_turn:
+                    sent_via_tool_any = True
+            response = "\n\n---\n\n".join(response_parts) if response_parts else ""
         finally:
             if isinstance(cron_tool, CronTool) and cron_token is not None:
                 cron_tool.reset_cron_context(cron_token)
             if isinstance(message_tool, MessageTool) and message_record_token is not None:
                 message_tool.reset_record_channel_delivery(message_record_token)
 
-        response = resp.content if resp else ""
-
         if (
             job.payload.deliver
             and isinstance(message_tool, MessageTool)
-            and message_tool._sent_in_turn
+            and sent_via_tool_any
         ):
             return response
 

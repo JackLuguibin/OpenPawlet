@@ -25,6 +25,7 @@ import {
   ToolOutlined,
   ApiOutlined,
   ThunderboltOutlined,
+  BranchesOutlined,
 } from '@ant-design/icons';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
@@ -45,6 +46,7 @@ import {
   decodeCronMessage,
   isMetadataExpired,
   isMetadataNotYetActive,
+  normalizeCronSessionPolicy,
   type CronTaskMetadata,
 } from '../utils/cronMetadata';
 import { CronTaskFormModal } from './cron/CronTaskFormModal';
@@ -106,7 +108,9 @@ function MetadataChips({
   const skills = meta.skills ?? [];
   const tools = meta.tools ?? [];
   const mcps = meta.mcpServers ?? [];
-  const showAny = agentName || skills.length || tools.length || mcps.length;
+  const sessPol = normalizeCronSessionPolicy(meta.sessionPolicy);
+  const sessPolChip = sessPol !== 'default' ? sessPol : null;
+  const showAny = agentName || skills.length || tools.length || mcps.length || sessPolChip;
   if (!showAny) return null;
   return (
     <Space size={[4, 4]} wrap className="mt-1">
@@ -119,6 +123,13 @@ function MetadataChips({
         <Tooltip title={skills.join(', ')}>
           <Tag icon={<ThunderboltOutlined />} color="purple">
             {t('cron.chipSkills', { count: skills.length })}
+          </Tag>
+        </Tooltip>
+      )}
+      {sessPolChip && (
+        <Tooltip title={meta.fixedSessionKey || t(`cron.sessionPolicy.${sessPolChip}`)}>
+          <Tag icon={<BranchesOutlined />} color="magenta">
+            {t(`cron.sessionPolicy.${sessPolChip}`)}
           </Tag>
         </Tooltip>
       )}

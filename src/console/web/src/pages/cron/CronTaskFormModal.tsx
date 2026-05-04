@@ -13,6 +13,7 @@ import {
   Tooltip,
   Alert,
   Switch,
+  message,
 } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
@@ -23,6 +24,8 @@ import {
   encodeCronMessage,
   decodeCronMessage,
   summarizeCron,
+  normalizeCronSessionPolicy,
+  type CronSessionPolicy,
   type CronTaskMetadata,
 } from '../../utils/cronMetadata';
 import { COMMON_IANA_TIME_ZONES } from '../../utils/timezones';
@@ -46,6 +49,8 @@ interface FormValues {
   skills?: string[];
   mcpServers?: string[];
   tools?: string[];
+  sessionPolicy?: CronSessionPolicy;
+  fixedSessionKey?: string;
   scheduleKind: CronScheduleKind;
   every_seconds?: number;
   cron_expr?: string;
@@ -62,6 +67,8 @@ const DEFAULT_VALUES: FormValues = {
   skills: [],
   mcpServers: [],
   tools: [],
+  sessionPolicy: 'default',
+  fixedSessionKey: '',
   scheduleKind: 'cron',
   every_seconds: 3600,
   cron_expr: '0 9 * * *',
@@ -83,6 +90,8 @@ function formValuesFromJob(job: CronJob | null | undefined): FormValues {
   initial.skills = decoded.meta.skills ?? [];
   initial.mcpServers = decoded.meta.mcpServers ?? [];
   initial.tools = decoded.meta.tools ?? [];
+  initial.sessionPolicy = normalizeCronSessionPolicy(decoded.meta.sessionPolicy);
+  initial.fixedSessionKey = decoded.meta.fixedSessionKey?.trim() ?? '';
   initial.prompt = decoded.prompt;
   initial.windowEnabled = Boolean(decoded.meta.startAtMs || decoded.meta.endAtMs);
   initial.startAt = decoded.meta.startAtMs ? dayjs(decoded.meta.startAtMs) : null;
@@ -106,6 +115,7 @@ export function CronTaskFormModal(props: CronTaskFormModalProps) {
   const { open, botId, job, loading, onCancel, onSubmit } = props;
   const { t } = useTranslation();
   const [form] = Form.useForm<FormValues>();
+  const watchedFixedKey = Form.useWatch('fixedSessionKey', form);
 
   const { data: agents = [] } = useQuery({
     queryKey: ['cron-form-agents', botId],
@@ -122,6 +132,12 @@ export function CronTaskFormModal(props: CronTaskFormModalProps) {
   const { data: mcpServers = [] } = useQuery({
     queryKey: ['cron-form-mcp', botId],
     queryFn: () => api.getMCPServers(botId),
+    enabled: open && Boolean(botId),
+  });
+
+  const { data: sessions = [] } = useQuery({
+    queryKey: ['cron-form-sessions', botId],
+    queryFn: () => (botId ? api.listSessions(botId) : Promise.resolve([])),
     enabled: open && Boolean(botId),
   });
 
@@ -167,11 +183,15 @@ export function CronTaskFormModal(props: CronTaskFormModalProps) {
         schedule = { kind: 'at', at_ms: values.startAt.valueOf() };
       }
 
+      const sessPol = normalizeCronSessionPolicy(values.sessionPolicy ?? 'default');
       const meta: CronTaskMetadata = {
         agentId: values.agentId?.trim() || null,
         skills: values.skills ?? [],
         mcpServers: values.mcpServers ?? [],
         tools: values.tools ?? [],
+        sessionPolicy: sessPol !== 'default' ? sessPol : undefined,
+        fixedSessionKey:
+          sessPol === 'fixed' ? (values.fixedSessionKey?.trim() ?? null) : null,
         startAtMs:
           values.windowEnabled && values.startAt && values.scheduleKind !== 'at'
             ? values.startAt.valueOf()
@@ -186,8 +206,18 @@ export function CronTaskFormModal(props: CronTaskFormModalProps) {
         schedule,
         message,
       });
-    } catch {
-      // validation errors are surfaced inline by AntD
+    } catch (e: unknown) {
+      if (
+        e &&
+        typeof e === 'object' &&
+        'errorFields' in e &&
+        Array.isArray((e as { errorFields?: unknown }).errorFields) &&
+        (e as { errorFields: unknown[] }).errorFields.length > 0
+      ) {
+        message.warning(t('cron.formValidationFailed'));
+        return;
+      }
+      message.error(e instanceof Error ? e.message : t('cron.toastError'));
     }
   };
 
@@ -218,6 +248,19 @@ export function CronTaskFormModal(props: CronTaskFormModalProps) {
     return [{ label: t('cron.fieldAgentNone'), value: '' }, ...opts];
   }, [agents, t]);
 
+  const sessionOptions = useMemo(() => {
+    const base = sessions.map((s) => ({
+      value: s.key,
+      label: s.title?.trim() ? `${s.title} (${s.key})` : s.key,
+      title: s.key,
+    }));
+    const fk = typeof watchedFixedKey === 'string' ? watchedFixedKey.trim() : '';
+    if (fk && !base.some((o) => o.value === fk)) {
+      return [{ value: fk, label: fk, title: fk }, ...base];
+    }
+    return base;
+  }, [sessions, watchedFixedKey]);
+
   const isEdit = !!job;
 
   return (
@@ -235,7 +278,7 @@ export function CronTaskFormModal(props: CronTaskFormModalProps) {
     >
       {/* Default preserve=true: inactive Tabs panes unmount their fields; preserve=false would drop
           values set via setFieldsValue before the Schedule tab mounts (e.g. cron_expr on edit). */}
-      <Form form={form} layout="vertical" initialValues={DEFAULT_VALUES}>
+      <Form form={form} layout="vertical" initialValues={DEFAULT_VALUES} scrollToFirstError>
         <Form.Item
           name="name"
           label={t('cron.fieldName')}
@@ -308,6 +351,50 @@ export function CronTaskFormModal(props: CronTaskFormModalProps) {
                       tokenSeparators={[',', ' ']}
                       maxTagCount="responsive"
                     />
+                  </Form.Item>
+
+                  <Form.Item
+                    name="sessionPolicy"
+                    label={t('cron.fieldSessionPolicy')}
+                    tooltip={t('cron.fieldSessionPolicyTip')}
+                  >
+                    <Select
+                      options={[
+                        { value: 'default', label: t('cron.sessionPolicy.default') },
+                        { value: 'new', label: t('cron.sessionPolicy.new') },
+                        { value: 'fixed', label: t('cron.sessionPolicy.fixed') },
+                        { value: 'latest', label: t('cron.sessionPolicy.latest') },
+                        { value: 'all', label: t('cron.sessionPolicy.all') },
+                      ]}
+                    />
+                  </Form.Item>
+                  <Form.Item
+                    noStyle
+                    dependencies={['sessionPolicy']}
+                  >
+                    {() =>
+                      normalizeCronSessionPolicy(form.getFieldValue('sessionPolicy')) === 'fixed' ? (
+                        <Form.Item
+                          name="fixedSessionKey"
+                          label={t('cron.fieldFixedSession')}
+                          tooltip={t('cron.fieldFixedSessionTip')}
+                          rules={[
+                            {
+                              required: true,
+                              message: t('cron.fixedSessionRequired'),
+                            },
+                          ]}
+                        >
+                          <Select
+                            showSearch
+                            allowClear
+                            placeholder={t('cron.fieldFixedSessionPh')}
+                            options={sessionOptions}
+                            optionFilterProp="label"
+                          />
+                        </Form.Item>
+                      ) : null
+                    }
                   </Form.Item>
 
                   <Form.Item
