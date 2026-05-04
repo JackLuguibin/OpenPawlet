@@ -610,6 +610,27 @@ export default function Chat() {
       chatProfileIdRef: chatTargetAgentIdRef,
     });
 
+  const prevOpenPawletWsReadyRef = useRef(false);
+  useEffect(() => {
+    if (!useOpenPawletChannel || !activeSessionKey) {
+      return;
+    }
+    const wasReady = prevOpenPawletWsReadyRef.current;
+    prevOpenPawletWsReadyRef.current = openpawletWsReady;
+    if (!openpawletWsReady || wasReady) {
+      return;
+    }
+    void queryClient.invalidateQueries({
+      queryKey: ["session", activeSessionKey, currentBotId],
+    });
+  }, [
+    useOpenPawletChannel,
+    openpawletWsReady,
+    activeSessionKey,
+    currentBotId,
+    queryClient,
+  ]);
+
   /**
    * OpenPawlet `ready` 后由 `chat_id` 派生会话键 `websocket:<chat_id>`（见 `openpawletSessionKeyFromReadyChatId`）。
    * 仅在“用户已经发送过首条消息（草稿激活）+ 当前仍处 `/chat` 草稿态”时建立控制台
@@ -1130,6 +1151,12 @@ export default function Chat() {
         }),
       enabled: shouldFetchSessionJsonl && !sessionJsonlFetchSuppressedForDeletedRoute,
       retry: false,
+      // Global defaults use staleTime: 5s and refetchOnWindowFocus: false. Leaving Chat
+      // (unmount) or backgrounding the tab while a turn runs drops streamed chunks; we must
+      // always re-pull the transcript when the user returns so the timeline matches disk.
+      staleTime: 0,
+      refetchOnMount: "always",
+      refetchOnWindowFocus: true,
     });
 
   const {
@@ -1325,6 +1352,28 @@ export default function Chat() {
     const prev = prevParamSessionKeyForMessagesRef.current;
     if (prev !== undefined && prev !== paramSessionKey) {
       setMessages([]);
+      // A turn may still be streaming on the previous thread; local WS/state must not
+      // leak into the newly selected session (new socket + transcript for B).
+      cancelTranscriptSync();
+      streamingBodySegmentsRef.current = [];
+      streamingPayloadToolCallsRef.current = [];
+      streamingReasoningContentRef.current = "";
+      streamingReplyGroupIdRef.current = null;
+      streamingAgentIdRef.current = undefined;
+      streamingAgentNameRef.current = undefined;
+      streamingPrimedByServerRef.current = false;
+      assistantReplyFinalizedRef.current = false;
+      cancelStreamTokenFlush();
+      setStreamingReasoningContent("");
+      setStreamingAgentId(undefined);
+      setStreamingAgentName(undefined);
+      setIsStreaming(false);
+      setStreamingToolProgress([]);
+      setStreamingChannelNotices([]);
+      setToolCalls([]);
+      setSubagentTasks([]);
+      pendingOpenPawletOutboundRef.current = null;
+      cancelStreamTokenFlush();
     }
     // Bare `/chat`: always show the welcome hero. Do not tie this to `activeSessionKey`:
     // OpenPawlet promotes `/chat` → `/chat/:id` before the first message, but the session
@@ -1333,7 +1382,11 @@ export default function Chat() {
       setShowSuggestions(true);
     }
     prevParamSessionKeyForMessagesRef.current = paramSessionKey;
-  }, [paramSessionKey]);
+  }, [
+    paramSessionKey,
+    cancelTranscriptSync,
+    cancelStreamTokenFlush,
+  ]);
 
   /**
    * Build a stable id for a transcript row.
