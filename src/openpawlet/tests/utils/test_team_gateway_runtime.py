@@ -135,3 +135,44 @@ def test_resolve_effective_gateway_agent_id_multi_prefers_active_team(
 
     (a / "a2.json").unlink()
     assert resolve_effective_gateway_agent_id(tmp_path) == "a1"
+
+
+def test_resolve_effective_gateway_agent_id_profile_dir_only(tmp_path: Path) -> None:
+    a = tmp_path / "agents"
+    d = a / "sole"
+    d.mkdir(parents=True)
+    (d / "profile.json").write_text(
+        '{"id":"sole","name":"One"}',
+        encoding="utf-8",
+    )
+    from openpawlet.utils.team_gateway_runtime import resolve_effective_gateway_agent_id
+
+    assert resolve_effective_gateway_agent_id(tmp_path) == "sole"
+
+
+def test_resolve_effective_gateway_agent_id_profile_dirs_team_pick(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("OPENPAWLET_TEAM_ID", raising=False)
+    monkeypatch.delenv("OPENPAWLET_TEAM_ROOM_ID", raising=False)
+    a = tmp_path / "agents"
+    for aid in ("a1", "a2"):
+        p = a / aid
+        p.mkdir(parents=True)
+        (p / "profile.json").write_text(
+            json.dumps({"id": aid, "name": aid}),
+            encoding="utf-8",
+        )
+    _write_teams(
+        tmp_path,
+        teams=[{"id": "tm1", "member_agent_ids": ["a1", "a2"], "name": "T"}],
+        rooms=[{"id": "room1", "team_id": "tm1"}],
+    )
+    _write_pointer(tmp_path, "tm1", "room1")
+    from openpawlet.utils.team_gateway_runtime import resolve_effective_gateway_agent_id
+
+    assert resolve_effective_gateway_agent_id(tmp_path) is None
+
+    (a / "a2" / "profile.json").unlink()
+    (a / "a2").rmdir()
+    assert resolve_effective_gateway_agent_id(tmp_path) == "a1"

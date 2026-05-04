@@ -5,8 +5,12 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Query, Request
+from loguru import logger
 from pydantic import ValidationError
 
+from console.server.agent_defaults_profile_sync import (
+    sync_main_workspace_agent_profile_from_config_defaults,
+)
 from console.server.config_apply import apply_config_change
 from console.server.http_errors import bad_request, gone, internal_error
 from console.server.models import (
@@ -16,6 +20,7 @@ from console.server.models import (
     DataResponse,
 )
 from console.server.openpawlet_user_config import (
+    CONFIG_ROOT_KEYS,
     build_config_response,
     load_raw_config,
     merge_config_section,
@@ -75,6 +80,19 @@ async def put_config(
         save_full_config(path, merged)
     except ValidationError as exc:
         bad_request(str(exc), cause=exc)
+    if body.section == "agents":
+        try:
+            core = {k: merged[k] for k in CONFIG_ROOT_KEYS if k in merged}
+            cfg_model = Config.model_validate(core)
+            sync_main_workspace_agent_profile_from_config_defaults(
+                cfg_model.workspace_path,
+                cfg_model.agents.defaults,
+            )
+        except Exception as exc:  # noqa: BLE001 — never block config save
+            logger.warning(
+                "[config] Could not sync primary workspace agent profile after agents save: {}",
+                exc,
+            )
     try:
         data = build_config_response(path)
     except ValidationError as exc:

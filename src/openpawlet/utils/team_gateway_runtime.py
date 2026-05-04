@@ -170,6 +170,32 @@ def _members_from_env_or_teams(workspace: Path, team_id: str) -> list[str]:
     return []
 
 
+def list_workspace_agent_stems(workspace: Path) -> list[str]:
+    """Return sorted agent ids under ``workspace/agents/``.
+
+    Includes legacy ``<id>.json`` stems and directory profiles
+    ``<id>/profile.json`` (new layout). Empty / unsafe names are skipped.
+    """
+    adir = workspace / "agents"
+    if not adir.is_dir():
+        return []
+    stems: set[str] = set()
+    for p in adir.glob("*.json"):
+        if p.is_file() and p.stem and ".." not in p.stem and p.stem == Path(p.stem).name:
+            stems.add(p.stem)
+    for entry in adir.iterdir():
+        if (
+            entry.is_dir()
+            and (entry / "profile.json").is_file()
+            and entry.name
+            and not entry.name.startswith(".")
+            and ".." not in entry.name
+            and entry.name == Path(entry.name).name
+        ):
+            stems.add(entry.name)
+    return sorted(stems)
+
+
 def resolve_effective_gateway_agent_id(workspace: Path) -> str | None:
     """Resolve logical agent_id when :envvar:`OPENPAWLET_AGENT_ID` is unset.
 
@@ -178,19 +204,15 @@ def resolve_effective_gateway_agent_id(workspace: Path) -> str | None:
     default ``agent:main`` identity.
 
     Heuristics (first match):
-    1. Exactly one ``workspace/agents/<id>.json`` file → that *id*.
-    2. Multiple agent files, but only one is listed in the active team’s
+    1. Exactly one workspace agent record → that *id* (legacy ``*.json`` and/or
+       ``<id>/profile.json``).
+    2. Multiple agent records, but only one is listed in the active team’s
        ``member_agent_ids`` (from :func:`resolve_gateway_team_context`) → that *id*.
 
     Returns ``None`` if ambiguous; caller should keep
     :class:`~openpawlet.agent.loop.AgentLoop`’s default identity.
     """
-    adir = workspace / "agents"
-    if not adir.is_dir():
-        return None
-    stems: list[str] = sorted(
-        p.stem for p in adir.glob("*.json") if p.is_file() and p.stem and ".." not in p.stem
-    )
+    stems = list_workspace_agent_stems(workspace)
     if not stems:
         return None
     if len(stems) == 1:
