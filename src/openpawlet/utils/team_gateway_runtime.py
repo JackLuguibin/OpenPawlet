@@ -174,8 +174,8 @@ def resolve_effective_gateway_agent_id(workspace: Path) -> str | None:
     """Resolve logical agent_id when :envvar:`OPENPAWLET_AGENT_ID` is unset.
 
     Team ``send_to_agent`` / broker routing use ``agent:<id>``; the gateway
-    process must use the *same* id as the console, not the synthetic
-    ``main:<host>:<pid>`` default.
+    process must use the *same* id as the console, not only the ambient
+    default ``agent:main`` identity.
 
     Heuristics (first match):
     1. Exactly one ``workspace/agents/<id>.json`` file → that *id*.

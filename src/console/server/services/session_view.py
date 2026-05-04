@@ -118,7 +118,9 @@ def attach_session_agent_names(
         if logical_gateway and logical_gateway in name_by_id:
             if aid.startswith(f"{logical_gateway}:"):
                 mapped = name_by_id[logical_gateway]
-        if mapped is None and aid.startswith("main:") and "main" in name_by_id:
+        if mapped is None and (
+            aid == "agent:main" or aid.startswith("main:")
+        ) and "main" in name_by_id:
             mapped = name_by_id["main"]
         if mapped is not None:
             out.append(info.model_copy(update={"agent_name": mapped}))

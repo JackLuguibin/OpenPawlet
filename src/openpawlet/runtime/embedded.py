@@ -124,9 +124,14 @@ class EmbeddedOpenPawlet:
                     inferred_aid,
                 )
         bus_aid = os.environ.get("OPENPAWLET_AGENT_ID", "").strip()
+        if not bus_aid:
+            os.environ["OPENPAWLET_AGENT_ID"] = "agent:main"
+            bus_aid = "agent:main"
         bus_an = os.environ.get("OPENPAWLET_AGENT_NAME", "").strip()
         if bus_aid and not bus_an:
             bus_an = console_agent_display_name(config.workspace_path, bus_aid)
+        if bus_aid and not bus_an:
+            bus_an = bus_aid
 
         self._primary_aid = bus_aid
 

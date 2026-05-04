@@ -17,7 +17,7 @@ export function buildAgentNameById(agents: Agent[] | undefined): Map<string, str
 }
 
 /**
- * Map raw runtime/bus ``agent_id`` (e.g. ``main:<host>:<pid>``) to the Console
+ * Map raw runtime/bus ``agent_id`` (e.g. ``agent:main``, legacy ``main:<host>:<pid>``) to the Console
  * workspace persona display name when possible.
  */
 export function resolveWorkspaceAgentDisplayName(
@@ -43,8 +43,8 @@ export function resolveWorkspaceAgentDisplayName(
       return byPid;
     }
   }
-  // Fallback when runtime snapshot lacks persona linkage but env uses ``main:*``.
-  if (/^main:/.test(raw)) {
+  // Fallback when snapshot lacks linkage: default gateway id or legacy ``main:*``.
+  if (raw === "agent:main" || /^main:/.test(raw)) {
     const legacy = agentNameById.get("main");
     if (legacy) {
       return legacy;

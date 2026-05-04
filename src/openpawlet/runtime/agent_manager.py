@@ -39,7 +39,7 @@ class ManagedAgentStatus:
     profile_id: str | None = None
     # True when this ``role="agent"`` row duplicates the gateway loop listing:
     # the supervisor exposes ``agent:<profile_id>`` while ``OPENPAWLET_AGENT_ID``
-    # may use a distinct synthetic id (e.g. ``main:<host>:<pid>``).
+    # may use a distinct id (historically ``main:<host>:<pid>``); default is ``agent:main``.
     represents_gateway: bool = False
 
 

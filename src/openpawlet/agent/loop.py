@@ -8,7 +8,6 @@ import inspect
 import json
 import os
 import re
-import socket
 import time
 import uuid
 from collections.abc import Awaitable, Callable
@@ -87,14 +86,6 @@ _TEAM_SESSION_KEY_RE = re.compile(r"^console:team_[^_]+_room_[^_]+_agent_.+$")
 _TEAM_SESSION_KEY_WITH_AGENT_RE = re.compile(
     r"^console:team_[^_]+_room_[^_]+_agent_(?P<agent_id>.+?)(?:_run_[^_]+)?$"
 )
-
-
-def _safe_nodename() -> str:
-    """Return a cross-platform node name for synthetic agent IDs."""
-    try:
-        return socket.gethostname() or "unknown-host"
-    except Exception:
-        return "unknown-host"
 
 
 class _LoopHook(AgentHook):
@@ -342,13 +333,13 @@ class AgentLoop:
         defaults = AgentDefaults()
         self.bus = bus
         # Stable agent identity for the events channel.  Explicit *agent_id*
-        # (in-process team members) wins; else OPENPAWLET_AGENT_ID; else main:.
+        # (in-process team members) wins; else OPENPAWLET_AGENT_ID;
+        # else logical ``agent:main`` (does not derive from hostname / PID).
         if agent_id is not None and str(agent_id).strip():
             self.agent_id = str(agent_id).strip()
         else:
             self.agent_id = (
-                os.environ.get("OPENPAWLET_AGENT_ID", "").strip()
-                or f"main:{_safe_nodename()}:{os.getpid()}"
+                os.environ.get("OPENPAWLET_AGENT_ID", "").strip() or "agent:main"
             )
         if agent_name is not None and str(agent_name).strip():
             self.agent_name = str(agent_name).strip()
@@ -360,6 +351,8 @@ class AgentLoop:
                 from openpawlet.utils.console_agents import console_agent_display_name
 
                 self.agent_name = console_agent_display_name(workspace, _aid0)
+        if not self.agent_name:
+            self.agent_name = (self.agent_id or "").strip()
         self.channels_config = channels_config or ChannelsConfig()
         self._session_turn_lifecycle_channels = frozenset(
             self.channels_config.session_turn_lifecycle_channels
