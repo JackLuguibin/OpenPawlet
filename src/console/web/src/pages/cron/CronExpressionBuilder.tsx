@@ -147,35 +147,38 @@ export function CronExpressionBuilder(props: CronExpressionBuilderProps) {
       />
 
       {mode === 'minute' && (
-        <Space>
-          <span>{t('cron.builderEvery')}</span>
+        <Space align="center" size="small">
+          <span className="inline-flex items-center">{t('cron.builderEvery')}</span>
           <InputNumber
+            size="small"
             min={1}
             max={59}
             value={everyMinutes}
             onChange={(v) => onChange(`*/${Math.max(1, Number(v) || 1)} * * * *`)}
           />
-          <span>{t('cron.builderMinutes')}</span>
+          <span className="inline-flex items-center">{t('cron.builderMinutes')}</span>
         </Space>
       )}
 
       {mode === 'hour' && (
-        <Space>
-          <span>{t('cron.builderAtMinute')}</span>
+        <Space align="center" size="small">
+          <span className="inline-flex items-center">{t('cron.builderAtMinute')}</span>
           <InputNumber
+            size="small"
             min={0}
             max={59}
             value={minute}
             onChange={(v) => updateTime({ minute: Math.max(0, Math.min(59, Number(v) || 0)), hour: 0 })}
           />
-          <span>{t('cron.builderEveryHour')}</span>
+          <span className="inline-flex items-center">{t('cron.builderEveryHour')}</span>
         </Space>
       )}
 
       {mode === 'daily' && (
-        <Space>
-          <span>{t('cron.builderAt')}</span>
+        <Space align="center" size="small">
+          <span className="inline-flex items-center">{t('cron.builderAt')}</span>
           <TimePicker
+            size="small"
             value={time}
             format="HH:mm"
             onChange={(v) =>
@@ -186,8 +189,9 @@ export function CronExpressionBuilder(props: CronExpressionBuilderProps) {
       )}
 
       {mode === 'weekly' && (
-        <Space orientation="vertical" className="w-full">
+        <Space orientation="vertical" size="small" className="w-full">
           <Checkbox.Group
+            className="flex flex-wrap gap-x-3 gap-y-1"
             options={weekdayOptions}
             value={weekdays}
             onChange={(vals) =>
@@ -196,9 +200,10 @@ export function CronExpressionBuilder(props: CronExpressionBuilderProps) {
               })
             }
           />
-          <Space>
-            <span>{t('cron.builderAt')}</span>
+          <Space align="center" size="small">
+            <span className="inline-flex items-center">{t('cron.builderAt')}</span>
             <TimePicker
+              size="small"
               value={time}
               format="HH:mm"
               onChange={(v) =>
@@ -210,16 +215,18 @@ export function CronExpressionBuilder(props: CronExpressionBuilderProps) {
       )}
 
       {mode === 'monthly' && (
-        <Space>
-          <span>{t('cron.builderDayOfMonth')}</span>
+        <Space align="center" size="small" wrap>
+          <span className="inline-flex items-center">{t('cron.builderDayOfMonth')}</span>
           <InputNumber
+            size="small"
             min={1}
             max={31}
             value={monthDay}
             onChange={(v) => updateTime({ dom: Math.max(1, Math.min(31, Number(v) || 1)) })}
           />
-          <span>{t('cron.builderAt')}</span>
+          <span className="inline-flex items-center">{t('cron.builderAt')}</span>
           <TimePicker
+            size="small"
             value={time}
             format="HH:mm"
             onChange={(v) => v && updateTime({ minute: v.minute(), hour: v.hour() })}
@@ -228,9 +235,10 @@ export function CronExpressionBuilder(props: CronExpressionBuilderProps) {
       )}
 
       {mode === 'custom' && (
-        <Space orientation="vertical" className="w-full">
+        <Space orientation="vertical" size="small" className="w-full">
           <span className="text-xs text-gray-500">{t('cron.builderPresets')}</span>
           <Select
+            size="small"
             placeholder={t('cron.builderPresetsPh')}
             options={PRESET_EXAMPLES.map((p) => ({ label: `${p.label}  →  ${p.expr}`, value: p.expr }))}
             onChange={onChange}
