@@ -134,3 +134,24 @@ class TestStripThinkConservativePreserve:
     def test_literal_channel_marker_in_code_block_preserved(self):
         text = "Example:\n```\nif line.startswith('<channel|>'):\n    skip()\n```"
         assert strip_think(text) == text
+
+
+class TestStripThinkTrailingPartialTags:
+    """Trailing fragments from streaming splits (nanobot-aligned partial_control_tag)."""
+
+    def test_trailing_partial_thi_stripped(self):
+        assert strip_think("Visible answer<thi") == "Visible answer"
+
+    def test_trailing_partial_thought_prefix_stripped(self):
+        assert strip_think("OK<thoug") == "OK"
+
+    def test_trailing_partial_channel_stripped(self):
+        assert strip_think("Done<chann") == "Done"
+
+    def test_mid_text_partial_prefix_preserved(self):
+        # Only a suffix match counts; mid-string fragments stay (conservative).
+        assert strip_think("see <thi in the doc") == "see <thi in the doc"
+
+    def test_bare_open_angle_pipe_whole_string_stripped(self):
+        assert strip_think("<|") == ""
+        assert strip_think("  <|") == ""
