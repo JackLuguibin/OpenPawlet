@@ -233,7 +233,9 @@ export function CronTaskFormModal(props: CronTaskFormModalProps) {
       width={720}
       destroyOnHidden
     >
-      <Form form={form} layout="vertical" initialValues={DEFAULT_VALUES} preserve={false}>
+      {/* Default preserve=true: inactive Tabs panes unmount their fields; preserve=false would drop
+          values set via setFieldsValue before the Schedule tab mounts (e.g. cron_expr on edit). */}
+      <Form form={form} layout="vertical" initialValues={DEFAULT_VALUES}>
         <Form.Item
           name="name"
           label={t('cron.fieldName')}
