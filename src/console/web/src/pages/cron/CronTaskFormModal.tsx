@@ -97,14 +97,21 @@ function formValuesFromJob(job: CronJob | null | undefined): FormValues {
   initial.startAt = decoded.meta.startAtMs ? dayjs(decoded.meta.startAtMs) : null;
   initial.endAt = decoded.meta.endAtMs ? dayjs(decoded.meta.endAtMs) : null;
   const sched = job.schedule;
-  if (sched.kind === 'every' && sched.every_ms) {
+  if (sched.kind === 'every') {
     initial.scheduleKind = 'every';
-    initial.every_seconds = Math.max(1, Math.round(sched.every_ms / 1000));
-  } else if (sched.kind === 'cron' && sched.expr) {
+    const ms = sched.every_ms;
+    initial.every_seconds =
+      ms != null && Number(ms) > 0
+        ? Math.max(1, Math.round(Number(ms) / 1000))
+        : DEFAULT_VALUES.every_seconds;
+  } else if (sched.kind === 'cron') {
     initial.scheduleKind = 'cron';
-    initial.cron_expr = sched.expr;
+    initial.cron_expr =
+      typeof sched.expr === 'string' && sched.expr.trim()
+        ? sched.expr.trim()
+        : DEFAULT_VALUES.cron_expr;
     initial.cron_tz = sched.tz ?? '';
-  } else if (sched.kind === 'at' && sched.at_ms) {
+  } else if (sched.kind === 'at' && sched.at_ms != null && Number(sched.at_ms) > 0) {
     initial.scheduleKind = 'at';
     initial.startAt = dayjs(sched.at_ms);
   }
@@ -160,7 +167,14 @@ export function CronTaskFormModal(props: CronTaskFormModalProps) {
 
   const handleOk = async () => {
     try {
-      const values = await form.validateFields();
+      const validated = await form.validateFields();
+      // Tabs used to keep inactive panes unmounted, so validateFields could omit fields that
+      // were only set via setFieldsValue; merge the full store after a successful validate.
+      const values: FormValues = {
+        ...DEFAULT_VALUES,
+        ...form.getFieldsValue(true),
+        ...validated,
+      };
       let schedule:
         | { kind: 'every'; every_ms: number }
         | { kind: 'cron'; expr: string; tz?: string }
@@ -293,6 +307,7 @@ export function CronTaskFormModal(props: CronTaskFormModalProps) {
             {
               key: 'target',
               label: t('cron.tabTarget'),
+              forceRender: true,
               children: (
                 <>
                   <Form.Item
@@ -413,6 +428,7 @@ export function CronTaskFormModal(props: CronTaskFormModalProps) {
             {
               key: 'schedule',
               label: t('cron.tabSchedule'),
+              forceRender: true,
               children: (
                 <>
                   <Form.Item name="scheduleKind" label={t('cron.fieldScheduleKind')}>
@@ -515,6 +531,7 @@ export function CronTaskFormModal(props: CronTaskFormModalProps) {
             {
               key: 'window',
               label: t('cron.tabWindow'),
+              forceRender: true,
               children: (
                 <>
                   <Form.Item
