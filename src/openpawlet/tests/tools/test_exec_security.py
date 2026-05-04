@@ -116,6 +116,27 @@ def test_exec_allows_reads_of_history_jsonl(command):
     tool._guard_command(command, "/tmp")
 
 
+def test_exec_allow_patterns_override_builtin_deny():
+    """Configured allow_patterns must bypass default deny_patterns (e.g. CI rm -rf)."""
+    blocked = ExecTool()
+    with pytest.raises(AgentToolAbort, match="dangerous pattern"):
+        blocked._guard_command("rm -rf ./build/tmp", "/tmp")
+
+    exempt = ExecTool(allow_patterns=[r"rm\s+-rf\s+\./build/"])
+    exempt._guard_command("rm -rf ./build/tmp", "/tmp")
+
+
+def test_exec_allow_patterns_does_not_bypass_internal_url_check():
+    """Explicit allow must not skip SSRF / internal URL guard."""
+    tool = ExecTool(allow_patterns=[r"curl.*169\.254"])
+    with patch("openpawlet.security.network.socket.getaddrinfo", _fake_resolve_private):
+        with pytest.raises(AgentToolAbort, match="internal|private|safety"):
+            tool._guard_command(
+                'curl -s http://169.254.169.254/latest/meta-data/',
+                "/tmp",
+            )
+
+
 # --- #2826: working_dir must not escape the configured workspace ---------
 
 

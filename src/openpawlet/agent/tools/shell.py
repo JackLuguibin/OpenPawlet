@@ -293,14 +293,19 @@ class ExecTool(Tool):
         cmd = command.strip()
         lower = cmd.lower()
 
-        for pattern in self.deny_patterns:
-            if re.search(pattern, lower):
-                raise AgentToolAbort(
-                    "Error: Command blocked by safety guard (dangerous pattern detected)"
-                )
+        # allow_patterns take priority over deny_patterns so operators can exempt
+        # specific commands (e.g. CI clean targets) from the hardcoded deny list.
+        explicitly_allowed = bool(self.allow_patterns) and any(
+            re.search(p, lower) for p in self.allow_patterns
+        )
+        if not explicitly_allowed:
+            for pattern in self.deny_patterns:
+                if re.search(pattern, lower):
+                    raise AgentToolAbort(
+                        "Error: Command blocked by safety guard (dangerous pattern detected)"
+                    )
 
-        if self.allow_patterns:
-            if not any(re.search(p, lower) for p in self.allow_patterns):
+            if self.allow_patterns:
                 raise AgentToolAbort(
                     "Error: Command blocked by safety guard (not in allowlist)"
                 )
