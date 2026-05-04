@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from openpawlet.providers.anthropic_provider import AnthropicProvider
+from openpawlet.providers.base import LLMResponse
 
 
 def _make_provider(model: str = "claude-sonnet-4-6") -> AnthropicProvider:
@@ -87,6 +90,43 @@ def test_reasoning_effort_none_string_disables_thinking() -> None:
     kw = _build(_make_provider(), "none")
     assert "thinking" not in kw
     assert kw["temperature"] == 0.7
+
+
+def test_streaming_required_error_detection() -> None:
+    assert AnthropicProvider._is_streaming_required_error(
+        ValueError("Streaming is required for this operation.")
+    )
+    assert AnthropicProvider._is_streaming_required_error(
+        ValueError("STREAMING IS REQUIRED")
+    )
+    assert not AnthropicProvider._is_streaming_required_error(ValueError("bad request"))
+    assert not AnthropicProvider._is_streaming_required_error(
+        RuntimeError("streaming is required")
+    )
+
+
+@pytest.mark.asyncio
+async def test_chat_retries_via_chat_stream_when_sdk_requires_streaming() -> None:
+    provider = _make_provider()
+    provider._client.messages.create = AsyncMock(
+        side_effect=ValueError("Streaming is required for this model.")
+    )
+    want = LLMResponse(content="via stream", tool_calls=[], finish_reason="stop", usage={})
+    provider.chat_stream = AsyncMock(return_value=want)
+
+    result = await provider.chat([{"role": "user", "content": "hi"}])
+
+    assert result is want
+    provider._client.messages.create.assert_awaited_once()
+    provider.chat_stream.assert_awaited_once_with(
+        messages=[{"role": "user", "content": "hi"}],
+        tools=None,
+        model=None,
+        max_tokens=4096,
+        temperature=0.7,
+        reasoning_effort=None,
+        tool_choice=None,
+    )
 
 
 def test_merge_consecutive_drops_trailing_assistant_keeps_prior_user() -> None:
