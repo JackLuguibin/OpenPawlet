@@ -21,6 +21,17 @@ def _fake_resolve_public(hostname, port, family=0, type_=0):
 
 
 @pytest.mark.asyncio
+async def test_web_fetch_execute_strips_url_wrappers_before_validation():
+    """Models often wrap URLs in quotes or backticks; strip before _validate_url_safe."""
+    tool = WebFetchTool()
+    with patch("openpawlet.agent.tools.web._validate_url_safe") as mock_validate:
+        mock_validate.return_value = (False, "stub")
+        await tool.execute(url=' `\t"https://example.com/path"\' ')
+        mock_validate.assert_called_once()
+        assert mock_validate.call_args[0][0] == "https://example.com/path"
+
+
+@pytest.mark.asyncio
 async def test_web_fetch_blocks_private_ip():
     tool = WebFetchTool()
     with patch("openpawlet.security.network.socket.getaddrinfo", _fake_resolve_private):

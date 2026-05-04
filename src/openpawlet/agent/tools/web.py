@@ -421,6 +421,7 @@ class WebFetchTool(Tool):
         maxChars: int | None = None,  # noqa: N803 - tool schema field exposed to LLMs
         **kwargs: Any,
     ) -> Any:
+        url = url.strip(" \t\r\n`\"'")
         extract_mode = kwargs.pop("extractMode", extractMode)
         max_chars = kwargs.pop("maxChars", maxChars) or self.max_chars
         is_valid, error_msg = _validate_url_safe(url)
