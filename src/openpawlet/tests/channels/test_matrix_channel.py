@@ -228,6 +228,49 @@ def test_media_event_filter_does_not_match_text_events() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "status",
+    ["M_UNKNOWN_TOKEN", "M_FORBIDDEN", "M_UNAUTHORIZED"],
+)
+async def test_sync_error_fatal_auth_stops_loop(status: str) -> None:
+    channel = MatrixChannel(_make_config(), MessageBus())
+    client = _FakeAsyncClient("", "", "", None)
+    channel.client = client
+    channel._running = True
+    channel._register_response_callbacks()
+    sync_handler = next(cb for cb, typ in client.response_callbacks if typ is matrix_module.SyncError)
+    await sync_handler(SimpleNamespace(status_code=status))
+    assert channel._running is False
+    assert client.stop_sync_forever_called is True
+
+
+@pytest.mark.asyncio
+async def test_sync_error_soft_logout_stops_loop() -> None:
+    channel = MatrixChannel(_make_config(), MessageBus())
+    client = _FakeAsyncClient("", "", "", None)
+    channel.client = client
+    channel._running = True
+    channel._register_response_callbacks()
+    sync_handler = next(cb for cb, typ in client.response_callbacks if typ is matrix_module.SyncError)
+    await sync_handler(SimpleNamespace(status_code="200", soft_logout=True))
+    assert channel._running is False
+    assert client.stop_sync_forever_called is True
+
+
+@pytest.mark.asyncio
+async def test_sync_error_transient_does_not_stop_loop() -> None:
+    channel = MatrixChannel(_make_config(), MessageBus())
+    client = _FakeAsyncClient("", "", "", None)
+    channel.client = client
+    channel._running = True
+    channel._register_response_callbacks()
+    sync_handler = next(cb for cb, typ in client.response_callbacks if typ is matrix_module.SyncError)
+    await sync_handler(SimpleNamespace(status_code="M_TOO_MANY_REQUESTS"))
+    assert channel._running is True
+    assert client.stop_sync_forever_called is False
+
+
+@pytest.mark.asyncio
 async def test_start_disables_e2ee_when_configured(monkeypatch, tmp_path) -> None:
     clients: list[_FakeAsyncClient] = []
 

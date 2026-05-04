@@ -662,15 +662,26 @@ class MatrixChannel(BaseChannel):
         self.client.add_response_callback(self._on_join_error, JoinError)
         self.client.add_response_callback(self._on_send_error, RoomSendError)
 
-    def _log_response_error(self, label: str, response: Any) -> None:
-        """Log Matrix response errors — auth errors at ERROR level, rest at WARNING."""
+    def _is_fatal_auth_response(self, response: Any) -> bool:
         code = getattr(response, "status_code", None)
         is_auth = code in {"M_UNKNOWN_TOKEN", "M_FORBIDDEN", "M_UNAUTHORIZED"}
-        is_fatal = is_auth or getattr(response, "soft_logout", False)
+        return is_auth or bool(getattr(response, "soft_logout", False))
+
+    def _log_response_error(self, label: str, response: Any) -> None:
+        """Log Matrix response errors — auth errors at ERROR level, rest at WARNING."""
+        is_fatal = self._is_fatal_auth_response(response)
         (logger.error if is_fatal else logger.warning)("Matrix {} failed: {}", label, response)
 
     async def _on_sync_error(self, response: SyncError) -> None:
         self._log_response_error("sync", response)
+        if self._is_fatal_auth_response(response):
+            # Auth errors won't recover by retry; stop syncing instead of
+            # hammering the homeserver on each sync_forever restart.
+            logger.error("Matrix authentication failed irrecoverably; stopping sync loop")
+            self._running = False
+            if self.client:
+                with suppress(Exception):
+                    self.client.stop_sync_forever()
 
     async def _on_join_error(self, response: JoinError) -> None:
         self._log_response_error("join", response)
