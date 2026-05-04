@@ -1,4 +1,5 @@
 import asyncio
+import json
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -10,6 +11,7 @@ from openpawlet.bus.envelope import target_for_agent
 from openpawlet.bus.events import AgentEvent, InboundMessage, render_agent_event_for_llm
 from openpawlet.bus.queue import MessageBus
 from openpawlet.session.manager import Session
+from openpawlet.utils.helpers import safe_filename
 
 
 def _mk_loop() -> AgentLoop:
@@ -27,6 +29,60 @@ def _make_full_loop(tmp_path: Path) -> AgentLoop:
     provider = MagicMock()
     provider.get_default_model.return_value = "test-model"
     return AgentLoop(bus=MessageBus(), provider=provider, workspace=tmp_path, model="test-model")
+
+
+@pytest.mark.asyncio
+async def test_system_turn_transcript_user_row_before_assistant(tmp_path: Path) -> None:
+    """Cron/system turns append user to transcript before inflight tool rows."""
+    loop = AgentLoop(
+        bus=MessageBus(),
+        provider=MagicMock(get_default_model=MagicMock(return_value="test-model")),
+        workspace=tmp_path,
+        model="test-model",
+        persist_session_transcript=True,
+    )
+    loop.tools.get_definitions = MagicMock(return_value=[])
+    loop.consolidator.maybe_consolidate_by_tokens = AsyncMock(return_value=False)  # type: ignore[method-assign]
+
+    async def fake_run(initial_messages, **kwargs):
+        tc = "tc_sys_1"
+        all_msgs = [
+            *initial_messages,
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": tc,
+                        "type": "function",
+                        "function": {"name": "noop", "arguments": "{}"},
+                    }
+                ],
+            },
+            {"role": "tool", "tool_call_id": tc, "name": "noop", "content": "{}"},
+            {"role": "assistant", "content": "done"},
+        ]
+        return ("done", None, all_msgs, "stop", False)
+
+    loop._run_agent_loop = fake_run  # type: ignore[method-assign]
+
+    await loop._process_message(
+        InboundMessage(
+            channel="system",
+            sender_id="cron",
+            chat_id="cli:tr-order",
+            content="run the scheduled task",
+        )
+    )
+
+    stem = safe_filename("cli:tr-order".replace(":", "_"))
+    tpath = tmp_path / "transcripts" / f"{stem}.jsonl"
+    lines = [ln for ln in tpath.read_text(encoding="utf-8").split("\n") if ln.strip()]
+    roles = [json.loads(ln)["role"] for ln in lines]
+    assert roles == ["user", "assistant", "tool", "assistant"]
+    session = loop.sessions.get_or_create("cli:tr-order")
+    rec0 = json.loads(lines[0])
+    assert rec0["content"] == session.messages[0]["content"] == "run the scheduled task"
 
 
 def test_save_turn_peer_agent_direct_unwraps_for_history() -> None:

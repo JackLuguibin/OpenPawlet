@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from openpawlet.agent.context import ContextBuilder
 from openpawlet.agent.hook import AgentHookContext
 from openpawlet.agent.loop import AgentLoop, _LoopHook
 from openpawlet.bus.queue import MessageBus
@@ -49,6 +50,30 @@ def test_transcript_record_preserves_reply_group_id(tmp_path: Path) -> None:
         }
     )
     assert record["reply_group_id"] == "11111111-2222-3333-4444-555555555555"
+
+
+def test_save_turn_transcript_user_omits_runtime_prefix(tmp_path: Path) -> None:
+    """Transcript user rows must match session (runtime block is for LLM only)."""
+    loop = AgentLoop(
+        bus=MessageBus(),
+        provider=_provider(),
+        workspace=tmp_path,
+        model="test-model",
+        persist_session_transcript=True,
+    )
+    loop.tools.get_definitions = MagicMock(return_value=[])
+    session = loop.sessions.get_or_create("cli:runtime-tr")
+    runtime = (
+        ContextBuilder._RUNTIME_CONTEXT_TAG
+        + "\nCurrent Time: now\n"
+        + ContextBuilder._RUNTIME_CONTEXT_END
+    )
+    merged = f"{runtime}\n\nvisible user text"
+    loop._save_turn(session, [{"role": "user", "content": merged}], skip=0)
+    assert session.messages[0]["content"] == "visible user text"
+    tpath = _transcript_path(tmp_path, "cli:runtime-tr")
+    rec = json.loads(tpath.read_text(encoding="utf-8").strip().split("\n")[0])
+    assert rec["content"] == "visible user text"
 
 
 def test_save_turn_full_tool_in_transcript_session_truncated(tmp_path: Path) -> None:

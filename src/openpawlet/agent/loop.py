@@ -1600,6 +1600,22 @@ class AgentLoop:
                 chat_id=chat_id,
                 source="system_turn",
             )
+            # Mirror agent turns: persist user + transcript snapshot before the loop so
+            # inflight assistant/tool rows append after the user line (cron/dream).
+            user_persisted_early_sys = False
+            if (
+                not is_subagent
+                and isinstance(msg.content, str)
+                and msg.content.strip()
+            ):
+                session.add_message("user", msg.content, reply_group_id=reply_group_id)
+                self._mark_pending_user_turn(session)
+                _tr_sys = getattr(self, "_session_transcript", None)
+                if _tr_sys and _tr_sys.enabled:
+                    self._stamp_transcript_record(session.messages[-1])
+                    _tr_sys.append_session_message_snapshot(session.key, session.messages[-1])
+                self.sessions.save(session)
+                user_persisted_early_sys = True
             final_content, _, all_msgs, stop_reason, _ = await self._run_agent_loop(
                 messages,
                 session=session,
@@ -1610,8 +1626,12 @@ class AgentLoop:
                 reply_group_id=reply_group_id,
             )
             self._save_turn(
-                session, all_msgs, 1 + len(history), reply_group_id=reply_group_id
+                session,
+                all_msgs,
+                1 + len(history) + (1 if user_persisted_early_sys else 0),
+                reply_group_id=reply_group_id,
             )
+            self._clear_pending_user_turn(session)
             self._clear_runtime_checkpoint(session)
             self.sessions.save(session)
             self._schedule_background(self.consolidator.maybe_consolidate_by_tokens(session))
@@ -1906,7 +1926,7 @@ class AgentLoop:
 
     def _stamp_transcript_record(self, record: dict[str, Any]) -> None:
         """Attach this loop's ``agent_id`` / ``agent_name`` to a persisted row."""
-        ovr = self._transcript_identity_override
+        ovr = getattr(self, "_transcript_identity_override", None)
         if ovr is not None:
             stamp_transcript_agent_fields(
                 record,
@@ -2016,6 +2036,13 @@ class AgentLoop:
                     entry["content"] = filtered
                 elif isinstance(uc, str) and not uc.strip():
                     continue
+                # Runtime block is LLM-only; transcript must match session history.
+                transcript_entry["content"] = entry["content"]
+                for uk in ("injected_event", "sender_agent_id"):
+                    if uk in entry:
+                        transcript_entry[uk] = entry[uk]
+                    else:
+                        transcript_entry.pop(uk, None)
             entry.setdefault("timestamp", timestamp(self.timezone))
             self._stamp_transcript_record(entry)
             _tr = getattr(self, "_session_transcript", None)

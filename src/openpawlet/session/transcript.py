@@ -77,7 +77,12 @@ class SessionTranscriptWriter:
         if m.get("timestamp"):
             entry["timestamp"] = m["timestamp"]
         else:
-            entry["timestamp"] = timestamp(self._agent_timezone)
+            # Stamp the live message too so session._save_turn sees the same
+            # instant as this JSONL row (inflight flush used to only timestamp
+            # the serialized copy, then setdefault() re-stamped at turn end).
+            ts = timestamp(self._agent_timezone)
+            entry["timestamp"] = ts
+            m["timestamp"] = ts
 
         if role == "tool" and not self.include_full_tool_results:
             content = entry.get("content")
