@@ -2,9 +2,11 @@
 
 import asyncio
 import json
+import os
 import time
 import uuid
 from collections.abc import Callable, Coroutine
+from contextlib import suppress
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
@@ -92,8 +94,17 @@ class CronService:
         self._timer_active = False
         self.max_sleep_ms = max_sleep_ms
 
-    def _load_jobs(self) -> tuple[list[CronJob], int]:
-        jobs = []
+    def _load_jobs(self) -> tuple[list[CronJob], int] | None:
+        """Load jobs from disk.
+
+        Returns:
+            ``(jobs, version)`` on success, or when no store file exists (empty
+            jobs, version 1).
+            ``None`` when the store file exists but cannot be parsed; the corrupt
+            file is renamed with a ``.corrupt-<ts>`` suffix so callers can avoid
+            overwriting recoverable data with an empty job list.
+        """
+        jobs: list[CronJob] = []
         version = 1
         if self.store_path.exists():
             try:
@@ -152,7 +163,20 @@ class CronService:
                         )
                     )
             except Exception as e:
-                logger.warning("Failed to load cron store: {}", e)
+                backup = self.store_path.with_suffix(
+                    self.store_path.suffix + f".corrupt-{int(time.time())}"
+                )
+                with suppress(OSError):
+                    self.store_path.rename(backup)
+                logger.error(
+                    "Failed to load cron store at {}: {}. "
+                    "Corrupt file preserved at {}. "
+                    "Refusing to overwrite to avoid data loss.",
+                    self.store_path,
+                    e,
+                    backup,
+                )
+                return None
         return jobs, version
 
     def _merge_action(self):
@@ -192,15 +216,26 @@ class CronService:
                 self._save_store()
         return
 
-    def _load_store(self) -> CronStore:
+    def _load_store(self) -> CronStore | None:
         """Load jobs from disk. Reloads automatically if file was modified externally.
-        - Reload every time because it needs to merge operations on the jobs object from other instances.
+
+        - Reload every time because it needs to merge operations on the jobs object
+          from other instances.
         - During _on_timer execution, return the existing store to prevent concurrent
           _load_store calls (e.g. from list_jobs polling) from replacing it mid-execution.
+        - When the on-disk store exists but is unreadable: keep using the previous
+          in-memory ``self._store`` if present (transient corruption after start).
+          Only the initial load during ``start()`` can return ``None`` when there is
+          no usable snapshot.
         """
         if self._timer_active and self._store:
             return self._store
-        jobs, version = self._load_jobs()
+        loaded = self._load_jobs()
+        if loaded is None:
+            if self._store is not None:
+                return self._store
+            return None
+        jobs, version = loaded
         self._store = CronStore(version=version, jobs=jobs)
         self._merge_action()
 
@@ -260,12 +295,45 @@ class CronService:
             ],
         }
 
-        self.store_path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        self._atomic_write(self.store_path, json.dumps(data, indent=2, ensure_ascii=False))
+
+    @staticmethod
+    def _atomic_write(path: Path, content: str) -> None:
+        """Write *content* to *path* atomically with fsync.
+
+        Uses a temp file + :func:`os.replace` + ``fsync`` so a crash or SIGKILL
+        mid-write cannot truncate the destination. Same pattern as
+        :meth:`openpawlet.session.manager.SessionManager.save`.
+        """
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = path.with_suffix(path.suffix + ".tmp")
+        try:
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                f.write(content)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path, path)
+            with suppress(PermissionError):
+                fd = os.open(str(path.parent), os.O_RDONLY)
+                try:
+                    os.fsync(fd)
+                finally:
+                    os.close(fd)
+        except BaseException:
+            tmp_path.unlink(missing_ok=True)
+            raise
 
     async def start(self) -> None:
         """Start the cron service."""
         self._running = True
-        self._load_store()
+        loaded = self._load_store()
+        if loaded is None:
+            self._running = False
+            raise RuntimeError(
+                f"cron store at {self.store_path} is corrupt and was preserved; "
+                "refusing to start with an empty job list. "
+                "Inspect the .corrupt-<ts> backup and restore manually."
+            )
         self._recompute_next_runs()
         self._save_store()
         self._arm_timer()
@@ -323,6 +391,7 @@ class CronService:
     async def _on_timer(self) -> None:
         """Handle timer tick - run due jobs."""
         self._load_store()
+        # Hot reload may find a corrupt file; keep using the last in-memory snapshot.
         if not self._store:
             self._arm_timer()
             return
