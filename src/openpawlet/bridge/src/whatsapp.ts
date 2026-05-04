@@ -165,6 +165,10 @@ export class WhatsAppClient {
           fallbackContent = '[Video]';
           const path = await this.downloadMedia(msg, unwrapped.videoMessage.mimetype ?? undefined);
           if (path) mediaPaths.push(path);
+        } else if (unwrapped.audioMessage) {
+          fallbackContent = '[Voice Message]';
+          const path = await this.downloadMedia(msg, unwrapped.audioMessage.mimetype ?? undefined);
+          if (path) mediaPaths.push(path);
         }
 
         const finalContent = content || (mediaPaths.length === 0 ? fallbackContent : '') || '';
@@ -244,9 +248,9 @@ export class WhatsAppClient {
       return message.documentMessage.caption || '';
     }
 
-    // Voice/Audio message
+    // Voice note / audio (optional caption; media downloaded in messages.upsert)
     if (message.audioMessage) {
-      return `[Voice Message]`;
+      return message.audioMessage.caption || '';
     }
 
     return null;
