@@ -432,8 +432,8 @@ def test_real_clone_single_bundle(workspace: Path, tmp_path: Path) -> None:
     assert result.commit_sha
     assert elapsed < 60  # sanity guard
 
-    target_skill = workspace / ".cursor" / "skills" / "my-skill"
+    target_skill = workspace / "skills" / "my-skill"
     assert (target_skill / "SKILL.md").is_file()
     assert (target_skill / "scripts" / "run.sh").is_file()
-    # The cache lives under .cursor/.skills-git-cache/<id>/.
-    assert (workspace / ".cursor" / ".skills-git-cache" / "local1" / ".git").is_dir()
+    # The cache lives under .openpawlet_console/skills-git-cache/<id>/.
+    assert (workspace / ".openpawlet_console" / "skills-git-cache" / "local1" / ".git").is_dir()

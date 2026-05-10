@@ -18,9 +18,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 # Repo layout types:
 # - ``single``: the whole repo is one skill bundle (its root has SKILL.md);
-#   it is materialised as ``.cursor/skills/<name>/`` (clone target).
+#   it is materialised as ``skills/<name>/`` (clone target).
 # - ``multi``: the repo contains many skills as subdirectories (each holds
-#   ``SKILL.md``); we mirror each subdir into ``.cursor/skills/<subdir>/``.
+#   ``SKILL.md``); we mirror each subdir into ``skills/<subdir>/``.
 SkillsGitRepoKind = Literal["single", "multi"]
 
 # Authentication kinds:

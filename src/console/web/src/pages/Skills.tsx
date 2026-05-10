@@ -561,7 +561,7 @@ export default function Skills({
   });
   const gitRepoCount = gitRepos.length;
 
-  /** Skills live under workspace ``.cursor/skills``; keep file tree in sync. */
+  /** Skills live under workspace ``skills/``; keep file tree in sync. */
   const invalidateSkillsAndWorkspaceFiles = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['skills'] });
     queryClient.invalidateQueries({ queryKey: ['workspace-files'] });
@@ -956,7 +956,7 @@ export default function Skills({
     editBundleRowIdRef.current = 0;
     try {
       const res = await api.getSkillContent(skillName, currentBotId);
-      const wsPrefix = `.cursor/skills/${skillName}`;
+      const wsPrefix = `skills/${skillName}`;
       let nodes: WorkspaceListNode[] = [];
       try {
         const listed = await api.listWorkspaceFiles(wsPrefix, 32, currentBotId);

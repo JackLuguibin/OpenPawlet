@@ -1,4 +1,4 @@
-"""Skills from ``config.json``, ``.cursor/skills/*/SKILL.md``, and packaged ``openpawlet/skills``."""
+"""Skills from ``config.json``, ``skills/*/SKILL.md``, and packaged ``openpawlet/skills``."""
 
 from __future__ import annotations
 
@@ -77,7 +77,7 @@ def _builtin_skill_infos(bot_id: str | None, ws_names: set[str]) -> list[SkillIn
 
 
 def _workspace_skill_infos(bot_id: str | None) -> list[SkillInfo]:
-    """Skills defined as ``.cursor/skills/<name>/SKILL.md``."""
+    """Skills defined as ``skills/<name>/SKILL.md`` under the workspace root."""
     out: list[SkillInfo] = []
     for d in iter_workspace_skill_dirs(bot_id):
         md = d / "SKILL.md"
@@ -137,7 +137,7 @@ def _openpawlet_package_skill_infos(bot_id: str | None, ws_names: set[str]) -> l
 async def list_skills(
     bot_id: str | None = Query(default=None, alias="bot_id"),
 ) -> DataResponse[list[SkillInfo]]:
-    """Merge config ``skills``, packaged ``openpawlet/skills``, and ``.cursor/skills``."""
+    """Merge config ``skills``, packaged ``openpawlet/skills``, and workspace ``skills/``."""
     ws_infos = _workspace_skill_infos(bot_id)
     ws_names = {s.name for s in ws_infos}
     builtin = _builtin_skill_infos(bot_id, ws_names)

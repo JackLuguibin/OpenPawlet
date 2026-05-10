@@ -31,7 +31,7 @@ from urllib.parse import quote, urlparse, urlunparse
 
 from loguru import logger
 
-from console.server.bot_workspace import workspace_root
+from console.server.bot_workspace import WORKSPACE_SKILLS_DIR, workspace_root
 from console.server.dotenv_io import parse_dotenv_file
 from console.server.models.skills_git import (
     SkillsGitAuth,
@@ -39,9 +39,8 @@ from console.server.models.skills_git import (
     SkillsGitSyncResult,
 )
 from console.server.openpawlet_user_config import env_file_path
+from openpawlet.config.paths import workspace_console_subdir
 
-_CURSOR_SKILLS = Path(".cursor") / "skills"
-_SKILLS_GIT_CACHE_DIR = Path(".cursor") / ".skills-git-cache"
 _SKILL_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$")
 # Long enough that even slow first-time clones over flaky links finish, but
 # short enough that an unresponsive credential prompt eventually fails the
@@ -285,9 +284,14 @@ def _safe_unlink(path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _skills_git_cache_root(workspace: Path) -> Path:
+    """Clone/fetch cache under ``.openpawlet_console/skills-git-cache``."""
+    return workspace_console_subdir(workspace) / "skills-git-cache"
+
+
 def _cache_dir_for(workspace: Path, repo: SkillsGitRepo) -> Path:
-    """Stable per-repo path under ``.cursor/.skills-git-cache``."""
-    return workspace / _SKILLS_GIT_CACHE_DIR / repo.id
+    """Stable per-repo path under the workspace console skills-git cache."""
+    return _skills_git_cache_root(workspace) / repo.id
 
 
 def _ensure_repo_cache(ctx: _SyncContext) -> Path:
@@ -520,13 +524,13 @@ def _hard_reset_to_remote(cache: Path, env: dict[str, str], branch: str | None) 
 
 
 # ---------------------------------------------------------------------------
-# Materialise cache → .cursor/skills/<name>/
+# Materialise cache → skills/<name>/
 # ---------------------------------------------------------------------------
 
 
 def _install_into_workspace(ctx: _SyncContext, cache: Path) -> list[str]:
-    """Copy skill bundle(s) from the cache into ``.cursor/skills``."""
-    target_root = ctx.workspace / _CURSOR_SKILLS
+    """Copy skill bundle(s) from the cache into ``skills/``."""
+    target_root = ctx.workspace / WORKSPACE_SKILLS_DIR
     target_root.mkdir(parents=True, exist_ok=True)
 
     if ctx.repo.kind == "single":

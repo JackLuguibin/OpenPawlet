@@ -241,7 +241,7 @@ async def sync_git_repo(
     repo_id: str,
     bot_id: str | None = Query(default=None, alias="bot_id"),
 ) -> DataResponse[SkillsGitSyncResult]:
-    """Pull updates for one repo and refresh ``.cursor/skills/<name>/`` on disk."""
+    """Pull updates for one repo and refresh ``skills/<name>/`` on disk."""
     repos = _load_repos(bot_id)
     repo = _find_repo(repos, repo_id)
     # Sanity: workspace must resolve before we even try git.

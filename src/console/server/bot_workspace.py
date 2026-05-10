@@ -36,7 +36,8 @@ _PROFILE_FILES: dict[str, str] = {
 _MEMORY_FILES = {"long_term": "MEMORY.md", "history": "HISTORY.md"}
 # Older console builds used these names under the same directory.
 _MEMORY_LEGACY = {"long_term": "long_term.md", "history": "history.md"}
-_CURSOR_SKILLS = Path(".cursor") / "skills"
+# Skill bundles on disk: <workspace>/skills/<name>/SKILL.md (matches ``SkillsLoader.workspace_skills``).
+WORKSPACE_SKILLS_DIR = Path("skills")
 
 
 def _workspace_root_uncached(path: Path) -> Path:
@@ -403,13 +404,13 @@ def validate_skill_name(name: str) -> str:
 
 
 def workspace_skill_dir(bot_id: str | None, name: str) -> Path:
-    """``<workspace>/.cursor/skills/<name>`` (skill bundle root)."""
+    """``<workspace>/skills/<name>`` (skill bundle root)."""
     n = validate_skill_name(name)
-    return workspace_root(bot_id) / _CURSOR_SKILLS / n
+    return workspace_root(bot_id) / WORKSPACE_SKILLS_DIR / n
 
 
 def workspace_skill_md_path(bot_id: str | None, name: str) -> Path:
-    """``<workspace>/.cursor/skills/<name>/SKILL.md``."""
+    """``<workspace>/skills/<name>/SKILL.md``."""
     return workspace_skill_dir(bot_id, name) / "SKILL.md"
 
 
@@ -436,8 +437,8 @@ def validate_skill_bundle_dir_rel_path(raw: str) -> str:
 
 
 def iter_workspace_skill_dirs(bot_id: str | None) -> list[Path]:
-    """List skill directories under ``.cursor/skills`` that contain ``SKILL.md``."""
-    base = workspace_root(bot_id) / _CURSOR_SKILLS
+    """List skill directories under ``skills/`` that contain ``SKILL.md``."""
+    base = workspace_root(bot_id) / WORKSPACE_SKILLS_DIR
     if not base.is_dir():
         return []
     result: list[Path] = []
