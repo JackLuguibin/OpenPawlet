@@ -299,7 +299,8 @@ export default function Dashboard() {
         }
       />
 
-      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-x-hidden overflow-y-auto overscroll-y-contain pb-safe">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-6 overflow-x-hidden overflow-y-auto overscroll-y-contain pb-safe">
+      <div className="flex shrink-0 flex-col gap-6">
       <div className={DASHBOARD_STAT_GRID_CLASS}>
         <Card size="small" className={DASHBOARD_STAT_CARD_CLASS}>
           <Statistic
@@ -431,10 +432,11 @@ export default function Dashboard() {
           </div>
         </Card>
       )}
+      </div>
 
-      {/* 每日 Token + 模型占比（宽度用于饼图图例自适应；纵向滚动由外层统一容器承担） */}
-      <div ref={chartsAreaRef} className="min-h-0 w-full min-w-0">
-      <div className="grid min-h-0 w-full min-w-0 grid-cols-1 gap-4 auto-rows-[minmax(300px,auto)] lg:min-h-full lg:grid-cols-2 lg:grid-rows-1 lg:auto-rows-[minmax(280px,1fr)]">
+      {/* Charts: flex-1 so row height tracks viewport; outer column scrolls if KPI + charts exceed space */}
+      <div ref={chartsAreaRef} className="flex min-h-[200px] min-w-0 w-full flex-1 flex-col lg:min-h-0">
+      <div className="grid min-h-0 w-full min-w-0 flex-1 grid-cols-1 grid-rows-2 gap-4 auto-rows-[minmax(0,1fr)] lg:grid-cols-2 lg:grid-rows-1">
         <Card
           title={
             <span className="flex items-center gap-2">
@@ -453,14 +455,14 @@ export default function Dashboard() {
               <Text type="secondary" className="text-xs shrink-0 mb-1">
                 {t('dashboard.usageDailyByCalendar', { tz: agentTz })}
               </Text>
-              <div className="flex min-h-[240px] w-full min-w-0 flex-1 flex-col overflow-visible pb-1 sm:min-h-[260px] lg:min-h-[280px]">
+              <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-visible pb-1">
                 <DailyTokenStackedBarChart
                   chartLayoutNarrow={chartLayoutNarrow}
                   isDarkUi={isDarkUi}
                   history={usageHistory}
                   promptLabel={t('dashboard.chartPrompt')}
                   completionLabel={t('dashboard.chartCompletion')}
-                  style={{ width: '100%', height: '100%', minHeight: 236 }}
+                  style={{ width: '100%', height: '100%', minHeight: 0 }}
                 />
               </div>
             </div>
@@ -489,11 +491,11 @@ export default function Dashboard() {
               </Text>
             </div>
           ) : (
-            <div className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col">
+            <div className="flex h-full min-h-0 w-full min-w-0 flex-1 basis-0 flex-col">
               <Text type="secondary" className="text-xs shrink-0 mb-1 tabular-nums">
                 {formatTokenCount(modelPieTotal)}
               </Text>
-              <div className="flex min-h-[240px] w-full min-w-0 flex-1 flex-col overflow-visible pb-1 sm:min-h-[260px] lg:min-h-[280px]">
+              <div className="flex min-h-0 w-full min-w-0 flex-1 basis-0 flex-col overflow-hidden pb-1">
                 <ModelSharePieChart
                   chartLayoutNarrow={chartLayoutNarrow}
                   isDarkUi={isDarkUi}
@@ -502,7 +504,7 @@ export default function Dashboard() {
                   colors={modelPieColorRange}
                   emptyFill={modelPieEmptyFill}
                   seriesNameAllTime={t('dashboard.modelUsageAllTime')}
-                  style={{ width: '100%', height: '100%', minHeight: 236 }}
+                  style={{ width: '100%', height: '100%', minHeight: 0 }}
                 />
               </div>
             </div>

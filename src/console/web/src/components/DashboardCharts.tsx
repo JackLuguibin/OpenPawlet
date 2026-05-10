@@ -147,9 +147,14 @@ export function ModelSharePieChart({
       className={`flex min-h-0 min-w-0 flex-1 flex-col ${className ?? ''}`}
       style={{ width: '100%', height: '100%', minHeight: 0, ...style }}
     >
-      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col items-center justify-center px-2 py-1">
-        <div className="mx-auto aspect-square w-[70%] min-w-0 max-w-full shrink-0">
-          <Doughnut data={data} options={options} />
+      {/* Absolute box gives Chart.js a real width/height in nested flex layouts (inset tracks parent). */}
+      <div className="relative min-h-0 min-w-0 flex-1 basis-0 overflow-hidden">
+        <div className="absolute inset-0 min-h-0 min-w-0">
+          <Doughnut
+            data={data}
+            options={options}
+            style={{ display: 'block', height: '100%', width: '100%', boxSizing: 'border-box' }}
+          />
         </div>
       </div>
     </div>
