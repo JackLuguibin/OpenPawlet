@@ -10,7 +10,6 @@ import {
   Form,
   Grid,
   Input,
-  Modal,
   Popconfirm,
   Space,
   Spin,
@@ -20,6 +19,7 @@ import {
   Tooltip,
   Typography,
 } from 'antd';
+import { ResizableModal } from '../components/ResizableModal';
 import type { ColumnsType } from 'antd/es/table';
 import {
   EyeOutlined,
@@ -628,7 +628,7 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
           </Card>
         </div>
 
-      <Modal
+      <ResizableModal
         title={
           profileSeed
             ? t('runtime.startProfileTitle', {
@@ -691,7 +691,7 @@ export default function Runtime({ embedded = false }: { embedded?: boolean } = {
             <Input placeholder="team-001" />
           </Form.Item>
         </Form>
-      </Modal>
+      </ResizableModal>
 
       <Drawer
         open={detailRow !== null}

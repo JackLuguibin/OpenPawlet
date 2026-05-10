@@ -16,6 +16,7 @@ import {
   Dropdown,
   Collapse,
 } from 'antd';
+import { ResizableModal } from '../components/ResizableModal';
 import {
   ReadOutlined,
   EditOutlined,
@@ -60,6 +61,9 @@ import { SkillsGitSourcesCard } from './skills/SkillsGitSourcesCard';
 import { WorkspaceCodeEditor, WorkspaceCodeEditorForFormItem } from '../components/WorkspaceCodeEditor';
 
 const { Text } = Typography;
+
+/** Default width for workspace skill create/edit bundle modal (matches comfortable editor split). */
+const WORKSPACE_SKILL_BUNDLE_MODAL_WIDTH_PX = 1368;
 
 type SkillTabKey = 'builtin' | 'workspace';
 
@@ -1393,7 +1397,7 @@ export default function Skills({
         <ConsolePageShell>{mainColumn}</ConsolePageShell>
       )}
 
-      <Modal
+      <ResizableModal
         title={
           skillViewModal ? t('skills.viewTitle', { name: skillViewModal.name }) : ''
         }
@@ -1436,9 +1440,9 @@ export default function Skills({
             )}
           </div>
         )}
-      </Modal>
+      </ResizableModal>
 
-      <Modal
+      <ResizableModal
         title={
           skillEditModal ? t('skills.editTitle', { name: skillEditModal.name }) : ''
         }
@@ -1454,7 +1458,7 @@ export default function Skills({
         }}
         footer={null}
         destroyOnHidden
-        width={880}
+        width={WORKSPACE_SKILL_BUNDLE_MODAL_WIDTH_PX}
         styles={{
           body: {
             paddingTop: 12,
@@ -1577,9 +1581,9 @@ export default function Skills({
             )}
           </>
         )}
-      </Modal>
+      </ResizableModal>
 
-      <Modal
+      <ResizableModal
         title={t('skills.createWorkspaceTitle')}
         open={skillCreateModal}
         onCancel={() => {
@@ -1592,7 +1596,7 @@ export default function Skills({
         }}
         footer={null}
         destroyOnHidden
-        width={880}
+        width={WORKSPACE_SKILL_BUNDLE_MODAL_WIDTH_PX}
         styles={{
           body: {
             paddingTop: 12,
@@ -1700,7 +1704,7 @@ export default function Skills({
             </div>
           </Form.Item>
         </Form>
-      </Modal>
+      </ResizableModal>
     </>
   );
 }

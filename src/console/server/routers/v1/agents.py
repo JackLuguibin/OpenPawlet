@@ -81,13 +81,21 @@ def _synthetic_main_agent_row(bot_id: str) -> Agent | None:
     display_name = str(reg.get("name") or bot_id).strip() or bot_id
     cfg_path = Path(str(reg.get("config_path") or ""))
     model: str | None = None
+    main_skills: list[str] = []
     if cfg_path.is_file():
         with contextlib.suppress(Exception):
             from openpawlet.config.loader import load_config
+            from openpawlet.utils.console_agents import load_console_agent_row
 
             cfg = load_config(cfg_path)
             m = (cfg.agents.defaults.model or "").strip()
             model = m or None
+            ws = cfg.workspace_path.expanduser().resolve()
+            row = load_console_agent_row(ws, _MAIN_AGENT_LIST_ID)
+            if isinstance(row, dict):
+                raw_sk = row.get("skills")
+                if isinstance(raw_sk, list):
+                    main_skills = [str(x).strip() for x in raw_sk if str(x).strip()]
     return Agent(
         id=_MAIN_AGENT_LIST_ID,
         name=display_name,
@@ -95,7 +103,7 @@ def _synthetic_main_agent_row(bot_id: str) -> Agent | None:
         model=model,
         temperature=None,
         system_prompt=None,
-        skills=[],
+        skills=main_skills,
         topics=[],
         collaborators=[],
         enabled=True,

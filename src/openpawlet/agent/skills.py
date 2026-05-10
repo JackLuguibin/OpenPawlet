@@ -18,6 +18,39 @@ _STRIP_SKILL_FRONTMATTER = re.compile(
 )
 
 
+def parse_skill_frontmatter(content: str | None) -> dict[str, object] | None:
+    """Parse the first YAML frontmatter block from ``SKILL.md`` content.
+
+    Matches :meth:`SkillsLoader.get_skill_metadata` parsing (top-level keys such as
+    ``name``, ``description``, ``metadata.openpawlet``, etc.).
+    """
+    if not content or not content.startswith("---"):
+        return None
+    match = _STRIP_SKILL_FRONTMATTER.match(content)
+    if not match:
+        return None
+    try:
+        parsed = yaml.safe_load(match.group(1))
+    except yaml.YAMLError:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    metadata: dict[str, object] = {}
+    for key, value in parsed.items():
+        metadata[str(key)] = value
+    return metadata
+
+
+def strip_skill_frontmatter(content: str) -> str:
+    """Return markdown body after optional YAML frontmatter (opening ``---`` block)."""
+    if not content.startswith("---"):
+        return content
+    match = _STRIP_SKILL_FRONTMATTER.match(content)
+    if match:
+        return content[match.end() :].strip()
+    return content
+
+
 class SkillsLoader:
     """
     Loader for agent skills.
@@ -177,12 +210,7 @@ class SkillsLoader:
 
     def _strip_frontmatter(self, content: str) -> str:
         """Remove YAML frontmatter from markdown content."""
-        if not content.startswith("---"):
-            return content
-        match = _STRIP_SKILL_FRONTMATTER.match(content)
-        if match:
-            return content[match.end() :].strip()
-        return content
+        return strip_skill_frontmatter(content)
 
     def _parse_openpawlet_metadata(self, raw: object) -> dict:
         """Extract OpenPawlet metadata from a frontmatter field.
@@ -240,20 +268,4 @@ class SkillsLoader:
             Metadata dict or None.
         """
         content = self.load_skill(name)
-        if not content or not content.startswith("---"):
-            return None
-        match = _STRIP_SKILL_FRONTMATTER.match(content)
-        if not match:
-            return None
-        try:
-            parsed = yaml.safe_load(match.group(1))
-        except yaml.YAMLError:
-            return None
-        if not isinstance(parsed, dict):
-            return None
-        # yaml.safe_load returns native types (int, bool, list, etc.);
-        # keep values as-is so downstream consumers get correct types.
-        metadata: dict[str, object] = {}
-        for key, value in parsed.items():
-            metadata[str(key)] = value
-        return metadata
+        return parse_skill_frontmatter(content)

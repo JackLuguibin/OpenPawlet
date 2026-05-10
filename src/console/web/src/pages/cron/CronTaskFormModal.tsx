@@ -1,6 +1,5 @@
 import { useCallback, useMemo } from 'react';
 import {
-  Modal,
   Form,
   Input,
   Select,
@@ -15,6 +14,7 @@ import {
   Switch,
   message,
 } from 'antd';
+import { ResizableModal } from '../../components/ResizableModal';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import dayjs, { type Dayjs } from 'dayjs';
@@ -122,6 +122,8 @@ export function CronTaskFormModal(props: CronTaskFormModalProps) {
   const { open, botId, job, loading, onCancel, onSubmit } = props;
   const { t } = useTranslation();
   const [form] = Form.useForm<FormValues>();
+  const watchedAgentId = Form.useWatch('agentId', form);
+  const watchedSkills = Form.useWatch('skills', form);
   const watchedFixedKey = Form.useWatch('fixedSessionKey', form);
 
   const { data: agents = [] } = useQuery({
@@ -235,15 +237,37 @@ export function CronTaskFormModal(props: CronTaskFormModalProps) {
     }
   };
 
-  const skillOptions = useMemo(
-    () =>
-      skills.map((s) => ({
+  /** Effective agent for skill pickers: explicit id, else gateway main row (see GET /agents). */
+  const effectiveAgent = useMemo(() => {
+    const aid = typeof watchedAgentId === 'string' ? watchedAgentId.trim() : '';
+    if (aid) {
+      return agents.find((a) => a.id === aid) ?? null;
+    }
+    return agents.find((a) => a.is_main || a.id === 'main') ?? null;
+  }, [agents, watchedAgentId]);
+
+  const skillOptions = useMemo(() => {
+    const byValue = new Map<string, { label: string; value: string; title: string }>();
+    for (const s of skills) {
+      byValue.set(s.name, {
         label: s.name,
         value: s.name,
         title: s.description || s.name,
-      })),
-    [skills],
-  );
+      });
+    }
+    for (const raw of effectiveAgent?.skills ?? []) {
+      const name = String(raw || '').trim();
+      if (!name || byValue.has(name)) continue;
+      byValue.set(name, { label: name, value: name, title: name });
+    }
+    const selected = Array.isArray(watchedSkills) ? watchedSkills : [];
+    for (const raw of selected) {
+      const name = String(raw || '').trim();
+      if (!name || byValue.has(name)) continue;
+      byValue.set(name, { label: name, value: name, title: name });
+    }
+    return Array.from(byValue.values());
+  }, [skills, effectiveAgent, watchedSkills]);
 
   const mcpOptions = useMemo(
     () => mcpServers.map((m) => ({ label: m.name, value: m.name, title: m.name })),
@@ -278,7 +302,7 @@ export function CronTaskFormModal(props: CronTaskFormModalProps) {
   const isEdit = !!job;
 
   return (
-    <Modal
+    <ResizableModal
       title={isEdit ? t('cron.modalEditTitle') : t('cron.modalAddTitle')}
       open={open}
       afterOpenChange={handleAfterOpenChange}
@@ -617,7 +641,7 @@ export function CronTaskFormModal(props: CronTaskFormModalProps) {
           </Form.Item>
         </div>
       </Form>
-    </Modal>
+    </ResizableModal>
   );
 }
 

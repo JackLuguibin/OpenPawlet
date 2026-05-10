@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Button, Card, Empty, Form, Input, Modal, Select, Space, Spin } from 'antd';
+import { Button, Card, Empty, Form, Input, Select, Space, Spin } from 'antd';
+import { ResizableModal } from '../components/ResizableModal';
 import { PlusOutlined, ReloadOutlined, RightOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
@@ -160,7 +161,7 @@ export default function Teams({ embedded = false }: { embedded?: boolean } = {})
         </Card>
       </div>
 
-      <Modal
+      <ResizableModal
         title={t('teams.createTitle')}
         open={createOpen}
         onCancel={() => setCreateOpen(false)}
@@ -220,7 +221,7 @@ export default function Teams({ embedded = false }: { embedded?: boolean } = {})
             />
           </Form.Item>
         </Form>
-      </Modal>
+      </ResizableModal>
     </PageLayout>
   );
 }

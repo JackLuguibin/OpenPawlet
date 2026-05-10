@@ -22,7 +22,8 @@ import { registerChatHandler, getWSRef } from "../hooks/useWebSocket";
 import { useAgentTimeZone } from "../hooks/useAgentTimeZone";
 import { formatChatMessageTime } from "../utils/agentDatetime";
 import * as api from "../api/client";
-import { Button, Popconfirm, Checkbox, Spin, Modal, Select, Tabs, Switch, Tooltip } from "antd";
+import { Button, Popconfirm, Checkbox, Spin, Select, Tabs, Switch, Tooltip } from "antd";
+import { ResizableModal } from "../components/ResizableModal";
 import {
   PlusOutlined,
   LoadingOutlined,
@@ -3214,7 +3215,7 @@ export default function Chat() {
         )}
       </div>
 
-      <Modal
+      <ResizableModal
         open={sessionJsonlModalOpen}
         onCancel={() => {
           setSessionJsonlModalOpen(false);
@@ -3411,8 +3412,8 @@ export default function Chat() {
             },
           ]}
         />
-      </Modal>
-      <Modal
+      </ResizableModal>
+      <ResizableModal
         open={renameSessionModalOpen}
         onCancel={() => {
           if (renameSessionMutation.isPending) {
@@ -3447,7 +3448,7 @@ export default function Chat() {
             placeholder={t("chat.renameSessionPlaceholder")}
           />
         </div>
-      </Modal>
+      </ResizableModal>
     </div>
   );
 }

@@ -16,6 +16,7 @@ from console.server.openpawlet_user_config import resolve_config_path
 from openpawlet.config.loader import load_config
 from openpawlet.config.paths import workspace_console_subdir
 from openpawlet.utils.helpers import local_now
+from openpawlet.agent.skills import parse_skill_frontmatter, strip_skill_frontmatter
 
 _RUNTIME_STATE_FILE = "runtime_state.json"
 _MEMORY_DIR = "memory"
@@ -447,12 +448,20 @@ def iter_workspace_skill_dirs(bot_id: str | None) -> list[Path]:
 
 
 def skill_description_preview(md_path: Path, limit: int = 240) -> str:
-    """First non-empty lines of a skill file as description."""
+    """Summary line for UI lists: frontmatter ``description``, else first body line."""
     try:
         text = md_path.read_text(encoding="utf-8")
     except OSError:
         return ""
-    for line in text.splitlines():
+    meta = parse_skill_frontmatter(text)
+    if meta:
+        desc = meta.get("description")
+        if desc is not None:
+            line = str(desc).strip()
+            if line:
+                return line[:limit]
+    body = strip_skill_frontmatter(text)
+    for line in body.splitlines():
         stripped = line.strip()
         if stripped and not stripped.startswith("#"):
             return stripped[:limit]

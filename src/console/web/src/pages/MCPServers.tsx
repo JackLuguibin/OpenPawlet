@@ -13,8 +13,8 @@ import {
   Form,
   Input,
   Segmented,
-  Modal,
 } from 'antd';
+import { ResizableModal } from '../components/ResizableModal';
 import {
   ReloadOutlined,
   ThunderboltOutlined,
@@ -199,7 +199,7 @@ function McpEmptyConfigDialog({ botId }: { botId: string | null }) {
       >
         {t('mcp.openConfigDialog')}
       </Button>
-      <Modal
+      <ResizableModal
         title={t('mcp.inlineFormTitle')}
         open={open}
         centered
@@ -364,7 +364,7 @@ function McpEmptyConfigDialog({ botId }: { botId: string | null }) {
             </Form>
           )}
         </div>
-      </Modal>
+      </ResizableModal>
     </>
   );
 }

@@ -12,10 +12,10 @@ import {
   Spin,
   Switch,
   Typography,
-  Modal,
   Tooltip,
   Drawer,
 } from 'antd';
+import { ResizableModal } from '../components/ResizableModal';
 import {
   ArrowLeftOutlined,
   EditOutlined,
@@ -745,7 +745,7 @@ export default function TeamDetail() {
         </div>
       </Drawer>
 
-      <Modal
+      <ResizableModal
         title={t('teams.editContext')}
         open={contextEditOpen}
         onCancel={() => setContextEditOpen(false)}
@@ -788,9 +788,9 @@ export default function TeamDetail() {
             />
           </Form.Item>
         </Form>
-      </Modal>
+      </ResizableModal>
 
-      <Modal
+      <ResizableModal
         title={t('teams.addMember')}
         open={addMemberOpen}
         destroyOnHidden
@@ -818,7 +818,7 @@ export default function TeamDetail() {
           onChange={setPickAgent}
           options={availableToAdd.map((a) => ({ value: a.id, label: a.name }))}
         />
-      </Modal>
+      </ResizableModal>
     </PageLayout>
   );
 }

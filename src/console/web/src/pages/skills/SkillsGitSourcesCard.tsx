@@ -7,7 +7,6 @@ import {
   Form,
   Input,
   InputNumber,
-  Modal,
   Popconfirm,
   Segmented,
   Spin,
@@ -16,6 +15,7 @@ import {
   Tooltip,
   Typography,
 } from 'antd';
+import { ResizableModal } from '../../components/ResizableModal';
 import {
   BranchesOutlined,
   CloudSyncOutlined,
@@ -465,7 +465,7 @@ export function SkillsGitSourcesCard({
         </div>
       )}
 
-      <Modal
+      <ResizableModal
         title={
           editingRepo
             ? t('skillsGit.modalEditTitle', { name: editingRepo.name })
@@ -767,7 +767,7 @@ export function SkillsGitSourcesCard({
           </div>
           </Form>
         </div>
-      </Modal>
+      </ResizableModal>
     </div>
   );
 }

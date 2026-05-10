@@ -5,12 +5,12 @@ import {
   Spin,
   Alert,
   Tag,
-  Modal,
   Form,
   Input,
   Switch,
   Popconfirm,
 } from 'antd';
+import { ResizableModal } from '../components/ResizableModal';
 import {
   ReloadOutlined,
   InfoCircleOutlined,
@@ -448,7 +448,7 @@ export default function Channels({ embedded = false }: { embedded?: boolean } = 
 
     </ConsolePageShell>
 
-      <Modal
+      <ResizableModal
         title={
           editingChannel ? (
             <span className="flex items-center gap-2">
@@ -500,7 +500,7 @@ export default function Channels({ embedded = false }: { embedded?: boolean } = 
               );
             })}
         </Form>
-      </Modal>
+      </ResizableModal>
     </>
   );
 }

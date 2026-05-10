@@ -363,3 +363,20 @@ def test_get_skill_metadata_handles_yaml_types(tmp_path: Path) -> None:
     assert meta.get("always") is True
     # metadata is a parsed dict, not a JSON string
     assert isinstance(meta.get("metadata"), dict)
+
+
+def test_parse_skill_frontmatter_module_level() -> None:
+    """Top-level ``name`` / ``description`` keys match packaged SKILL.md style."""
+    from openpawlet.agent.skills import parse_skill_frontmatter, strip_skill_frontmatter
+
+    raw = (
+        "---\n"
+        "name: cron\n"
+        "description: Schedule reminders and recurring tasks.\n"
+        "---\n\n# Cron\n\nBody.\n"
+    )
+    meta = parse_skill_frontmatter(raw)
+    assert meta is not None
+    assert meta.get("name") == "cron"
+    assert meta.get("description") == "Schedule reminders and recurring tasks."
+    assert strip_skill_frontmatter(raw).startswith("# Cron")

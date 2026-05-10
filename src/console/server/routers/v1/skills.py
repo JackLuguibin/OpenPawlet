@@ -1,4 +1,4 @@
-"""Skills from ``config.json`` and ``.cursor/skills/*/SKILL.md``."""
+"""Skills from ``config.json``, ``.cursor/skills/*/SKILL.md``, and packaged ``openpawlet/skills``."""
 
 from __future__ import annotations
 
@@ -95,15 +95,54 @@ def _workspace_skill_infos(bot_id: str | None) -> list[SkillInfo]:
     return out
 
 
+def _openpawlet_package_skill_infos(bot_id: str | None, ws_names: set[str]) -> list[SkillInfo]:
+    """Skill bundles shipped with OpenPawlet (``openpawlet/skills/<name>/SKILL.md``).
+
+    Matches :meth:`openpawlet.agent.skills.SkillsLoader.list_skills` for the
+    packaged tree. Names already in ``config.json`` ``skills`` or workspace
+    bundles are omitted (those paths own the row).
+    """
+    from openpawlet.agent.skills import BUILTIN_SKILLS_DIR
+
+    cfg = _skill_cfg_map(bot_id)
+    cfg_names = {str(k) for k in cfg if isinstance(k, str)}
+    base = BUILTIN_SKILLS_DIR
+    if not base.is_dir():
+        return []
+    out: list[SkillInfo] = []
+    for skill_dir in sorted(base.iterdir(), key=lambda p: p.name):
+        if not skill_dir.is_dir():
+            continue
+        md = skill_dir / "SKILL.md"
+        if not md.is_file():
+            continue
+        name = skill_dir.name
+        if name in ws_names or name in cfg_names:
+            continue
+        desc = skill_description_preview(md)
+        out.append(
+            SkillInfo(
+                name=name,
+                source="builtin",
+                description=desc,
+                enabled=True,
+                path=str(md),
+                available=True,
+            )
+        )
+    return out
+
+
 @router.get("/skills", response_model=DataResponse[list[SkillInfo]])
 async def list_skills(
     bot_id: str | None = Query(default=None, alias="bot_id"),
 ) -> DataResponse[list[SkillInfo]]:
-    """Merge built-in skills from config with workspace ``.cursor/skills``."""
+    """Merge config ``skills``, packaged ``openpawlet/skills``, and ``.cursor/skills``."""
     ws_infos = _workspace_skill_infos(bot_id)
     ws_names = {s.name for s in ws_infos}
     builtin = _builtin_skill_infos(bot_id, ws_names)
-    return DataResponse(data=builtin + ws_infos)
+    packaged = _openpawlet_package_skill_infos(bot_id, ws_names)
+    return DataResponse(data=builtin + packaged + ws_infos)
 
 
 @router.get(
@@ -125,11 +164,16 @@ async def get_skill_content(
     name: str,
     bot_id: str | None = Query(default=None, alias="bot_id"),
 ) -> DataResponse[SkillContentResponse]:
-    """Read workspace skill markdown or return empty content for config-only skills."""
+    """Read workspace skill markdown, else packaged ``openpawlet/skills``, else config stub."""
     validate_skill_name(name)
     wpath = workspace_skill_md_path(bot_id, name)
     if wpath.is_file():
         return DataResponse(data=SkillContentResponse(name=name, content=read_text(wpath)))
+    from openpawlet.agent.skills import BUILTIN_SKILLS_DIR
+
+    pkg_md = BUILTIN_SKILLS_DIR / name / "SKILL.md"
+    if pkg_md.is_file():
+        return DataResponse(data=SkillContentResponse(name=name, content=read_text(pkg_md)))
     cfg = _skill_cfg_map(bot_id)
     if name in cfg:
         return DataResponse(data=SkillContentResponse(name=name, content=""))
@@ -144,11 +188,17 @@ async def copy_skill_to_workspace(
     name: str,
     bot_id: str | None = Query(default=None, alias="bot_id"),
 ) -> DataResponse[OkWithName]:
-    """Create a workspace copy from a configured built-in skill name."""
+    """Create a workspace copy from packaged or config-declared built-in skill."""
     validate_skill_name(name)
     wpath = workspace_skill_md_path(bot_id, name)
     if wpath.is_file():
         bad_request("Skill already exists in workspace")
+    from openpawlet.agent.skills import BUILTIN_SKILLS_DIR
+
+    pkg_md = BUILTIN_SKILLS_DIR / name / "SKILL.md"
+    if pkg_md.is_file():
+        write_text(wpath, read_text(pkg_md))
+        return DataResponse(data=OkWithName(name=name))
     cfg = _skill_cfg_map(bot_id)
     if name not in cfg:
         not_found("Built-in skill")

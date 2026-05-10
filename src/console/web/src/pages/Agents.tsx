@@ -23,6 +23,7 @@ import {
   Col,
   Tag,
 } from 'antd';
+import { ResizableModal } from '../components/ResizableModal';
 import { AgentProfilePanel, type AgentProfilePanelHandle } from '../components/AgentProfilePanel';
 import {
   applyExtrasToUpdate,
@@ -911,7 +912,7 @@ export default function Agents({ embedded = false }: { embedded?: boolean } = {}
       )}
 
       {/* Create Modal */}
-      <Modal
+      <ResizableModal
         title={t('agents.modalCreateTitle')}
         open={createModalOpen}
         onOk={handleCreate}
@@ -1082,10 +1083,10 @@ export default function Agents({ embedded = false }: { embedded?: boolean } = {}
             />
           </Form.Item>
         </Form>
-      </Modal>
+      </ResizableModal>
 
       {/* Edit Modal */}
-      <Modal
+      <ResizableModal
         title={t('agents.modalEditTitle', { name: selectedAgent?.name ?? '' })}
         open={editModalOpen}
         onOk={handleUpdate}
@@ -1269,9 +1270,9 @@ export default function Agents({ embedded = false }: { embedded?: boolean } = {}
             ]}
           />
         </Form>
-      </Modal>
+      </ResizableModal>
 
-      <Modal
+      <ResizableModal
         title={t('agents.modalAddCategoryTitle')}
         open={addCategoryModalOpen}
         onOk={handleConfirmAddCategory}
@@ -1294,10 +1295,10 @@ export default function Agents({ embedded = false }: { embedded?: boolean } = {}
           maxLength={32}
           showCount
         />
-      </Modal>
+      </ResizableModal>
 
       {/* Import Modal */}
-      <Modal
+      <ResizableModal
         title={t('agents.modalImportTitle')}
         open={importModalOpen}
         onCancel={() => setImportModalOpen(false)}
@@ -1320,7 +1321,7 @@ export default function Agents({ embedded = false }: { embedded?: boolean } = {}
             <p className="ant-upload-hint">{t('agents.importUploadHint')}</p>
           </Upload.Dragger>
         </div>
-      </Modal>
+      </ResizableModal>
     </PageLayout>
   );
 }
