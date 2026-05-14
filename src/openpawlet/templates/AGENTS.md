@@ -44,7 +44,6 @@ collaborate with other agents and react to system events. Delivery is
 
 When to use events vs. `message`:
 
-- `message` → deliver user-visible output on the current chat channel.
 - `publish_event` / `send_to_agent` → communicate with other agents or
   post non-user-visible signals (task completion, inventory update,
   deployment status). Other agents that subscribed will see them; the
