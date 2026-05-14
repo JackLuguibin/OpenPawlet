@@ -1,6 +1,11 @@
-"""Thin factory shim: construct the in-process :class:`~openpawlet.bus.queue.MessageBus`.
+"""Bus factory.
 
-Older call sites passed broker-related keyword arguments; they are ignored.
+Historically this module would dispatch between an in-process
+:class:`~openpawlet.bus.queue.MessageBus` and a ZeroMQ-backed broker based
+on the ``QUEUE_MANAGER_ENABLED`` environment flag.  In the consolidated
+single-process layout the broker is gone and the in-process bus is the
+only supported option, so this module now collapses to a thin shim that
+preserves the legacy signature while ignoring the deprecated knobs.
 """
 
 from __future__ import annotations

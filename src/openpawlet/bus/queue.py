@@ -1,13 +1,18 @@
-"""In-process :class:`MessageBus` bridging chat channels and the agent."""
+"""Async message queue abstraction for channel-agent decoupling.
+
+The in-process :class:`MessageBus` (backed by ``asyncio.Queue``) is the
+only supported implementation in the consolidated single-process layout.
+It is fast, zero-dependency, and preserves the original semantics that
+existing unit tests rely on.
+"""
 
 from __future__ import annotations
 
 import asyncio
 import dataclasses
-import threading
 import time as _time
 from collections import deque
-from collections.abc import Callable, Iterable
+from collections.abc import Iterable
 from contextlib import suppress
 from typing import Any, Protocol
 
@@ -16,8 +21,6 @@ from loguru import logger
 from openpawlet.bus.envelope import (
     KEY_CORRELATION_ID,
     TARGET_AGENT_PREFIX,
-    TARGET_BROADCAST,
-    TARGET_TOPIC_PREFIX,
     TOPIC_AGENT_REQUEST_REPLY,
     new_message_id,
     produced_at,
@@ -96,7 +99,7 @@ class EventSubscription:
     def __init__(
         self,
         queue: asyncio.Queue[AgentEvent],
-        detach: Callable[[EventSubscription], None] | None = None,
+        detach: callable[[EventSubscription], None] | None = None,
         *,
         agent_id: str,
         agent_name: str = "",
@@ -164,6 +167,12 @@ def _event_matches(
     include_broadcast: bool,
 ) -> bool:
     """Decide whether *ev* should be delivered to a subscriber."""
+    from openpawlet.bus.envelope import (
+        TARGET_AGENT_PREFIX,
+        TARGET_BROADCAST,
+        TARGET_TOPIC_PREFIX,
+    )
+
     target = ev.target or TARGET_BROADCAST
     if target == TARGET_BROADCAST:
         return include_broadcast
@@ -286,7 +295,7 @@ class MessageBus(RequestReplyMixin):
         self.inbound: asyncio.Queue[InboundMessage] = asyncio.Queue()
         self.outbound: asyncio.Queue[OutboundMessage] = asyncio.Queue()
         self._event_subs: list[EventSubscription] = []
-        self._event_subs_mutex = threading.Lock()
+        self._event_subs_lock = asyncio.Lock()
         # Durable-ish direct mailbox for offline agents.
         # Keyed by target agent_id -> message_id -> AgentEvent.
         self._direct_mailbox: dict[str, dict[str, AgentEvent]] = {}
@@ -484,7 +493,9 @@ class MessageBus(RequestReplyMixin):
 
     async def _fan_out_event(self, ev: AgentEvent) -> None:
         """Fan out *ev* to every matching local subscriber (at-most-once)."""
-        with self._event_subs_mutex:
+        # Copy under the lock so publish is concurrency-safe with
+        # subscribe/unsubscribe without holding the lock across deliveries.
+        async with self._event_subs_lock:
             subs = list(self._event_subs)
         delivered = False
         for sub in subs:
@@ -534,12 +545,11 @@ class MessageBus(RequestReplyMixin):
             topics=tuple(topics),
             include_broadcast=include_broadcast,
         )
-        with self._event_subs_mutex:
-            self._event_subs.append(sub)
+        self._event_subs.append(sub)
         return sub
 
     def _detach_subscription(self, sub: EventSubscription) -> None:
-        with self._event_subs_mutex, suppress(ValueError):
+        with suppress(ValueError):
             self._event_subs.remove(sub)
 
     async def list_pending_direct_events(self, *, agent_id: str) -> list[AgentEvent]:
@@ -583,7 +593,7 @@ class MessageBus(RequestReplyMixin):
     ) -> list[dict[str, object]]:
         """Return active local event subscribers, optionally filtered by topic."""
         qtopic = str(topic or "").strip()
-        with self._event_subs_mutex:
+        async with self._event_subs_lock:
             subs = list(self._event_subs)
         aggregated: dict[str, dict[str, object]] = {}
         for sub in subs:
