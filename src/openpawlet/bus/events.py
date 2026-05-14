@@ -1,11 +1,4 @@
-"""Event types for the message bus.
-
-Both :class:`InboundMessage` and :class:`OutboundMessage` carry the
-fields required by the ZeroMQ-backed Queue Manager (``message_id``,
-``dedupe_key``, ``event_seq`` and ``trace_id``) as optional attributes.
-They keep sensible defaults so in-process call sites that predate the
-unified queue continue to work without modification.
-"""
+"""Message bus payloads: inbound chat messages, outbound replies, agent events."""
 
 import json
 import re
@@ -172,14 +165,13 @@ def build_request_reply_event(
     )
 
 
-def should_handle_direct_for_session(ev: AgentEvent, session_key: str | None) -> bool:
-    """Return True when *ev* should be consumed by this session loop.
+def should_handle_direct_for_session(_ev: AgentEvent, _session_key: str | None) -> bool:
+    """Return True when the event should be consumed by this session loop.
 
     Direct agent messages are consumed at agent scope (``agent:<id>`` target).
     Session hints in payload are best-effort metadata and must not block
     delivery, otherwise request/reply can deadlock after session/room rotation.
     """
-    _ = session_key
     return True
 
 
